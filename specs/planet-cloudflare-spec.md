@@ -2077,9 +2077,17 @@ As of Wrangler v3.91.0 (late 2024), Cloudflare recommends **JSONC** (`wrangler.j
 - **Comments supported**: JSONC allows `//` comments (unlike standard JSON)
 - **Consistent tooling**: Better integration with TypeScript/JavaScript ecosystems
 
-### 8.2 Python Dependencies
+### 8.2 Python Dependencies & Tooling
 
-Use [uv](https://docs.astral.sh/uv/) for fast, reliable Python dependency management:
+Use the **Astral toolchain** for a modern Python development experience:
+
+| Tool | Purpose | Speed vs Traditional |
+|------|---------|---------------------|
+| [uv](https://docs.astral.sh/uv/) | Package management | 10-100x faster than pip |
+| [ruff](https://docs.astral.sh/ruff/) | Linting + formatting | 10-100x faster than flake8+black |
+| [ty](https://docs.astral.sh/ty/) | Type checking | 10-100x faster than mypy |
+
+All three are written in Rust, configured via `pyproject.toml`, and designed to work together.
 
 ```bash
 # Install dependencies (creates uv.lock)
@@ -2087,6 +2095,12 @@ uv sync
 
 # Run scripts
 uv run python scripts/seed_admins.py
+
+# Development workflow
+uvx ty check src/           # Type check (~2s for entire project)
+uvx ruff check src/         # Lint
+uvx ruff format src/        # Format
+uvx ruff check --fix src/   # Auto-fix lint issues
 ```
 
 ```toml
@@ -2107,7 +2121,106 @@ dependencies = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+# =============================================================================
+# Astral Toolchain Configuration
+# =============================================================================
+
+[tool.ty]
+python-version = "3.12"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "F",      # pyflakes
+    "I",      # isort (import sorting)
+    "UP",     # pyupgrade (modern Python syntax)
+    "B",      # flake8-bugbear (common bugs)
+    "SIM",    # flake8-simplify
+    "ASYNC",  # flake8-async (async best practices)
+    "S",      # flake8-bandit (security)
+]
+ignore = [
+    "S104",   # Possible binding to all interfaces (intentional for Workers)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*" = ["S"]  # Security checks less relevant for admin scripts
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
 ```
+
+### 8.3 Editor Integration
+
+ty provides a **language server** (LSP) for real-time feedback:
+
+```bash
+# VS Code: Install the ty extension, or:
+# 1. Install ty globally
+uv tool install ty@latest
+
+# 2. Configure VS Code settings.json
+{
+  "ty.path": "ty",
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "charliermarsh.ruff"
+}
+```
+
+**Language server features:**
+- **Inlay hints**: Show inferred types inline (no annotations needed)
+- **Go to definition**: Navigate to function/class definitions
+- **Auto-import**: Automatically add missing imports
+- **Instant diagnostics**: <5ms feedback after edits (vs 300ms+ for pyright)
+
+### 8.4 Continuous Integration
+
+```yaml
+# .github/workflows/check.yml
+name: Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Type check
+        run: uvx ty check src/
+
+      - name: Lint
+        run: uvx ruff check src/
+
+      - name: Format check
+        run: uvx ruff format --check src/
+
+      - name: Deploy (on main)
+        if: github.ref == 'refs/heads/main'
+        run: wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+```
+
+**Why this CI is fast:**
+- `uv sync`: ~1s (cached dependencies)
+- `ty check`: ~2s (entire codebase)
+- `ruff check + format`: <1s
+- Total lint/type time: **<5 seconds** (vs 30-60s with pip + mypy + black + flake8)
 
 ---
 
