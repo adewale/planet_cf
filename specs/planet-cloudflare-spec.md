@@ -2537,6 +2537,1008 @@ jobs:
 - `ruff check + format`: <1s
 - Total lint/type time: **<5 seconds** (vs 30-60s with pip + mypy + black + flake8)
 
+### 9.5 Testing
+
+Comprehensive testing ensures the implementation matches this specification. Use **pytest** for Python tests with the types and protocols defined in Section 5.
+
+#### 9.5.1 Test Structure
+
+```
+tests/
+├── conftest.py              # Shared fixtures
+├── unit/
+│   ├── test_types.py        # Domain model tests
+│   ├── test_parsing.py      # Feed parsing tests
+│   ├── test_sanitization.py # XSS prevention tests
+│   ├── test_security.py     # URL validation, SSRF tests
+│   └── test_session.py      # Signed cookie tests
+├── integration/
+│   ├── test_scheduler.py    # Cron → Queue flow
+│   ├── test_fetcher.py      # Queue → D1 flow
+│   ├── test_http.py         # HTTP endpoint tests
+│   └── test_admin.py        # Admin API tests
+└── fixtures/
+    ├── feeds/               # Sample RSS/Atom files
+    │   ├── valid_rss2.xml
+    │   ├── valid_atom.xml
+    │   ├── malformed.xml
+    │   └── xss_attack.xml
+    └── factories.py         # Test data factories
+```
+
+#### 9.5.2 Test Dependencies
+
+```toml
+# pyproject.toml (add to project)
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "respx>=0.21.0",      # Mock httpx requests
+    "freezegun>=1.2.0",   # Mock time
+    "hypothesis>=6.100.0", # Property-based testing
+]
+```
+
+```bash
+# Run tests
+uv sync --extra test
+uv run pytest tests/ -v --cov=src --cov-report=term-missing
+```
+
+#### 9.5.3 Fixtures and Factories
+
+```python
+# tests/conftest.py
+import pytest
+from dataclasses import dataclass
+from typing import Any
+from src.types import FeedId, EntryId, FeedJob, FeedRow, EntryRow, Session
+
+# =============================================================================
+# Mock Cloudflare Bindings
+# =============================================================================
+
+@dataclass
+class MockD1Result:
+    results: list[dict]
+    success: bool = True
+
+class MockD1Statement:
+    def __init__(self, results: list[dict]):
+        self._results = results
+
+    def bind(self, *args) -> "MockD1Statement":
+        return self
+
+    async def all(self) -> MockD1Result:
+        return MockD1Result(results=self._results)
+
+    async def first(self) -> dict | None:
+        return self._results[0] if self._results else None
+
+    async def run(self) -> MockD1Result:
+        return MockD1Result(results=[])
+
+class MockD1:
+    def __init__(self, data: dict[str, list[dict]] | None = None):
+        self._data = data or {}
+
+    def prepare(self, sql: str) -> MockD1Statement:
+        # Simple mock - return data based on table mentioned in SQL
+        for table, rows in self._data.items():
+            if table in sql.lower():
+                return MockD1Statement(rows)
+        return MockD1Statement([])
+
+class MockQueue:
+    def __init__(self):
+        self.messages: list[dict] = []
+
+    async def send(self, message: dict) -> None:
+        self.messages.append(message)
+
+    async def sendBatch(self, messages: list[dict]) -> None:
+        self.messages.extend(messages)
+
+class MockVectorize:
+    def __init__(self):
+        self.vectors: dict[str, list[float]] = {}
+
+    async def upsert(self, vectors: list[dict]) -> None:
+        for v in vectors:
+            self.vectors[v["id"]] = v["values"]
+
+    async def query(self, vector: list[float], options: dict) -> dict:
+        # Simple mock - return all stored IDs
+        return {"matches": [{"id": id} for id in self.vectors.keys()]}
+
+    async def deleteByIds(self, ids: list[str]) -> None:
+        for id in ids:
+            self.vectors.pop(id, None)
+
+class MockAI:
+    async def run(self, model: str, inputs: dict) -> dict:
+        # Return fake 768-dim embedding
+        text = inputs.get("text", [""])[0]
+        return {"data": [[0.1] * 768]}
+
+@dataclass
+class MockEnv:
+    """Mock Cloudflare Worker environment bindings."""
+    DB: MockD1
+    FEED_QUEUE: MockQueue
+    SEARCH_INDEX: MockVectorize
+    AI: MockAI
+    PLANET_NAME: str = "Test Planet"
+    PLANET_URL: str = "https://test.example.com"
+    PLANET_DESCRIPTION: str = "Test description"
+    PLANET_OWNER_NAME: str = "Test Owner"
+    PLANET_OWNER_EMAIL: str = "test@example.com"
+    SESSION_SECRET: str = "test-secret-key-for-testing-only-32chars"
+    GITHUB_CLIENT_ID: str = "test-client-id"
+    GITHUB_CLIENT_SECRET: str = "test-client-secret"
+
+@pytest.fixture
+def mock_env() -> MockEnv:
+    return MockEnv(
+        DB=MockD1(),
+        FEED_QUEUE=MockQueue(),
+        SEARCH_INDEX=MockVectorize(),
+        AI=MockAI(),
+    )
+
+@pytest.fixture
+def mock_env_with_feeds(mock_env: MockEnv) -> MockEnv:
+    mock_env.DB = MockD1({
+        "feeds": [
+            {"id": 1, "url": "https://example.com/feed.xml", "title": "Example", "is_active": 1},
+            {"id": 2, "url": "https://test.com/rss", "title": "Test Blog", "is_active": 1},
+        ]
+    })
+    return mock_env
+
+
+# =============================================================================
+# Test Data Factories
+# =============================================================================
+
+class FeedFactory:
+    _counter = 0
+
+    @classmethod
+    def create(cls, **overrides) -> FeedRow:
+        cls._counter += 1
+        defaults: FeedRow = {
+            "id": cls._counter,
+            "url": f"https://feed{cls._counter}.example.com/rss",
+            "title": f"Test Feed {cls._counter}",
+            "site_url": f"https://feed{cls._counter}.example.com",
+            "is_active": 1,
+            "consecutive_failures": 0,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+        }
+        return {**defaults, **overrides}
+
+class EntryFactory:
+    _counter = 0
+
+    @classmethod
+    def create(cls, feed_id: int = 1, **overrides) -> EntryRow:
+        cls._counter += 1
+        defaults: EntryRow = {
+            "id": cls._counter,
+            "feed_id": feed_id,
+            "guid": f"entry-{cls._counter}",
+            "url": f"https://example.com/post/{cls._counter}",
+            "title": f"Test Entry {cls._counter}",
+            "content": "<p>Test content</p>",
+            "published_at": "2026-01-01T12:00:00Z",
+            "created_at": "2026-01-01T12:00:00Z",
+        }
+        return {**defaults, **overrides}
+
+class SessionFactory:
+    @classmethod
+    def create(cls, **overrides) -> Session:
+        import time
+        defaults = {
+            "github_username": "testuser",
+            "github_id": 12345,
+            "avatar_url": "https://github.com/testuser.png",
+            "exp": int(time.time()) + 3600,  # 1 hour from now
+        }
+        return Session(**{**defaults, **overrides})
+```
+
+#### 9.5.4 Unit Tests: Domain Models
+
+```python
+# tests/unit/test_types.py
+import pytest
+import json
+import time
+from freezegun import freeze_time
+from src.types import (
+    FeedId, EntryId, FeedJob, Session, ParsedEntry,
+    Ok, Err, FetchError, Result,
+)
+
+class TestFeedJob:
+    def test_create_with_required_fields(self):
+        job = FeedJob(feed_id=FeedId(1), feed_url="https://example.com/feed.xml")
+        assert job.feed_id == 1
+        assert job.feed_url == "https://example.com/feed.xml"
+        assert job.etag is None
+        assert job.last_modified is None
+
+    def test_create_with_optional_fields(self):
+        job = FeedJob(
+            feed_id=FeedId(1),
+            feed_url="https://example.com/feed.xml",
+            etag='"abc123"',
+            last_modified="Sat, 01 Jan 2026 00:00:00 GMT",
+        )
+        assert job.etag == '"abc123"'
+        assert job.last_modified == "Sat, 01 Jan 2026 00:00:00 GMT"
+
+    def test_to_dict_roundtrip(self):
+        original = FeedJob(feed_id=FeedId(42), feed_url="https://test.com/rss")
+        as_dict = original.to_dict()
+        restored = FeedJob.from_dict(as_dict)
+        assert restored == original
+
+    def test_immutable(self):
+        job = FeedJob(feed_id=FeedId(1), feed_url="https://example.com/feed.xml")
+        with pytest.raises(AttributeError):
+            job.feed_url = "https://other.com/feed.xml"
+
+
+class TestSession:
+    @freeze_time("2026-01-01 12:00:00")
+    def test_not_expired(self):
+        session = Session(
+            github_username="testuser",
+            github_id=123,
+            avatar_url=None,
+            exp=int(time.time()) + 3600,  # 1 hour from now
+        )
+        assert not session.is_expired()
+
+    @freeze_time("2026-01-01 12:00:00")
+    def test_expired(self):
+        session = Session(
+            github_username="testuser",
+            github_id=123,
+            avatar_url=None,
+            exp=int(time.time()) - 1,  # 1 second ago
+        )
+        assert session.is_expired()
+
+    def test_json_roundtrip(self):
+        original = Session(
+            github_username="testuser",
+            github_id=123,
+            avatar_url="https://github.com/testuser.png",
+            exp=1234567890,
+        )
+        as_json = original.to_json()
+        restored = Session.from_json(as_json)
+        assert restored == original
+
+
+class TestParsedEntry:
+    def test_from_feedparser_minimal(self):
+        raw = {
+            "id": "entry-1",
+            "link": "https://example.com/post",
+            "title": "Test Post",
+            "summary": "A test post",
+        }
+        entry = ParsedEntry.from_feedparser(raw, "https://example.com")
+        assert entry.guid == "entry-1"
+        assert entry.url == "https://example.com/post"
+        assert entry.title == "Test Post"
+        assert entry.content == "A test post"  # Falls back to summary
+
+    def test_from_feedparser_with_content(self):
+        raw = {
+            "id": "entry-1",
+            "link": "https://example.com/post",
+            "title": "Test Post",
+            "content": [{"value": "<p>Full content</p>"}],
+            "summary": "Short summary",
+        }
+        entry = ParsedEntry.from_feedparser(raw, "https://example.com")
+        assert entry.content == "<p>Full content</p>"  # Prefers content over summary
+
+    def test_from_feedparser_with_published_date(self):
+        raw = {
+            "id": "entry-1",
+            "link": "https://example.com/post",
+            "title": "Test Post",
+            "summary": "Test",
+            "published_parsed": (2026, 1, 15, 10, 30, 0, 0, 0, 0),
+        }
+        entry = ParsedEntry.from_feedparser(raw, "https://example.com")
+        assert entry.published_at.year == 2026
+        assert entry.published_at.month == 1
+        assert entry.published_at.day == 15
+
+    def test_from_feedparser_missing_guid_uses_link(self):
+        raw = {
+            "link": "https://example.com/post",
+            "title": "Test Post",
+            "summary": "Test",
+        }
+        entry = ParsedEntry.from_feedparser(raw, "https://example.com")
+        assert entry.guid == "https://example.com/post"
+
+
+class TestResult:
+    def test_ok_value(self):
+        result: Result[int, str] = Ok(42)
+        match result:
+            case Ok(value):
+                assert value == 42
+            case Err(_):
+                pytest.fail("Expected Ok")
+
+    def test_err_value(self):
+        result: Result[int, FetchError] = Err(FetchError.TIMEOUT)
+        match result:
+            case Ok(_):
+                pytest.fail("Expected Err")
+            case Err(error):
+                assert error == FetchError.TIMEOUT
+
+    def test_fetch_error_is_permanent(self):
+        assert FetchError.GONE.is_permanent()
+        assert FetchError.NOT_FOUND.is_permanent()
+        assert not FetchError.TIMEOUT.is_permanent()
+
+    def test_fetch_error_is_transient(self):
+        assert FetchError.TIMEOUT.is_transient()
+        assert FetchError.RATE_LIMITED.is_transient()
+        assert not FetchError.GONE.is_transient()
+```
+
+#### 9.5.5 Unit Tests: Security
+
+```python
+# tests/unit/test_security.py
+import pytest
+from src.types import BleachSanitizer, NoOpSanitizer
+
+class TestSanitization:
+    @pytest.fixture
+    def sanitizer(self):
+        return BleachSanitizer()
+
+    def test_allows_safe_tags(self, sanitizer):
+        html = "<p>Hello <strong>world</strong></p>"
+        assert sanitizer.clean(html) == html
+
+    def test_strips_script_tags(self, sanitizer):
+        html = '<p>Hello</p><script>alert("xss")</script>'
+        assert "<script>" not in sanitizer.clean(html)
+        assert "alert" not in sanitizer.clean(html)
+
+    def test_strips_event_handlers(self, sanitizer):
+        html = '<p onclick="alert(1)">Click me</p>'
+        result = sanitizer.clean(html)
+        assert "onclick" not in result
+        assert "<p>Click me</p>" == result
+
+    def test_strips_javascript_urls(self, sanitizer):
+        html = '<a href="javascript:alert(1)">Click</a>'
+        result = sanitizer.clean(html)
+        # bleach removes dangerous href
+        assert "javascript:" not in result
+
+    def test_allows_safe_img(self, sanitizer):
+        html = '<img src="https://example.com/img.png" alt="test">'
+        result = sanitizer.clean(html)
+        assert "src=" in result
+        assert "alt=" in result
+
+    def test_strips_img_onerror(self, sanitizer):
+        html = '<img src="x" onerror="alert(1)">'
+        result = sanitizer.clean(html)
+        assert "onerror" not in result
+
+    @pytest.mark.parametrize("malicious", [
+        '<svg onload="alert(1)">',
+        '<math><mi xlink:href="javascript:alert(1)">',
+        '<iframe src="javascript:alert(1)">',
+        '<object data="javascript:alert(1)">',
+        '<embed src="javascript:alert(1)">',
+        '<style>@import "javascript:alert(1)"</style>',
+    ])
+    def test_strips_various_xss_vectors(self, sanitizer, malicious):
+        result = sanitizer.clean(malicious)
+        assert "javascript:" not in result.lower()
+        assert "alert" not in result
+
+
+class TestNoOpSanitizer:
+    def test_passes_through_unchanged(self):
+        sanitizer = NoOpSanitizer()
+        html = '<script>alert(1)</script>'
+        assert sanitizer.clean(html) == html
+
+
+# tests/unit/test_url_validation.py
+import pytest
+
+# Import the actual validation function from main.py
+# For spec purposes, we define it here
+def is_safe_url(url: str) -> bool:
+    """Check if URL is safe to fetch (no SSRF)."""
+    from urllib.parse import urlparse
+    import ipaddress
+
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+
+    # Must be http or https
+    if parsed.scheme not in ("http", "https"):
+        return False
+
+    # Must have a host
+    if not parsed.hostname:
+        return False
+
+    hostname = parsed.hostname.lower()
+
+    # Block localhost
+    if hostname in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+        return False
+
+    # Block internal networks
+    try:
+        ip = ipaddress.ip_address(hostname)
+        if ip.is_private or ip.is_loopback or ip.is_link_local:
+            return False
+        # Block cloud metadata endpoints
+        if ip == ipaddress.ip_address("169.254.169.254"):
+            return False
+    except ValueError:
+        pass  # Not an IP, that's fine
+
+    # Block cloud metadata hostnames
+    metadata_hosts = [
+        "metadata.google.internal",
+        "metadata.azure.internal",
+        "instance-data",
+    ]
+    if any(hostname == h or hostname.endswith("." + h) for h in metadata_hosts):
+        return False
+
+    return True
+
+
+class TestUrlValidation:
+    @pytest.mark.parametrize("url", [
+        "https://example.com/feed.xml",
+        "https://blog.example.com/rss",
+        "http://feeds.feedburner.com/example",
+        "https://news.ycombinator.com/rss",
+    ])
+    def test_allows_valid_urls(self, url):
+        assert is_safe_url(url)
+
+    @pytest.mark.parametrize("url", [
+        "http://localhost/feed",
+        "http://127.0.0.1/feed",
+        "http://[::1]/feed",
+        "http://0.0.0.0/feed",
+    ])
+    def test_blocks_localhost(self, url):
+        assert not is_safe_url(url)
+
+    @pytest.mark.parametrize("url", [
+        "http://10.0.0.1/feed",
+        "http://172.16.0.1/feed",
+        "http://192.168.1.1/feed",
+    ])
+    def test_blocks_private_networks(self, url):
+        assert not is_safe_url(url)
+
+    @pytest.mark.parametrize("url", [
+        "http://169.254.169.254/latest/meta-data/",
+        "http://metadata.google.internal/",
+    ])
+    def test_blocks_cloud_metadata(self, url):
+        assert not is_safe_url(url)
+
+    @pytest.mark.parametrize("url", [
+        "ftp://example.com/feed",
+        "file:///etc/passwd",
+        "javascript:alert(1)",
+        "data:text/html,<script>alert(1)</script>",
+    ])
+    def test_blocks_non_http_schemes(self, url):
+        assert not is_safe_url(url)
+
+    def test_blocks_empty_url(self):
+        assert not is_safe_url("")
+
+    def test_blocks_malformed_url(self):
+        assert not is_safe_url("not a url")
+```
+
+#### 9.5.6 Unit Tests: Session Signing
+
+```python
+# tests/unit/test_session.py
+import pytest
+import time
+import json
+import hmac
+import hashlib
+import base64
+from freezegun import freeze_time
+
+SECRET = "test-secret-key-for-testing-only-32chars"
+
+def create_signed_cookie(payload: dict, secret: str) -> str:
+    """Create an HMAC-signed cookie."""
+    payload_json = json.dumps(payload)
+    payload_b64 = base64.urlsafe_b64encode(payload_json.encode()).decode()
+    signature = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).hexdigest()
+    return f"{payload_b64}.{signature}"
+
+def verify_signed_cookie(cookie: str, secret: str) -> dict | None:
+    """Verify and decode a signed cookie."""
+    if "." not in cookie:
+        return None
+
+    try:
+        payload_b64, signature = cookie.rsplit(".", 1)
+        expected_sig = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).hexdigest()
+
+        if not hmac.compare_digest(signature, expected_sig):
+            return None
+
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+
+        if payload.get("exp", 0) < time.time():
+            return None
+
+        return payload
+    except Exception:
+        return None
+
+
+class TestSignedCookies:
+    @freeze_time("2026-01-01 12:00:00")
+    def test_create_and_verify(self):
+        payload = {
+            "github_username": "testuser",
+            "github_id": 123,
+            "exp": int(time.time()) + 3600,
+        }
+        cookie = create_signed_cookie(payload, SECRET)
+        verified = verify_signed_cookie(cookie, SECRET)
+
+        assert verified is not None
+        assert verified["github_username"] == "testuser"
+        assert verified["github_id"] == 123
+
+    def test_rejects_tampered_payload(self):
+        payload = {"github_username": "testuser", "exp": int(time.time()) + 3600}
+        cookie = create_signed_cookie(payload, SECRET)
+
+        # Tamper with the payload
+        parts = cookie.split(".")
+        tampered_payload = base64.urlsafe_b64encode(
+            json.dumps({"github_username": "admin", "exp": int(time.time()) + 3600}).encode()
+        ).decode()
+        tampered_cookie = f"{tampered_payload}.{parts[1]}"
+
+        assert verify_signed_cookie(tampered_cookie, SECRET) is None
+
+    def test_rejects_wrong_secret(self):
+        payload = {"github_username": "testuser", "exp": int(time.time()) + 3600}
+        cookie = create_signed_cookie(payload, SECRET)
+
+        assert verify_signed_cookie(cookie, "wrong-secret") is None
+
+    @freeze_time("2026-01-01 12:00:00")
+    def test_rejects_expired(self):
+        payload = {
+            "github_username": "testuser",
+            "exp": int(time.time()) - 1,  # Expired 1 second ago
+        }
+        cookie = create_signed_cookie(payload, SECRET)
+
+        assert verify_signed_cookie(cookie, SECRET) is None
+
+    def test_rejects_malformed(self):
+        assert verify_signed_cookie("not.a.valid.cookie", SECRET) is None
+        assert verify_signed_cookie("nocookie", SECRET) is None
+        assert verify_signed_cookie("", SECRET) is None
+```
+
+#### 9.5.7 Integration Tests
+
+```python
+# tests/integration/test_scheduler.py
+import pytest
+from src.types import FeedId, FeedJob
+
+@pytest.mark.asyncio
+async def test_scheduler_enqueues_active_feeds(mock_env_with_feeds):
+    """Scheduler should enqueue one message per active feed."""
+    from src.main import PlanetCF
+
+    worker = PlanetCF()
+    worker.env = mock_env_with_feeds
+
+    result = await worker._run_scheduler()
+
+    assert result["enqueued"] == 2
+    assert len(mock_env_with_feeds.FEED_QUEUE.messages) == 2
+
+    # Verify message structure
+    msg = mock_env_with_feeds.FEED_QUEUE.messages[0]
+    job = FeedJob.from_dict(msg)
+    assert job.feed_id in (FeedId(1), FeedId(2))
+    assert "example.com" in job.feed_url or "test.com" in job.feed_url
+
+
+@pytest.mark.asyncio
+async def test_scheduler_skips_inactive_feeds(mock_env):
+    """Scheduler should not enqueue inactive feeds."""
+    mock_env.DB = MockD1({
+        "feeds": [
+            {"id": 1, "url": "https://active.com/feed", "is_active": 1},
+            {"id": 2, "url": "https://inactive.com/feed", "is_active": 0},
+        ]
+    })
+
+    from src.main import PlanetCF
+    worker = PlanetCF()
+    worker.env = mock_env
+
+    result = await worker._run_scheduler()
+
+    assert result["enqueued"] == 1
+    assert len(mock_env.FEED_QUEUE.messages) == 1
+
+
+# tests/integration/test_fetcher.py
+import pytest
+import respx
+from httpx import Response
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetcher_processes_valid_feed(mock_env):
+    """Fetcher should parse feed and store entries in D1."""
+    # Mock the feed response
+    feed_xml = """<?xml version="1.0"?>
+    <rss version="2.0">
+        <channel>
+            <title>Test Feed</title>
+            <link>https://example.com</link>
+            <item>
+                <title>Test Post</title>
+                <link>https://example.com/post/1</link>
+                <description>Test content</description>
+                <guid>post-1</guid>
+            </item>
+        </channel>
+    </rss>"""
+
+    respx.get("https://example.com/feed.xml").mock(
+        return_value=Response(200, content=feed_xml)
+    )
+
+    from src.main import PlanetCF
+    from src.types import FeedJob, FeedId
+
+    worker = PlanetCF()
+    worker.env = mock_env
+
+    job = FeedJob(feed_id=FeedId(1), feed_url="https://example.com/feed.xml")
+
+    # Process the feed
+    result = await worker._process_single_feed(job.to_dict())
+
+    assert result["status"] == "ok"
+    assert result["entries_added"] >= 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetcher_respects_304_not_modified(mock_env):
+    """Fetcher should skip processing when feed returns 304."""
+    respx.get("https://example.com/feed.xml").mock(
+        return_value=Response(304)
+    )
+
+    from src.main import PlanetCF
+    from src.types import FeedJob, FeedId
+
+    worker = PlanetCF()
+    worker.env = mock_env
+
+    job = FeedJob(
+        feed_id=FeedId(1),
+        feed_url="https://example.com/feed.xml",
+        etag='"abc123"',
+    )
+
+    result = await worker._process_single_feed(job.to_dict())
+
+    assert result["status"] == "not_modified"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetcher_handles_timeout(mock_env):
+    """Fetcher should handle timeout gracefully."""
+    import httpx
+    respx.get("https://slow.example.com/feed.xml").mock(
+        side_effect=httpx.TimeoutException("Connection timed out")
+    )
+
+    from src.main import PlanetCF
+    from src.types import FeedJob, FeedId
+
+    worker = PlanetCF()
+    worker.env = mock_env
+
+    job = FeedJob(feed_id=FeedId(1), feed_url="https://slow.example.com/feed.xml")
+
+    # Should raise or return error, not crash
+    with pytest.raises(Exception):  # Or check for error result
+        await worker._process_single_feed(job.to_dict())
+
+
+# tests/integration/test_http.py
+import pytest
+from unittest.mock import AsyncMock, MagicMock
+
+@pytest.mark.asyncio
+async def test_http_serves_html(mock_env):
+    """HTTP handler should return HTML for / route."""
+    from src.main import PlanetCF
+
+    worker = PlanetCF()
+    worker.env = mock_env
+
+    # Mock request
+    request = MagicMock()
+    request.url = "https://planetcf.com/"
+    request.method = "GET"
+    request.headers = MagicMock()
+    request.headers.get = MagicMock(return_value=None)
+
+    response = await worker.fetch(request)
+
+    assert response.status == 200
+    assert "text/html" in response.headers.get("Content-Type", "")
+    assert "Cache-Control" in response.headers
+
+
+@pytest.mark.asyncio
+async def test_http_serves_atom(mock_env):
+    """HTTP handler should return Atom feed for /feed.atom route."""
+    from src.main import PlanetCF
+
+    worker = PlanetCF()
+    worker.env = mock_env
+
+    request = MagicMock()
+    request.url = "https://planetcf.com/feed.atom"
+    request.method = "GET"
+    request.headers = MagicMock()
+    request.headers.get = MagicMock(return_value=None)
+
+    response = await worker.fetch(request)
+
+    assert response.status == 200
+    assert "application/atom+xml" in response.headers.get("Content-Type", "")
+```
+
+#### 9.5.8 Property-Based Testing
+
+```python
+# tests/unit/test_properties.py
+import pytest
+from hypothesis import given, strategies as st, settings
+from src.types import FeedJob, FeedId, Session
+
+class TestFeedJobProperties:
+    @given(
+        feed_id=st.integers(min_value=1, max_value=2**31),
+        feed_url=st.from_regex(r"https://[a-z]+\.example\.com/feed\.xml", fullmatch=True),
+        etag=st.none() | st.text(min_size=1, max_size=100),
+    )
+    @settings(max_examples=100)
+    def test_roundtrip_serialization(self, feed_id, feed_url, etag):
+        """FeedJob should survive serialization roundtrip."""
+        original = FeedJob(
+            feed_id=FeedId(feed_id),
+            feed_url=feed_url,
+            etag=etag,
+        )
+        restored = FeedJob.from_dict(original.to_dict())
+        assert restored == original
+
+    @given(
+        feed_id=st.integers(min_value=1),
+        feed_url=st.text(min_size=1),
+    )
+    def test_immutability(self, feed_id, feed_url):
+        """FeedJob should be immutable."""
+        job = FeedJob(feed_id=FeedId(feed_id), feed_url=feed_url)
+        with pytest.raises(AttributeError):
+            job.feed_url = "modified"
+
+
+class TestSessionProperties:
+    @given(
+        username=st.text(min_size=1, max_size=50, alphabet=st.characters(whitelist_categories=("L", "N"))),
+        github_id=st.integers(min_value=1),
+        exp=st.integers(min_value=0, max_value=2**32),
+    )
+    def test_json_roundtrip(self, username, github_id, exp):
+        """Session should survive JSON roundtrip."""
+        original = Session(
+            github_username=username,
+            github_id=github_id,
+            avatar_url=None,
+            exp=exp,
+        )
+        restored = Session.from_json(original.to_json())
+        assert restored == original
+```
+
+#### 9.5.9 Test Fixtures: Sample Feeds
+
+```xml
+<!-- tests/fixtures/feeds/valid_rss2.xml -->
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Test Blog</title>
+    <link>https://test.example.com</link>
+    <description>A test blog for testing</description>
+    <item>
+      <title>First Post</title>
+      <link>https://test.example.com/first-post</link>
+      <description>This is the first post.</description>
+      <pubDate>Mon, 01 Jan 2026 12:00:00 GMT</pubDate>
+      <guid>https://test.example.com/first-post</guid>
+    </item>
+    <item>
+      <title>Second Post</title>
+      <link>https://test.example.com/second-post</link>
+      <description>This is the second post.</description>
+      <pubDate>Tue, 02 Jan 2026 12:00:00 GMT</pubDate>
+      <guid>https://test.example.com/second-post</guid>
+    </item>
+  </channel>
+</rss>
+```
+
+```xml
+<!-- tests/fixtures/feeds/valid_atom.xml -->
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Test Blog</title>
+  <link href="https://test.example.com"/>
+  <id>https://test.example.com/</id>
+  <updated>2026-01-02T12:00:00Z</updated>
+  <entry>
+    <title>First Post</title>
+    <link href="https://test.example.com/first-post"/>
+    <id>https://test.example.com/first-post</id>
+    <updated>2026-01-01T12:00:00Z</updated>
+    <content type="html">&lt;p&gt;This is the first post.&lt;/p&gt;</content>
+  </entry>
+</feed>
+```
+
+```xml
+<!-- tests/fixtures/feeds/xss_attack.xml -->
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Malicious Feed</title>
+    <link>https://evil.example.com</link>
+    <item>
+      <title>XSS Attack &lt;script&gt;alert('xss')&lt;/script&gt;</title>
+      <link>https://evil.example.com/attack</link>
+      <description>
+        &lt;p onclick="alert('xss')"&gt;Click me&lt;/p&gt;
+        &lt;img src="x" onerror="alert('xss')"&gt;
+        &lt;script&gt;document.cookie&lt;/script&gt;
+      </description>
+      <guid>evil-1</guid>
+    </item>
+  </channel>
+</rss>
+```
+
+#### 9.5.10 CI Integration
+
+Update the CI workflow to include tests:
+
+```yaml
+# .github/workflows/check.yml (updated)
+name: Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --extra test
+
+      - name: Type check
+        run: uvx ty check src/
+
+      - name: Lint
+        run: uvx ruff check src/ tests/
+
+      - name: Format check
+        run: uvx ruff format --check src/ tests/
+
+      - name: Unit tests
+        run: uv run pytest tests/unit -v --tb=short
+
+      - name: Integration tests
+        run: uv run pytest tests/integration -v --tb=short
+
+      - name: Coverage report
+        run: uv run pytest tests/ --cov=src --cov-report=xml --cov-fail-under=80
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage.xml
+
+      - name: Deploy (on main)
+        if: github.ref == 'refs/heads/main'
+        run: wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+```
+
+#### 9.5.11 Test Coverage Requirements
+
+| Component | Minimum Coverage | Critical Paths |
+|-----------|-----------------|----------------|
+| `src/types.py` | 95% | All dataclasses, Result type |
+| `src/main.py` (security) | 100% | `_is_safe_url`, `_sanitize_html`, `_verify_signed_cookie` |
+| `src/main.py` (parsing) | 90% | `ParsedEntry.from_feedparser` |
+| `src/main.py` (HTTP) | 80% | Route handlers, error responses |
+| `src/main.py` (admin) | 70% | Auth flow, CRUD operations |
+
+**Why these thresholds:**
+- Security code must be 100% covered—no untested paths
+- Parsing edge cases are numerous—high coverage catches regressions
+- HTTP handlers have many branches—80% ensures main paths work
+- Admin code is lower priority—70% covers happy paths
+
 ---
 
 ## 10. Deployment
