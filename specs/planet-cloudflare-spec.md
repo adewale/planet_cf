@@ -265,27 +265,30 @@ For the **Feed Fetcher Worker** (Queue Consumer):
 
 ### 3.6 Queue Configuration
 
-```toml
-# wrangler.toml
+```jsonc
+// wrangler.jsonc (excerpt)
+{
+  "limits": {
+    "cpu_ms": 60000  // 60 seconds CPU time (generous buffer)
+  },
 
-[limits]
-cpu_ms = 60000  # 60 seconds CPU time (generous buffer)
-
-[[queues.producers]]
-binding = "FEED_QUEUE"
-queue = "planetcf-feed-queue"
-
-[[queues.consumers]]
-queue = "planetcf-feed-queue"
-max_batch_size = 5              # Process up to 5 feeds per invocation
-max_batch_timeout = 30          # Wait up to 30s to fill batch
-max_retries = 3                 # Retry failed feeds 3 times
-dead_letter_queue = "planetcf-feed-dlq"
-retry_delay = 300               # Wait 5 minutes before retry
-
-[[queues.producers]]
-binding = "DEAD_LETTER_QUEUE"
-queue = "planetcf-feed-dlq"
+  "queues": {
+    "producers": [
+      { "binding": "FEED_QUEUE", "queue": "planetcf-feed-queue" },
+      { "binding": "DEAD_LETTER_QUEUE", "queue": "planetcf-feed-dlq" }
+    ],
+    "consumers": [
+      {
+        "queue": "planetcf-feed-queue",
+        "max_batch_size": 5,        // Process up to 5 feeds per invocation
+        "max_batch_timeout": 30,    // Wait up to 30s to fill batch
+        "max_retries": 3,           // Retry failed feeds 3 times
+        "dead_letter_queue": "planetcf-feed-dlq",
+        "retry_delay": 300          // Wait 5 minutes before retry
+      }
+    ]
+  }
+}
 ```
 
 **Configuration rationale:**
@@ -1979,83 +1982,100 @@ Queue-based fan-out naturally staggers requests across time. With `max_batch_siz
 
 ### 8.1 Wrangler Configuration
 
-```toml
-# wrangler.toml (Wrangler v4.58.0+, January 2026)
+As of Wrangler v3.91.0 (late 2024), Cloudflare recommends **JSONC** (`wrangler.jsonc`) over TOML. New features are JSONC-first, and `npm create cloudflare@latest` now generates JSONC by default.
 
-name = "planetcf"
-main = "src/main.py"
-compatibility_date = "2026-01-01"
-compatibility_flags = ["python_workers"]
+```jsonc
+// wrangler.jsonc (Wrangler v4.58.0+, January 2026)
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "planetcf",
+  "main": "src/main.py",
+  "compatibility_date": "2026-01-01",
+  "compatibility_flags": ["python_workers"],
 
-# CPU time limit - increase from 30s default for feed parsing
-[limits]
-cpu_ms = 60000  # 60 seconds CPU time
+  // CPU time limit - increase from 30s default for feed parsing
+  "limits": {
+    "cpu_ms": 60000
+  },
 
-[vars]
-PLANET_NAME = "Planet CF"
-PLANET_DESCRIPTION = "Aggregated posts from Cloudflare employees and community"
-PLANET_URL = "https://planetcf.com"
-PLANET_OWNER_NAME = "Cloudflare"
-PLANET_OWNER_EMAIL = "planet@planetcf.com"
+  "vars": {
+    "PLANET_NAME": "Planet CF",
+    "PLANET_DESCRIPTION": "Aggregated posts from Cloudflare employees and community",
+    "PLANET_URL": "https://planetcf.com",
+    "PLANET_OWNER_NAME": "Cloudflare",
+    "PLANET_OWNER_EMAIL": "planet@planetcf.com",
+    "RETENTION_DAYS": "30",
+    "RETENTION_MAX_ENTRIES_PER_FEED": "100",
+    "FEED_TIMEOUT_SECONDS": "60",
+    "HTTP_TIMEOUT_SECONDS": "30",
+    "GITHUB_CLIENT_ID": "your_github_client_id"
+    // Secrets (set via wrangler secret put):
+    // - GITHUB_CLIENT_SECRET: OAuth client secret
+    // - SESSION_SECRET: HMAC key for signed cookies (generate with: openssl rand -hex 32)
+  },
 
-RETENTION_DAYS = "30"
-RETENTION_MAX_ENTRIES_PER_FEED = "100"
-FEED_TIMEOUT_SECONDS = "60"
-HTTP_TIMEOUT_SECONDS = "30"
+  // Workers Observability
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1.0
+  },
 
-GITHUB_CLIENT_ID = "your_github_client_id"
-# Secrets (set via wrangler secret put):
-# - GITHUB_CLIENT_SECRET: OAuth client secret
-# - SESSION_SECRET: HMAC key for signed cookies (generate with: openssl rand -hex 32)
+  // D1 Database
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "planetcf",
+      "database_id": "xxxxx"
+    }
+  ],
 
-# Workers Observability
-[observability]
-enabled = true
+  // No KV needed:
+  // - HTML/RSS/Atom/OPML: Generated on-demand, cached at edge via Cache-Control
+  // - Sessions: Stateless signed cookies (HMAC), no server-side storage
 
-[observability.logs]
-invocation_logs = true
-head_sampling_rate = 1.0
+  // Vectorize (for semantic search)
+  "vectorize": [
+    {
+      "binding": "SEARCH_INDEX",
+      "index_name": "planetcf-entries"
+    }
+  ],
 
-# D1 Database
-[[d1_databases]]
-binding = "DB"
-database_name = "planetcf"
-database_id = "xxxxx"
+  // Workers AI (for generating embeddings)
+  "ai": {
+    "binding": "AI"
+  },
 
-# No KV needed:
-# - HTML/RSS/Atom/OPML: Generated on-demand, cached at edge via Cache-Control
-# - Sessions: Stateless signed cookies (HMAC), no server-side storage
+  // Queues: Scheduler -> Fetcher
+  "queues": {
+    "producers": [
+      { "binding": "FEED_QUEUE", "queue": "planetcf-feed-queue" },
+      { "binding": "DEAD_LETTER_QUEUE", "queue": "planetcf-feed-dlq" }
+    ],
+    "consumers": [
+      {
+        "queue": "planetcf-feed-queue",
+        "max_batch_size": 5,
+        "max_batch_timeout": 30,
+        "max_retries": 3,
+        "dead_letter_queue": "planetcf-feed-dlq",
+        "retry_delay": 300
+      }
+    ]
+  },
 
-# Vectorize (for semantic search)
-[[vectorize]]
-binding = "SEARCH_INDEX"
-index_name = "planetcf-entries"
-
-# Workers AI (for generating embeddings)
-[ai]
-binding = "AI"
-
-# Queue: Scheduler -> Fetcher
-[[queues.producers]]
-binding = "FEED_QUEUE"
-queue = "planetcf-feed-queue"
-
-[[queues.consumers]]
-queue = "planetcf-feed-queue"
-max_batch_size = 5
-max_batch_timeout = 30
-max_retries = 3
-dead_letter_queue = "planetcf-feed-dlq"
-retry_delay = 300
-
-[[queues.producers]]
-binding = "DEAD_LETTER_QUEUE"
-queue = "planetcf-feed-dlq"
-
-# Cron trigger: Hourly feed fetch (content generated on-demand)
-[triggers]
-crons = ["0 * * * *"]
+  // Cron trigger: Hourly feed fetch (content generated on-demand)
+  "triggers": {
+    "crons": ["0 * * * *"]
+  }
+}
 ```
+
+**Why JSONC?**
+- **Schema validation**: `$schema` enables IDE autocomplete and error checking
+- **New features first**: Some Wrangler features only available in JSON config
+- **Comments supported**: JSONC allows `//` comments (unlike standard JSON)
+- **Consistent tooling**: Better integration with TypeScript/JavaScript ecosystems
 
 ### 8.2 Python Dependencies
 
@@ -2228,15 +2248,14 @@ Following the principles from [Workers Observability](https://blog.cloudflare.co
 
 Configure Workers Logs for all Planet CF workers:
 
-```toml
-# wrangler.toml
-
-[observability]
-enabled = true
-
-[observability.logs]
-invocation_logs = true      # Include Cloudflare's automatic invocation context
-head_sampling_rate = 1.0    # Keep 100% for now (adjust for high traffic)
+```jsonc
+// wrangler.jsonc (excerpt)
+{
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1.0  // Keep 100% for now (adjust for high traffic)
+  }
+}
 ```
 
 Workers Logs provides:
