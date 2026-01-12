@@ -47,32 +47,30 @@ Planet CF is a feed aggregator that collects blog posts from Cloudflare employee
 │                         │    Queue     │                        │                      │
 │                         └──────────────┘                        │                      │
 │                                                                  │                      │
-│   GENERATION & SERVING                                          │                      │
-│   ────────────────────                                          │                      │
+│   SERVING (On-Demand Generation)                                │                      │
+│   ──────────────────────────────                                │                      │
 │                                                                  │                      │
 │   ┌──────────────┐      ┌──────────────────────────────────┐    │                      │
-│   │ Cron Trigger │      │           KV Cache               │    │                      │
-│   │  (+15 min)   │      │  ┌────────────────────────────┐  │    │                      │
-│   └──────┬───────┘      │  │ index.html (rendered page) │  │    │                      │
-│          │              │  │ feed.atom, feed.rss        │  │    │                      │
-│          ▼              │  │ feeds.opml, static/*       │  │    │                      │
-│   ┌──────────────┐      │  └────────────────────────────┘  │    │                      │
-│   │  Generator   │─────▶│                                  │    │                      │
-│   │   Worker     │      └──────────────────────────────────┘    │                      │
-│   │  (Jinja2)    │                     ▲                        │                      │
-│   └──────────────┘                     │                        │                      │
-│                                        │                        │                      │
-│   ┌──────────────┐      ┌──────────────┴───────────────────┐    │                      │
-│   │    HTTP      │◄────▶│           Vectorize             │◄───┘                      │
-│   │   Worker     │      │  (semantic search embeddings)    │                           │
-│   │             ─┼──────┤                                  │                           │
-│   │  /          │      └──────────────────────────────────┘                           │
-│   │  /feed.*    │                      ▲                                               │
-│   │  /search    │      ┌───────────────┴────────────────────┐                          │
-│   │  /admin/*   │      │           Workers AI               │                          │
-│   │  /feeds.opml│      │  @cf/baai/bge-base-en-v1.5        │                          │
-│   └──────────────┘      │  (768-dim text embeddings)        │                          │
-│          ▲              └───────────────────────────────────┘                          │
+│   │    HTTP      │      │         Edge Cache               │    │                      │
+│   │   Worker     │─────▶│  (built-in, per-PoP)            │    │                      │
+│   │              │      │                                  │    │                      │
+│   │  Generates:  │      │  Cache-Control: max-age=3600     │    │                      │
+│   │  - HTML      │      │  = 1 hour cache at each PoP      │    │                      │
+│   │  - RSS/Atom  │      │                                  │    │                      │
+│   │  - OPML      │      │  No KV needed! Edge cache is     │    │                      │
+│   │  (on demand) │      │  sufficient for this traffic.    │    │                      │
+│   │              │      └──────────────────────────────────┘    │                      │
+│   │  /          │                      │                        │                      │
+│   │  /feed.*    │      ┌───────────────┴────────────────────┐   │                      │
+│   │  /search    │◄────▶│           Vectorize               │◄──┘                      │
+│   │  /admin/*   │      │  (semantic search embeddings)      │                          │
+│   │  /feeds.opml│      └───────────────┬────────────────────┘                          │
+│   └──────────────┘                     │                                               │
+│          ▲              ┌──────────────┴────────────────────┐                          │
+│          │              │           Workers AI               │                          │
+│          │              │  @cf/baai/bge-base-en-v1.5        │                          │
+│          │              │  (768-dim text embeddings)        │                          │
+│          │              └───────────────────────────────────┘                          │
 │          │                                                                              │
 │       Internet                                                                          │
 │    (Public Users,                                                                       │
@@ -117,55 +115,55 @@ See the architecture diagram in Section 1.1 for the visual overview.
 | Feed Queue | Holds pending feed fetch jobs (one message per feed) | Queues |
 | Feed Fetcher Worker | Consumes queue, fetches, parses, embeds | Worker (Queue Consumer) |
 | Dead Letter Queue | Captures feeds that fail 3+ times | Queues |
-| Generator Worker | Renders HTML/RSS/Atom using Jinja2 | Worker |
-| HTTP Worker | Serves HTML, RSS, OPML, search, admin | Worker |
+| HTTP Worker | Serves HTML, RSS, OPML, search, admin (generates on-demand) | Worker |
 | D1 Database | Stores feeds, entries, admins, audit log | D1 |
-| KV Cache | Caches HTML, RSS/Atom, OPML, static assets | KV |
+| Edge Cache | Caches generated HTML/RSS/Atom/OPML responses | Built-in |
 | Vectorize | Semantic search index (768-dim embeddings) | Vectorize |
 | Workers AI | Text embeddings for semantic search | Workers AI |
 
 **Why Workers AI?** Vectorize stores vectors but doesn't generate them. Workers AI's `@cf/baai/bge-base-en-v1.5` model converts entry text into 768-dimensional embeddings that capture semantic meaning. This enables searching by concept (e.g., "performance optimization") rather than just keyword matching.
 
-### 2.1 Storage Architecture: D1 + KV Only
+### 2.1 Storage Architecture: D1 + Edge Cache Only
 
-This design deliberately uses only **D1 and KV** (no R2) to minimize complexity:
+This design uses the minimum infrastructure: **D1 for storage, edge cache for performance**.
 
-| Service | What's Stored | Why This Service |
-|---------|---------------|------------------|
-| **D1** | feeds, entries, admins, audit_log | Relational data requiring SQL queries, JOINs, UPSERT |
-| **KV (CACHE)** | index.html, feed.atom, feed.rss, feeds.opml | Pre-generated content, globally replicated for fast reads |
-| **KV (SESSIONS)** | Admin OAuth sessions | Needs native TTL support for auto-expiration |
+| Data | Storage | Why |
+|------|---------|-----|
+| feeds, entries, admins, audit_log | **D1** | Relational data requiring SQL |
+| HTML, RSS, Atom, OPML | **On-demand + Edge Cache** | Generated when requested, cached at edge |
+| Admin sessions | **Signed cookies** | Stateless, no storage needed |
 
-**Why not R2?**
-- All generated files are small (<1 MiB), well within KV's 25 MiB limit
-- KV is replicated to 300+ edge locations; R2 is centralized
-- R2's benefits (large files, S3 API, direct serving) aren't needed here
-- One fewer service = simpler architecture
+**No KV. No R2. Just D1 and Cloudflare's built-in edge cache.**
 
-**Why not generate HTML on-demand (no KV)?**
+**Why not pre-generate with KV?**
 
-You might think: "Cloudflare has edge caching. Why store HTML in KV?"
+You might think the HTML page (300-500ms to generate) should be pre-cached. But consider:
 
+| Metric | Value |
+|--------|-------|
+| Cache TTL | 1 hour |
+| Active PoPs | ~10-20 for a niche site |
+| Cache misses | ~10-20 per hour globally |
+| Miss latency | 300-500ms |
+
+For a planet aggregator, 10-20 users/hour paying 300-500ms is acceptable. The complexity savings from eliminating KV, the generator cron, and pre-generation logic outweigh the latency cost.
+
+**The idiomatic pattern:**
 ```
-Without KV (generate on-demand):
-  User request → Edge cache MISS → Worker → D1 query (200ms)
-                                          → Jinja2 render (100ms)
-                                          → Return (300ms+ total)
-
-With KV (pre-generated):
-  User request → Edge cache MISS → Worker → KV read (10ms)
-                                          → Return (10ms total)
+User request
+     ↓
+Edge cache (per-PoP)
+     ├─ HIT: 0ms (most requests)
+     └─ MISS: Worker generates from D1 (300-500ms, rare)
+            ↓
+       Response + Cache-Control: max-age=3600
+            ↓
+       Edge caches for 1 hour
 ```
 
-Edge cache is per-PoP (300+ locations). After a cache expires, the first user at each PoP pays the latency cost. With KV pre-generation:
-- Cron generates HTML once per hour
-- KV is globally replicated, so all PoPs can read it instantly
-- Users never wait for D1 queries or template rendering
+**What about the generator cron?**
 
-The caching hierarchy:
-1. **Edge cache (L1)**: Per-PoP, controlled by `Cache-Control: max-age=3600`
-2. **KV cache (L2)**: Global, pre-populated by cron, ~10ms reads
-3. **D1 (source of truth)**: Only accessed during generation
+With on-demand generation, the generator cron (`15 * * * *`) is eliminated. The scheduler cron (`0 * * * *`) still runs to enqueue feed fetches. Content is generated fresh when users request it.
 
 ---
 
@@ -282,12 +280,12 @@ queue = "planetcf-feed-queue"
 max_batch_size = 5              # Process up to 5 feeds per invocation
 max_batch_timeout = 30          # Wait up to 30s to fill batch
 max_retries = 3                 # Retry failed feeds 3 times
-dead_letter_queue = "planet-feed-dlq"
+dead_letter_queue = "planetcf-feed-dlq"
 retry_delay = 300               # Wait 5 minutes before retry
 
 [[queues.producers]]
-binding = "DEAD_LETTER_QUEUE"  
-queue = "planet-feed-dlq"
+binding = "DEAD_LETTER_QUEUE"
+queue = "planetcf-feed-dlq"
 ```
 
 **Configuration rationale:**
@@ -508,21 +506,17 @@ from datetime import datetime
 class PlanetCF(WorkerEntrypoint):
     """
     Main Worker entrypoint handling all triggers:
-    - scheduled(): Cron triggers (scheduler at :00, generator at :15)
+    - scheduled(): Hourly cron to enqueue feed fetches
     - queue(): Queue consumer for feed fetching
-    - fetch(): HTTP request handling
+    - fetch(): HTTP request handling (generates content on-demand)
     """
 
     async def scheduled(self, event):
         """
-        Handle cron triggers. Dispatches based on which cron fired.
-        - "0 * * * *" -> Scheduler (enqueue feeds)
-        - "15 * * * *" -> Generator (rebuild HTML)
+        Hourly cron trigger - enqueue feeds for fetching.
+        Content (HTML/RSS/Atom) is generated on-demand by fetch(), not pre-generated.
         """
-        if event.cron == "0 * * * *":
-            return await self._run_scheduler()
-        elif event.cron == "15 * * * *":
-            return await self._run_generator()
+        return await self._run_scheduler()
 
     async def _run_scheduler(self):
         """
@@ -940,25 +934,20 @@ class PlanetCF(WorkerEntrypoint):
         """).bind(title, site_url, etag, last_modified, feed_id).run()
 ```
 
-### 5.3 Generator Worker
+### 5.3 HTML Generation (On-Demand)
 
-**Triggers:**
-1. **Cron Trigger**: `15 * * * *` (hourly, at minute 15 — 15 min after feed fetch starts)
-2. **Admin API**: Manual regeneration via `/admin/regenerate`
-3. **Queue completion** (optional): After last feed in batch is processed
+**Trigger:** HTTP request to `/` (no separate cron — generated when requested)
 
-**Why a separate cron trigger?**
-- Decouples generation from feed fetching
-- Ensures generation runs even if some feeds are still retrying
-- Predictable timing (15 minutes after fetch starts = most feeds complete)
-- Simpler than trying to detect "all feeds done"
+**Why on-demand instead of pre-generation?**
+- Eliminates KV storage, generator cron, pre-generation complexity
+- Edge cache handles repeat requests (1-hour TTL)
+- ~10-20 cache misses/hour globally is acceptable latency cost
+- Content is never more stale than with hourly pre-generation
 
 **Responsibilities:**
-1. Query entries from D1 (applying retention policy)
+1. Query entries from D1 (with retention filtering)
 2. Render HTML using Jinja2
-3. Store HTML in KV
-4. Generate RSS/Atom feed
-5. Store RSS/Atom in R2
+3. Return with `Cache-Control: max-age=3600` for edge caching
 
 #### Webpage Layout (Planet-style)
 
@@ -1030,7 +1019,7 @@ Layout Notes:
 ```
 
 ```python
-# src/main.py (continued - _run_generator method)
+# src/main.py (continued - _generate_html method)
 from jinja2 import Environment, BaseLoader
 from datetime import datetime, timedelta
 
@@ -1110,8 +1099,11 @@ HTML_TEMPLATE = """
 class PlanetCF(WorkerEntrypoint):
     # ... (other methods from Sections 5.1 and 5.2)
 
-    async def _run_generator(self):
-        """Generate the aggregated HTML page, RSS, and Atom feeds."""
+    async def _generate_html(self):
+        """
+        Generate the aggregated HTML page on-demand.
+        Called by fetch() for / requests. Edge cache handles caching.
+        """
 
         # Get planet config from environment
         planet = {
@@ -1178,28 +1170,7 @@ class PlanetCF(WorkerEntrypoint):
             generated_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
         )
 
-        # Store all generated content in KV
-        # KV is used instead of R2 because:
-        # 1. All files are small (<1 MiB), well within KV's 25 MiB limit
-        # 2. KV is globally replicated to edge locations (faster reads)
-        # 3. Simpler architecture with one fewer service
-        await self.env.CACHE.put("index.html", html, {
-            "metadata": {"generated_at": datetime.utcnow().isoformat()}
-        })
-
-        # Generate and store RSS/Atom feeds in KV
-        atom_feed = self._generate_atom_feed(planet, entries[:50])
-        rss_feed = self._generate_rss_feed(planet, entries[:50])
-
-        await self.env.CACHE.put("feed.atom", atom_feed, {
-            "metadata": {"content_type": "application/atom+xml"}
-        })
-        await self.env.CACHE.put("feed.rss", rss_feed, {
-            "metadata": {"content_type": "application/rss+xml"}
-        })
-
-        print(f"Generator: Built HTML with {len(entries)} entries from {len(feeds)} feeds")
-        return {"status": "ok", "entries_count": len(entries), "feeds_count": len(feeds)}
+        return html
 
     async def _apply_retention_policy(self):
         """Delete entries older than 30 days or beyond 100 per feed, and clean up vectors."""
@@ -1332,8 +1303,8 @@ class PlanetCF(WorkerEntrypoint):
 **Trigger:** HTTP requests to the domain
 
 **Responsibilities:**
-1. Serve cached HTML from KV
-2. Serve RSS/Atom from R2
+1. Generate and serve HTML on-demand (edge cached)
+2. Generate and serve RSS/Atom feeds on-demand (edge cached)
 3. Handle semantic search queries
 4. Serve admin interface (protected by GitHub OAuth)
 5. Handle admin API endpoints
@@ -1345,6 +1316,7 @@ from urllib.parse import parse_qs
 import hashlib
 import secrets
 import json
+import time
 
 # Session configuration
 SESSION_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
@@ -1366,19 +1338,16 @@ class PlanetCF(WorkerEntrypoint):
             return await self._serve_html()
 
         if path == "/feed.atom":
-            return await self._serve_from_kv("feed.atom", "application/atom+xml")
+            return await self._serve_atom()
 
         if path == "/feed.rss":
-            return await self._serve_from_kv("feed.rss", "application/rss+xml")
+            return await self._serve_rss()
 
         if path == "/feeds.opml":
             return await self._export_opml()
 
         if path == "/search":
             return await self._search_entries(request)
-
-        if path.startswith("/static/"):
-            return await self._serve_from_kv(path[1:], self._guess_content_type(path))
 
         # OAuth callback
         if path == "/auth/github/callback":
@@ -1392,59 +1361,69 @@ class PlanetCF(WorkerEntrypoint):
 
     async def _serve_html(self):
         """
-        Serve the cached HTML page.
+        Generate and serve the HTML page on-demand.
 
-        Caching strategy:
-        1. KV stores pre-generated HTML (written by hourly cron)
-        2. Response includes Cache-Control header for Cloudflare edge caching
-        3. Edge cache (per-PoP) serves most requests without Worker invocation
-        4. KV is L2 cache - only hit when edge cache misses (~once per hour per PoP)
+        No KV caching - edge cache handles repeat requests:
+        - First request: D1 query + Jinja2 render (~300-500ms)
+        - Edge caches response for 1 hour
+        - Subsequent requests: 0ms (served from edge)
 
-        Why KV instead of generating on-demand?
-        - Avoids 500ms+ D1 query + Jinja2 render on cache miss
-        - Pre-generation means users always get fast responses (~10ms KV read)
+        For a planet aggregator with ~10-20 cache misses/hour globally,
+        this latency is acceptable and eliminates KV complexity.
         """
 
-        html = await self.env.CACHE.get("index.html")
-
-        if not html:
-            # Fallback: regenerate (should rarely happen)
-            await self._run_generator()
-            html = await self.env.CACHE.get("index.html")
+        html = await self._generate_html()
 
         return Response(html, headers={
             "Content-Type": "text/html; charset=utf-8",
-            # Edge caches for 1 hour (matches cron frequency)
-            # stale-while-revalidate allows serving stale content while refreshing
             "Cache-Control": "public, max-age=3600, stale-while-revalidate=60",
         })
 
-    async def _serve_from_kv(self, key, content_type):
-        """Serve a file from KV cache."""
+    async def _serve_atom(self):
+        """Generate and serve Atom feed on-demand."""
 
-        content = await self.env.CACHE.get(key)
-        if not content:
-            return Response("Not Found", status=404)
+        entries = await self._get_recent_entries(50)
+        planet = self._get_planet_config()
+        atom = self._generate_atom_feed(planet, entries)
 
-        return Response(content, headers={
-            "Content-Type": content_type,
+        return Response(atom, headers={
+            "Content-Type": "application/atom+xml; charset=utf-8",
             "Cache-Control": "public, max-age=3600, stale-while-revalidate=60",
         })
 
-    def _guess_content_type(self, path):
-        """Guess content type from file extension."""
-        ext_map = {
-            '.css': 'text/css',
-            '.js': 'application/javascript',
-            '.png': 'image/png',
-            '.jpg': 'image/jpeg',
-            '.svg': 'image/svg+xml',
-            '.ico': 'image/x-icon',
+    async def _serve_rss(self):
+        """Generate and serve RSS feed on-demand."""
+
+        entries = await self._get_recent_entries(50)
+        planet = self._get_planet_config()
+        rss = self._generate_rss_feed(planet, entries)
+
+        return Response(rss, headers={
+            "Content-Type": "application/rss+xml; charset=utf-8",
+            "Cache-Control": "public, max-age=3600, stale-while-revalidate=60",
+        })
+
+    async def _get_recent_entries(self, limit):
+        """Query recent entries for feeds."""
+
+        result = await self.env.DB.prepare("""
+            SELECT e.*, f.title as feed_title, f.site_url as feed_site_url
+            FROM entries e
+            JOIN feeds f ON e.feed_id = f.id
+            WHERE f.is_active = 1
+            ORDER BY e.published_at DESC
+            LIMIT ?
+        """).bind(limit).all()
+
+        return result.results
+
+    def _get_planet_config(self):
+        """Get planet configuration from environment."""
+        return {
+            "name": getattr(self.env, 'PLANET_NAME', None) or "Planet CF",
+            "description": getattr(self.env, 'PLANET_DESCRIPTION', None) or "Aggregated posts",
+            "link": getattr(self.env, 'PLANET_URL', None) or "https://planetcf.com"
         }
-        for ext, ct in ext_map.items():
-            if path.endswith(ext):
-                return ct
-        return 'application/octet-stream'
 
     async def _search_entries(self, request):
         """Search entries by semantic similarity."""
@@ -1512,12 +1491,12 @@ class PlanetCF(WorkerEntrypoint):
     async def _handle_admin(self, request, path):
         """Handle admin routes with GitHub OAuth."""
 
-        # Verify GitHub OAuth session
-        session = await self._verify_github_session(request)
+        # Verify signed session cookie (stateless, no KV)
+        session = self._verify_signed_cookie(request)
         if not session:
             return self._redirect_to_github_oauth()
 
-        # Verify user is an authorized admin
+        # Verify user is still an authorized admin (may have been revoked)
         admin = await self.env.DB.prepare(
             "SELECT * FROM admins WHERE github_username = ? AND is_active = 1"
         ).bind(session["github_username"]).first()
@@ -1556,28 +1535,53 @@ class PlanetCF(WorkerEntrypoint):
             return await self._view_audit_log()
 
         if path == "/admin/logout" and request.method == "POST":
-            return await self._logout(request)
+            return self._logout(request)
 
         return Response("Not Found", status=404)
 
-    async def _verify_github_session(self, request):
-        """Verify the GitHub OAuth session from cookie."""
+    def _verify_signed_cookie(self, request):
+        """
+        Verify the signed session cookie (stateless, no KV).
+        Cookie format: base64(json_payload).signature
+        """
+        import hmac
+        import hashlib
+        import base64
+        import time
 
         cookies = request.headers.get("Cookie", "")
-        session_id = None
+        session_cookie = None
         for cookie in cookies.split(";"):
             if cookie.strip().startswith("session="):
-                session_id = cookie.strip()[8:]
+                session_cookie = cookie.strip()[8:]
                 break
 
-        if not session_id:
+        if not session_cookie or "." not in session_cookie:
             return None
 
-        session_data = await self.env.SESSIONS.get(session_id)
-        if not session_data:
-            return None
+        try:
+            payload_b64, signature = session_cookie.rsplit(".", 1)
 
-        return json.loads(session_data)
+            # Verify signature
+            expected_sig = hmac.new(
+                self.env.SESSION_SECRET.encode(),
+                payload_b64.encode(),
+                hashlib.sha256
+            ).hexdigest()
+
+            if not hmac.compare_digest(signature, expected_sig):
+                return None
+
+            # Decode payload
+            payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+
+            # Check expiration
+            if payload.get("exp", 0) < time.time():
+                return None
+
+            return payload
+        except Exception:
+            return None
 
     def _redirect_to_github_oauth(self):
         """Redirect to GitHub OAuth authorization."""
@@ -1653,30 +1657,38 @@ class PlanetCF(WorkerEntrypoint):
             WHERE github_username = ?
         """).bind(github_id, github_username).run()
 
-        # Create session
-        session_id = secrets.token_urlsafe(32)
-        session_data = json.dumps({
+        # Create signed session cookie (stateless, no KV)
+        session_cookie = self._create_signed_cookie({
             "github_username": github_username,
             "github_id": github_id,
             "avatar_url": user_data.get("avatar_url"),
-        })
-
-        await self.env.SESSIONS.put(session_id, session_data, {
-            "expirationTtl": SESSION_TTL_SECONDS
+            "exp": int(time.time()) + SESSION_TTL_SECONDS,
         })
 
         return Response("", status=302, headers={
             "Location": "/admin",
-            "Set-Cookie": f"session={session_id}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age={SESSION_TTL_SECONDS}"
+            "Set-Cookie": f"session={session_cookie}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age={SESSION_TTL_SECONDS}"
         })
 
-    async def _logout(self, request):
-        """Log out by deleting session."""
+    def _create_signed_cookie(self, payload):
+        """Create an HMAC-signed cookie. Format: base64(json_payload).signature"""
+        import hmac
+        import hashlib
+        import base64
 
-        session = await self._verify_github_session(request)
-        if session:
-            # Delete session from KV (would need session_id, simplified here)
-            pass
+        payload_json = json.dumps(payload)
+        payload_b64 = base64.urlsafe_b64encode(payload_json.encode()).decode()
+
+        signature = hmac.new(
+            self.env.SESSION_SECRET.encode(),
+            payload_b64.encode(),
+            hashlib.sha256
+        ).hexdigest()
+
+        return f"{payload_b64}.{signature}"
+
+    def _logout(self, request):
+        """Log out by clearing the session cookie (stateless - nothing to delete)."""
 
         return Response("", status=302, headers={
             "Location": "/",
@@ -1690,7 +1702,7 @@ class PlanetCF(WorkerEntrypoint):
 
 ### 6.1 Authentication
 
-Use GitHub OAuth for admin authentication:
+Use GitHub OAuth for admin authentication with **signed cookies** (stateless):
 
 1. Admin visits `/admin`
 2. Redirect to GitHub OAuth authorization
@@ -1698,23 +1710,31 @@ Use GitHub OAuth for admin authentication:
 4. Exchange code for access token
 5. Fetch user info from GitHub API
 6. Check if `github_username` exists in `admins` table
-7. Create session: random ID → cookie, session data → KV with TTL
+7. Create signed cookie: `base64(json_payload).hmac_signature`
 
-**Why KV for sessions?**
+**Why signed cookies (not KV)?**
 
-Sessions need:
-- **Global availability**: Admin might hit different edge PoPs
-- **Native TTL**: Sessions auto-expire after 7 days without cleanup jobs
-- **Fast reads**: Session verified on every admin request
+Signed cookies are simpler for this use case:
+- **Stateless**: No storage reads/writes on every request
+- **Edge-native**: Cookie travels with request, verified locally with HMAC
+- **Self-expiring**: `exp` claim in payload, checked on every verification
+- **Tamper-proof**: HMAC-SHA256 signature prevents modification
 
-Alternative: **Signed cookies** (stateless) would eliminate KV reads, but can't be revoked server-side. For a small admin interface, the current approach is simpler.
+Trade-off: Sessions can't be revoked server-side. For a small admin interface where admins are trusted and can be deactivated in D1, this is acceptable.
 
 **Session format:**
 ```
-Cookie: session=<random_id>
-KV key: <random_id>
-KV value: {"github_username": "...", "github_id": ..., "avatar_url": "..."}
-KV TTL: 7 days
+Cookie: session=<base64_payload>.<hmac_signature>
+
+Payload (JSON, base64-encoded):
+{
+  "github_username": "...",
+  "github_id": ...,
+  "avatar_url": "...",
+  "exp": 1234567890  // Unix timestamp, 7 days from creation
+}
+
+Signature: HMAC-SHA256(SESSION_SECRET, base64_payload)
 ```
 
 ### 6.2 Admin Configuration
@@ -1984,7 +2004,9 @@ FEED_TIMEOUT_SECONDS = "60"
 HTTP_TIMEOUT_SECONDS = "30"
 
 GITHUB_CLIENT_ID = "your_github_client_id"
-# GITHUB_CLIENT_SECRET set via: wrangler secret put GITHUB_CLIENT_SECRET
+# Secrets (set via wrangler secret put):
+# - GITHUB_CLIENT_SECRET: OAuth client secret
+# - SESSION_SECRET: HMAC key for signed cookies (generate with: openssl rand -hex 32)
 
 # Workers Observability
 [observability]
@@ -2000,18 +2022,11 @@ binding = "DB"
 database_name = "planetcf"
 database_id = "xxxxx"
 
-# KV Namespaces
-# CACHE stores generated content: HTML, RSS, Atom, OPML
-# SESSIONS stores admin OAuth sessions with TTL
-[[kv_namespaces]]
-binding = "CACHE"
-id = "xxxxx"
+# No KV needed:
+# - HTML/RSS/Atom/OPML: Generated on-demand, cached at edge via Cache-Control
+# - Sessions: Stateless signed cookies (HMAC), no server-side storage
 
-[[kv_namespaces]]
-binding = "SESSIONS"
-id = "xxxxx"
-
-# Vectorize (for full-text search)
+# Vectorize (for semantic search)
 [[vectorize]]
 binding = "SEARCH_INDEX"
 index_name = "planetcf-entries"
@@ -2037,12 +2052,22 @@ retry_delay = 300
 binding = "DEAD_LETTER_QUEUE"
 queue = "planetcf-feed-dlq"
 
-# Cron triggers
+# Cron trigger: Hourly feed fetch (content generated on-demand)
 [triggers]
-crons = ["0 * * * *", "15 * * * *"]
+crons = ["0 * * * *"]
 ```
 
 ### 8.2 Python Dependencies
+
+Use [uv](https://docs.astral.sh/uv/) for fast, reliable Python dependency management:
+
+```bash
+# Install dependencies (creates uv.lock)
+uv sync
+
+# Run scripts
+uv run python scripts/seed_admins.py
+```
 
 ```toml
 # pyproject.toml
@@ -2074,18 +2099,15 @@ build-backend = "hatchling.build"
 # 1. Ensure modern Wrangler (v4.58.0 or later, January 2026)
 npm install -g wrangler@latest
 
-# 2. Create project directory
+# 2. Create project directory and initialize
 mkdir planetcf && cd planetcf
 wrangler init --yes
 
-# 3. Create D1 database
-wrangler d1 create planetcf
+# 3. Install Python dependencies with uv
+uv sync
 
-# 4. Create KV namespaces
-# CACHE stores generated content (HTML, RSS, Atom, OPML)
-# SESSIONS stores admin OAuth sessions with TTL
-wrangler kv namespace create CACHE
-wrangler kv namespace create SESSIONS
+# 4. Create D1 database
+wrangler d1 create planetcf
 
 # 5. Create Vectorize index (768 dimensions for bge-base-en-v1.5)
 wrangler vectorize create planetcf-entries --dimensions=768 --metric=cosine
@@ -2096,12 +2118,13 @@ wrangler queues create planetcf-feed-dlq
 
 # 7. Set secrets
 wrangler secret put GITHUB_CLIENT_SECRET
+wrangler secret put SESSION_SECRET  # Generate with: openssl rand -hex 32
 
 # 8. Apply D1 schema
 wrangler d1 execute planetcf --file=./migrations/001_initial.sql
 
 # 9. Seed admins from config (see Section 9.3)
-python scripts/seed_admins.py
+uv run python scripts/seed_admins.py
 
 # 10. Deploy
 wrangler deploy
@@ -2193,7 +2216,7 @@ This approach:
 | Medium | 100 | 100K | $5.00 |
 | Large | 500 | 1M | ~$5.50 |
 
-**Why so cheap?** Workers Paid includes 10M requests, 1M queue ops, 25B D1 reads, 10M KV reads, and 50M Vectorize queried dimensions per month. R2 egress is free. Conditional requests (304s) minimize actual fetching. Only at 500+ feeds do costs exceed the base subscription.
+**Why so cheap?** Workers Paid includes 10M requests, 1M queue ops, 25B D1 reads, and 50M Vectorize queried dimensions per month. Edge caching is free. Conditional requests (304s) minimize actual fetching. Only at 500+ feeds do costs exceed the base subscription.
 
 ---
 
@@ -2491,9 +2514,9 @@ Set up alerts via Workers Observability or external integration:
 | Condition | Severity | Action |
 |-----------|----------|--------|
 | DLQ > 0 messages | Warning | Investigate failing feeds |
-| No generation in 2+ hours | Critical | Check cron triggers |
+| No feed fetch in 2+ hours | Critical | Check cron triggers |
 | Feed success rate < 90% | Warning | Check network/upstream issues |
-| p95 page latency > 1s | Warning | Check KV cache, regenerate HTML |
+| p95 page latency > 1s | Warning | Check D1 queries, edge cache behavior |
 | Any 5xx responses | Critical | Immediate investigation |
 
 ---
