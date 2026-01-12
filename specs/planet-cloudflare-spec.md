@@ -54,19 +54,13 @@ Planet CF is a feed aggregator that collects blog posts from Cloudflare employee
 │   │ Cron Trigger │      │           KV Cache               │    │                      │
 │   │  (+15 min)   │      │  ┌────────────────────────────┐  │    │                      │
 │   └──────┬───────┘      │  │ index.html (rendered page) │  │    │                      │
-│          │              │  └────────────────────────────┘  │    │                      │
-│          ▼              └──────────────────────────────────┘    │                      │
-│   ┌──────────────┐                     ▲                        │                      │
-│   │  Generator   │─────────────────────┤                        │                      │
-│   │   Worker     │                     │                        │                      │
-│   │  (Jinja2)    │      ┌──────────────┴───────────────────┐    │                      │
-│   └──────────────┘      │              R2                  │    │                      │
-│                         │  ┌─────────┬─────────┬────────┐  │    │                      │
-│                         │  │feed.atom│feed.rss │feeds.  │  │    │                      │
-│                         │  │         │         │opml    │  │    │                      │
-│                         │  └─────────┴─────────┴────────┘  │    │                      │
-│                         └──────────────────────────────────┘    │                      │
-│                                        ▲                        │                      │
+│          │              │  │ feed.atom, feed.rss        │  │    │                      │
+│          ▼              │  │ feeds.opml, static/*       │  │    │                      │
+│   ┌──────────────┐      │  └────────────────────────────┘  │    │                      │
+│   │  Generator   │─────▶│                                  │    │                      │
+│   │   Worker     │      └──────────────────────────────────┘    │                      │
+│   │  (Jinja2)    │                     ▲                        │                      │
+│   └──────────────┘                     │                        │                      │
 │                                        │                        │                      │
 │   ┌──────────────┐      ┌──────────────┴───────────────────┐    │                      │
 │   │    HTTP      │◄────▶│           Vectorize             │◄───┘                      │
@@ -126,12 +120,52 @@ See the architecture diagram in Section 1.1 for the visual overview.
 | Generator Worker | Renders HTML/RSS/Atom using Jinja2 | Worker |
 | HTTP Worker | Serves HTML, RSS, OPML, search, admin | Worker |
 | D1 Database | Stores feeds, entries, admins, audit log | D1 |
-| KV Cache | Caches rendered HTML page | KV |
-| R2 Storage | Stores RSS/Atom, OPML, static assets | R2 |
+| KV Cache | Caches HTML, RSS/Atom, OPML, static assets | KV |
 | Vectorize | Semantic search index (768-dim embeddings) | Vectorize |
 | Workers AI | Text embeddings for semantic search | Workers AI |
 
 **Why Workers AI?** Vectorize stores vectors but doesn't generate them. Workers AI's `@cf/baai/bge-base-en-v1.5` model converts entry text into 768-dimensional embeddings that capture semantic meaning. This enables searching by concept (e.g., "performance optimization") rather than just keyword matching.
+
+### 2.1 Storage Architecture: D1 + KV Only
+
+This design deliberately uses only **D1 and KV** (no R2) to minimize complexity:
+
+| Service | What's Stored | Why This Service |
+|---------|---------------|------------------|
+| **D1** | feeds, entries, admins, audit_log | Relational data requiring SQL queries, JOINs, UPSERT |
+| **KV (CACHE)** | index.html, feed.atom, feed.rss, feeds.opml | Pre-generated content, globally replicated for fast reads |
+| **KV (SESSIONS)** | Admin OAuth sessions | Needs native TTL support for auto-expiration |
+
+**Why not R2?**
+- All generated files are small (<1 MiB), well within KV's 25 MiB limit
+- KV is replicated to 300+ edge locations; R2 is centralized
+- R2's benefits (large files, S3 API, direct serving) aren't needed here
+- One fewer service = simpler architecture
+
+**Why not generate HTML on-demand (no KV)?**
+
+You might think: "Cloudflare has edge caching. Why store HTML in KV?"
+
+```
+Without KV (generate on-demand):
+  User request → Edge cache MISS → Worker → D1 query (200ms)
+                                          → Jinja2 render (100ms)
+                                          → Return (300ms+ total)
+
+With KV (pre-generated):
+  User request → Edge cache MISS → Worker → KV read (10ms)
+                                          → Return (10ms total)
+```
+
+Edge cache is per-PoP (300+ locations). After a cache expires, the first user at each PoP pays the latency cost. With KV pre-generation:
+- Cron generates HTML once per hour
+- KV is globally replicated, so all PoPs can read it instantly
+- Users never wait for D1 queries or template rendering
+
+The caching hierarchy:
+1. **Edge cache (L1)**: Per-PoP, controlled by `Cache-Control: max-age=3600`
+2. **KV cache (L2)**: Global, pre-populated by cron, ~10ms reads
+3. **D1 (source of truth)**: Only accessed during generation
 
 ---
 
@@ -1144,20 +1178,24 @@ class PlanetCF(WorkerEntrypoint):
             generated_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
         )
 
-        # Store in KV
-        await self.env.HTML_CACHE.put("index.html", html, {
+        # Store all generated content in KV
+        # KV is used instead of R2 because:
+        # 1. All files are small (<1 MiB), well within KV's 25 MiB limit
+        # 2. KV is globally replicated to edge locations (faster reads)
+        # 3. Simpler architecture with one fewer service
+        await self.env.CACHE.put("index.html", html, {
             "metadata": {"generated_at": datetime.utcnow().isoformat()}
         })
 
-        # Generate and store RSS/Atom feeds
+        # Generate and store RSS/Atom feeds in KV
         atom_feed = self._generate_atom_feed(planet, entries[:50])
         rss_feed = self._generate_rss_feed(planet, entries[:50])
 
-        await self.env.R2_BUCKET.put("feed.atom", atom_feed, {
-            "httpMetadata": {"contentType": "application/atom+xml"}
+        await self.env.CACHE.put("feed.atom", atom_feed, {
+            "metadata": {"content_type": "application/atom+xml"}
         })
-        await self.env.R2_BUCKET.put("feed.rss", rss_feed, {
-            "httpMetadata": {"contentType": "application/rss+xml"}
+        await self.env.CACHE.put("feed.rss", rss_feed, {
+            "metadata": {"content_type": "application/rss+xml"}
         })
 
         print(f"Generator: Built HTML with {len(entries)} entries from {len(feeds)} feeds")
@@ -1328,10 +1366,10 @@ class PlanetCF(WorkerEntrypoint):
             return await self._serve_html()
 
         if path == "/feed.atom":
-            return await self._serve_from_r2("feed.atom", "application/atom+xml")
+            return await self._serve_from_kv("feed.atom", "application/atom+xml")
 
         if path == "/feed.rss":
-            return await self._serve_from_r2("feed.rss", "application/rss+xml")
+            return await self._serve_from_kv("feed.rss", "application/rss+xml")
 
         if path == "/feeds.opml":
             return await self._export_opml()
@@ -1340,7 +1378,7 @@ class PlanetCF(WorkerEntrypoint):
             return await self._search_entries(request)
 
         if path.startswith("/static/"):
-            return await self._serve_from_r2(path[1:], self._guess_content_type(path))
+            return await self._serve_from_kv(path[1:], self._guess_content_type(path))
 
         # OAuth callback
         if path == "/auth/github/callback":
@@ -1353,31 +1391,44 @@ class PlanetCF(WorkerEntrypoint):
         return Response("Not Found", status=404)
 
     async def _serve_html(self):
-        """Serve the cached HTML page."""
+        """
+        Serve the cached HTML page.
 
-        html = await self.env.HTML_CACHE.get("index.html")
+        Caching strategy:
+        1. KV stores pre-generated HTML (written by hourly cron)
+        2. Response includes Cache-Control header for Cloudflare edge caching
+        3. Edge cache (per-PoP) serves most requests without Worker invocation
+        4. KV is L2 cache - only hit when edge cache misses (~once per hour per PoP)
+
+        Why KV instead of generating on-demand?
+        - Avoids 500ms+ D1 query + Jinja2 render on cache miss
+        - Pre-generation means users always get fast responses (~10ms KV read)
+        """
+
+        html = await self.env.CACHE.get("index.html")
 
         if not html:
-            # Fallback: regenerate
+            # Fallback: regenerate (should rarely happen)
             await self._run_generator()
-            html = await self.env.HTML_CACHE.get("index.html")
+            html = await self.env.CACHE.get("index.html")
 
         return Response(html, headers={
             "Content-Type": "text/html; charset=utf-8",
-            "Cache-Control": "public, max-age=300",  # 5 minute browser cache
+            # Edge caches for 1 hour (matches cron frequency)
+            # stale-while-revalidate allows serving stale content while refreshing
+            "Cache-Control": "public, max-age=3600, stale-while-revalidate=60",
         })
 
-    async def _serve_from_r2(self, key, content_type):
-        """Serve a file from R2 storage."""
+    async def _serve_from_kv(self, key, content_type):
+        """Serve a file from KV cache."""
 
-        obj = await self.env.R2_BUCKET.get(key)
-        if not obj:
+        content = await self.env.CACHE.get(key)
+        if not content:
             return Response("Not Found", status=404)
 
-        body = await obj.text()
-        return Response(body, headers={
+        return Response(content, headers={
             "Content-Type": content_type,
-            "Cache-Control": "public, max-age=300",
+            "Cache-Control": "public, max-age=3600, stale-while-revalidate=60",
         })
 
     def _guess_content_type(self, path):
@@ -1647,7 +1698,24 @@ Use GitHub OAuth for admin authentication:
 4. Exchange code for access token
 5. Fetch user info from GitHub API
 6. Check if `github_username` exists in `admins` table
-7. Create session cookie (stored in KV with expiration)
+7. Create session: random ID → cookie, session data → KV with TTL
+
+**Why KV for sessions?**
+
+Sessions need:
+- **Global availability**: Admin might hit different edge PoPs
+- **Native TTL**: Sessions auto-expire after 7 days without cleanup jobs
+- **Fast reads**: Session verified on every admin request
+
+Alternative: **Signed cookies** (stateless) would eliminate KV reads, but can't be revoked server-side. For a small admin interface, the current approach is simpler.
+
+**Session format:**
+```
+Cookie: session=<random_id>
+KV key: <random_id>
+KV value: {"github_username": "...", "github_id": ..., "avatar_url": "..."}
+KV TTL: 7 days
+```
 
 ### 6.2 Admin Configuration
 
@@ -1933,18 +2001,15 @@ database_name = "planetcf"
 database_id = "xxxxx"
 
 # KV Namespaces
+# CACHE stores generated content: HTML, RSS, Atom, OPML
+# SESSIONS stores admin OAuth sessions with TTL
 [[kv_namespaces]]
-binding = "HTML_CACHE"
+binding = "CACHE"
 id = "xxxxx"
 
 [[kv_namespaces]]
 binding = "SESSIONS"
 id = "xxxxx"
-
-# R2 Bucket
-[[r2_buckets]]
-binding = "R2_BUCKET"
-bucket_name = "planetcf-assets"
 
 # Vectorize (for full-text search)
 [[vectorize]]
@@ -2017,29 +2082,28 @@ wrangler init --yes
 wrangler d1 create planetcf
 
 # 4. Create KV namespaces
-wrangler kv namespace create HTML_CACHE
+# CACHE stores generated content (HTML, RSS, Atom, OPML)
+# SESSIONS stores admin OAuth sessions with TTL
+wrangler kv namespace create CACHE
 wrangler kv namespace create SESSIONS
 
-# 5. Create R2 bucket
-wrangler r2 bucket create planetcf-assets
-
-# 6. Create Vectorize index (768 dimensions for bge-base-en-v1.5)
+# 5. Create Vectorize index (768 dimensions for bge-base-en-v1.5)
 wrangler vectorize create planetcf-entries --dimensions=768 --metric=cosine
 
-# 7. Create queues
+# 6. Create queues
 wrangler queues create planetcf-feed-queue
 wrangler queues create planetcf-feed-dlq
 
-# 8. Set secrets
+# 7. Set secrets
 wrangler secret put GITHUB_CLIENT_SECRET
 
-# 9. Apply D1 schema
+# 8. Apply D1 schema
 wrangler d1 execute planetcf --file=./migrations/001_initial.sql
 
-# 10. Seed admins from config (see Section 9.3)
+# 9. Seed admins from config (see Section 9.3)
 python scripts/seed_admins.py
 
-# 11. Deploy
+# 10. Deploy
 wrangler deploy
 ```
 
