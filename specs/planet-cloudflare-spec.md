@@ -241,10 +241,10 @@ cpu_ms = 60000  # 60 seconds CPU time (generous buffer)
 
 [[queues.producers]]
 binding = "FEED_QUEUE"
-queue = "planet-feed-queue"
+queue = "planetcf-feed-queue"
 
 [[queues.consumers]]
-queue = "planet-feed-queue"
+queue = "planetcf-feed-queue"
 max_batch_size = 5              # Process up to 5 feeds per invocation
 max_batch_timeout = 30          # Wait up to 30s to fill batch
 max_retries = 3                 # Retry failed feeds 3 times
@@ -271,24 +271,25 @@ import asyncio
 
 FEED_TIMEOUT_SECONDS = 60  # Max 60 seconds per feed (wall time)
 
-async def process_feed_batch(batch, env):
+# Inside the queue handler method (see Section 5.2 for full implementation)
+async def process_feed_batch(self, batch):
     """Process a batch of feed messages from the queue."""
-    
+
     for message in batch.messages:
         feed_job = message.body
-        
+
         try:
             # Wrap fetch in timeout - if one feed is slow, fail it individually
             await asyncio.wait_for(
-                fetch_and_process_feed(feed_job, env),
+                self._fetch_and_process_feed(feed_job),
                 timeout=FEED_TIMEOUT_SECONDS
             )
             message.ack()
-            
+
         except asyncio.TimeoutError:
             print(f"Feed {feed_job['url']} timed out after {FEED_TIMEOUT_SECONDS}s")
             message.retry()  # Will be retried, eventually DLQ'd
-            
+
         except Exception as e:
             print(f"Error processing feed {feed_job['url']}: {e}")
             message.retry()
@@ -465,49 +466,68 @@ WHERE id NOT IN (SELECT id FROM entries_to_keep);
 **Design principle:** One feed = one message. This ensures complete isolation between feeds for retries, timeouts, and dead-lettering.
 
 ```python
-# src/scheduler.py
-from workers import handler
+# src/main.py
+from workers import WorkerEntrypoint
 from datetime import datetime
 
-@handler
-async def on_scheduled(event, env, ctx):
+
+class PlanetCF(WorkerEntrypoint):
     """
-    Hourly cron trigger - enqueue each active feed as a separate message.
-    
-    Each feed gets its own queue message to ensure:
-    - Isolated retries (only failed feed is retried)
-    - Isolated timeouts (slow feed doesn't block others)  
-    - Accurate dead-lettering (DLQ shows exactly which feeds fail)
-    - Parallel processing (consumers can scale independently)
+    Main Worker entrypoint handling all triggers:
+    - scheduled(): Cron triggers (scheduler at :00, generator at :15)
+    - queue(): Queue consumer for feed fetching
+    - fetch(): HTTP request handling
     """
-    
-    # Get all active feeds from D1
-    result = await env.DB.prepare("""
-        SELECT id, url, etag, last_modified 
-        FROM feeds 
-        WHERE is_active = 1
-    """).all()
-    
-    feeds = result.results
-    enqueue_count = 0
-    
-    # Enqueue each feed as a SEPARATE message
-    # Do NOT batch multiple feeds into one message
-    for feed in feeds:
-        message = {
-            "feed_id": feed["id"],
-            "url": feed["url"],
-            "etag": feed["etag"],
-            "last_modified": feed["last_modified"],
-            "scheduled_at": datetime.utcnow().isoformat()
-        }
-        
-        await env.FEED_QUEUE.send(message)
-        enqueue_count += 1
-    
-    print(f"Scheduler: Enqueued {enqueue_count} feeds as separate messages")
-    
-    return {"enqueued": enqueue_count}
+
+    async def scheduled(self, event):
+        """
+        Handle cron triggers. Dispatches based on which cron fired.
+        - "0 * * * *" -> Scheduler (enqueue feeds)
+        - "15 * * * *" -> Generator (rebuild HTML)
+        """
+        if event.cron == "0 * * * *":
+            return await self._run_scheduler()
+        elif event.cron == "15 * * * *":
+            return await self._run_generator()
+
+    async def _run_scheduler(self):
+        """
+        Hourly scheduler - enqueue each active feed as a separate message.
+
+        Each feed gets its own queue message to ensure:
+        - Isolated retries (only failed feed is retried)
+        - Isolated timeouts (slow feed doesn't block others)
+        - Accurate dead-lettering (DLQ shows exactly which feeds fail)
+        - Parallel processing (consumers can scale independently)
+        """
+
+        # Get all active feeds from D1
+        result = await self.env.DB.prepare("""
+            SELECT id, url, etag, last_modified
+            FROM feeds
+            WHERE is_active = 1
+        """).all()
+
+        feeds = result.results
+        enqueue_count = 0
+
+        # Enqueue each feed as a SEPARATE message
+        # Do NOT batch multiple feeds into one message
+        for feed in feeds:
+            message = {
+                "feed_id": feed["id"],
+                "url": feed["url"],
+                "etag": feed["etag"],
+                "last_modified": feed["last_modified"],
+                "scheduled_at": datetime.utcnow().isoformat()
+            }
+
+            await self.env.FEED_QUEUE.send(message)
+            enqueue_count += 1
+
+        print(f"Scheduler: Enqueued {enqueue_count} feeds as separate messages")
+
+        return {"enqueued": enqueue_count}
 ```
 
 **Why not use `sendBatch()`?**
@@ -518,6 +538,7 @@ If performance becomes critical at scale (500+ feeds), you can batch the sends w
 
 ```python
 # Optional: Batch the send operation (not the message content)
+# Inside the _run_scheduler method
 messages = [
     {
         "body": {
@@ -534,12 +555,12 @@ messages = [
 # Send in chunks of 100 (API limit)
 for i in range(0, len(messages), 100):
     chunk = messages[i:i+100]
-    await env.FEED_QUEUE.sendBatch(chunk)
+    await self.env.FEED_QUEUE.sendBatch(chunk)
 ```
 
 ### 5.2 Feed Fetcher Worker (Queue Consumer)
 
-**Trigger:** Queue consumer for `planet-feed-queue`
+**Trigger:** Queue consumer for `planetcf-feed-queue`
 
 **Responsibilities:**
 1. Receive batch of feed messages (each message = one feed)
@@ -547,14 +568,15 @@ for i in range(0, len(messages), 100):
 3. Parse with `feedparser`
 4. Sanitize HTML content (XSS prevention)
 5. Upsert entries to D1
-6. Update feed metadata (etag, last_modified, error state)
-7. Ack successful messages, retry failed ones
+6. Generate embeddings and index in Vectorize
+7. Update feed metadata (etag, last_modified, error state)
+8. Ack successful messages, retry failed ones
 
 ```python
-# src/fetcher.py
-from workers import handler
+# src/main.py (continued from Section 5.1)
 import asyncio
 import time
+import ipaddress
 import feedparser
 import httpx
 from bleach import clean
@@ -568,9 +590,9 @@ USER_AGENT = "PlanetCF/1.0 (+https://planetcf.com)"
 
 # HTML sanitization settings (XSS prevention - CVE-2009-2937)
 ALLOWED_TAGS = [
-    'a', 'abbr', 'acronym', 'b', 'blockquote', 'code', 'em', 
-    'i', 'li', 'ol', 'strong', 'ul', 'p', 'br', 'pre', 
-    'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'img', 'figure', 
+    'a', 'abbr', 'acronym', 'b', 'blockquote', 'code', 'em',
+    'i', 'li', 'ol', 'strong', 'ul', 'p', 'br', 'pre',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'img', 'figure',
     'figcaption', 'table', 'thead', 'tbody', 'tr', 'th', 'td'
 ]
 
@@ -581,260 +603,307 @@ ALLOWED_ATTRIBUTES = {
     'acronym': ['title'],
 }
 
-
-@handler  
-async def on_queue(batch, env, ctx):
-    """
-    Process a batch of feed messages from the queue.
-    
-    Each message contains exactly ONE feed to fetch.
-    This ensures isolated retries and timeouts per feed.
-    """
-    
-    print(f"Feed Fetcher: Received batch of {len(batch.messages)} feed(s)")
-    
-    for message in batch.messages:
-        feed_job = message.body
-        feed_url = feed_job.get("url", "unknown")
-        start_time = time.time()
-        
-        try:
-            # Wrap entire feed processing in a timeout
-            # This is WALL TIME, not CPU time - network I/O counts here
-            await asyncio.wait_for(
-                process_single_feed(feed_job, env),
-                timeout=FEED_TIMEOUT_SECONDS
-            )
-            
-            elapsed = time.time() - start_time
-            print(f"Feed OK: {feed_url} ({elapsed:.2f}s)")
-            message.ack()
-            
-        except asyncio.TimeoutError:
-            elapsed = time.time() - start_time
-            print(f"Feed TIMEOUT: {feed_url} after {elapsed:.2f}s")
-            await record_feed_error(env, feed_job["feed_id"], "Timeout")
-            message.retry()
-            
-        except Exception as e:
-            elapsed = time.time() - start_time
-            print(f"Feed ERROR: {feed_url} ({elapsed:.2f}s): {e}")
-            await record_feed_error(env, feed_job["feed_id"], str(e))
-            message.retry()
+# Cloud metadata endpoints to block (SSRF protection)
+BLOCKED_METADATA_IPS = {
+    '169.254.169.254',  # AWS/GCP/Azure metadata
+    '100.100.100.200',  # Alibaba Cloud metadata
+    '192.0.0.192',      # Oracle Cloud metadata
+}
 
 
-async def process_single_feed(job, env):
-    """
-    Fetch, parse, and store a single feed.
-    
-    This function should complete within FEED_TIMEOUT_SECONDS.
-    """
-    
-    feed_id = job["feed_id"]
-    url = job["url"]
-    etag = job.get("etag")
-    last_modified = job.get("last_modified")
-    
-    # SSRF protection - validate URL before fetching
-    if not is_safe_url(url):
-        raise ValueError(f"URL failed SSRF validation: {url}")
-    
-    # Build conditional request headers (good netizen behavior)
-    headers = {"User-Agent": USER_AGENT}
-    if etag:
-        headers["If-None-Match"] = etag
-    if last_modified:
-        headers["If-Modified-Since"] = last_modified
-    
-    # Fetch with timeout
-    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
-        response = await client.get(url, headers=headers, follow_redirects=True)
-    
-    # Handle 304 Not Modified - feed hasn't changed
-    if response.status_code == 304:
-        await update_feed_success(env, feed_id, etag, last_modified)
-        return
-    
-    # Handle permanent redirects (301, 308) - update stored URL
-    if response.history:
-        for resp in response.history:
-            if resp.status_code in (301, 308):
-                new_url = str(response.url)
-                await update_feed_url(env, feed_id, new_url)
-                print(f"Feed URL updated: {url} -> {new_url}")
-                break
-    
-    response.raise_for_status()
-    
-    # Parse feed with feedparser
-    feed_data = feedparser.parse(response.text)
-    
-    if feed_data.bozo and not feed_data.entries:
-        raise ValueError(f"Feed parse error: {feed_data.bozo_exception}")
-    
-    # Extract cache headers from response
-    new_etag = response.headers.get("etag")
-    new_last_modified = response.headers.get("last-modified")
-    
-    # Update feed metadata
-    await update_feed_metadata(env, feed_id, feed_data.feed, new_etag, new_last_modified)
-    
-    # Process and store entries
-    entries_added = 0
-    for entry in feed_data.entries:
-        added = await upsert_entry(env, feed_id, entry)
-        if added:
-            entries_added += 1
-    
-    # Mark fetch as successful
-    await update_feed_success(env, feed_id, new_etag, new_last_modified)
-    
-    print(f"Feed processed: {url}, {entries_added} new/updated entries")
+class PlanetCF(WorkerEntrypoint):
+    # ... (scheduled method from Section 5.1)
 
+    async def queue(self, batch):
+        """
+        Process a batch of feed messages from the queue.
 
-async def upsert_entry(env, feed_id, entry):
-    """Insert or update a single entry with sanitized content."""
-    
-    # Generate stable GUID
-    guid = entry.get("id") or entry.get("link") or entry.get("title")
-    if not guid:
-        return False
-    
-    # Extract content (prefer full content over summary)
-    content = ""
-    if hasattr(entry, "content") and entry.content:
-        content = entry.content[0].get("value", "")
-    elif hasattr(entry, "summary"):
-        content = entry.summary or ""
-    
-    # Sanitize HTML (XSS prevention)
-    sanitized_content = sanitize_html(content)
-    
-    # Parse published date
-    published_at = None
-    if hasattr(entry, "published_parsed") and entry.published_parsed:
-        published_at = datetime(*entry.published_parsed[:6]).isoformat()
-    elif hasattr(entry, "updated_parsed") and entry.updated_parsed:
-        published_at = datetime(*entry.updated_parsed[:6]).isoformat()
-    else:
-        published_at = datetime.utcnow().isoformat()
-    
-    # Upsert to D1
-    await env.DB.prepare("""
-        INSERT INTO entries (feed_id, guid, url, title, author, content, summary, published_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(feed_id, guid) DO UPDATE SET
-            title = excluded.title,
-            content = excluded.content,
-            updated_at = CURRENT_TIMESTAMP
-    """).bind(
-        feed_id,
-        guid,
-        entry.get("link"),
-        entry.get("title"),
-        entry.get("author"),
-        sanitized_content,
-        (entry.get("summary") or "")[:500],  # Truncate summary
-        published_at
-    ).run()
-    
-    return True
+        Each message contains exactly ONE feed to fetch.
+        This ensures isolated retries and timeouts per feed.
+        """
 
+        print(f"Feed Fetcher: Received batch of {len(batch.messages)} feed(s)")
 
-def sanitize_html(html_content):
-    """Sanitize HTML to prevent XSS attacks (CVE-2009-2937 mitigation)."""
-    return clean(
-        html_content,
-        tags=ALLOWED_TAGS,
-        attributes=ALLOWED_ATTRIBUTES,
-        protocols=['http', 'https', 'mailto'],
-        strip=True
-    )
+        for message in batch.messages:
+            feed_job = message.body
+            feed_url = feed_job.get("url", "unknown")
+            start_time = time.time()
 
+            try:
+                # Wrap entire feed processing in a timeout
+                # This is WALL TIME, not CPU time - network I/O counts here
+                await asyncio.wait_for(
+                    self._process_single_feed(feed_job),
+                    timeout=FEED_TIMEOUT_SECONDS
+                )
 
-def is_safe_url(url):
-    """SSRF protection - reject internal/private URLs."""
-    import ipaddress
-    
-    parsed = urlparse(url)
-    
-    # Only allow http/https
-    if parsed.scheme not in ('http', 'https'):
-        return False
-    
-    hostname = parsed.hostname.lower() if parsed.hostname else ""
-    
-    # Block localhost variants
-    if hostname in ('localhost', '127.0.0.1', '::1', '0.0.0.0'):
-        return False
-    
-    # Block private IP ranges
-    try:
-        ip = ipaddress.ip_address(hostname)
-        if ip.is_private or ip.is_loopback or ip.is_link_local:
+                elapsed = time.time() - start_time
+                print(f"Feed OK: {feed_url} ({elapsed:.2f}s)")
+                message.ack()
+
+            except asyncio.TimeoutError:
+                elapsed = time.time() - start_time
+                print(f"Feed TIMEOUT: {feed_url} after {elapsed:.2f}s")
+                await self._record_feed_error(feed_job["feed_id"], "Timeout")
+                message.retry()
+
+            except Exception as e:
+                elapsed = time.time() - start_time
+                print(f"Feed ERROR: {feed_url} ({elapsed:.2f}s): {e}")
+                await self._record_feed_error(feed_job["feed_id"], str(e))
+                message.retry()
+
+    async def _process_single_feed(self, job):
+        """
+        Fetch, parse, and store a single feed.
+
+        This function should complete within FEED_TIMEOUT_SECONDS.
+        """
+
+        feed_id = job["feed_id"]
+        url = job["url"]
+        etag = job.get("etag")
+        last_modified = job.get("last_modified")
+
+        # SSRF protection - validate URL before fetching
+        if not self._is_safe_url(url):
+            raise ValueError(f"URL failed SSRF validation: {url}")
+
+        # Build conditional request headers (good netizen behavior)
+        headers = {"User-Agent": USER_AGENT}
+        if etag:
+            headers["If-None-Match"] = etag
+        if last_modified:
+            headers["If-Modified-Since"] = last_modified
+
+        # Fetch with timeout
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
+            response = await client.get(url, headers=headers, follow_redirects=True)
+
+        # Re-validate final URL after redirects (SSRF protection)
+        final_url = str(response.url)
+        if final_url != url and not self._is_safe_url(final_url):
+            raise ValueError(f"Redirect target failed SSRF validation: {final_url}")
+
+        # Handle 304 Not Modified - feed hasn't changed
+        if response.status_code == 304:
+            await self._update_feed_success(feed_id, etag, last_modified)
+            return
+
+        # Handle permanent redirects (301, 308) - update stored URL
+        if response.history:
+            for resp in response.history:
+                if resp.status_code in (301, 308):
+                    new_url = str(response.url)
+                    await self._update_feed_url(feed_id, new_url)
+                    print(f"Feed URL updated: {url} -> {new_url}")
+                    break
+
+        response.raise_for_status()
+
+        # Parse feed with feedparser
+        feed_data = feedparser.parse(response.text)
+
+        if feed_data.bozo and not feed_data.entries:
+            raise ValueError(f"Feed parse error: {feed_data.bozo_exception}")
+
+        # Extract cache headers from response
+        new_etag = response.headers.get("etag")
+        new_last_modified = response.headers.get("last-modified")
+
+        # Update feed metadata
+        await self._update_feed_metadata(feed_id, feed_data.feed, new_etag, new_last_modified)
+
+        # Process and store entries
+        entries_added = 0
+        for entry in feed_data.entries:
+            entry_id = await self._upsert_entry(feed_id, entry)
+            if entry_id:
+                entries_added += 1
+
+        # Mark fetch as successful
+        await self._update_feed_success(feed_id, new_etag, new_last_modified)
+
+        print(f"Feed processed: {url}, {entries_added} new/updated entries")
+
+    async def _upsert_entry(self, feed_id, entry):
+        """Insert or update a single entry with sanitized content."""
+
+        # Generate stable GUID
+        guid = entry.get("id") or entry.get("link") or entry.get("title")
+        if not guid:
+            return None
+
+        # Extract content (prefer full content over summary)
+        content = ""
+        if hasattr(entry, "content") and entry.content:
+            content = entry.content[0].get("value", "")
+        elif hasattr(entry, "summary"):
+            content = entry.summary or ""
+
+        # Sanitize HTML (XSS prevention)
+        sanitized_content = self._sanitize_html(content)
+
+        # Parse published date
+        published_at = None
+        if hasattr(entry, "published_parsed") and entry.published_parsed:
+            published_at = datetime(*entry.published_parsed[:6]).isoformat()
+        elif hasattr(entry, "updated_parsed") and entry.updated_parsed:
+            published_at = datetime(*entry.updated_parsed[:6]).isoformat()
+        else:
+            published_at = datetime.utcnow().isoformat()
+
+        title = entry.get("title", "")
+
+        # Upsert to D1
+        result = await self.env.DB.prepare("""
+            INSERT INTO entries (feed_id, guid, url, title, author, content, summary, published_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(feed_id, guid) DO UPDATE SET
+                title = excluded.title,
+                content = excluded.content,
+                updated_at = CURRENT_TIMESTAMP
+            RETURNING id
+        """).bind(
+            feed_id,
+            guid,
+            entry.get("link"),
+            title,
+            entry.get("author"),
+            sanitized_content,
+            (entry.get("summary") or "")[:500],  # Truncate summary
+            published_at
+        ).first()
+
+        entry_id = result["id"] if result else None
+
+        # Index for semantic search (see Section 12.2)
+        if entry_id and title:
+            await self._index_entry_for_search(entry_id, title, sanitized_content)
+
+        return entry_id
+
+    async def _index_entry_for_search(self, entry_id, title, content):
+        """Generate embedding and store in Vectorize for semantic search."""
+
+        # Combine title and content for embedding (truncate to model limit)
+        text = f"{title}\n\n{content[:2000]}"
+
+        # Generate embedding using Workers AI with cls pooling for accuracy
+        embedding_result = await self.env.AI.run(
+            "@cf/baai/bge-base-en-v1.5",
+            {"text": [text], "pooling": "cls"}
+        )
+
+        vector = embedding_result["data"][0]
+
+        # Upsert to Vectorize with entry_id as the vector ID
+        await self.env.SEARCH_INDEX.upsert([
+            {
+                "id": str(entry_id),
+                "values": vector,
+                "metadata": {
+                    "title": title[:200],
+                    "entry_id": entry_id
+                }
+            }
+        ])
+
+    def _sanitize_html(self, html_content):
+        """Sanitize HTML to prevent XSS attacks (CVE-2009-2937 mitigation)."""
+        return clean(
+            html_content,
+            tags=ALLOWED_TAGS,
+            attributes=ALLOWED_ATTRIBUTES,
+            protocols=['http', 'https', 'mailto'],
+            strip=True
+        )
+
+    def _is_safe_url(self, url):
+        """SSRF protection - reject internal/private URLs."""
+
+        parsed = urlparse(url)
+
+        # Only allow http/https
+        if parsed.scheme not in ('http', 'https'):
             return False
-    except ValueError:
-        pass  # Not an IP address
-    
-    # Block internal domain patterns
-    if hostname.endswith('.internal') or hostname.endswith('.local'):
-        return False
-    
-    return True
 
+        hostname = parsed.hostname.lower() if parsed.hostname else ""
 
-async def update_feed_success(env, feed_id, etag, last_modified):
-    """Mark feed fetch as successful."""
-    await env.DB.prepare("""
-        UPDATE feeds SET
-            last_fetch_at = CURRENT_TIMESTAMP,
-            last_success_at = CURRENT_TIMESTAMP,
-            etag = ?,
-            last_modified = ?,
-            fetch_error = NULL,
-            consecutive_failures = 0,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-    """).bind(etag, last_modified, feed_id).run()
+        # Block localhost variants
+        if hostname in ('localhost', '127.0.0.1', '::1', '0.0.0.0'):
+            return False
 
+        # Block cloud metadata endpoints
+        if hostname in BLOCKED_METADATA_IPS:
+            return False
 
-async def record_feed_error(env, feed_id, error_message):
-    """Record a feed fetch error."""
-    await env.DB.prepare("""
-        UPDATE feeds SET
-            last_fetch_at = CURRENT_TIMESTAMP,
-            fetch_error = ?,
-            fetch_error_count = fetch_error_count + 1,
-            consecutive_failures = consecutive_failures + 1,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-    """).bind(error_message[:500], feed_id).run()
+        # Block private IP ranges
+        try:
+            ip = ipaddress.ip_address(hostname)
+            if ip.is_private or ip.is_loopback or ip.is_link_local:
+                return False
+            # Block IPv6 unique local addresses (fd00::/8)
+            if ip.version == 6 and ip.packed[0] == 0xfd:
+                return False
+        except ValueError:
+            pass  # Not an IP address
 
+        # Block internal domain patterns
+        if hostname.endswith('.internal') or hostname.endswith('.local'):
+            return False
 
-async def update_feed_url(env, feed_id, new_url):
-    """Update feed URL after permanent redirect."""
-    await env.DB.prepare("""
-        UPDATE feeds SET
-            url = ?,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-    """).bind(new_url, feed_id).run()
+        return True
 
+    async def _update_feed_success(self, feed_id, etag, last_modified):
+        """Mark feed fetch as successful."""
+        await self.env.DB.prepare("""
+            UPDATE feeds SET
+                last_fetch_at = CURRENT_TIMESTAMP,
+                last_success_at = CURRENT_TIMESTAMP,
+                etag = ?,
+                last_modified = ?,
+                fetch_error = NULL,
+                consecutive_failures = 0,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """).bind(etag, last_modified, feed_id).run()
 
-async def update_feed_metadata(env, feed_id, feed_info, etag, last_modified):
-    """Update feed title and other metadata from feed content."""
-    title = feed_info.get("title")
-    site_url = feed_info.get("link")
-    
-    await env.DB.prepare("""
-        UPDATE feeds SET
-            title = COALESCE(?, title),
-            site_url = COALESCE(?, site_url),
-            etag = ?,
-            last_modified = ?,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-    """).bind(title, site_url, etag, last_modified, feed_id).run()
+    async def _record_feed_error(self, feed_id, error_message):
+        """Record a feed fetch error."""
+        await self.env.DB.prepare("""
+            UPDATE feeds SET
+                last_fetch_at = CURRENT_TIMESTAMP,
+                fetch_error = ?,
+                fetch_error_count = fetch_error_count + 1,
+                consecutive_failures = consecutive_failures + 1,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """).bind(error_message[:500], feed_id).run()
+
+    async def _update_feed_url(self, feed_id, new_url):
+        """Update feed URL after permanent redirect."""
+        await self.env.DB.prepare("""
+            UPDATE feeds SET
+                url = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """).bind(new_url, feed_id).run()
+
+    async def _update_feed_metadata(self, feed_id, feed_info, etag, last_modified):
+        """Update feed title and other metadata from feed content."""
+        title = feed_info.get("title")
+        site_url = feed_info.get("link")
+
+        await self.env.DB.prepare("""
+            UPDATE feeds SET
+                title = COALESCE(?, title),
+                site_url = COALESCE(?, site_url),
+                etag = ?,
+                last_modified = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """).bind(title, site_url, etag, last_modified, feed_id).run()
 ```
 
 ### 5.3 Generator Worker
@@ -927,8 +996,7 @@ Layout Notes:
 ```
 
 ```python
-# src/generator.py
-from workers import handler
+# src/main.py (continued - _run_generator method)
 from jinja2 import Environment, BaseLoader
 from datetime import datetime, timedelta
 
@@ -1004,88 +1072,221 @@ HTML_TEMPLATE = """
 </html>
 """
 
-async def generate_html(env):
-    """Generate the aggregated HTML page."""
-    
-    # Get planet config from KV or environment
-    planet = {
-        "name": "Planet CF",
-        "description": "Aggregated posts from Cloudflare employees and community",
-        "link": "https://planetcf.com"
-    }
-    
-    # Query entries (last 30 days, max 100 per feed)
-    entries_result = await env.DB.prepare("""
-        WITH ranked AS (
-            SELECT 
-                e.*,
-                f.title as feed_title,
-                f.site_url as feed_site_url,
-                ROW_NUMBER() OVER (PARTITION BY e.feed_id ORDER BY e.published_at DESC) as rn
-            FROM entries e
-            JOIN feeds f ON e.feed_id = f.id
-            WHERE e.published_at >= datetime('now', '-30 days')
-            AND f.is_active = 1
+
+class PlanetCF(WorkerEntrypoint):
+    # ... (other methods from Sections 5.1 and 5.2)
+
+    async def _run_generator(self):
+        """Generate the aggregated HTML page, RSS, and Atom feeds."""
+
+        # Get planet config from environment
+        planet = {
+            "name": self.env.PLANET_NAME or "Planet CF",
+            "description": self.env.PLANET_DESCRIPTION or "Aggregated posts from Cloudflare employees and community",
+            "link": self.env.PLANET_URL or "https://planetcf.com"
+        }
+
+        # Apply retention policy first (delete old entries and their vectors)
+        await self._apply_retention_policy()
+
+        # Query entries (last 30 days, max 100 per feed)
+        entries_result = await self.env.DB.prepare("""
+            WITH ranked AS (
+                SELECT
+                    e.*,
+                    f.title as feed_title,
+                    f.site_url as feed_site_url,
+                    ROW_NUMBER() OVER (PARTITION BY e.feed_id ORDER BY e.published_at DESC) as rn
+                FROM entries e
+                JOIN feeds f ON e.feed_id = f.id
+                WHERE e.published_at >= datetime('now', '-30 days')
+                AND f.is_active = 1
+            )
+            SELECT * FROM ranked WHERE rn <= 100
+            ORDER BY published_at DESC
+            LIMIT 500
+        """).all()
+
+        entries = entries_result.results
+
+        # Group entries by date
+        entries_by_date = {}
+        for entry in entries:
+            date_str = entry["published_at"][:10]  # YYYY-MM-DD
+            if date_str not in entries_by_date:
+                entries_by_date[date_str] = []
+
+            entry["published_at_formatted"] = self._format_datetime(entry["published_at"])
+            entries_by_date[date_str].append(entry)
+
+        # Get feeds for sidebar
+        feeds_result = await self.env.DB.prepare("""
+            SELECT
+                id, title, site_url, last_success_at,
+                CASE WHEN consecutive_failures < 3 THEN 1 ELSE 0 END as is_healthy
+            FROM feeds
+            WHERE is_active = 1
+            ORDER BY title
+        """).all()
+
+        feeds = feeds_result.results
+        for feed in feeds:
+            feed["last_success_at_relative"] = self._relative_time(feed["last_success_at"])
+
+        # Render template
+        jinja_env = Environment(loader=BaseLoader())
+        template = jinja_env.from_string(HTML_TEMPLATE)
+
+        html = template.render(
+            planet=planet,
+            entries_by_date=entries_by_date,
+            feeds=feeds,
+            generated_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
         )
-        SELECT * FROM ranked WHERE rn <= 100
-        ORDER BY published_at DESC
-        LIMIT 500
-    """).all()
-    
-    entries = entries_result.results
-    
-    # Group entries by date
-    entries_by_date = {}
-    for entry in entries:
-        date_str = entry["published_at"][:10]  # YYYY-MM-DD
-        if date_str not in entries_by_date:
-            entries_by_date[date_str] = []
-        
-        entry["published_at_formatted"] = format_datetime(entry["published_at"])
-        entries_by_date[date_str].append(entry)
-    
-    # Get feeds for sidebar
-    feeds_result = await env.DB.prepare("""
-        SELECT 
-            id, title, site_url, last_success_at,
-            CASE WHEN consecutive_failures < 3 THEN 1 ELSE 0 END as is_healthy
-        FROM feeds 
-        WHERE is_active = 1
-        ORDER BY title
-    """).all()
-    
-    feeds = feeds_result.results
-    for feed in feeds:
-        feed["last_success_at_relative"] = relative_time(feed["last_success_at"])
-    
-    # Render template
-    jinja_env = Environment(loader=BaseLoader())
-    template = jinja_env.from_string(HTML_TEMPLATE)
-    
-    html = template.render(
-        planet=planet,
-        entries_by_date=entries_by_date,
-        feeds=feeds,
-        generated_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-    )
-    
-    # Store in KV
-    await env.HTML_CACHE.put("index.html", html, {
-        "metadata": {"generated_at": datetime.utcnow().isoformat()}
-    })
-    
-    # Generate and store RSS/Atom feeds
-    atom_feed = generate_atom_feed(planet, entries[:50])
-    rss_feed = generate_rss_feed(planet, entries[:50])
-    
-    await env.R2_BUCKET.put("feed.atom", atom_feed, {
-        "httpMetadata": {"contentType": "application/atom+xml"}
-    })
-    await env.R2_BUCKET.put("feed.rss", rss_feed, {
-        "httpMetadata": {"contentType": "application/rss+xml"}
-    })
-    
-    return {"status": "ok", "entries_count": len(entries), "feeds_count": len(feeds)}
+
+        # Store in KV
+        await self.env.HTML_CACHE.put("index.html", html, {
+            "metadata": {"generated_at": datetime.utcnow().isoformat()}
+        })
+
+        # Generate and store RSS/Atom feeds
+        atom_feed = self._generate_atom_feed(planet, entries[:50])
+        rss_feed = self._generate_rss_feed(planet, entries[:50])
+
+        await self.env.R2_BUCKET.put("feed.atom", atom_feed, {
+            "httpMetadata": {"contentType": "application/atom+xml"}
+        })
+        await self.env.R2_BUCKET.put("feed.rss", rss_feed, {
+            "httpMetadata": {"contentType": "application/rss+xml"}
+        })
+
+        print(f"Generator: Built HTML with {len(entries)} entries from {len(feeds)} feeds")
+        return {"status": "ok", "entries_count": len(entries), "feeds_count": len(feeds)}
+
+    async def _apply_retention_policy(self):
+        """Delete entries older than 30 days or beyond 100 per feed, and clean up vectors."""
+
+        # Get IDs of entries to delete
+        to_delete = await self.env.DB.prepare("""
+            WITH ranked_entries AS (
+                SELECT
+                    id,
+                    feed_id,
+                    published_at,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY feed_id
+                        ORDER BY published_at DESC
+                    ) as rn
+                FROM entries
+            ),
+            entries_to_delete AS (
+                SELECT id FROM ranked_entries
+                WHERE rn > 100
+                OR published_at < datetime('now', '-30 days')
+            )
+            SELECT id FROM entries_to_delete
+        """).all()
+
+        deleted_ids = [row["id"] for row in to_delete.results]
+
+        if deleted_ids:
+            # Delete vectors from Vectorize
+            await self.env.SEARCH_INDEX.deleteByIds([str(id) for id in deleted_ids])
+
+            # Delete entries from D1 (in batches to stay under parameter limit)
+            for i in range(0, len(deleted_ids), 50):
+                batch = deleted_ids[i:i+50]
+                placeholders = ",".join("?" * len(batch))
+                await self.env.DB.prepare(f"""
+                    DELETE FROM entries WHERE id IN ({placeholders})
+                """).bind(*batch).run()
+
+            print(f"Retention: Deleted {len(deleted_ids)} old entries and their vectors")
+
+    def _format_datetime(self, iso_string):
+        """Format ISO datetime string for display."""
+        if not iso_string:
+            return ""
+        try:
+            dt = datetime.fromisoformat(iso_string.replace("Z", "+00:00"))
+            return dt.strftime("%B %d, %Y at %I:%M %p")
+        except (ValueError, AttributeError):
+            return iso_string
+
+    def _relative_time(self, iso_string):
+        """Convert ISO datetime to relative time (e.g., '2 hours ago')."""
+        if not iso_string:
+            return "never"
+        try:
+            dt = datetime.fromisoformat(iso_string.replace("Z", "+00:00"))
+            now = datetime.utcnow()
+            delta = now - dt.replace(tzinfo=None)
+
+            if delta.days > 30:
+                return f"{delta.days // 30} months ago"
+            elif delta.days > 0:
+                return f"{delta.days} days ago"
+            elif delta.seconds > 3600:
+                return f"{delta.seconds // 3600} hours ago"
+            elif delta.seconds > 60:
+                return f"{delta.seconds // 60} minutes ago"
+            else:
+                return "just now"
+        except (ValueError, AttributeError):
+            return "unknown"
+
+    def _generate_atom_feed(self, planet, entries):
+        """Generate Atom 1.0 feed XML."""
+        from xml.sax.saxutils import escape
+
+        feed_xml = f'''<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>{escape(planet["name"])}</title>
+  <subtitle>{escape(planet["description"])}</subtitle>
+  <link href="{planet["link"]}" rel="alternate"/>
+  <link href="{planet["link"]}/feed.atom" rel="self"/>
+  <id>{planet["link"]}/</id>
+  <updated>{datetime.utcnow().isoformat()}Z</updated>
+'''
+        for entry in entries:
+            feed_xml += f'''  <entry>
+    <title>{escape(entry.get("title", ""))}</title>
+    <link href="{escape(entry.get("url", ""))}" rel="alternate"/>
+    <id>{escape(entry.get("guid", entry.get("url", "")))}</id>
+    <published>{entry.get("published_at", "")}Z</published>
+    <author><name>{escape(entry.get("author", entry.get("feed_title", "")))}</name></author>
+    <content type="html">{escape(entry.get("content", ""))}</content>
+  </entry>
+'''
+        feed_xml += '</feed>'
+        return feed_xml
+
+    def _generate_rss_feed(self, planet, entries):
+        """Generate RSS 2.0 feed XML."""
+        from xml.sax.saxutils import escape
+
+        feed_xml = f'''<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>{escape(planet["name"])}</title>
+    <description>{escape(planet["description"])}</description>
+    <link>{planet["link"]}</link>
+    <atom:link href="{planet["link"]}/feed.rss" rel="self" type="application/rss+xml"/>
+    <lastBuildDate>{datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000")}</lastBuildDate>
+'''
+        for entry in entries:
+            feed_xml += f'''    <item>
+      <title>{escape(entry.get("title", ""))}</title>
+      <link>{escape(entry.get("url", ""))}</link>
+      <guid>{escape(entry.get("guid", entry.get("url", "")))}</guid>
+      <pubDate>{entry.get("published_at", "")}</pubDate>
+      <author>{escape(entry.get("author", ""))}</author>
+      <description><![CDATA[{entry.get("content", "")}]]></description>
+    </item>
+'''
+        feed_xml += '''  </channel>
+</rss>'''
+        return feed_xml
 ```
 
 ### 5.4 HTTP Worker
@@ -1095,96 +1296,341 @@ async def generate_html(env):
 **Responsibilities:**
 1. Serve cached HTML from KV
 2. Serve RSS/Atom from R2
-3. Serve admin interface (protected by GitHub OAuth)
-4. Handle admin API endpoints
+3. Handle semantic search queries
+4. Serve admin interface (protected by GitHub OAuth)
+5. Handle admin API endpoints
 
 ```python
-# src/http.py
-from workers import handler, Response
+# src/main.py (continued - fetch method and HTTP helpers)
+from workers import Response
+from urllib.parse import parse_qs
+import hashlib
+import secrets
+import json
 
-@handler
-async def on_fetch(request, env, ctx):
-    """Handle HTTP requests."""
-    
-    url = URL(request.url)
-    path = url.pathname
-    
-    # Public routes
-    if path == "/" or path == "/index.html":
-        return await serve_html(env)
-    
-    if path == "/feed.atom":
-        return await serve_from_r2(env, "feed.atom", "application/atom+xml")
-    
-    if path == "/feed.rss":
-        return await serve_from_r2(env, "feed.rss", "application/rss+xml")
-    
-    if path == "/feeds.opml":
-        return await export_opml(env)
-    
-    if path == "/search":
-        return await search_entries(request, env)
-    
-    if path.startswith("/static/"):
-        return await serve_from_r2(env, path[1:], guess_content_type(path))
-    
-    # Admin routes (require authentication)
-    if path.startswith("/admin"):
-        return await handle_admin(request, env, path)
-    
-    return Response("Not Found", status=404)
+# Session configuration
+SESSION_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
 
 
-async def serve_html(env):
-    """Serve the cached HTML page."""
-    
-    html = await env.HTML_CACHE.get("index.html")
-    
-    if not html:
-        # Fallback: regenerate
-        await generate_html(env)
-        html = await env.HTML_CACHE.get("index.html")
-    
-    return Response(html, headers={
-        "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": "public, max-age=300",  # 5 minute browser cache
-    })
+class PlanetCF(WorkerEntrypoint):
+    # ... (other methods from Sections 5.1, 5.2, 5.3)
 
+    async def fetch(self, request):
+        """Handle HTTP requests."""
 
-async def handle_admin(request, env, path):
-    """Handle admin routes with GitHub OAuth."""
-    
-    # Verify GitHub OAuth session
-    session = await verify_github_session(request, env)
-    if not session:
-        return redirect_to_github_oauth(env)
-    
-    # Verify user is an authorized admin
-    admin = await env.DB.prepare(
-        "SELECT * FROM admins WHERE github_username = ? AND is_active = 1"
-    ).bind(session["github_username"]).first()
-    
-    if not admin:
-        return Response("Unauthorized: Not an admin", status=403)
-    
-    # Route admin requests
-    if path == "/admin" or path == "/admin/":
-        return await serve_admin_dashboard(env, admin)
-    
-    if path == "/admin/feeds" and request.method == "GET":
-        return await list_feeds(env)
-    
-    if path == "/admin/feeds" and request.method == "POST":
-        return await add_feed(request, env, admin)
-    
-    if path.startswith("/admin/feeds/") and request.method == "DELETE":
-        feed_id = path.split("/")[-1]
-        return await remove_feed(feed_id, env, admin)
-    
-    if path == "/admin/regenerate" and request.method == "POST":
-        return await trigger_regenerate(env, admin)
-    
-    return Response("Not Found", status=404)
+        url = request.url
+        path = url.pathname if hasattr(url, 'pathname') else url.split('?')[0].split('://', 1)[-1].split('/', 1)[-1]
+        if not path.startswith('/'):
+            path = '/' + path
+
+        # Public routes
+        if path == "/" or path == "/index.html":
+            return await self._serve_html()
+
+        if path == "/feed.atom":
+            return await self._serve_from_r2("feed.atom", "application/atom+xml")
+
+        if path == "/feed.rss":
+            return await self._serve_from_r2("feed.rss", "application/rss+xml")
+
+        if path == "/feeds.opml":
+            return await self._export_opml()
+
+        if path == "/search":
+            return await self._search_entries(request)
+
+        if path.startswith("/static/"):
+            return await self._serve_from_r2(path[1:], self._guess_content_type(path))
+
+        # OAuth callback
+        if path == "/auth/github/callback":
+            return await self._handle_github_callback(request)
+
+        # Admin routes (require authentication)
+        if path.startswith("/admin"):
+            return await self._handle_admin(request, path)
+
+        return Response("Not Found", status=404)
+
+    async def _serve_html(self):
+        """Serve the cached HTML page."""
+
+        html = await self.env.HTML_CACHE.get("index.html")
+
+        if not html:
+            # Fallback: regenerate
+            await self._run_generator()
+            html = await self.env.HTML_CACHE.get("index.html")
+
+        return Response(html, headers={
+            "Content-Type": "text/html; charset=utf-8",
+            "Cache-Control": "public, max-age=300",  # 5 minute browser cache
+        })
+
+    async def _serve_from_r2(self, key, content_type):
+        """Serve a file from R2 storage."""
+
+        obj = await self.env.R2_BUCKET.get(key)
+        if not obj:
+            return Response("Not Found", status=404)
+
+        body = await obj.text()
+        return Response(body, headers={
+            "Content-Type": content_type,
+            "Cache-Control": "public, max-age=300",
+        })
+
+    def _guess_content_type(self, path):
+        """Guess content type from file extension."""
+        ext_map = {
+            '.css': 'text/css',
+            '.js': 'application/javascript',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.svg': 'image/svg+xml',
+            '.ico': 'image/x-icon',
+        }
+        for ext, ct in ext_map.items():
+            if path.endswith(ext):
+                return ct
+        return 'application/octet-stream'
+
+    async def _search_entries(self, request):
+        """Search entries by semantic similarity."""
+
+        # Parse query string
+        url_str = str(request.url)
+        query = ""
+        if "?" in url_str:
+            qs = parse_qs(url_str.split("?", 1)[1])
+            query = qs.get("q", [""])[0]
+
+        if not query or len(query) < 2:
+            return Response(
+                json.dumps({"error": "Query too short"}),
+                status=400,
+                headers={"Content-Type": "application/json"}
+            )
+
+        # Generate embedding for search query
+        embedding_result = await self.env.AI.run(
+            "@cf/baai/bge-base-en-v1.5",
+            {"text": [query], "pooling": "cls"}
+        )
+        query_vector = embedding_result["data"][0]
+
+        # Search Vectorize
+        results = await self.env.SEARCH_INDEX.query(query_vector, {
+            "topK": 20,
+            "returnMetadata": True
+        })
+
+        # Fetch full entries from D1
+        if not results.matches:
+            return Response(
+                json.dumps({"results": []}),
+                headers={"Content-Type": "application/json"}
+            )
+
+        entry_ids = [int(m.id) for m in results.matches]
+        placeholders = ",".join("?" * len(entry_ids))
+
+        entries = await self.env.DB.prepare(f"""
+            SELECT e.*, f.title as feed_title, f.site_url as feed_site_url
+            FROM entries e
+            JOIN feeds f ON e.feed_id = f.id
+            WHERE e.id IN ({placeholders})
+        """).bind(*entry_ids).all()
+
+        # Sort by Vectorize score
+        entry_map = {e["id"]: e for e in entries.results}
+        sorted_results = [
+            {**entry_map[int(m.id)], "score": m.score}
+            for m in results.matches
+            if int(m.id) in entry_map
+        ]
+
+        return Response(
+            json.dumps({"results": sorted_results}),
+            headers={
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",  # CORS for API
+            }
+        )
+
+    async def _handle_admin(self, request, path):
+        """Handle admin routes with GitHub OAuth."""
+
+        # Verify GitHub OAuth session
+        session = await self._verify_github_session(request)
+        if not session:
+            return self._redirect_to_github_oauth()
+
+        # Verify user is an authorized admin
+        admin = await self.env.DB.prepare(
+            "SELECT * FROM admins WHERE github_username = ? AND is_active = 1"
+        ).bind(session["github_username"]).first()
+
+        if not admin:
+            return Response("Unauthorized: Not an admin", status=403)
+
+        # Route admin requests
+        if path == "/admin" or path == "/admin/":
+            return await self._serve_admin_dashboard(admin)
+
+        if path == "/admin/feeds" and request.method == "GET":
+            return await self._list_feeds()
+
+        if path == "/admin/feeds" and request.method == "POST":
+            return await self._add_feed(request, admin)
+
+        if path.startswith("/admin/feeds/") and request.method == "DELETE":
+            feed_id = path.split("/")[-1]
+            return await self._remove_feed(feed_id, admin)
+
+        if path.startswith("/admin/feeds/") and request.method == "PUT":
+            feed_id = path.split("/")[-1]
+            return await self._update_feed(request, feed_id, admin)
+
+        if path == "/admin/import-opml" and request.method == "POST":
+            return await self._import_opml(request, admin)
+
+        if path == "/admin/regenerate" and request.method == "POST":
+            return await self._trigger_regenerate(admin)
+
+        if path == "/admin/dlq" and request.method == "GET":
+            return await self._view_dlq()
+
+        if path == "/admin/audit" and request.method == "GET":
+            return await self._view_audit_log()
+
+        if path == "/admin/logout" and request.method == "POST":
+            return await self._logout(request)
+
+        return Response("Not Found", status=404)
+
+    async def _verify_github_session(self, request):
+        """Verify the GitHub OAuth session from cookie."""
+
+        cookies = request.headers.get("Cookie", "")
+        session_id = None
+        for cookie in cookies.split(";"):
+            if cookie.strip().startswith("session="):
+                session_id = cookie.strip()[8:]
+                break
+
+        if not session_id:
+            return None
+
+        session_data = await self.env.SESSIONS.get(session_id)
+        if not session_data:
+            return None
+
+        return json.loads(session_data)
+
+    def _redirect_to_github_oauth(self):
+        """Redirect to GitHub OAuth authorization."""
+
+        state = secrets.token_urlsafe(32)
+        auth_url = (
+            f"https://github.com/login/oauth/authorize"
+            f"?client_id={self.env.GITHUB_CLIENT_ID}"
+            f"&redirect_uri={self.env.PLANET_URL}/auth/github/callback"
+            f"&scope=read:user"
+            f"&state={state}"
+        )
+
+        return Response("", status=302, headers={
+            "Location": auth_url,
+            "Set-Cookie": f"oauth_state={state}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600"
+        })
+
+    async def _handle_github_callback(self, request):
+        """Handle GitHub OAuth callback."""
+
+        url_str = str(request.url)
+        qs = parse_qs(url_str.split("?", 1)[1]) if "?" in url_str else {}
+        code = qs.get("code", [""])[0]
+        state = qs.get("state", [""])[0]
+
+        if not code:
+            return Response("Missing authorization code", status=400)
+
+        # Exchange code for access token
+        async with httpx.AsyncClient() as client:
+            token_response = await client.post(
+                "https://github.com/login/oauth/access_token",
+                data={
+                    "client_id": self.env.GITHUB_CLIENT_ID,
+                    "client_secret": self.env.GITHUB_CLIENT_SECRET,
+                    "code": code,
+                },
+                headers={"Accept": "application/json"}
+            )
+
+        token_data = token_response.json()
+        access_token = token_data.get("access_token")
+
+        if not access_token:
+            return Response("Failed to get access token", status=400)
+
+        # Fetch user info
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                "https://api.github.com/user",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Accept": "application/json"
+                }
+            )
+
+        user_data = user_response.json()
+        github_username = user_data.get("login")
+        github_id = user_data.get("id")
+
+        # Verify user is an admin
+        admin = await self.env.DB.prepare(
+            "SELECT * FROM admins WHERE github_username = ? AND is_active = 1"
+        ).bind(github_username).first()
+
+        if not admin:
+            return Response("Unauthorized: Not an admin", status=403)
+
+        # Update admin's github_id and last_login_at
+        await self.env.DB.prepare("""
+            UPDATE admins SET github_id = ?, last_login_at = CURRENT_TIMESTAMP
+            WHERE github_username = ?
+        """).bind(github_id, github_username).run()
+
+        # Create session
+        session_id = secrets.token_urlsafe(32)
+        session_data = json.dumps({
+            "github_username": github_username,
+            "github_id": github_id,
+            "avatar_url": user_data.get("avatar_url"),
+        })
+
+        await self.env.SESSIONS.put(session_id, session_data, {
+            "expirationTtl": SESSION_TTL_SECONDS
+        })
+
+        return Response("", status=302, headers={
+            "Location": "/admin",
+            "Set-Cookie": f"session={session_id}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age={SESSION_TTL_SECONDS}"
+        })
+
+    async def _logout(self, request):
+        """Log out by deleting session."""
+
+        session = await self._verify_github_session(request)
+        if session:
+            # Delete session from KV (would need session_id, simplified here)
+            pass
+
+        return Response("", status=302, headers={
+            "Location": "/",
+            "Set-Cookie": "session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0"
+        })
 ```
 
 ---
@@ -1272,41 +1718,58 @@ All HTML content from feeds is sanitized using `bleach`:
 
 ### 7.2 SSRF Prevention
 
-Validate feed URLs before fetching:
+Validate feed URLs before fetching (see `_is_safe_url` in Section 5.2 for full implementation):
 
 ```python
-from urllib.parse import urlparse
-import ipaddress
+# Inside PlanetCF class
 
-BLOCKED_HOSTS = {'localhost', '127.0.0.1', '::1', '0.0.0.0'}
+# Cloud metadata endpoints to block (SSRF protection)
+BLOCKED_METADATA_IPS = {
+    '169.254.169.254',  # AWS/GCP/Azure metadata
+    '100.100.100.200',  # Alibaba Cloud metadata
+    '192.0.0.192',      # Oracle Cloud metadata
+}
 
-def is_safe_url(url):
-    """Check if URL is safe to fetch (not internal/private)."""
+def _is_safe_url(self, url):
+    """SSRF protection - reject internal/private URLs."""
+    from urllib.parse import urlparse
+    import ipaddress
+
     parsed = urlparse(url)
-    
+
     # Only allow http/https
     if parsed.scheme not in ('http', 'https'):
         return False
-    
-    # Block localhost and common internal names
-    hostname = parsed.hostname.lower()
-    if hostname in BLOCKED_HOSTS:
+
+    hostname = parsed.hostname.lower() if parsed.hostname else ""
+
+    # Block localhost variants
+    if hostname in ('localhost', '127.0.0.1', '::1', '0.0.0.0'):
         return False
-    
+
+    # Block cloud metadata endpoints
+    if hostname in BLOCKED_METADATA_IPS:
+        return False
+
     # Block private IP ranges
     try:
         ip = ipaddress.ip_address(hostname)
         if ip.is_private or ip.is_loopback or ip.is_link_local:
             return False
+        # Block IPv6 unique local addresses (fd00::/8)
+        if ip.version == 6 and ip.packed[0] == 0xfd:
+            return False
     except ValueError:
-        pass  # Not an IP address, continue
-    
+        pass  # Not an IP address
+
     # Block internal domain patterns
     if hostname.endswith('.internal') or hostname.endswith('.local'):
         return False
-    
+
     return True
 ```
+
+**Important:** URLs must be re-validated after redirects to prevent redirect-based SSRF attacks. See `_process_single_feed` in Section 5.2 which calls `_is_safe_url` on the final URL after following redirects.
 
 ### 7.3 Good Netizen Behavior
 
@@ -1984,25 +2447,27 @@ wrangler vectorize create planetcf-entries --dimensions=768 --metric=cosine
 
 ### 12.2 Embedding Generation
 
-When entries are stored, generate and index embeddings:
+Embeddings are generated when entries are stored (see `_index_entry_for_search` in Section 5.2). Key implementation details:
 
 ```python
-async def index_entry_for_search(env, entry_id: int, title: str, content: str):
+# Inside PlanetCF class (see Section 5.2 for full implementation)
+
+async def _index_entry_for_search(self, entry_id, title, content):
     """Generate embedding and store in Vectorize for semantic search."""
-    
+
     # Combine title and content for embedding (truncate to model limit)
     text = f"{title}\n\n{content[:2000]}"
-    
-    # Generate embedding using Workers AI
-    embedding_result = await env.AI.run(
+
+    # Generate embedding using Workers AI with cls pooling for accuracy
+    embedding_result = await self.env.AI.run(
         "@cf/baai/bge-base-en-v1.5",
-        {"text": [text]}
+        {"text": [text], "pooling": "cls"}  # cls pooling recommended
     )
-    
+
     vector = embedding_result["data"][0]
-    
+
     # Upsert to Vectorize with entry_id as the vector ID
-    await env.SEARCH_INDEX.upsert([
+    await self.env.SEARCH_INDEX.upsert([
         {
             "id": str(entry_id),
             "values": vector,
@@ -2014,53 +2479,42 @@ async def index_entry_for_search(env, entry_id: int, title: str, content: str):
     ])
 ```
 
+**Note:** The `pooling: "cls"` parameter uses CLS token pooling which provides better accuracy than mean pooling for this use case.
+
 ### 12.3 Search Endpoint
 
+The search endpoint is implemented in the `_search_entries` method (see Section 5.4). It handles the `/search?q=query` route:
+
 ```python
-@app.get("/search")
-async def search_entries(request, env):
+# Inside PlanetCF class (see Section 5.4 for full implementation)
+
+async def _search_entries(self, request):
     """Search entries by semantic similarity."""
-    
-    query = request.url.searchParams.get("q")
+
+    # Parse query from URL
+    query = self._get_query_param(request, "q")
     if not query or len(query) < 2:
-        return Response.json({"error": "Query too short"}, status=400)
-    
+        return Response(
+            json.dumps({"error": "Query too short"}),
+            status=400,
+            headers={"Content-Type": "application/json"}
+        )
+
     # Generate embedding for search query
-    embedding_result = await env.AI.run(
+    embedding_result = await self.env.AI.run(
         "@cf/baai/bge-base-en-v1.5",
-        {"text": [query]}
+        {"text": [query], "pooling": "cls"}
     )
     query_vector = embedding_result["data"][0]
-    
+
     # Search Vectorize
-    results = await env.SEARCH_INDEX.query(query_vector, {
+    results = await self.env.SEARCH_INDEX.query(query_vector, {
         "topK": 20,
         "returnMetadata": True
     })
-    
-    # Fetch full entries from D1
-    if not results.matches:
-        return Response.json({"results": []})
-    
-    entry_ids = [int(m.id) for m in results.matches]
-    placeholders = ",".join("?" * len(entry_ids))
-    
-    entries = await env.DB.prepare(f"""
-        SELECT e.*, f.title as feed_title, f.site_url as feed_site_url
-        FROM entries e
-        JOIN feeds f ON e.feed_id = f.id
-        WHERE e.id IN ({placeholders})
-    """).bind(*entry_ids).all()
-    
-    # Sort by Vectorize score
-    entry_map = {e["id"]: e for e in entries.results}
-    sorted_results = [
-        {**entry_map[int(m.id)], "score": m.score}
-        for m in results.matches
-        if int(m.id) in entry_map
-    ]
-    
-    return Response.json({"results": sorted_results})
+
+    # Fetch full entries from D1 and return sorted by score
+    # (see Section 5.4 for complete implementation)
 ```
 
 ### 12.4 Search UI
@@ -2073,41 +2527,43 @@ The search form is included in the HTML template header (see Section 5.3). Searc
 
 ### 13.1 OPML Export (Public)
 
-Available at `/feeds.opml` - linked from the main HTML page:
+Available at `/feeds.opml` - linked from the main HTML page. Implemented as `_export_opml` method in Section 5.4:
 
 ```python
-@app.get("/feeds.opml")
-async def export_opml(request, env):
+# Inside PlanetCF class
+
+async def _export_opml(self):
     """Export all active feeds as OPML."""
-    
-    feeds = await env.DB.prepare("""
-        SELECT url, title, site_url 
-        FROM feeds 
-        WHERE is_active = 1 
+    import html
+
+    feeds = await self.env.DB.prepare("""
+        SELECT url, title, site_url
+        FROM feeds
+        WHERE is_active = 1
         ORDER BY title
     """).all()
-    
+
     opml = f'''<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
   <head>
     <title>Planet CF Subscriptions</title>
     <dateCreated>{datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000")}</dateCreated>
-    <ownerName>{env.PLANET_OWNER_NAME}</ownerName>
+    <ownerName>{self.env.PLANET_OWNER_NAME}</ownerName>
   </head>
   <body>
     <outline text="Planet CF Feeds" title="Planet CF Feeds">
 '''
-    
+
     for feed in feeds.results:
         title = html.escape(feed["title"] or feed["url"])
         xml_url = html.escape(feed["url"])
         html_url = html.escape(feed["site_url"] or "")
         opml += f'      <outline type="rss" text="{title}" title="{title}" xmlUrl="{xml_url}" htmlUrl="{html_url}"/>\n'
-    
+
     opml += '''    </outline>
   </body>
 </opml>'''
-    
+
     return Response(opml, headers={
         "Content-Type": "application/xml; charset=utf-8",
         "Content-Disposition": 'attachment; filename="planetcf-feeds.opml"'
@@ -2128,42 +2584,49 @@ Add link in HTML template footer:
 
 ### 13.2 OPML Import (Admin Only)
 
+Implemented as `_import_opml` method, called from the admin route handler in Section 5.4:
+
 ```python
-@app.post("/admin/import-opml")
-async def import_opml(request, env, admin):
+# Inside PlanetCF class
+
+async def _import_opml(self, request, admin):
     """Import feeds from uploaded OPML file. Admin only."""
-    
+    import xml.etree.ElementTree as ET
+
     form = await request.formData()
     opml_file = form.get("opml")
-    
+
     if not opml_file:
-        return Response.json({"error": "No file uploaded"}, status=400)
-    
+        return Response(
+            json.dumps({"error": "No file uploaded"}),
+            status=400,
+            headers={"Content-Type": "application/json"}
+        )
+
     content = await opml_file.text()
-    
+
     # Parse OPML
-    import xml.etree.ElementTree as ET
     root = ET.fromstring(content)
-    
+
     imported = 0
     skipped = 0
     errors = []
-    
+
     for outline in root.iter("outline"):
         xml_url = outline.get("xmlUrl")
         if not xml_url:
             continue
-        
+
         title = outline.get("title") or outline.get("text") or xml_url
         html_url = outline.get("htmlUrl")
-        
-        # Validate URL
-        if not is_safe_url(xml_url):
+
+        # Validate URL (SSRF protection)
+        if not self._is_safe_url(xml_url):
             errors.append(f"Skipped unsafe URL: {xml_url}")
             continue
-        
+
         try:
-            await env.DB.prepare("""
+            await self.env.DB.prepare("""
                 INSERT INTO feeds (url, title, site_url, is_active)
                 VALUES (?, ?, ?, 1)
                 ON CONFLICT(url) DO NOTHING
@@ -2172,19 +2635,29 @@ async def import_opml(request, env, admin):
         except Exception as e:
             skipped += 1
             errors.append(f"Failed to import {xml_url}: {e}")
-    
+
     # Audit log
-    await log_admin_action(env, admin["id"], "import_opml", "feeds", None, {
+    await self._log_admin_action(admin["id"], "import_opml", "feeds", None, {
         "imported": imported,
         "skipped": skipped,
         "errors": errors[:10]
     })
-    
-    return Response.json({
-        "imported": imported,
-        "skipped": skipped,
-        "errors": errors[:10]
-    })
+
+    return Response(
+        json.dumps({
+            "imported": imported,
+            "skipped": skipped,
+            "errors": errors[:10]
+        }),
+        headers={"Content-Type": "application/json"}
+    )
+
+async def _log_admin_action(self, admin_id, action, target_type, target_id, details):
+    """Log an admin action to the audit log."""
+    await self.env.DB.prepare("""
+        INSERT INTO audit_log (admin_id, action, target_type, target_id, details)
+        VALUES (?, ?, ?, ?, ?)
+    """).bind(admin_id, action, target_type, target_id, json.dumps(details)).run()
 ```
 
 ### 13.3 Admin Import UI
