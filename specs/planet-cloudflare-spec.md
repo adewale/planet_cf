@@ -487,9 +487,324 @@ WHERE id NOT IN (SELECT id FROM entries_to_keep);
 
 ---
 
-## 5. Workers Specification
+## 5. Type Definitions
 
-### 5.1 Scheduler Worker (Cron Trigger)
+Leverage Python's type system for safety, documentation, and IDE support. All types are defined in `src/types.py` and imported where needed.
+
+### 5.1 Semantic Type Aliases
+
+```python
+# src/types.py
+from typing import NewType, Literal
+
+# Semantic IDs - prevent mixing up feed_id and entry_id
+FeedId = NewType("FeedId", int)
+EntryId = NewType("EntryId", int)
+AdminId = NewType("AdminId", int)
+
+# Constrained string types
+AuditAction = Literal[
+    "add_feed",
+    "remove_feed",
+    "update_feed",
+    "import_opml",
+    "export_opml",
+    "manual_refresh",
+]
+
+FeedStatus = Literal["active", "paused", "failing"]
+ContentType = Literal["html", "atom", "rss", "opml"]
+```
+
+### 5.2 Domain Models
+
+```python
+# src/types.py (continued)
+from dataclasses import dataclass, field, asdict
+from datetime import datetime
+from typing import Self
+import json
+
+@dataclass(frozen=True, slots=True)
+class FeedJob:
+    """Message sent to the feed queue. Immutable."""
+    feed_id: FeedId
+    feed_url: str
+    etag: str | None = None
+    last_modified: str | None = None
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Self:
+        return cls(
+            feed_id=FeedId(data["feed_id"]),
+            feed_url=data["feed_url"],
+            etag=data.get("etag"),
+            last_modified=data.get("last_modified"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class Session:
+    """Admin session stored in signed cookie. Immutable."""
+    github_username: str
+    github_id: int
+    avatar_url: str | None
+    exp: int  # Unix timestamp
+
+    def is_expired(self) -> bool:
+        import time
+        return self.exp < time.time()
+
+    def to_json(self) -> str:
+        return json.dumps(asdict(self))
+
+    @classmethod
+    def from_json(cls, data: str) -> Self:
+        return cls(**json.loads(data))
+
+
+@dataclass(slots=True)
+class ParsedEntry:
+    """Normalized entry from feedparser. Handles the many edge cases."""
+    guid: str
+    url: str
+    title: str
+    content: str
+    summary: str | None = None
+    author: str | None = None
+    published_at: datetime | None = None
+
+    @classmethod
+    def from_feedparser(cls, entry: dict, feed_link: str) -> Self:
+        """Normalize feedparser's inconsistent output."""
+        # GUID: try id, then link, then generate from title
+        guid = entry.get("id") or entry.get("link") or hash(entry.get("title", ""))
+
+        # URL: prefer link, fall back to id if it's a URL
+        url = entry.get("link") or (entry.get("id") if entry.get("id", "").startswith("http") else feed_link)
+
+        # Content: try content[0].value, then summary, then description
+        content = ""
+        if entry.get("content"):
+            content = entry["content"][0].get("value", "")
+        elif entry.get("summary"):
+            content = entry["summary"]
+        elif entry.get("description"):
+            content = entry["description"]
+
+        # Published: feedparser provides parsed time tuple
+        published_at = None
+        if entry.get("published_parsed"):
+            published_at = datetime(*entry["published_parsed"][:6])
+        elif entry.get("updated_parsed"):
+            published_at = datetime(*entry["updated_parsed"][:6])
+
+        return cls(
+            guid=str(guid),
+            url=url,
+            title=entry.get("title", "Untitled"),
+            content=content,
+            summary=entry.get("summary"),
+            author=entry.get("author"),
+            published_at=published_at,
+        )
+```
+
+### 5.3 D1 Row Types
+
+```python
+# src/types.py (continued)
+from typing import TypedDict, NotRequired
+
+class FeedRow(TypedDict):
+    """Row from the feeds table."""
+    id: int
+    url: str
+    title: NotRequired[str | None]
+    site_url: NotRequired[str | None]
+    is_active: int  # SQLite boolean
+    consecutive_failures: int
+    last_etag: NotRequired[str | None]
+    last_modified_header: NotRequired[str | None]
+    last_success_at: NotRequired[str | None]
+    last_error_at: NotRequired[str | None]
+    last_error_message: NotRequired[str | None]
+    created_at: str
+    updated_at: str
+
+
+class EntryRow(TypedDict):
+    """Row from the entries table."""
+    id: int
+    feed_id: int
+    guid: str
+    url: str
+    title: str
+    author: NotRequired[str | None]
+    content: str
+    summary: NotRequired[str | None]
+    published_at: str
+    created_at: str
+    # Joined fields (when querying with feeds)
+    feed_title: NotRequired[str]
+    feed_site_url: NotRequired[str]
+
+
+class AdminRow(TypedDict):
+    """Row from the admins table."""
+    id: int
+    github_username: str
+    github_id: NotRequired[int | None]
+    display_name: str
+    is_active: int
+    last_login_at: NotRequired[str | None]
+    created_at: str
+```
+
+### 5.4 Result Type for Error Handling
+
+```python
+# src/types.py (continued)
+from dataclasses import dataclass
+from typing import Generic, TypeVar
+from enum import Enum, auto
+
+T = TypeVar("T")
+E = TypeVar("E")
+
+@dataclass(frozen=True, slots=True)
+class Ok(Generic[T]):
+    """Success case of Result."""
+    value: T
+
+@dataclass(frozen=True, slots=True)
+class Err(Generic[E]):
+    """Error case of Result."""
+    error: E
+
+# Result is either Ok or Err
+type Result[T, E] = Ok[T] | Err[E]
+
+
+class FetchError(Enum):
+    """Possible errors when fetching a feed."""
+    TIMEOUT = auto()
+    CONNECTION_ERROR = auto()
+    INVALID_URL = auto()
+    NOT_FOUND = auto()
+    GONE = auto()  # 410 - feed permanently removed
+    PARSE_ERROR = auto()
+    EMPTY_FEED = auto()
+    RATE_LIMITED = auto()
+    SERVER_ERROR = auto()
+
+    def is_permanent(self) -> bool:
+        """Should we stop retrying?"""
+        return self in (FetchError.INVALID_URL, FetchError.GONE, FetchError.NOT_FOUND)
+
+    def is_transient(self) -> bool:
+        """Should we retry?"""
+        return self in (FetchError.TIMEOUT, FetchError.CONNECTION_ERROR,
+                       FetchError.RATE_LIMITED, FetchError.SERVER_ERROR)
+```
+
+### 5.5 Protocol for Testability
+
+```python
+# src/types.py (continued)
+from typing import Protocol
+
+class ContentSanitizer(Protocol):
+    """Protocol for HTML sanitization - enables testing with mocks."""
+    def clean(self, html: str) -> str: ...
+
+class BleachSanitizer:
+    """Production sanitizer using bleach."""
+    ALLOWED_TAGS = [
+        "a", "abbr", "acronym", "b", "blockquote", "code", "em",
+        "i", "li", "ol", "p", "pre", "strong", "ul", "h1", "h2",
+        "h3", "h4", "h5", "h6", "br", "hr", "img", "figure", "figcaption",
+    ]
+    ALLOWED_ATTRS = {
+        "a": ["href", "title"],
+        "img": ["src", "alt", "title"],
+        "abbr": ["title"],
+        "acronym": ["title"],
+    }
+
+    def clean(self, html: str) -> str:
+        import bleach
+        return bleach.clean(
+            html,
+            tags=self.ALLOWED_TAGS,
+            attributes=self.ALLOWED_ATTRS,
+            strip=True,
+        )
+
+
+class NoOpSanitizer:
+    """Test sanitizer that passes through unchanged."""
+    def clean(self, html: str) -> str:
+        return html
+```
+
+### 5.6 Usage Example
+
+```python
+# Using types throughout the codebase
+from src.types import (
+    FeedId, EntryId, FeedJob, Session, ParsedEntry,
+    FeedRow, EntryRow, Result, Ok, Err, FetchError,
+    ContentSanitizer, BleachSanitizer,
+)
+
+async def process_feed(job: FeedJob, sanitizer: ContentSanitizer) -> Result[int, FetchError]:
+    """Process a feed and return count of new entries, or an error."""
+    try:
+        response = await fetch_with_timeout(job.feed_url)
+    except TimeoutError:
+        return Err(FetchError.TIMEOUT)
+
+    feed = feedparser.parse(response.content)
+    if feed.bozo and not feed.entries:
+        return Err(FetchError.PARSE_ERROR)
+
+    entries_added = 0
+    for raw_entry in feed.entries:
+        entry = ParsedEntry.from_feedparser(raw_entry, feed.feed.get("link", ""))
+        entry = entry._replace(content=sanitizer.clean(entry.content))
+        # ... insert into D1
+        entries_added += 1
+
+    return Ok(entries_added)
+
+# Caller must handle both cases explicitly
+match await process_feed(job, BleachSanitizer()):
+    case Ok(count):
+        print(f"Added {count} entries")
+    case Err(FetchError.TIMEOUT):
+        print("Feed timed out, will retry")
+    case Err(e) if e.is_permanent():
+        print(f"Permanent error: {e}, disabling feed")
+    case Err(e):
+        print(f"Transient error: {e}, will retry")
+```
+
+**Benefits of this type system:**
+- **IDE support**: Autocomplete, refactoring, go-to-definition all work
+- **Catch bugs early**: Mixing up `FeedId` and `EntryId` is a type error
+- **Self-documenting**: Types explain what data looks like without reading code
+- **Explicit errors**: `Result` type forces handling of error cases
+- **Testable**: `Protocol` enables dependency injection for testing
+
+---
+
+## 6. Workers Specification
+
+### 6.1 Scheduler Worker (Cron Trigger)
 
 **Trigger:** `0 * * * *` (hourly, at minute 0)
 
@@ -589,7 +904,7 @@ for i in range(0, len(messages), 100):
     await self.env.FEED_QUEUE.sendBatch(chunk)
 ```
 
-### 5.2 Feed Fetcher Worker (Queue Consumer)
+### 6.2 Feed Fetcher Worker (Queue Consumer)
 
 **Trigger:** Queue consumer for `planetcf-feed-queue`
 
@@ -937,7 +1252,7 @@ class PlanetCF(WorkerEntrypoint):
         """).bind(title, site_url, etag, last_modified, feed_id).run()
 ```
 
-### 5.3 HTML Generation (On-Demand)
+### 6.3 HTML Generation (On-Demand)
 
 **Trigger:** HTTP request to `/` (no separate cron — generated when requested)
 
@@ -1301,7 +1616,7 @@ class PlanetCF(WorkerEntrypoint):
         return feed_xml
 ```
 
-### 5.4 HTTP Worker
+### 6.4 HTTP Worker
 
 **Trigger:** HTTP requests to the domain
 
@@ -1701,9 +2016,9 @@ class PlanetCF(WorkerEntrypoint):
 
 ---
 
-## 6. Admin Interface
+## 7. Admin Interface
 
-### 6.1 Authentication
+### 7.1 Authentication
 
 Use GitHub OAuth for admin authentication with **signed cookies** (stateless):
 
@@ -1740,7 +2055,7 @@ Payload (JSON, base64-encoded):
 Signature: HMAC-SHA256(SESSION_SECRET, base64_payload)
 ```
 
-### 6.2 Admin Configuration
+### 7.2 Admin Configuration
 
 Admins are seeded from a configuration file on first deploy. The only default admin is the project maintainer:
 
@@ -1769,7 +2084,7 @@ ON CONFLICT(github_username) DO NOTHING;
 
 **Note:** The `github_id` is populated on first login via OAuth. Additional admins can be added through the admin interface by existing admins.
 
-### 6.3 Admin API Endpoints
+### 7.3 Admin API Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -1784,7 +2099,7 @@ ON CONFLICT(github_username) DO NOTHING;
 | POST | `/admin/dlq/:id/retry` | Retry failed feed |
 | GET | `/admin/audit` | View audit log |
 
-### 6.4 Admin Dashboard Features
+### 7.4 Admin Dashboard Features
 
 - **Feed Management**: Add, remove, enable/disable feeds
 - **OPML Import**: Bulk import feeds from OPML files
@@ -1795,9 +2110,9 @@ ON CONFLICT(github_username) DO NOTHING;
 
 ---
 
-## 7. Security
+## 8. Security
 
-### 7.1 XSS Prevention (CVE-2009-2937 Mitigation)
+### 8.1 XSS Prevention (CVE-2009-2937 Mitigation)
 
 All HTML content from feeds is sanitized using `bleach`:
 
@@ -1807,7 +2122,7 @@ All HTML content from feeds is sanitized using `bleach`:
 - Only allow `http://` and `https://` URL schemes
 - Content Security Policy headers in generated HTML
 
-### 7.2 SSRF Prevention
+### 8.2 SSRF Prevention
 
 Validate feed URLs before fetching (see `_is_safe_url` in Section 5.2 for full implementation):
 
@@ -1862,7 +2177,7 @@ def _is_safe_url(self, url):
 
 **Important:** URLs must be re-validated after redirects to prevent redirect-based SSRF attacks. See `_process_single_feed` in Section 5.2 which calls `_is_safe_url` on the final URL after following redirects.
 
-### 7.3 Good Netizen Behavior
+### 8.3 Good Netizen Behavior
 
 Following [rogue_planet](https://github.com/adewale/rogue_planet)'s HTTP best practices to minimize server load and avoid being blocked:
 
@@ -1978,9 +2293,9 @@ Queue-based fan-out naturally staggers requests across time. With `max_batch_siz
 
 ---
 
-## 8. Configuration
+## 9. Configuration
 
-### 8.1 Wrangler Configuration
+### 9.1 Wrangler Configuration
 
 As of Wrangler v3.91.0 (late 2024), Cloudflare recommends **JSONC** (`wrangler.jsonc`) over TOML. New features are JSONC-first, and `npm create cloudflare@latest` now generates JSONC by default.
 
@@ -2077,7 +2392,7 @@ As of Wrangler v3.91.0 (late 2024), Cloudflare recommends **JSONC** (`wrangler.j
 - **Comments supported**: JSONC allows `//` comments (unlike standard JSON)
 - **Consistent tooling**: Better integration with TypeScript/JavaScript ecosystems
 
-### 8.2 Python Dependencies & Tooling
+### 9.2 Python Dependencies & Tooling
 
 Use the **Astral toolchain** for a modern Python development experience:
 
@@ -2156,7 +2471,7 @@ quote-style = "double"
 indent-style = "space"
 ```
 
-### 8.3 Editor Integration
+### 9.3 Editor Integration
 
 ty provides a **language server** (LSP) for real-time feedback:
 
@@ -2179,7 +2494,7 @@ uv tool install ty@latest
 - **Auto-import**: Automatically add missing imports
 - **Instant diagnostics**: <5ms feedback after edits (vs 300ms+ for pyright)
 
-### 8.4 Continuous Integration
+### 9.4 Continuous Integration
 
 ```yaml
 # .github/workflows/check.yml
@@ -2224,9 +2539,9 @@ jobs:
 
 ---
 
-## 9. Deployment
+## 10. Deployment
 
-### 9.1 Initial Setup (Wrangler v4.58+)
+### 10.1 Initial Setup (Wrangler v4.58+)
 
 ```bash
 # 1. Ensure modern Wrangler (v4.58.0 or later, January 2026)
@@ -2263,7 +2578,7 @@ uv run python scripts/seed_admins.py
 wrangler deploy
 ```
 
-### 9.2 Adding Initial Feeds
+### 10.2 Adding Initial Feeds
 
 Via admin interface at `https://planetcf.com/admin` or D1 directly:
 
@@ -2274,7 +2589,7 @@ INSERT INTO feeds (url, title, is_active) VALUES
     ('https://rachelbythebay.com/w/atom.xml', 'Rachel by the Bay', 1);
 ```
 
-### 9.3 Admin Seeding from Config
+### 10.3 Admin Seeding from Config
 
 Admins are seeded from `config/admins.json`, not hardcoded in migrations:
 
@@ -2339,7 +2654,7 @@ This approach:
 
 ---
 
-## 10. Cost Analysis
+## 11. Cost Analysis
 
 **TL;DR: ~$5/month** — the Workers Paid plan's $5 base subscription covers everything at typical scales.
 
@@ -2353,11 +2668,11 @@ This approach:
 
 ---
 
-## 11. Observability 2.0
+## 12. Observability 2.0
 
 Following the principles from [Workers Observability](https://blog.cloudflare.com/introducing-workers-observability-logs-metrics-and-queries-all-in-one-place/) and the ["Logging Sucks"](https://loggingsucks.com/) philosophy of wide events.
 
-### 11.1 Enable Workers Logs
+### 12.1 Enable Workers Logs
 
 Configure Workers Logs for all Planet CF workers:
 
@@ -2377,7 +2692,7 @@ Workers Logs provides:
 - Invocation-grouped log views
 - 7-day retention on paid plan
 
-### 11.2 Wide Events (Canonical Log Lines)
+### 12.2 Wide Events (Canonical Log Lines)
 
 Instead of scattered log statements, emit **one wide event per operation** containing all context needed for debugging. This enables queries like:
 
@@ -2393,7 +2708,7 @@ Instead of scattered log statements, emit **one wide event per operation** conta
 4. **Business context**: Not just "what happened" but "who was affected and why it matters"
 5. **Tail sampling**: Keep 100% of errors, sample successes
 
-### 11.3 Wide Event Schemas
+### 12.3 Wide Event Schemas
 
 #### Feed Fetch Event
 
@@ -2533,7 +2848,7 @@ def emit_page_serve_event(request, response, ctx):
     print(json.dumps(event))
 ```
 
-### 11.4 Query Examples (Workers Observability Query Builder)
+### 12.4 Query Examples (Workers Observability Query Builder)
 
 With wide events, use the [Workers Observability Query Builder](https://dash.cloudflare.com/?to=/:account/workers-and-pages/observability) to answer debugging questions:
 
@@ -2582,7 +2897,7 @@ event_type = "html_generation"
     avg(entries_total) as avg_entries
 ```
 
-### 11.5 Tail Sampling Strategy
+### 12.5 Tail Sampling Strategy
 
 For high-traffic deployments, implement tail sampling to control costs while preserving debuggability:
 
@@ -2626,7 +2941,7 @@ def emit_event(event: dict):
         print(json.dumps(event))
 ```
 
-### 11.6 Key Metrics Dashboard
+### 12.6 Key Metrics Dashboard
 
 Configure a Workers Observability dashboard showing:
 
@@ -2639,7 +2954,7 @@ Configure a Workers Observability dashboard showing:
 | Cache hit rate | `event_type="feed_fetch" \| countif(http_cached) / count()` | < 50% |
 | Page serve p95 | `event_type="page_serve" \| p95(wall_time_ms)` | > 500 ms |
 
-### 11.7 Alerting
+### 12.7 Alerting
 
 Set up alerts via Workers Observability or external integration:
 
@@ -2653,18 +2968,18 @@ Set up alerts via Workers Observability or external integration:
 
 ---
 
-## 12. Full-Text Search (Vectorize)
+## 13. Full-Text Search (Vectorize)
 
 Semantic search across entries using Workers AI for embeddings and Vectorize for storage/retrieval.
 
-### 12.1 Vectorize Index Setup
+### 13.1 Vectorize Index Setup
 
 ```bash
 # Create the search index (768 dimensions for bge-base-en-v1.5)
 wrangler vectorize create planetcf-entries --dimensions=768 --metric=cosine
 ```
 
-### 12.2 Embedding Generation
+### 13.2 Embedding Generation
 
 Embeddings are generated when entries are stored (see `_index_entry_for_search` in Section 5.2). Key implementation details:
 
@@ -2700,7 +3015,7 @@ async def _index_entry_for_search(self, entry_id, title, content):
 
 **Note:** The `pooling: "cls"` parameter uses CLS token pooling which provides better accuracy than mean pooling for this use case.
 
-### 12.3 Search Endpoint
+### 13.3 Search Endpoint
 
 The search endpoint is implemented in the `_search_entries` method (see Section 5.4). It handles the `/search?q=query` route:
 
@@ -2736,15 +3051,15 @@ async def _search_entries(self, request):
     # (see Section 5.4 for complete implementation)
 ```
 
-### 12.4 Search UI
+### 13.4 Search UI
 
 The search form is included in the HTML template header (see Section 5.3). Search results are returned as JSON and can be rendered client-side or via a separate results template.
 
 ---
 
-## 13. OPML Import/Export
+## 14. OPML Import/Export
 
-### 13.1 OPML Export (Public)
+### 14.1 OPML Export (Public)
 
 Available at `/feeds.opml` - linked from the main HTML page. Implemented as `_export_opml` method in Section 5.4:
 
@@ -2801,7 +3116,7 @@ Add link in HTML template footer:
 </footer>
 ```
 
-### 13.2 OPML Import (Admin Only)
+### 14.2 OPML Import (Admin Only)
 
 Implemented as `_import_opml` method, called from the admin route handler in Section 5.4:
 
@@ -2879,7 +3194,7 @@ async def _log_admin_action(self, admin_id, action, target_type, target_id, deta
     """).bind(admin_id, action, target_type, target_id, json.dumps(details)).run()
 ```
 
-### 13.3 Admin Import UI
+### 14.3 Admin Import UI
 
 ```html
 <form action="/admin/import-opml" method="POST" enctype="multipart/form-data">
@@ -2891,7 +3206,7 @@ async def _log_admin_action(self, admin_id, action, target_type, target_id, deta
 
 ---
 
-## 14. References
+## 15. References
 
 - [rogue_planet](https://github.com/adewale/rogue_planet) - Design inspiration, good netizen practices
 - [Planet Venus](https://github.com/rubys/venus) - Original Planet aggregator
