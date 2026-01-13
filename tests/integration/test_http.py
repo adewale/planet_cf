@@ -1,8 +1,9 @@
 # tests/integration/test_http.py
 """Integration tests for HTTP endpoint handling."""
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 
 class MockRequest:

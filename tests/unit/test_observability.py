@@ -2,10 +2,7 @@
 """Tests for the observability module."""
 
 import json
-from io import StringIO
-from unittest.mock import patch
 
-import pytest
 from freezegun import freeze_time
 
 from src.observability import (

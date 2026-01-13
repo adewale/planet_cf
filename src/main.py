@@ -22,8 +22,6 @@ from xml.sax.saxutils import escape
 
 import feedparser
 import httpx
-from bleach import clean
-from jinja2 import BaseLoader, Environment
 from workers import Response, WorkerEntrypoint
 
 from .observability import (
@@ -33,6 +31,13 @@ from .observability import (
     Timer,
     emit_event,
 )
+from .templates import (
+    TEMPLATE_ADMIN_DASHBOARD,
+    TEMPLATE_INDEX,
+    TEMPLATE_SEARCH,
+    render_template,
+)
+from .types import BleachSanitizer
 
 # =============================================================================
 # Configuration
@@ -43,46 +48,8 @@ HTTP_TIMEOUT_SECONDS = 30  # HTTP request timeout
 USER_AGENT = "PlanetCF/1.0 (+https://planetcf.com)"
 SESSION_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
 
-# HTML sanitization settings (XSS prevention - CVE-2009-2937)
-ALLOWED_TAGS = [
-    "a",
-    "abbr",
-    "acronym",
-    "b",
-    "blockquote",
-    "code",
-    "em",
-    "i",
-    "li",
-    "ol",
-    "strong",
-    "ul",
-    "p",
-    "br",
-    "pre",
-    "h1",
-    "h2",
-    "h3",
-    "h4",
-    "h5",
-    "h6",
-    "img",
-    "figure",
-    "figcaption",
-    "table",
-    "thead",
-    "tbody",
-    "tr",
-    "th",
-    "td",
-]
-
-ALLOWED_ATTRIBUTES = {
-    "a": ["href", "title", "rel"],
-    "img": ["src", "alt", "title", "width", "height"],
-    "abbr": ["title"],
-    "acronym": ["title"],
-}
+# HTML sanitizer instance (uses settings from types.py)
+_sanitizer = BleachSanitizer()
 
 # Cloud metadata endpoints to block (SSRF protection)
 BLOCKED_METADATA_IPS = {
@@ -91,202 +58,55 @@ BLOCKED_METADATA_IPS = {
     "192.0.0.192",  # Oracle Cloud metadata
 }
 
+
 # =============================================================================
-# HTML Template
+# Response Helpers
 # =============================================================================
 
-HTML_TEMPLATE = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ planet.name }}</title>
-    <link rel="stylesheet" href="/static/style.css">
-    <link rel="alternate" type="application/atom+xml" title="{{ planet.name }} Atom Feed" href="/feed.atom">
-    <link rel="alternate" type="application/rss+xml" title="{{ planet.name }} RSS Feed" href="/feed.rss">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https:; style-src 'self' 'unsafe-inline';">
-</head>
-<body>
-    <header>
-        <h1>{{ planet.name }}</h1>
-        <p>{{ planet.description }}</p>
-        <form action="/search" method="GET" class="search-form">
-            <input type="search" name="q" placeholder="Search entries..."
-                   aria-label="Search entries">
-            <button type="submit">Search</button>
-        </form>
-    </header>
 
-    <div class="container">
-        <main>
-            {% for date, day_entries in entries_by_date.items() %}
-            <section class="day">
-                <h2 class="date">{{ date }}</h2>
-                {% for entry in day_entries %}
-                <article>
-                    <header>
-                        <h3><a href="{{ entry.url }}">{{ entry.title }}</a></h3>
-                        <p class="meta">
-                            <span class="author">{{ entry.author or entry.feed_title }}</span>
-                            <time datetime="{{ entry.published_at }}">{{ entry.published_at_formatted }}</time>
-                        </p>
-                    </header>
-                    <div class="content">
-                        {{ entry.content | safe }}
-                    </div>
-                </article>
-                {% endfor %}
-            </section>
-            {% endfor %}
-        </main>
+def html_response(content: str, cache_max_age: int = 3600) -> Response:
+    """Create an HTML response with caching headers."""
+    return Response(
+        content,
+        headers={
+            "Content-Type": "text/html; charset=utf-8",
+            "Cache-Control": f"public, max-age={cache_max_age}, stale-while-revalidate=60",
+        },
+    )
 
-        <aside class="sidebar">
-            <h2>Subscriptions</h2>
-            <ul class="feeds">
-                {% for feed in feeds %}
-                <li class="{{ 'healthy' if feed.is_healthy else 'unhealthy' }}">
-                    <a href="{{ feed.site_url }}">{{ feed.title }}</a>
-                    <span class="last-updated">{{ feed.last_success_at_relative }}</span>
-                </li>
-                {% endfor %}
-            </ul>
-        </aside>
-    </div>
 
-    <footer>
-        <p>
-            <a href="/feed.atom">Atom</a> ·
-            <a href="/feed.rss">RSS</a> ·
-            <a href="/feeds.opml">OPML</a>
-        </p>
-        <p>Powered by <a href="https://github.com/cloudflare/planetcf">Planet CF</a></p>
-        <p>Last updated: {{ generated_at }}</p>
-    </footer>
-</body>
-</html>
-"""
+def json_response(data: dict, status: int = 200) -> Response:
+    """Create a JSON response."""
+    return Response(
+        json.dumps(data),
+        status=status,
+        headers={"Content-Type": "application/json"},
+    )
 
-SEARCH_TEMPLATE = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Search Results - {{ planet.name }}</title>
-    <link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
-    <header>
-        <h1><a href="/">{{ planet.name }}</a></h1>
-        <form action="/search" method="GET" class="search-form">
-            <input type="search" name="q" placeholder="Search entries..."
-                   aria-label="Search entries" value="{{ query }}">
-            <button type="submit">Search</button>
-        </form>
-    </header>
 
-    <main>
-        <h2>Search Results for "{{ query }}"</h2>
-        {% if results %}
-        <ul class="search-results">
-            {% for entry in results %}
-            <li>
-                <h3><a href="{{ entry.url }}">{{ entry.title }}</a></h3>
-                <p class="meta">
-                    <span class="author">{{ entry.author or entry.feed_title }}</span>
-                    <span class="score">Relevance: {{ "%.2f"|format(entry.score) }}</span>
-                </p>
-                <p class="summary">{{ entry.summary or entry.content[:200] }}...</p>
-            </li>
-            {% endfor %}
-        </ul>
-        {% else %}
-        <p>No results found for "{{ query }}"</p>
-        {% endif %}
-    </main>
+def json_error(message: str, status: int = 400) -> Response:
+    """Create a JSON error response."""
+    return json_response({"error": message}, status=status)
 
-    <footer>
-        <p><a href="/">Back to Planet CF</a></p>
-    </footer>
-</body>
-</html>
-"""
 
-ADMIN_TEMPLATE = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin - {{ planet.name }}</title>
-    <link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
-    <header>
-        <h1>Admin Dashboard</h1>
-        <p>Welcome, {{ admin.display_name or admin.github_username }}</p>
-        <form action="/admin/logout" method="POST" style="display: inline;">
-            <button type="submit">Logout</button>
-        </form>
-    </header>
+def redirect_response(location: str, cookies: dict | None = None) -> Response:
+    """Create a redirect response with optional cookies."""
+    headers = {"Location": location}
+    if cookies:
+        for name, value in cookies.items():
+            headers["Set-Cookie"] = value
+    return Response("", status=302, headers=headers)
 
-    <main>
-        <section>
-            <h2>Feeds</h2>
-            <form action="/admin/feeds" method="POST" class="add-feed-form">
-                <input type="url" name="url" placeholder="Feed URL" required>
-                <input type="text" name="title" placeholder="Title (optional)">
-                <button type="submit">Add Feed</button>
-            </form>
 
-            <table>
-                <thead>
-                    <tr>
-                        <th>Title</th>
-                        <th>URL</th>
-                        <th>Status</th>
-                        <th>Last Success</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for feed in feeds %}
-                    <tr class="{{ 'unhealthy' if feed.consecutive_failures >= 3 else '' }}">
-                        <td>{{ feed.title or 'Untitled' }}</td>
-                        <td><a href="{{ feed.url }}">{{ feed.url[:50] }}...</a></td>
-                        <td>{{ 'Active' if feed.is_active else 'Paused' }}</td>
-                        <td>{{ feed.last_success_at or 'Never' }}</td>
-                        <td>
-                            <form action="/admin/feeds/{{ feed.id }}" method="POST" style="display: inline;">
-                                <input type="hidden" name="_method" value="DELETE">
-                                <button type="submit">Delete</button>
-                            </form>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </section>
-
-        <section>
-            <h2>Import OPML</h2>
-            <form action="/admin/import-opml" method="POST" enctype="multipart/form-data">
-                <input type="file" name="opml" accept=".opml,.xml" required>
-                <button type="submit">Import</button>
-            </form>
-        </section>
-
-        <section>
-            <h2>Manual Actions</h2>
-            <form action="/admin/regenerate" method="POST" style="display: inline;">
-                <button type="submit">Force Regeneration</button>
-            </form>
-        </section>
-    </main>
-</body>
-</html>
-"""
+def feed_response(content: str, content_type: str, cache_max_age: int = 3600) -> Response:
+    """Create a feed response (Atom/RSS/OPML) with caching headers."""
+    return Response(
+        content,
+        headers={
+            "Content-Type": f"{content_type}; charset=utf-8",
+            "Cache-Control": f"public, max-age={cache_max_age}, stale-while-revalidate=60",
+        },
+    )
 
 
 # =============================================================================
@@ -603,13 +423,7 @@ class PlanetCF(WorkerEntrypoint):
 
     def _sanitize_html(self, html_content):
         """Sanitize HTML to prevent XSS attacks (CVE-2009-2937 mitigation)."""
-        return clean(
-            html_content,
-            tags=ALLOWED_TAGS,
-            attributes=ALLOWED_ATTRIBUTES,
-            protocols=["http", "https", "mailto"],
-            strip=True,
-        )
+        return _sanitizer.clean(html_content)
 
     def _is_safe_url(self, url):
         """SSRF protection - reject internal/private URLs."""
@@ -826,7 +640,7 @@ class PlanetCF(WorkerEntrypoint):
                     response = Response("Not Found", status=404)
                     event.content_type = "error"
 
-            except Exception as e:
+            except Exception:
                 event.wall_time_ms = timer.elapsed()
                 event.status_code = 500
                 emit_event(event)
@@ -851,16 +665,8 @@ class PlanetCF(WorkerEntrypoint):
         For a planet aggregator with ~10-20 cache misses/hour globally,
         this latency is acceptable and eliminates KV complexity.
         """
-
         html = await self._generate_html()
-
-        return Response(
-            html,
-            headers={
-                "Content-Type": "text/html; charset=utf-8",
-                "Cache-Control": "public, max-age=3600, stale-while-revalidate=60",
-            },
-        )
+        return html_response(html)
 
     async def _generate_html(self, trigger: str = "http", triggered_by: str | None = None):
         """
@@ -877,12 +683,7 @@ class PlanetCF(WorkerEntrypoint):
 
         with Timer() as total_timer:
             # Get planet config from environment
-            planet = {
-                "name": getattr(self.env, "PLANET_NAME", None) or "Planet CF",
-                "description": getattr(self.env, "PLANET_DESCRIPTION", None)
-                or "Aggregated posts from Cloudflare employees and community",
-                "link": getattr(self.env, "PLANET_URL", None) or "https://planetcf.com",
-            }
+            planet = self._get_planet_config()
 
             # Apply retention policy first (delete old entries and their vectors)
             await self._apply_retention_policy()
@@ -936,10 +737,8 @@ class PlanetCF(WorkerEntrypoint):
 
             # Render template - track template time
             with Timer() as render_timer:
-                jinja_env = Environment(loader=BaseLoader())
-                template = jinja_env.from_string(HTML_TEMPLATE)
-
-                html = template.render(
+                html = render_template(
+                    TEMPLATE_INDEX,
                     planet=planet,
                     entries_by_date=entries_by_date,
                     feeds=feeds,
@@ -1036,33 +835,17 @@ class PlanetCF(WorkerEntrypoint):
 
     async def _serve_atom(self):
         """Generate and serve Atom feed on-demand."""
-
         entries = await self._get_recent_entries(50)
         planet = self._get_planet_config()
         atom = self._generate_atom_feed(planet, entries)
-
-        return Response(
-            atom,
-            headers={
-                "Content-Type": "application/atom+xml; charset=utf-8",
-                "Cache-Control": "public, max-age=3600, stale-while-revalidate=60",
-            },
-        )
+        return feed_response(atom, "application/atom+xml")
 
     async def _serve_rss(self):
         """Generate and serve RSS feed on-demand."""
-
         entries = await self._get_recent_entries(50)
         planet = self._get_planet_config()
         rss = self._generate_rss_feed(planet, entries)
-
-        return Response(
-            rss,
-            headers={
-                "Content-Type": "application/rss+xml; charset=utf-8",
-                "Cache-Control": "public, max-age=3600, stale-while-revalidate=60",
-            },
-        )
+        return feed_response(rss, "application/rss+xml")
 
     async def _get_recent_entries(self, limit):
         """Query recent entries for feeds."""
@@ -1086,7 +869,8 @@ class PlanetCF(WorkerEntrypoint):
         """Get planet configuration from environment."""
         return {
             "name": getattr(self.env, "PLANET_NAME", None) or "Planet CF",
-            "description": getattr(self.env, "PLANET_DESCRIPTION", None) or "Aggregated posts",
+            "description": getattr(self.env, "PLANET_DESCRIPTION", None)
+            or "Aggregated posts from Cloudflare employees and community",
             "link": getattr(self.env, "PLANET_URL", None) or "https://planetcf.com",
         }
 
@@ -1194,11 +978,7 @@ class PlanetCF(WorkerEntrypoint):
             query = qs.get("q", [""])[0]
 
         if not query or len(query) < 2:
-            return Response(
-                json.dumps({"error": "Query too short"}),
-                status=400,
-                headers={"Content-Type": "application/json"},
-            )
+            return json_error("Query too short")
 
         # Generate embedding for search query
         embedding_result = await self.env.AI.run(
@@ -1215,10 +995,8 @@ class PlanetCF(WorkerEntrypoint):
         if not results.matches:
             # Return HTML search page with no results
             planet = self._get_planet_config()
-            jinja_env = Environment(loader=BaseLoader())
-            template = jinja_env.from_string(SEARCH_TEMPLATE)
-            html = template.render(planet=planet, query=query, results=[])
-            return Response(html, headers={"Content-Type": "text/html; charset=utf-8"})
+            html = render_template(TEMPLATE_SEARCH, planet=planet, query=query, results=[])
+            return html_response(html, cache_max_age=0)
 
         entry_ids = [int(m.id) for m in results.matches]
         placeholders = ",".join("?" * len(entry_ids))
@@ -1244,16 +1022,8 @@ class PlanetCF(WorkerEntrypoint):
 
         # Return HTML search results page
         planet = self._get_planet_config()
-        jinja_env = Environment(loader=BaseLoader())
-        template = jinja_env.from_string(SEARCH_TEMPLATE)
-        html = template.render(planet=planet, query=query, results=sorted_results)
-
-        return Response(
-            html,
-            headers={
-                "Content-Type": "text/html; charset=utf-8",
-            },
-        )
+        html = render_template(TEMPLATE_SEARCH, planet=planet, query=query, results=sorted_results)
+        return html_response(html, cache_max_age=0)
 
     async def _serve_static(self, path):
         """Serve static files."""
@@ -1560,27 +1330,20 @@ button:hover { opacity: 0.9; }
         """).all()
 
         planet = self._get_planet_config()
-
-        jinja_env = Environment(loader=BaseLoader())
-        template = jinja_env.from_string(ADMIN_TEMPLATE)
-        html = template.render(planet=planet, admin=admin, feeds=feeds_result.results)
-
-        return Response(
-            html,
-            headers={
-                "Content-Type": "text/html; charset=utf-8",
-            },
+        html = render_template(
+            TEMPLATE_ADMIN_DASHBOARD,
+            planet=planet,
+            admin=admin,
+            feeds=feeds_result.results,
         )
+        return html_response(html, cache_max_age=0)
 
     async def _list_feeds(self):
         """List all feeds as JSON."""
         result = await self.env.DB.prepare("""
             SELECT * FROM feeds ORDER BY title
         """).all()
-
-        return Response(
-            json.dumps({"feeds": result.results}), headers={"Content-Type": "application/json"}
-        )
+        return json_response({"feeds": result.results})
 
     async def _add_feed(self, request, admin):
         """Add a new feed."""
@@ -1589,19 +1352,11 @@ button:hover { opacity: 0.9; }
         title = form.get("title")
 
         if not url:
-            return Response(
-                json.dumps({"error": "URL is required"}),
-                status=400,
-                headers={"Content-Type": "application/json"},
-            )
+            return json_error("URL is required")
 
         # Validate URL (SSRF protection)
         if not self._is_safe_url(url):
-            return Response(
-                json.dumps({"error": "Invalid or unsafe URL"}),
-                status=400,
-                headers={"Content-Type": "application/json"},
-            )
+            return json_error("Invalid or unsafe URL")
 
         try:
             result = (
@@ -1622,14 +1377,10 @@ button:hover { opacity: 0.9; }
             )
 
             # Redirect back to admin
-            return Response("", status=302, headers={"Location": "/admin"})
+            return redirect_response("/admin")
 
         except Exception as e:
-            return Response(
-                json.dumps({"error": str(e)}),
-                status=500,
-                headers={"Content-Type": "application/json"},
-            )
+            return json_error(str(e), status=500)
 
     async def _remove_feed(self, feed_id, admin):
         """Remove a feed."""
@@ -1642,11 +1393,7 @@ button:hover { opacity: 0.9; }
             )
 
             if not feed:
-                return Response(
-                    json.dumps({"error": "Feed not found"}),
-                    status=404,
-                    headers={"Content-Type": "application/json"},
-                )
+                return json_error("Feed not found", status=404)
 
             # Delete feed (entries will cascade)
             await self.env.DB.prepare("DELETE FROM feeds WHERE id = ?").bind(feed_id).run()
@@ -1661,14 +1408,10 @@ button:hover { opacity: 0.9; }
             )
 
             # Redirect back to admin
-            return Response("", status=302, headers={"Location": "/admin"})
+            return redirect_response("/admin")
 
         except Exception as e:
-            return Response(
-                json.dumps({"error": str(e)}),
-                status=500,
-                headers={"Content-Type": "application/json"},
-            )
+            return json_error(str(e), status=500)
 
     async def _update_feed(self, request, feed_id, admin):
         """Update a feed (enable/disable)."""
@@ -1694,16 +1437,10 @@ button:hover { opacity: 0.9; }
                 admin["id"], "update_feed", "feed", feed_id, {"is_active": is_active}
             )
 
-            return Response(
-                json.dumps({"success": True}), headers={"Content-Type": "application/json"}
-            )
+            return json_response({"success": True})
 
         except Exception as e:
-            return Response(
-                json.dumps({"error": str(e)}),
-                status=500,
-                headers={"Content-Type": "application/json"},
-            )
+            return json_error(str(e), status=500)
 
     async def _import_opml(self, request, admin):
         """Import feeds from uploaded OPML file. Admin only."""
@@ -1713,11 +1450,7 @@ button:hover { opacity: 0.9; }
         opml_file = form.get("opml")
 
         if not opml_file:
-            return Response(
-                json.dumps({"error": "No file uploaded"}),
-                status=400,
-                headers={"Content-Type": "application/json"},
-            )
+            return json_error("No file uploaded")
 
         content = await opml_file.text()
 
@@ -1725,11 +1458,7 @@ button:hover { opacity: 0.9; }
         try:
             root = ET.fromstring(content)
         except ET.ParseError as e:
-            return Response(
-                json.dumps({"error": f"Invalid OPML: {e}"}),
-                status=400,
-                headers={"Content-Type": "application/json"},
-            )
+            return json_error(f"Invalid OPML: {e}")
 
         imported = 0
         skipped = 0
@@ -1773,7 +1502,7 @@ button:hover { opacity: 0.9; }
         )
 
         # Redirect back to admin
-        return Response("", status=302, headers={"Location": "/admin"})
+        return redirect_response("/admin")
 
     async def _trigger_regenerate(self, admin):
         """Force regeneration by clearing edge cache (not really possible, but log the action)."""
@@ -1783,15 +1512,12 @@ button:hover { opacity: 0.9; }
         # Queue all active feeds for immediate fetch
         await self._run_scheduler()
 
-        return Response("", status=302, headers={"Location": "/admin"})
+        return redirect_response("/admin")
 
     async def _view_dlq(self):
         """View dead letter queue contents."""
         # DLQ is managed by Cloudflare Queues - this would need queue API access
-        return Response(
-            json.dumps({"message": "DLQ viewing requires Cloudflare dashboard"}),
-            headers={"Content-Type": "application/json"},
-        )
+        return json_response({"message": "DLQ viewing requires Cloudflare dashboard"})
 
     async def _view_audit_log(self):
         """View audit log."""
@@ -1802,10 +1528,7 @@ button:hover { opacity: 0.9; }
             ORDER BY al.created_at DESC
             LIMIT 100
         """).all()
-
-        return Response(
-            json.dumps({"audit_log": result.results}), headers={"Content-Type": "application/json"}
-        )
+        return json_response({"audit_log": result.results})
 
     async def _log_admin_action(self, admin_id, action, target_type, target_id, details):
         """Log an admin action to the audit log."""

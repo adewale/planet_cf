@@ -8,7 +8,6 @@ import pytest
 
 from src.types import BleachSanitizer, NoOpSanitizer
 
-
 # =============================================================================
 # HTML Sanitization Tests
 # =============================================================================
@@ -48,7 +47,7 @@ class TestBleachSanitizer:
         html = '<p onclick="alert(1)">Click me</p>'
         result = sanitizer.clean(html)
         assert "onclick" not in result
-        assert "<p>Click me</p>" == result
+        assert result == "<p>Click me</p>"
 
     def test_strips_javascript_urls(self, sanitizer):
         """javascript: URLs are removed."""

@@ -7,7 +7,6 @@ import hmac
 import json
 import time
 
-import pytest
 from freezegun import freeze_time
 
 SECRET = "test-secret-key-for-testing-only-32chars"

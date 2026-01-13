@@ -1,11 +1,11 @@
 # src/types.py
 """Type definitions for Planet CF."""
 
-from dataclasses import dataclass, field, asdict
+import json
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from enum import Enum, auto
 from typing import Generic, Literal, NewType, NotRequired, Protocol, Self, TypedDict, TypeVar
-import json
 
 # =============================================================================
 # Semantic Type Aliases
@@ -247,7 +247,7 @@ class ContentSanitizer(Protocol):
 
 
 class BleachSanitizer:
-    """Production sanitizer using bleach."""
+    """Production sanitizer using bleach for XSS prevention (CVE-2009-2937 mitigation)."""
 
     ALLOWED_TAGS = [
         "a",
@@ -255,41 +255,57 @@ class BleachSanitizer:
         "acronym",
         "b",
         "blockquote",
+        "br",
         "code",
         "em",
-        "i",
-        "li",
-        "ol",
-        "p",
-        "pre",
-        "strong",
-        "ul",
+        "figure",
+        "figcaption",
         "h1",
         "h2",
         "h3",
         "h4",
         "h5",
         "h6",
-        "br",
         "hr",
+        "i",
         "img",
-        "figure",
-        "figcaption",
+        "li",
+        "ol",
+        "p",
+        "pre",
+        "strong",
+        "table",
+        "tbody",
+        "td",
+        "th",
+        "thead",
+        "tr",
+        "ul",
     ]
     ALLOWED_ATTRS = {
-        "a": ["href", "title"],
-        "img": ["src", "alt", "title"],
+        "a": ["href", "title", "rel"],
+        "img": ["src", "alt", "title", "width", "height"],
         "abbr": ["title"],
         "acronym": ["title"],
     }
+    ALLOWED_PROTOCOLS = ["http", "https", "mailto"]
 
     def clean(self, html: str) -> str:
+        import re
+
         import bleach
+
+        # Pre-process: Remove script and style tags with their content
+        # These tags' content should never appear in output, unlike other tags
+        # where we might want to preserve text but strip the tag.
+        html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
+        html = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
 
         return bleach.clean(
             html,
             tags=self.ALLOWED_TAGS,
             attributes=self.ALLOWED_ATTRS,
+            protocols=self.ALLOWED_PROTOCOLS,
             strip=True,
         )
 

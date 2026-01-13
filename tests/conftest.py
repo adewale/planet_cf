@@ -1,14 +1,57 @@
 # tests/conftest.py
 """Shared fixtures for Planet CF tests."""
 
+import sys
 import time
 from dataclasses import dataclass
+from types import ModuleType
 from typing import Any
 
 import pytest
 
-from src.types import EntryRow, FeedId, FeedRow, Session
+# =============================================================================
+# Mock Workers Module (must be set up before importing src.main)
+# =============================================================================
 
+
+class MockResponse:
+    """Mock Cloudflare Workers Response object."""
+
+    def __init__(
+        self,
+        body: str = "",
+        status: int = 200,
+        headers: dict | None = None,
+    ):
+        self.body = body
+        self.status = status
+        self._headers = headers or {}
+
+    @property
+    def headers(self) -> dict:
+        return self._headers
+
+
+class MockWorkerEntrypoint:
+    """Mock Cloudflare Workers WorkerEntrypoint base class."""
+
+    env: Any = None
+    ctx: Any = None
+
+    def __init__(self):
+        pass
+
+
+# Create mock workers module
+_mock_workers = ModuleType("workers")
+_mock_workers.Response = MockResponse
+_mock_workers.WorkerEntrypoint = MockWorkerEntrypoint
+
+# Install the mock before any imports of src.main
+sys.modules["workers"] = _mock_workers
+
+
+from src.types import EntryRow, FeedRow, Session
 
 # =============================================================================
 # Mock Cloudflare Bindings
@@ -24,17 +67,35 @@ class MockD1Result:
 class MockD1Statement:
     """Mock D1 prepared statement."""
 
-    def __init__(self, results: list[dict]):
+    def __init__(self, results: list[dict], sql: str = ""):
         self._results = results
+        self._sql = sql
+        self._bound_args = []
 
     def bind(self, *args) -> "MockD1Statement":
+        self._bound_args = args
         return self
 
+    def _filter_results(self) -> list[dict]:
+        """Apply basic filtering based on SQL WHERE clause."""
+        import re
+        results = self._results
+
+        # Check for is_active filtering (common pattern)
+        if "where" in self._sql.lower() and "is_active" in self._sql.lower():
+            match = re.search(r'is_active\s*=\s*(\d+)', self._sql.lower())
+            if match:
+                is_active_val = int(match.group(1))
+                results = [r for r in results if r.get("is_active") == is_active_val]
+
+        return results
+
     async def all(self) -> MockD1Result:
-        return MockD1Result(results=self._results)
+        return MockD1Result(results=self._filter_results())
 
     async def first(self) -> dict | None:
-        return self._results[0] if self._results else None
+        filtered = self._filter_results()
+        return filtered[0] if filtered else None
 
     async def run(self) -> MockD1Result:
         return MockD1Result(results=[])
@@ -47,12 +108,40 @@ class MockD1:
         self._data = data or {}
 
     def prepare(self, sql: str) -> MockD1Statement:
-        # Simple mock - return data based on table mentioned in SQL
+        """
+        Parse SQL to determine which table to return data for.
+
+        Priority order:
+        1. DELETE FROM table_name
+        2. INSERT INTO table_name
+        3. UPDATE table_name
+        4. FROM table_name (the primary table in SELECT)
+        5. Simple table name match as fallback
+        """
+        import re
         sql_lower = sql.lower()
+
+        # Try to find the primary table from SQL patterns
+        patterns = [
+            r'delete\s+from\s+(\w+)',
+            r'insert\s+into\s+(\w+)',
+            r'update\s+(\w+)',
+            r'from\s+(\w+)',  # Primary table in SELECT
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, sql_lower)
+            if match:
+                table_name = match.group(1)
+                if table_name in self._data:
+                    return MockD1Statement(self._data[table_name], sql)
+
+        # Fallback: simple table name match
         for table, rows in self._data.items():
             if table in sql_lower:
-                return MockD1Statement(rows)
-        return MockD1Statement([])
+                return MockD1Statement(rows, sql)
+
+        return MockD1Statement([], sql)
 
 
 class MockQueue:
@@ -144,8 +233,8 @@ def mock_env_with_feeds(mock_env: MockEnv) -> MockEnv:
     """Create a mock environment with sample feeds."""
     mock_env.DB = MockD1({
         "feeds": [
-            {"id": 1, "url": "https://example.com/feed.xml", "title": "Example", "is_active": 1, "etag": None, "last_modified": None},
-            {"id": 2, "url": "https://test.com/rss", "title": "Test Blog", "is_active": 1, "etag": None, "last_modified": None},
+            {"id": 1, "url": "https://example.com/feed.xml", "title": "Example", "is_active": 1, "site_url": "https://example.com", "etag": None, "last_modified": None},
+            {"id": 2, "url": "https://test.com/rss", "title": "Test Blog", "is_active": 1, "site_url": "https://test.com", "etag": None, "last_modified": None},
         ]
     })
     return mock_env
