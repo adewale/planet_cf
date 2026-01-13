@@ -65,12 +65,19 @@ BLOCKED_METADATA_IPS = {
 
 
 def html_response(content: str, cache_max_age: int = 3600) -> Response:
-    """Create an HTML response with caching headers."""
+    """Create an HTML response with caching and security headers."""
+    csp = (
+        "default-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src * data:; "
+        "frame-ancestors 'none'"
+    )
     return Response(
         content,
         headers={
             "Content-Type": "text/html; charset=utf-8",
             "Cache-Control": f"public, max-age={cache_max_age}, stale-while-revalidate=60",
+            "Content-Security-Policy": csp,
         },
     )
 
@@ -89,13 +96,9 @@ def json_error(message: str, status: int = 400) -> Response:
     return json_response({"error": message}, status=status)
 
 
-def redirect_response(location: str, cookies: dict | None = None) -> Response:
-    """Create a redirect response with optional cookies."""
-    headers = {"Location": location}
-    if cookies:
-        for name, value in cookies.items():
-            headers["Set-Cookie"] = value
-    return Response("", status=302, headers=headers)
+def redirect_response(location: str) -> Response:
+    """Create a redirect response."""
+    return Response("", status=302, headers={"Location": location})
 
 
 def feed_response(content: str, content_type: str, cache_max_age: int = 3600) -> Response:
@@ -430,7 +433,8 @@ class Default(WorkerEntrypoint):
 
         try:
             parsed = urlparse(url)
-        except Exception:
+        except Exception as e:
+            print(f"URL parse error for {url}: {type(e).__name__}: {e}")
             return False
 
         # Only allow http/https
@@ -640,7 +644,8 @@ class Default(WorkerEntrypoint):
                     response = Response("Not Found", status=404)
                     event.content_type = "error"
 
-            except Exception:
+            except Exception as e:
+                print(f"Request error for {path}: {type(e).__name__}: {e}")
                 event.wall_time_ms = timer.elapsed()
                 event.status_code = 500
                 emit_event(event)
@@ -1580,7 +1585,8 @@ button:hover { opacity: 0.9; }
                 return None
 
             return payload
-        except Exception:
+        except Exception as e:
+            print(f"Session cookie verification failed: {type(e).__name__}: {e}")
             return None
 
     def _redirect_to_github_oauth(self):

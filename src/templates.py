@@ -148,7 +148,7 @@ _EMBEDDED_TEMPLATES = {
 </head>
 <body>
     <h1>Admin Dashboard</h1>
-    <p>Welcome, {{ user.name }}</p>
+    <p>Welcome, {{ admin.display_name or admin.github_username }}</p>
     <h2>Feeds</h2>
     <ul>{% for feed in feeds %}<li>{{ feed.title }} - {{ feed.url }}</li>{% endfor %}</ul>
 </body>
