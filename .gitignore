@@ -40,6 +40,14 @@ coverage.xml
 # Misc
 .DS_Store
 *.log
+*.bak
 compatibility-tests/*/node_modules/
 python_modules/
 .venv-workers/
+
+# Wrangler local state
+.wrangler/
+node_modules/
+
+# Hypothesis testing
+.hypothesis/

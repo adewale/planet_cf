@@ -24,6 +24,7 @@ import feedparser
 import httpx
 from workers import Response, WorkerEntrypoint
 
+from models import BleachSanitizer
 from observability import (
     FeedFetchEvent,
     GenerationEvent,
@@ -37,7 +38,6 @@ from templates import (
     TEMPLATE_SEARCH,
     render_template,
 )
-from models import BleachSanitizer
 
 # =============================================================================
 # Configuration
@@ -475,10 +475,7 @@ class Default(WorkerEntrypoint):
             "metadata.azure.internal",
             "instance-data",
         ]
-        if any(hostname == h or hostname.endswith("." + h) for h in metadata_hosts):
-            return False
-
-        return True
+        return not any(hostname == h or hostname.endswith("." + h) for h in metadata_hosts)
 
     async def _update_feed_success(self, feed_id, etag, last_modified):
         """Mark feed fetch as successful."""
@@ -701,7 +698,9 @@ class Default(WorkerEntrypoint):
                             e.*,
                             f.title as feed_title,
                             f.site_url as feed_site_url,
-                            ROW_NUMBER() OVER (PARTITION BY e.feed_id ORDER BY e.published_at DESC) as rn
+                            ROW_NUMBER() OVER (
+                                PARTITION BY e.feed_id ORDER BY e.published_at DESC
+                            ) as rn
                         FROM entries e
                         JOIN feeds f ON e.feed_id = f.id
                         WHERE e.published_at >= datetime('now', '-30 days')
@@ -958,7 +957,10 @@ class Default(WorkerEntrypoint):
             title = html.escape(feed["title"] or feed["url"])
             xml_url = html.escape(feed["url"])
             html_url = html.escape(feed["site_url"] or "")
-            opml += f'      <outline type="rss" text="{title}" title="{title}" xmlUrl="{xml_url}" htmlUrl="{html_url}"/>\n'
+            opml += (
+                f'      <outline type="rss" text="{title}" title="{title}" '
+                f'xmlUrl="{xml_url}" htmlUrl="{html_url}"/>\n'
+            )
 
         opml += """    </outline>
   </body>
@@ -1604,13 +1606,13 @@ button:hover { opacity: 0.9; }
             f"&state={state}"
         )
 
+        state_cookie = (
+            f"oauth_state={state}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600"
+        )
         return Response(
             "",
             status=302,
-            headers={
-                "Location": auth_url,
-                "Set-Cookie": f"oauth_state={state}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600",
-            },
+            headers={"Location": auth_url, "Set-Cookie": state_cookie},
         )
 
     async def _handle_github_callback(self, request):
@@ -1623,6 +1625,17 @@ button:hover { opacity: 0.9; }
 
         if not code:
             return Response("Missing authorization code", status=400)
+
+        # Verify state parameter matches cookie (CSRF protection)
+        cookies = request.headers.get("Cookie", "")
+        expected_state = None
+        for cookie in cookies.split(";"):
+            if cookie.strip().startswith("oauth_state="):
+                expected_state = cookie.strip()[12:]
+                break
+
+        if not state or not expected_state or state != expected_state:
+            return Response("Invalid state parameter", status=400)
 
         client_id = getattr(self.env, "GITHUB_CLIENT_ID", "")
         client_secret = getattr(self.env, "GITHUB_CLIENT_SECRET", "")
@@ -1688,13 +1701,14 @@ button:hover { opacity: 0.9; }
             }
         )
 
+        cookie = (
+            f"session={session_cookie}; HttpOnly; Secure; "
+            f"SameSite=Lax; Path=/; Max-Age={SESSION_TTL_SECONDS}"
+        )
         return Response(
             "",
             status=302,
-            headers={
-                "Location": "/admin",
-                "Set-Cookie": f"session={session_cookie}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age={SESSION_TTL_SECONDS}",
-            },
+            headers={"Location": "/admin", "Set-Cookie": cookie},
         )
 
     def _create_signed_cookie(self, payload):

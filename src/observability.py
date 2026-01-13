@@ -231,10 +231,7 @@ def emit_event(
     Returns:
         True if event was emitted, False if dropped by sampling
     """
-    if isinstance(event, dict):
-        event_dict = event
-    else:
-        event_dict = asdict(event)
+    event_dict = event if isinstance(event, dict) else asdict(event)
 
     if force or should_sample(event_dict, debug_feed_ids, sample_rate):
         print(json.dumps(event_dict))

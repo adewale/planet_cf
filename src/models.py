@@ -5,7 +5,7 @@ import json
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from enum import Enum, auto
-from typing import Generic, Literal, NewType, NotRequired, Protocol, Self, TypedDict, TypeVar
+from typing import Literal, NewType, NotRequired, Protocol, Self, TypedDict
 
 # =============================================================================
 # Semantic Type Aliases
@@ -186,19 +186,15 @@ class AdminRow(TypedDict):
 # Result Type for Error Handling
 # =============================================================================
 
-T = TypeVar("T")
-E = TypeVar("E")
-
-
 @dataclass(frozen=True, slots=True)
-class Ok(Generic[T]):
+class Ok[T]:
     """Success case of Result."""
 
     value: T
 
 
 @dataclass(frozen=True, slots=True)
-class Err(Generic[E]):
+class Err[E]:
     """Error case of Result."""
 
     error: E
