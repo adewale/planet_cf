@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Malicious Feed</title>
+    <link>https://evil.example.com</link>
+    <description>A feed with XSS attack vectors</description>
+    <item>
+      <title>XSS Attack &lt;script&gt;alert('xss')&lt;/script&gt;</title>
+      <link>https://evil.example.com/attack</link>
+      <description><![CDATA[
+        <p onclick="alert('xss')">Click me</p>
+        <img src="x" onerror="alert('xss')">
+        <script>document.cookie</script>
+        <svg onload="alert('xss')">
+        <iframe src="javascript:alert('xss')"></iframe>
+        <a href="javascript:alert('xss')">Click here</a>
+        <div style="background:url(javascript:alert('xss'))">Styled</div>
+        <input onfocus="alert('xss')" autofocus>
+        <marquee onstart="alert('xss')">Moving text</marquee>
+        <body onload="alert('xss')">
+        <video><source onerror="alert('xss')"></video>
+        <audio src="x" onerror="alert('xss')">
+        <object data="javascript:alert('xss')">
+        <embed src="javascript:alert('xss')">
+        <math><maction actiontype="statusline#javascript:alert('xss')">CLICKME</maction></math>
+      ]]></description>
+      <guid>evil-1</guid>
+      <pubDate>Mon, 01 Jan 2026 12:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Data URI Attack</title>
+      <link>https://evil.example.com/data-uri</link>
+      <description><![CDATA[
+        <a href="data:text/html,<script>alert('xss')</script>">Click for data URI</a>
+        <img src="data:image/svg+xml,<svg onload='alert(1)'>">
+      ]]></description>
+      <guid>evil-2</guid>
+      <pubDate>Tue, 02 Jan 2026 12:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Encoded Attack</title>
+      <link>https://evil.example.com/encoded</link>
+      <description><![CDATA[
+        <a href="&#106;&#97;&#118;&#97;&#115;&#99;&#114;&#105;&#112;&#116;&#58;&#97;&#108;&#101;&#114;&#116;&#40;&#39;&#88;&#83;&#83;&#39;&#41;">Encoded JS</a>
+        <img src="&#x6A;&#x61;&#x76;&#x61;&#x73;&#x63;&#x72;&#x69;&#x70;&#x74;&#x3A;&#x61;&#x6C;&#x65;&#x72;&#x74;&#x28;&#x27;&#x58;&#x53;&#x53;&#x27;&#x29;">
+      ]]></description>
+      <guid>evil-3</guid>
+      <pubDate>Wed, 03 Jan 2026 12:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

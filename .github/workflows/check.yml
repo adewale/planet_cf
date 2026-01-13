@@ -1,0 +1,47 @@
+# .github/workflows/check.yml
+name: Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --extra test
+
+      - name: Type check
+        run: uvx ty check src/
+
+      - name: Lint
+        run: uvx ruff check src/ tests/
+
+      - name: Format check
+        run: uvx ruff format --check src/ tests/
+
+      - name: Unit tests
+        run: uv run pytest tests/unit -v --tb=short
+
+      - name: Integration tests
+        run: uv run pytest tests/integration -v --tb=short
+
+      - name: Coverage report
+        run: uv run pytest tests/ --cov=src --cov-report=xml --cov-fail-under=80
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage.xml
+
+      - name: Deploy (on main)
+        if: github.ref == 'refs/heads/main'
+        run: wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

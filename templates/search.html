@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Results - {{ planet.name }}</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <h1><a href="/">{{ planet.name }}</a></h1>
+        <form action="/search" method="GET" class="search-form">
+            <input type="search" name="q" placeholder="Search entries..."
+                   aria-label="Search entries" value="{{ query }}">
+            <button type="submit">Search</button>
+        </form>
+    </header>
+
+    <main class="search-page">
+        <h2>Search Results for "{{ query }}"</h2>
+        {% if results %}
+        <ul class="search-results">
+            {% for entry in results %}
+            <li>
+                <h3><a href="{{ entry.url }}">{{ entry.title }}</a></h3>
+                <p class="meta">
+                    <span class="author">{{ entry.author or entry.feed_title }}</span>
+                    <span class="score">Relevance: {{ "%.2f"|format(entry.score) }}</span>
+                </p>
+                <p class="summary">{{ entry.summary or entry.content[:200] }}...</p>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p>No results found for "{{ query }}"</p>
+        {% endif %}
+    </main>
+
+    <footer>
+        <p><a href="/">Back to Planet CF</a></p>
+    </footer>
+</body>
+</html>

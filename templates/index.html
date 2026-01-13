@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ planet.name }}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="alternate" type="application/atom+xml" title="{{ planet.name }} Atom Feed" href="/feed.atom">
+    <link rel="alternate" type="application/rss+xml" title="{{ planet.name }} RSS Feed" href="/feed.rss">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https:; style-src 'self' 'unsafe-inline';">
+</head>
+<body>
+    <header>
+        <h1>{{ planet.name }}</h1>
+        <p>{{ planet.description }}</p>
+        <form action="/search" method="GET" class="search-form">
+            <input type="search" name="q" placeholder="Search entries..."
+                   aria-label="Search entries">
+            <button type="submit">Search</button>
+        </form>
+    </header>
+
+    <div class="container">
+        <main>
+            {% for date, day_entries in entries_by_date.items() %}
+            <section class="day">
+                <h2 class="date">{{ date }}</h2>
+                {% for entry in day_entries %}
+                <article>
+                    <header>
+                        <h3><a href="{{ entry.url }}">{{ entry.title }}</a></h3>
+                        <p class="meta">
+                            <span class="author">{{ entry.author or entry.feed_title }}</span>
+                            <time datetime="{{ entry.published_at }}">{{ entry.published_at_formatted }}</time>
+                        </p>
+                    </header>
+                    <div class="content">
+                        {{ entry.content | safe }}
+                    </div>
+                </article>
+                {% endfor %}
+            </section>
+            {% endfor %}
+        </main>
+
+        <aside class="sidebar">
+            <h2>Subscriptions</h2>
+            <ul class="feeds">
+                {% for feed in feeds %}
+                <li class="{{ 'healthy' if feed.is_healthy else 'unhealthy' }}">
+                    <a href="{{ feed.site_url }}">{{ feed.title }}</a>
+                    <span class="last-updated">{{ feed.last_success_at_relative }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </aside>
+    </div>
+
+    <footer>
+        <p>
+            <a href="/feed.atom">Atom</a> ·
+            <a href="/feed.rss">RSS</a> ·
+            <a href="/feeds.opml">OPML</a>
+        </p>
+        <p>Powered by <a href="https://github.com/cloudflare/planetcf">Planet CF</a></p>
+        <p>Last updated: {{ generated_at }}</p>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Test Blog</title>
+    <link>https://test.example.com</link>
+    <description>A test blog for testing</description>
+    <language>en-us</language>
+    <lastBuildDate>Tue, 02 Jan 2026 12:00:00 GMT</lastBuildDate>
+    <item>
+      <title>First Post</title>
+      <link>https://test.example.com/first-post</link>
+      <description>This is the first post.</description>
+      <pubDate>Mon, 01 Jan 2026 12:00:00 GMT</pubDate>
+      <guid>https://test.example.com/first-post</guid>
+      <author>author@example.com</author>
+    </item>
+    <item>
+      <title>Second Post</title>
+      <link>https://test.example.com/second-post</link>
+      <description><![CDATA[<p>This is the <strong>second</strong> post with HTML.</p>]]></description>
+      <pubDate>Tue, 02 Jan 2026 12:00:00 GMT</pubDate>
+      <guid>https://test.example.com/second-post</guid>
+      <author>author@example.com</author>
+    </item>
+  </channel>
+</rss>

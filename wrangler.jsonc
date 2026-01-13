@@ -1,0 +1,85 @@
+// wrangler.jsonc (Wrangler v4.58.0+, January 2026)
+// Planet CF - Feed Aggregator for Cloudflare Python Workers
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "planetcf",
+  "main": "src/main.py",
+  "compatibility_date": "2026-01-01",
+  "compatibility_flags": ["python_workers"],
+
+  // CPU time limit - increase from 30s default for feed parsing
+  "limits": {
+    "cpu_ms": 60000
+  },
+
+  "vars": {
+    "PLANET_NAME": "Planet CF",
+    "PLANET_DESCRIPTION": "Aggregated posts from Cloudflare employees and community",
+    "PLANET_URL": "https://planetcf.com",
+    "PLANET_OWNER_NAME": "Cloudflare",
+    "PLANET_OWNER_EMAIL": "planet@planetcf.com",
+    "RETENTION_DAYS": "30",
+    "RETENTION_MAX_ENTRIES_PER_FEED": "100",
+    "FEED_TIMEOUT_SECONDS": "60",
+    "HTTP_TIMEOUT_SECONDS": "30",
+    "GITHUB_CLIENT_ID": "your_github_client_id"
+    // Secrets (set via wrangler secret put):
+    // - GITHUB_CLIENT_SECRET: OAuth client secret
+    // - SESSION_SECRET: HMAC key for signed cookies (generate with: openssl rand -hex 32)
+  },
+
+  // Workers Observability
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1.0
+  },
+
+  // D1 Database
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "planetcf",
+      "database_id": "xxxxx"
+    }
+  ],
+
+  // No KV needed:
+  // - HTML/RSS/Atom/OPML: Generated on-demand, cached at edge via Cache-Control
+  // - Sessions: Stateless signed cookies (HMAC), no server-side storage
+
+  // Vectorize (for semantic search)
+  "vectorize": [
+    {
+      "binding": "SEARCH_INDEX",
+      "index_name": "planetcf-entries"
+    }
+  ],
+
+  // Workers AI (for generating embeddings)
+  "ai": {
+    "binding": "AI"
+  },
+
+  // Queues: Scheduler -> Fetcher
+  "queues": {
+    "producers": [
+      { "binding": "FEED_QUEUE", "queue": "planetcf-feed-queue" },
+      { "binding": "DEAD_LETTER_QUEUE", "queue": "planetcf-feed-dlq" }
+    ],
+    "consumers": [
+      {
+        "queue": "planetcf-feed-queue",
+        "max_batch_size": 5,
+        "max_batch_timeout": 30,
+        "max_retries": 3,
+        "dead_letter_queue": "planetcf-feed-dlq",
+        "retry_delay": 300
+      }
+    ]
+  },
+
+  // Cron trigger: Hourly feed fetch (content generated on-demand)
+  "triggers": {
+    "crons": ["0 * * * *"]
+  }
+}

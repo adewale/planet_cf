@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Test Blog</title>
+  <link href="https://test.example.com"/>
+  <link href="https://test.example.com/feed.atom" rel="self"/>
+  <id>https://test.example.com/</id>
+  <updated>2026-01-02T12:00:00Z</updated>
+  <author>
+    <name>Test Author</name>
+    <email>author@example.com</email>
+  </author>
+  <entry>
+    <title>First Post</title>
+    <link href="https://test.example.com/first-post"/>
+    <id>https://test.example.com/first-post</id>
+    <updated>2026-01-01T12:00:00Z</updated>
+    <published>2026-01-01T12:00:00Z</published>
+    <content type="html">&lt;p&gt;This is the first post.&lt;/p&gt;</content>
+    <author>
+      <name>Test Author</name>
+    </author>
+  </entry>
+  <entry>
+    <title>Second Post</title>
+    <link href="https://test.example.com/second-post"/>
+    <id>https://test.example.com/second-post</id>
+    <updated>2026-01-02T12:00:00Z</updated>
+    <published>2026-01-02T12:00:00Z</published>
+    <summary>A summary of the second post</summary>
+    <content type="html">&lt;p&gt;This is the &lt;strong&gt;second&lt;/strong&gt; post with HTML.&lt;/p&gt;</content>
+    <author>
+      <name>Test Author</name>
+    </author>
+  </entry>
+</feed>
