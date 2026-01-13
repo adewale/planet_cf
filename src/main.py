@@ -630,7 +630,7 @@ class Default(WorkerEntrypoint):
 
                 # OAuth routes
                 elif path == "/auth/github":
-                    response = self._redirect_to_github_oauth()
+                    response = self._redirect_to_github_oauth(request)
                     event.content_type = "auth"
 
                 elif path == "/auth/github/callback":
@@ -1603,17 +1603,26 @@ button:hover { opacity: 0.9; }
             print(f"Session cookie verification failed: {type(e).__name__}: {e}")
             return None
 
-    def _redirect_to_github_oauth(self):
+    def _redirect_to_github_oauth(self, request):
         """Redirect to GitHub OAuth authorization."""
 
         state = secrets.token_urlsafe(32)
-        planet_url = getattr(self.env, "PLANET_URL", "https://planetcf.com")
         client_id = getattr(self.env, "GITHUB_CLIENT_ID", "")
+
+        # Extract origin from request URL (not from config, so it works on any domain)
+        url = request.url
+        if hasattr(url, "origin"):
+            origin = url.origin
+        else:
+            # Fallback: parse URL string to get origin
+            url_str = str(url)
+            parsed = urlparse(url_str)
+            origin = f"{parsed.scheme}://{parsed.netloc}"
 
         auth_url = (
             f"https://github.com/login/oauth/authorize"
             f"?client_id={client_id}"
-            f"&redirect_uri={planet_url}/auth/github/callback"
+            f"&redirect_uri={origin}/auth/github/callback"
             f"&scope=read:user"
             f"&state={state}"
         )
