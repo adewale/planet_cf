@@ -4,7 +4,7 @@
 import time
 from typing import Any
 
-from src.types import EntryRow, FeedId, FeedJob, FeedRow, Session
+from src.models import EntryRow, FeedId, FeedJob, FeedRow, Session
 
 
 class FeedFactory:

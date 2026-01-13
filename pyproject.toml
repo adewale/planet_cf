@@ -25,6 +25,7 @@ dependencies = [
     "httpx>=0.27.0",
     "jinja2>=3.1.0",
     "bleach>=6.0.0",
+    "markupsafe>=2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -39,6 +40,13 @@ test = [
 
 dev = [
     "ruff>=0.4.0",
+]
+
+# Cloudflare Python Workers development dependencies
+[dependency-groups]
+workers = [
+    "workers-py",
+    "workers-runtime-sdk",
 ]
 
 [build-system]

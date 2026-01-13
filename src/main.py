@@ -24,20 +24,20 @@ import feedparser
 import httpx
 from workers import Response, WorkerEntrypoint
 
-from .observability import (
+from observability import (
     FeedFetchEvent,
     GenerationEvent,
     PageServeEvent,
     Timer,
     emit_event,
 )
-from .templates import (
+from templates import (
     TEMPLATE_ADMIN_DASHBOARD,
     TEMPLATE_INDEX,
     TEMPLATE_SEARCH,
     render_template,
 )
-from .types import BleachSanitizer
+from models import BleachSanitizer
 
 # =============================================================================
 # Configuration
@@ -114,7 +114,7 @@ def feed_response(content: str, content_type: str, cache_max_age: int = 3600) ->
 # =============================================================================
 
 
-class PlanetCF(WorkerEntrypoint):
+class Default(WorkerEntrypoint):
     """
     Main Worker entrypoint handling all triggers:
     - scheduled(): Hourly cron to enqueue feed fetches

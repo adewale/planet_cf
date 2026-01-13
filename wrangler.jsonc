@@ -5,7 +5,7 @@
   "name": "planetcf",
   "main": "src/main.py",
   "compatibility_date": "2026-01-01",
-  "compatibility_flags": ["python_workers"],
+  "compatibility_flags": ["python_workers", "python_dedicated_snapshot"],
 
   // CPU time limit - increase from 30s default for feed parsing
   "limits": {
@@ -39,7 +39,7 @@
     {
       "binding": "DB",
       "database_name": "planetcf",
-      "database_id": "xxxxx"
+      "database_id": "e94e6c4e-83ba-42df-afd5-4648bfa558dd"
     }
   ],
 

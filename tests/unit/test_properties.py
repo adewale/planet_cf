@@ -5,7 +5,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from src.types import FeedId, FeedJob, Session
+from src.models import FeedId, FeedJob, Session
 
 
 class TestFeedJobProperties:

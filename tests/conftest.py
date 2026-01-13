@@ -51,7 +51,7 @@ _mock_workers.WorkerEntrypoint = MockWorkerEntrypoint
 sys.modules["workers"] = _mock_workers
 
 
-from src.types import EntryRow, FeedRow, Session
+from src.models import EntryRow, FeedRow, Session
 
 # =============================================================================
 # Mock Cloudflare Bindings

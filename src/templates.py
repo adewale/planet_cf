@@ -4,115 +4,204 @@ Template loading and rendering utilities for Planet CF.
 
 This module provides:
 - A shared Jinja2 Environment for rendering templates
-- Template loading from files (for development/deployment bundling)
+- Embedded templates for Workers environment compatibility
 - Helper functions for common rendering patterns
-
-Templates are loaded from the templates/ directory at import time.
-In the Cloudflare Workers context, templates should be bundled with the worker.
 """
 
-from pathlib import Path
-
 from jinja2 import BaseLoader, Environment, TemplateNotFound
+
+# =============================================================================
+# Embedded Templates (for Workers environment)
+# =============================================================================
+
+_EMBEDDED_TEMPLATES = {
+    "index.html": '''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ planet.name }}</title>
+    <link rel="alternate" type="application/atom+xml" title="{{ planet.name }} Atom Feed" href="/feed.atom">
+    <link rel="alternate" type="application/rss+xml" title="{{ planet.name }} RSS Feed" href="/feed.rss">
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 1rem; }
+        header { border-bottom: 1px solid #ddd; margin-bottom: 1rem; }
+        .search-form { margin: 1rem 0; }
+        .search-form input { padding: 0.5rem; width: 200px; }
+        .search-form button { padding: 0.5rem 1rem; }
+        .container { display: flex; gap: 2rem; }
+        main { flex: 1; }
+        aside { width: 250px; }
+        article { margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid #eee; }
+        article h3 { margin-bottom: 0.25rem; }
+        .meta { color: #666; font-size: 0.9rem; }
+        .feeds li { margin: 0.5rem 0; }
+        .feeds .healthy { color: green; }
+        .feeds .unhealthy { color: red; }
+        footer { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #ddd; text-align: center; color: #666; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>{{ planet.name }}</h1>
+        <p>{{ planet.description }}</p>
+        <form action="/search" method="GET" class="search-form">
+            <input type="search" name="q" placeholder="Search entries..." aria-label="Search entries">
+            <button type="submit">Search</button>
+        </form>
+    </header>
+
+    <div class="container">
+        <main>
+            {% for date, day_entries in entries_by_date.items() %}
+            <section class="day">
+                <h2 class="date">{{ date }}</h2>
+                {% for entry in day_entries %}
+                <article>
+                    <header>
+                        <h3><a href="{{ entry.url }}">{{ entry.title }}</a></h3>
+                        <p class="meta">
+                            <span class="author">{{ entry.author or entry.feed_title }}</span>
+                            <time datetime="{{ entry.published_at }}">{{ entry.published_at_formatted }}</time>
+                        </p>
+                    </header>
+                    <div class="content">{{ entry.content | safe }}</div>
+                </article>
+                {% endfor %}
+            </section>
+            {% else %}
+            <p>No entries yet. Add some feeds to get started!</p>
+            {% endfor %}
+        </main>
+
+        <aside class="sidebar">
+            <h2>Subscriptions</h2>
+            <ul class="feeds">
+                {% for feed in feeds %}
+                <li class="{{ 'healthy' if feed.is_healthy else 'unhealthy' }}">
+                    <a href="{{ feed.site_url }}">{{ feed.title }}</a>
+                </li>
+                {% else %}
+                <li>No feeds configured</li>
+                {% endfor %}
+            </ul>
+        </aside>
+    </div>
+
+    <footer>
+        <p><a href="/feed.atom">Atom</a> · <a href="/feed.rss">RSS</a> · <a href="/feeds.opml">OPML</a></p>
+        <p>Powered by Planet CF</p>
+        <p>Last updated: {{ generated_at }}</p>
+    </footer>
+</body>
+</html>''',
+
+    "search.html": '''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Results - {{ planet.name }}</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 1rem; }
+        .search-form input { padding: 0.5rem; width: 200px; }
+        .search-form button { padding: 0.5rem 1rem; }
+        .search-results li { margin: 1rem 0; }
+        .meta { color: #666; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1><a href="/">{{ planet.name }}</a></h1>
+        <form action="/search" method="GET" class="search-form">
+            <input type="search" name="q" placeholder="Search entries..." value="{{ query }}">
+            <button type="submit">Search</button>
+        </form>
+    </header>
+
+    <main class="search-page">
+        <h2>Search Results for "{{ query }}"</h2>
+        {% if results %}
+        <ul class="search-results">
+            {% for entry in results %}
+            <li>
+                <h3><a href="{{ entry.url }}">{{ entry.title }}</a></h3>
+                <p class="meta">{{ entry.author or entry.feed_title }}</p>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p>No results found for "{{ query }}"</p>
+        {% endif %}
+    </main>
+
+    <footer><p><a href="/">Back to Planet CF</a></p></footer>
+</body>
+</html>''',
+
+    "admin/dashboard.html": '''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin - {{ planet.name }}</title>
+    <style>body { font-family: system-ui; max-width: 900px; margin: 0 auto; padding: 1rem; }</style>
+</head>
+<body>
+    <h1>Admin Dashboard</h1>
+    <p>Welcome, {{ user.name }}</p>
+    <h2>Feeds</h2>
+    <ul>{% for feed in feeds %}<li>{{ feed.title }} - {{ feed.url }}</li>{% endfor %}</ul>
+</body>
+</html>'''
+}
+
+# =============================================================================
+# Template Names Constants
+# =============================================================================
+
+TEMPLATE_INDEX = "index.html"
+TEMPLATE_SEARCH = "search.html"
+TEMPLATE_ADMIN_DASHBOARD = "admin/dashboard.html"
+
 
 # =============================================================================
 # Template Loader
 # =============================================================================
 
-# Base path for templates (relative to project root)
-TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
-
-
-class FileSystemLoader(BaseLoader):
-    """
-    Load templates from the filesystem.
-
-    This loader reads templates from the templates/ directory.
-    Templates are cached after first load for performance.
-    """
-
-    def __init__(self, search_path: Path):
-        self.search_path = search_path
-        self._template_cache: dict[str, str] = {}
-
-    def get_source(self, environment: Environment, template: str) -> tuple[str, str, callable]:
-        """Load a template from the filesystem."""
-        # Check cache first
-        if template in self._template_cache:
-            source = self._template_cache[template]
-            path = str(self.search_path / template)
-            return source, path, lambda: True
-
-        # Load from filesystem
-        template_path = self.search_path / template
-        if not template_path.exists():
-            raise TemplateNotFound(template)
-
-        source = template_path.read_text(encoding="utf-8")
-        self._template_cache[template] = source
-
-        return source, str(template_path), lambda: True
-
-
 class DictLoader(BaseLoader):
-    """
-    Load templates from a dictionary.
-
-    This loader is useful for testing or when templates are bundled
-    as strings (e.g., in a single-file deployment).
-    """
+    """Load templates from a dictionary."""
 
     def __init__(self, templates: dict[str, str]):
         self.templates = templates
 
     def get_source(self, environment: Environment, template: str) -> tuple[str, str, callable]:
-        """Load a template from the dictionary."""
         if template not in self.templates:
             raise TemplateNotFound(template)
-
-        source = self.templates[template]
-        return source, template, lambda: True
+        return self.templates[template], template, lambda: True
 
 
 # =============================================================================
 # Shared Jinja2 Environment
 # =============================================================================
 
+_jinja_env: Environment | None = None
+
+
 def _create_environment(loader: BaseLoader | None = None) -> Environment:
-    """
-    Create a Jinja2 environment with appropriate settings.
-
-    Args:
-        loader: Optional template loader. If None, uses FileSystemLoader.
-
-    Returns:
-        Configured Jinja2 Environment
-    """
+    """Create a Jinja2 environment with appropriate settings."""
     if loader is None:
-        loader = FileSystemLoader(TEMPLATES_DIR)
+        loader = DictLoader(_EMBEDDED_TEMPLATES)
 
     return Environment(
         loader=loader,
-        autoescape=True,  # Auto-escape HTML by default for security
+        autoescape=True,
         trim_blocks=True,
         lstrip_blocks=True,
     )
 
 
-# Module-level environment (created on first access)
-_jinja_env: Environment | None = None
-
-
 def get_jinja_env() -> Environment:
-    """
-    Get the shared Jinja2 environment.
-
-    This function returns a singleton Environment instance that is
-    reused across all template rendering operations.
-
-    Returns:
-        The shared Jinja2 Environment
-    """
+    """Get the shared Jinja2 environment."""
     global _jinja_env
     if _jinja_env is None:
         _jinja_env = _create_environment()
@@ -120,24 +209,13 @@ def get_jinja_env() -> Environment:
 
 
 def reset_jinja_env() -> None:
-    """
-    Reset the shared Jinja2 environment.
-
-    This is primarily useful for testing to ensure a fresh environment.
-    """
+    """Reset the shared Jinja2 environment (for testing)."""
     global _jinja_env
     _jinja_env = None
 
 
 def set_jinja_env(env: Environment) -> None:
-    """
-    Set a custom Jinja2 environment.
-
-    This is useful for testing with mock templates.
-
-    Args:
-        env: The Environment to use
-    """
+    """Set a custom Jinja2 environment (for testing)."""
     global _jinja_env
     _jinja_env = env
 
@@ -147,44 +225,14 @@ def set_jinja_env(env: Environment) -> None:
 # =============================================================================
 
 def render_template(template_name: str, **context) -> str:
-    """
-    Render a template with the given context.
-
-    Args:
-        template_name: Name of the template file (e.g., "index.html")
-        **context: Template context variables
-
-    Returns:
-        Rendered template as a string
-    """
+    """Render a template with the given context."""
     env = get_jinja_env()
     template = env.get_template(template_name)
     return template.render(**context)
 
 
 def render_string(template_string: str, **context) -> str:
-    """
-    Render a template string with the given context.
-
-    This is useful for one-off templates that aren't stored in files.
-
-    Args:
-        template_string: The template as a string
-        **context: Template context variables
-
-    Returns:
-        Rendered template as a string
-    """
+    """Render a template string with the given context."""
     env = get_jinja_env()
     template = env.from_string(template_string)
     return template.render(**context)
-
-
-# =============================================================================
-# Template Names Constants
-# =============================================================================
-
-# Standard template file names
-TEMPLATE_INDEX = "index.html"
-TEMPLATE_SEARCH = "search.html"
-TEMPLATE_ADMIN_DASHBOARD = "admin/dashboard.html"

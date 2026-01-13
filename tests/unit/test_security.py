@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 
 import pytest
 
-from src.types import BleachSanitizer, NoOpSanitizer
+from src.models import BleachSanitizer, NoOpSanitizer
 
 # =============================================================================
 # HTML Sanitization Tests

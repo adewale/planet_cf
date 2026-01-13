@@ -7,7 +7,7 @@ import time
 import pytest
 from freezegun import freeze_time
 
-from src.types import (
+from src.models import (
     Err,
     FeedId,
     FeedJob,
