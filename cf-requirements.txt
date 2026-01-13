@@ -1,0 +1,4 @@
+feedparser
+httpx
+jinja2
+bleach
