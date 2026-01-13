@@ -12,6 +12,7 @@
     "cpu_ms": 60000
   },
 
+  // Environment variables
   "vars": {
     "PLANET_NAME": "Planet CF",
     "PLANET_DESCRIPTION": "Aggregated posts from Cloudflare employees and community",
@@ -21,12 +22,13 @@
     "RETENTION_DAYS": "30",
     "RETENTION_MAX_ENTRIES_PER_FEED": "100",
     "FEED_TIMEOUT_SECONDS": "60",
-    "HTTP_TIMEOUT_SECONDS": "30",
-    "GITHUB_CLIENT_ID": "your_github_client_id"
-    // Secrets (set via wrangler secret put):
-    // - GITHUB_CLIENT_SECRET: OAuth client secret
-    // - SESSION_SECRET: HMAC key for signed cookies (generate with: openssl rand -hex 32)
+    "HTTP_TIMEOUT_SECONDS": "30"
   },
+
+  // Secrets (set via wrangler secret put):
+  // - GITHUB_CLIENT_ID: OAuth client ID
+  // - GITHUB_CLIENT_SECRET: OAuth client secret
+  // - SESSION_SECRET: HMAC key for signed cookies (generate with: openssl rand -hex 32)
 
   // Workers Observability
   "observability": {

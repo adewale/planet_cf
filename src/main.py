@@ -34,6 +34,7 @@ from observability import (
 )
 from templates import (
     TEMPLATE_ADMIN_DASHBOARD,
+    TEMPLATE_ADMIN_LOGIN,
     TEMPLATE_INDEX,
     TEMPLATE_SEARCH,
     render_template,
@@ -627,12 +628,16 @@ class Default(WorkerEntrypoint):
                     response = await self._serve_static(path)
                     event.content_type = "static"
 
-                # OAuth callback
+                # OAuth routes
+                elif path == "/auth/github":
+                    response = self._redirect_to_github_oauth()
+                    event.content_type = "auth"
+
                 elif path == "/auth/github/callback":
                     response = await self._handle_github_callback(request)
                     event.content_type = "auth"
 
-                # Admin routes (require authentication)
+                # Admin routes (show login page if not authenticated)
                 elif path.startswith("/admin"):
                     response = await self._handle_admin(request, path)
                     event.content_type = "admin"
@@ -1271,7 +1276,8 @@ button:hover { opacity: 0.9; }
         # Verify signed session cookie (stateless, no KV)
         session = self._verify_signed_cookie(request)
         if not session:
-            return self._redirect_to_github_oauth()
+            # Show login page instead of auto-redirecting
+            return self._serve_admin_login()
 
         # Verify user is still an authorized admin (may have been revoked)
         admin = (
@@ -1329,6 +1335,12 @@ button:hover { opacity: 0.9; }
             return self._logout(request)
 
         return Response("Not Found", status=404)
+
+    def _serve_admin_login(self):
+        """Serve the admin login page."""
+        planet = self._get_planet_config()
+        html = render_template(TEMPLATE_ADMIN_LOGIN, planet=planet)
+        return html_response(html, cache_max_age=0)
 
     async def _serve_admin_dashboard(self, admin):
         """Serve the admin dashboard."""
