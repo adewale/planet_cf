@@ -903,10 +903,15 @@ class Default(WorkerEntrypoint):
             summary = raw_summary
 
         # Upsert to D1 - use _safe_str to convert any JsProxy/undefined to Python
+        # first_seen is set on INSERT only - preserved on UPDATE to prevent spam attacks
+        # where feeds retroactively add old entries that would appear as new
         result_raw = (
             await self.env.DB.prepare("""
-            INSERT INTO entries (feed_id, guid, url, title, author, content, summary, published_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+            INSERT INTO entries (
+                feed_id, guid, url, title, author, content, summary,
+                published_at, first_seen
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), CURRENT_TIMESTAMP)
             ON CONFLICT(feed_id, guid) DO UPDATE SET
                 title = excluded.title,
                 content = excluded.content,
@@ -1292,6 +1297,7 @@ class Default(WorkerEntrypoint):
                 await self._apply_retention_policy()
 
                 # Query entries (last 30 days, max 100 per feed) - track D1 query time
+                # Uses first_seen for ordering/grouping to prevent spam from retroactive entries
                 with Timer() as d1_timer:
                     entries_result = await self.env.DB.prepare("""
                         WITH ranked AS (
@@ -1300,15 +1306,17 @@ class Default(WorkerEntrypoint):
                                 f.title as feed_title,
                                 f.site_url as feed_site_url,
                                 ROW_NUMBER() OVER (
-                                    PARTITION BY e.feed_id ORDER BY e.published_at DESC
+                                    PARTITION BY e.feed_id
+                                    ORDER BY COALESCE(e.first_seen, e.published_at) DESC
                                 ) as rn
                             FROM entries e
                             JOIN feeds f ON e.feed_id = f.id
-                            WHERE e.published_at >= datetime('now', '-30 days')
+                            WHERE COALESCE(e.first_seen, e.published_at)
+                                >= datetime('now', '-30 days')
                             AND f.is_active = 1
                         )
                         SELECT * FROM ranked WHERE rn <= 100
-                        ORDER BY published_at DESC
+                        ORDER BY COALESCE(first_seen, published_at) DESC
                         LIMIT 500
                     """).all()
 
@@ -1328,15 +1336,23 @@ class Default(WorkerEntrypoint):
                 entries = _to_py_list(entries_result.results)
                 feeds = _to_py_list(feeds_result.results)
 
-                # Group entries by date
+                # Group entries by first_seen date (prevents spam from retroactive entries)
+                # Use smart labels like "Today", "Yesterday", weekday names
                 entries_by_date = {}
                 for entry in entries:
-                    date_str = entry["published_at"][:10]  # YYYY-MM-DD
-                    if date_str not in entries_by_date:
-                        entries_by_date[date_str] = []
+                    # Use first_seen for grouping, fall back to published_at for legacy entries
+                    group_date = entry.get("first_seen") or entry.get("published_at") or ""
+                    date_str = group_date[:10] if group_date else "Unknown"  # YYYY-MM-DD
 
+                    # Convert to smart label (Today, Yesterday, etc.)
+                    date_label = self._smart_date_label(date_str)
+                    if date_label not in entries_by_date:
+                        entries_by_date[date_label] = []
+
+                    # Add formatted and relative times
                     entry["published_at_formatted"] = self._format_datetime(entry["published_at"])
-                    entries_by_date[date_str].append(entry)
+                    entry["published_at_relative"] = self._relative_time(entry["published_at"])
+                    entries_by_date[date_label].append(entry)
 
                 for feed in feeds:
                     feed["last_success_at_relative"] = self._relative_time(feed["last_success_at"])
@@ -1455,6 +1471,31 @@ class Default(WorkerEntrypoint):
                 return "just now"
         except (ValueError, AttributeError):
             return "unknown"
+
+    def _smart_date_label(self, date_str: str) -> str:
+        """
+        Convert YYYY-MM-DD to smart labels like 'Today', 'Yesterday', weekday names.
+
+        For recent dates (within 7 days), shows relative labels.
+        For older dates, shows formatted date like 'January 14, 2026'.
+        """
+        try:
+            entry_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            today = datetime.utcnow().date()
+            delta_days = (today - entry_date).days
+
+            if delta_days == 0:
+                return "Today"
+            elif delta_days == 1:
+                return "Yesterday"
+            elif delta_days < 7:
+                # Show weekday name for recent dates (e.g., "Monday")
+                return entry_date.strftime("%A")
+            else:
+                # Show full date for older entries (e.g., "January 14, 2026")
+                return entry_date.strftime("%B %d, %Y")
+        except (ValueError, AttributeError):
+            return date_str
 
     async def _serve_atom(self):
         """Generate and serve Atom feed on-demand."""

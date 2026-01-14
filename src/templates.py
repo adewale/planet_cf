@@ -62,7 +62,7 @@ _EMBEDDED_TEMPLATES = {
                         <h3><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
                         <p class="meta">
                             <span class="author">{{ entry.author or entry.feed_title }}</span>
-                            <time datetime="{{ entry.published_at }}">{{ entry.published_at_formatted }}</time>
+                            <time datetime="{{ entry.published_at }}" title="{{ entry.published_at_formatted }}">{{ entry.published_at_relative }}</time>
                         </p>
                     </header>
                     <div class="content">{{ entry.content | safe }}</div>
