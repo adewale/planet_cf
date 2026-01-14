@@ -148,6 +148,19 @@ _EMBEDDED_TEMPLATES = {
         .user-info { display: flex; align-items: center; gap: 1rem; }
         .logout-btn { background: #dc3545; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
         .logout-btn:hover { background: #c82333; }
+        .add-form { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+        .add-form input[type="url"] { flex: 1; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; }
+        .add-form input[type="text"] { width: 200px; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; }
+        .add-form button { background: #28a745; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
+        .feed-list { list-style: none; padding: 0; }
+        .feed-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border: 1px solid #eee; margin-bottom: 0.5rem; border-radius: 4px; }
+        .feed-info { flex: 1; }
+        .feed-title { font-weight: bold; }
+        .feed-url { color: #666; font-size: 0.9rem; }
+        .feed-status { font-size: 0.8rem; }
+        .feed-status.healthy { color: #28a745; }
+        .feed-status.failing { color: #dc3545; }
+        .delete-btn { background: #dc3545; color: white; border: none; padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
     </style>
 </head>
 <body>
@@ -160,8 +173,36 @@ _EMBEDDED_TEMPLATES = {
             </form>
         </div>
     </div>
-    <h2>Feeds</h2>
-    <ul>{% for feed in feeds %}<li>{{ feed.title }} - {{ feed.url }}</li>{% endfor %}</ul>
+
+    <h2>Add Feed</h2>
+    <form action="/admin/feeds" method="POST" class="add-form">
+        <input type="url" name="url" placeholder="https://example.com/feed.xml" required>
+        <input type="text" name="title" placeholder="Feed title (optional)">
+        <button type="submit">Add Feed</button>
+    </form>
+
+    <h2>Feeds ({{ feeds | length }})</h2>
+    {% if feeds %}
+    <ul class="feed-list">
+        {% for feed in feeds %}
+        <li class="feed-item">
+            <div class="feed-info">
+                <div class="feed-title">{{ feed.title or 'Untitled' }}</div>
+                <div class="feed-url">{{ feed.url }}</div>
+                <div class="feed-status {{ 'healthy' if feed.consecutive_failures < 3 else 'failing' }}">
+                    {% if feed.consecutive_failures >= 3 %}Failing ({{ feed.consecutive_failures }} errors){% else %}Healthy{% endif %}
+                </div>
+            </div>
+            <form action="/admin/feeds/{{ feed.id }}" method="POST" style="margin: 0;">
+                <input type="hidden" name="_method" value="DELETE">
+                <button type="submit" class="delete-btn" onclick="return confirm('Delete this feed?')">Delete</button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p>No feeds yet. Add one above!</p>
+    {% endif %}
 </body>
 </html>""",
     "admin/login.html": """<!DOCTYPE html>
