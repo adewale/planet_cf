@@ -1756,10 +1756,13 @@ button:hover { opacity: 0.9; }
             )
 
         except Exception as e:
-            print(f"OAuth callback error: {type(e).__name__}: {e}")
-            import traceback
-            traceback.print_exc()
-            return Response(f"OAuth error: {type(e).__name__}: {e}", status=500)
+            # Log error internally (structured) but don't expose details to client
+            print(json.dumps({
+                "event_type": "oauth_error",
+                "error_type": type(e).__name__,
+                "error_message": str(e)[:200],
+            }))
+            return Response("Authentication failed. Please try again.", status=500)
 
     def _create_signed_cookie(self, payload):
         """Create an HMAC-signed cookie. Format: base64(json_payload).signature"""
