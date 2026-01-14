@@ -365,7 +365,420 @@ _EMBEDDED_TEMPLATES = {
     </div>
 </body>
 </html>""",
+    "feed.atom.xml": """<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>{{ planet.name | e }}</title>
+  <subtitle>{{ planet.description | e }}</subtitle>
+  <link href="{{ planet.link }}" rel="alternate"/>
+  <link href="{{ planet.link }}/feed.atom" rel="self"/>
+  <id>{{ planet.link }}/</id>
+  <updated>{{ updated_at }}</updated>
+{% for entry in entries %}
+  <entry>
+    <title>{{ entry.title | e }}</title>
+    <link href="{{ entry.url | e }}" rel="alternate"/>
+    <id>{{ entry.guid | e }}</id>
+    <published>{{ entry.published_at }}Z</published>
+    <author><name>{{ entry.author | e }}</name></author>
+    <content type="html">{{ entry.content | e }}</content>
+  </entry>
+{% endfor %}
+</feed>""",
+    "feed.rss.xml": """<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>{{ planet.name | e }}</title>
+    <description>{{ planet.description | e }}</description>
+    <link>{{ planet.link }}</link>
+    <atom:link href="{{ planet.link }}/feed.rss" rel="self" type="application/rss+xml"/>
+    <lastBuildDate>{{ last_build_date }}</lastBuildDate>
+{% for entry in entries %}
+    <item>
+      <title>{{ entry.title | e }}</title>
+      <link>{{ entry.url | e }}</link>
+      <guid>{{ entry.guid | e }}</guid>
+      <pubDate>{{ entry.published_at }}</pubDate>
+      <author>{{ entry.author | e }}</author>
+      <description><![CDATA[{{ entry.content_cdata }}]]></description>
+    </item>
+{% endfor %}
+  </channel>
+</rss>""",
+    "feeds.opml": """<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>{{ planet.name }} Subscriptions</title>
+    <dateCreated>{{ date_created }}</dateCreated>
+    <ownerName>{{ owner_name | e }}</ownerName>
+  </head>
+  <body>
+    <outline text="{{ planet.name }} Feeds" title="{{ planet.name }} Feeds">
+{% for feed in feeds %}
+      <outline type="rss" text="{{ feed.title | e }}" title="{{ feed.title | e }}" xmlUrl="{{ feed.url | e }}" htmlUrl="{{ feed.site_url | e }}"/>
+{% endfor %}
+    </outline>
+  </body>
+</opml>""",
 }
+
+# =============================================================================
+# Static Assets (CSS and JavaScript)
+# =============================================================================
+
+STATIC_CSS = """
+/* Planet CF Styles */
+:root {
+    --primary-color: #f38020;
+    --text-color: #333;
+    --bg-color: #fff;
+    --sidebar-bg: #f5f5f5;
+    --border-color: #ddd;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.6;
+    color: var(--text-color);
+    background: var(--bg-color);
+}
+
+header {
+    background: var(--primary-color);
+    color: white;
+    padding: 2rem;
+    text-align: center;
+}
+
+header h1 { margin-bottom: 0.5rem; }
+header a { color: white; }
+
+.search-form {
+    margin-top: 1rem;
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.search-form input {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 4px;
+    width: 300px;
+}
+
+.search-form button {
+    padding: 0.5rem 1rem;
+    background: white;
+    color: var(--primary-color);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.container {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 2rem;
+    max-width: 1200px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+}
+
+main { min-width: 0; }
+
+.day { margin-bottom: 2rem; }
+.day h2 {
+    border-bottom: 2px solid var(--primary-color);
+    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+article {
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+article h3 { margin-bottom: 0.5rem; }
+article h3 a { color: var(--primary-color); text-decoration: none; }
+article h3 a:hover { text-decoration: underline; }
+
+.meta {
+    color: #666;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+.content {
+    overflow-wrap: break-word;
+}
+
+.content img {
+    max-width: 100%;
+    height: auto;
+}
+
+.content pre {
+    background: #f5f5f5;
+    padding: 1rem;
+    overflow-x: auto;
+    border-radius: 4px;
+}
+
+.sidebar {
+    background: var(--sidebar-bg);
+    padding: 1.5rem;
+    border-radius: 8px;
+    height: fit-content;
+    position: sticky;
+    top: 1rem;
+}
+
+.sidebar h2 {
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+}
+
+.feeds {
+    list-style: none;
+}
+
+.feeds li {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.feeds li.unhealthy { color: #c00; }
+.feeds .last-updated {
+    display: block;
+    font-size: 0.8rem;
+    color: #666;
+}
+
+footer {
+    text-align: center;
+    padding: 2rem;
+    background: #f5f5f5;
+    margin-top: 2rem;
+}
+
+footer a { color: var(--primary-color); }
+
+/* Search results */
+.search-results {
+    list-style: none;
+}
+
+.search-results li {
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.search-results h3 { margin-bottom: 0.5rem; }
+.search-results .score { margin-left: 1rem; color: #666; }
+
+/* Admin styles */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+}
+
+th, td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+th { background: var(--sidebar-bg); }
+tr.unhealthy { background: #fee; }
+
+.add-feed-form {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.add-feed-form input {
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.add-feed-form input[type="url"] { flex: 1; }
+
+button {
+    padding: 0.5rem 1rem;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+button:hover { opacity: 0.9; }
+
+/* Responsive */
+@media (max-width: 768px) {
+    .container {
+        grid-template-columns: 1fr;
+    }
+    .sidebar {
+        position: static;
+    }
+    .search-form input { width: 200px; }
+}
+"""
+
+ADMIN_JS = """
+// Admin Dashboard JavaScript
+// Served from /static/admin.js to comply with Content Security Policy
+
+function showTab(tabId) {
+    // Remove active class from all tabs and content
+    document.querySelectorAll('.tab').forEach(function(t) {
+        t.classList.remove('active');
+    });
+    document.querySelectorAll('.tab-content').forEach(function(c) {
+        c.classList.remove('active');
+    });
+
+    // Add active class to selected tab and content
+    var tabs = document.querySelectorAll('.tab');
+    for (var i = 0; i < tabs.length; i++) {
+        if (tabs[i].getAttribute('data-tab') === tabId) {
+            tabs[i].classList.add('active');
+            break;
+        }
+    }
+    document.getElementById(tabId).classList.add('active');
+
+    // Load data for specific tabs
+    if (tabId === 'dlq') loadDLQ();
+    if (tabId === 'audit') loadAuditLog();
+}
+
+function toggleFeed(feedId, isActive) {
+    fetch('/admin/feeds/' + feedId, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: isActive ? 1 : 0 })
+    }).then(function(r) {
+        if (!r.ok) alert('Failed to update feed');
+    }).catch(function(err) {
+        alert('Error updating feed: ' + err.message);
+    });
+}
+
+function loadDLQ() {
+    fetch('/admin/dlq')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var container = document.getElementById('dlq-list');
+            if (!data.failed_feeds || data.failed_feeds.length === 0) {
+                container.innerHTML = '<p class="empty-state">' +
+                    'No failed feeds. All feeds are healthy!</p>';
+                return;
+            }
+            var html = '';
+            for (var i = 0; i < data.failed_feeds.length; i++) {
+                var f = data.failed_feeds[i];
+                html += '<div class="dlq-item">';
+                html += '<div><strong>' + escapeHtml(f.title || 'Untitled') + '</strong></div>';
+                html += '<div style="font-size:0.85rem;color:#666;word-break:break-all;">';
+                html += escapeHtml(f.url) + '</div>';
+                html += '<div style="font-size:0.8rem;color:#dc3545;margin-top:0.25rem;">';
+                html += f.consecutive_failures + ' consecutive failures';
+                html += (f.fetch_error ? ' - ' + escapeHtml(f.fetch_error) : '');
+                html += '</div>';
+                html += '<form action="/admin/dlq/' + f.id + '/retry" method="POST" ';
+                html += 'style="margin-top:0.5rem;">';
+                html += '<button type="submit" class="btn btn-warning btn-sm">Retry</button>';
+                html += '</form></div>';
+            }
+            container.innerHTML = html;
+        })
+        .catch(function(err) {
+            document.getElementById('dlq-list').innerHTML = '<p class="empty-state" ' +
+                'style="color:#dc3545;">Error loading: ' + err.message + '</p>';
+        });
+}
+
+function loadAuditLog() {
+    fetch('/admin/audit')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var container = document.getElementById('audit-list');
+            if (!data.audit_log || data.audit_log.length === 0) {
+                container.innerHTML = '<p class="empty-state">No audit log entries yet.</p>';
+                return;
+            }
+            var html = '';
+            for (var i = 0; i < data.audit_log.length; i++) {
+                var a = data.audit_log[i];
+                var details = {};
+                try {
+                    if (a.details) details = JSON.parse(a.details);
+                } catch (e) {}
+                var detailParts = [];
+                for (var key in details) {
+                    if (details.hasOwnProperty(key)) {
+                        detailParts.push(key + ': ' + details[key]);
+                    }
+                }
+                var detailStr = detailParts.join(', ');
+                html += '<div class="audit-item">';
+                html += '<div class="audit-action">' + escapeHtml(a.action) + '</div>';
+                html += '<div class="audit-time">' + escapeHtml(a.created_at) + ' by ';
+                html += escapeHtml(a.display_name || a.github_username || 'Unknown');
+                html += '</div>';
+                if (detailStr) {
+                    html += '<div class="audit-details">' + escapeHtml(detailStr) + '</div>';
+                }
+                html += '</div>';
+            }
+            container.innerHTML = html;
+        })
+        .catch(function(err) {
+            document.getElementById('audit-list').innerHTML = '<p class="empty-state" ' +
+                'style="color:#dc3545;">Error loading: ' + err.message + '</p>';
+        });
+}
+
+function escapeHtml(text) {
+    if (text === null || text === undefined) return '';
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Initialize tab click handlers when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    var tabs = document.querySelectorAll('.tab');
+    for (var i = 0; i < tabs.length; i++) {
+        tabs[i].addEventListener('click', function() {
+            var tabId = this.getAttribute('data-tab');
+            if (tabId) showTab(tabId);
+        });
+    }
+
+    // Initialize toggle handlers
+    var toggles = document.querySelectorAll('.feed-toggle');
+    for (var j = 0; j < toggles.length; j++) {
+        toggles[j].addEventListener('change', function() {
+            var feedId = this.getAttribute('data-feed-id');
+            toggleFeed(feedId, this.checked);
+        });
+    }
+});
+"""
 
 # =============================================================================
 # Template Names Constants
@@ -375,6 +788,9 @@ TEMPLATE_INDEX = "index.html"
 TEMPLATE_SEARCH = "search.html"
 TEMPLATE_ADMIN_DASHBOARD = "admin/dashboard.html"
 TEMPLATE_ADMIN_LOGIN = "admin/login.html"
+TEMPLATE_FEED_ATOM = "feed.atom.xml"
+TEMPLATE_FEED_RSS = "feed.rss.xml"
+TEMPLATE_FEEDS_OPML = "feeds.opml"
 
 
 # =============================================================================

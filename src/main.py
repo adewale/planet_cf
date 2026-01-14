@@ -12,7 +12,6 @@ import asyncio
 import base64
 import hashlib
 import hmac
-import html
 import ipaddress
 import json
 import secrets
@@ -20,7 +19,6 @@ import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from urllib.parse import parse_qs, urlparse
-from xml.sax.saxutils import escape
 
 import feedparser
 import httpx
@@ -54,8 +52,13 @@ from observability import (
     emit_event,
 )
 from templates import (
+    ADMIN_JS,
+    STATIC_CSS,
     TEMPLATE_ADMIN_DASHBOARD,
     TEMPLATE_ADMIN_LOGIN,
+    TEMPLATE_FEED_ATOM,
+    TEMPLATE_FEED_RSS,
+    TEMPLATE_FEEDS_OPML,
     TEMPLATE_INDEX,
     TEMPLATE_SEARCH,
     render_template,
@@ -1495,92 +1498,77 @@ class Default(WorkerEntrypoint):
         }
 
     def _generate_atom_feed(self, planet, entries):
-        """Generate Atom 1.0 feed XML."""
-
-        feed_xml = f'''<?xml version="1.0" encoding="UTF-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom">
-  <title>{escape(planet["name"])}</title>
-  <subtitle>{escape(planet["description"])}</subtitle>
-  <link href="{planet["link"]}" rel="alternate"/>
-  <link href="{planet["link"]}/feed.atom" rel="self"/>
-  <id>{planet["link"]}/</id>
-  <updated>{datetime.utcnow().isoformat()}Z</updated>
-'''
-        for entry in entries:
-            feed_xml += f'''  <entry>
-    <title>{escape(entry.get("title", ""))}</title>
-    <link href="{escape(entry.get("url", ""))}" rel="alternate"/>
-    <id>{escape(entry.get("guid", entry.get("url", "")))}</id>
-    <published>{entry.get("published_at", "")}Z</published>
-    <author><name>{escape(entry.get("author", entry.get("feed_title", "")))}</name></author>
-    <content type="html">{escape(entry.get("content", ""))}</content>
-  </entry>
-'''
-        feed_xml += "</feed>"
-        return feed_xml
+        """Generate Atom 1.0 feed XML using template."""
+        # Prepare entries with defaults for template
+        template_entries = [
+            {
+                "title": e.get("title", ""),
+                "url": e.get("url", ""),
+                "guid": e.get("guid", e.get("url", "")),
+                "published_at": e.get("published_at", ""),
+                "author": e.get("author", e.get("feed_title", "")),
+                "content": e.get("content", ""),
+            }
+            for e in entries
+        ]
+        return render_template(
+            TEMPLATE_FEED_ATOM,
+            planet=planet,
+            entries=template_entries,
+            updated_at=f"{datetime.utcnow().isoformat()}Z",
+        )
 
     def _generate_rss_feed(self, planet, entries):
-        """Generate RSS 2.0 feed XML."""
-
-        feed_xml = f'''<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
-  <channel>
-    <title>{escape(planet["name"])}</title>
-    <description>{escape(planet["description"])}</description>
-    <link>{planet["link"]}</link>
-    <atom:link href="{planet["link"]}/feed.rss" rel="self" type="application/rss+xml"/>
-    <lastBuildDate>{datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000")}</lastBuildDate>
-'''
-        for entry in entries:
-            # Issue 2.1: Escape ]]> in CDATA to prevent breakout attacks
-            content = entry.get("content", "").replace("]]>", "]]]]><![CDATA[>")
-            feed_xml += f"""    <item>
-      <title>{escape(entry.get("title", ""))}</title>
-      <link>{escape(entry.get("url", ""))}</link>
-      <guid>{escape(entry.get("guid", entry.get("url", "")))}</guid>
-      <pubDate>{entry.get("published_at", "")}</pubDate>
-      <author>{escape(entry.get("author", ""))}</author>
-      <description><![CDATA[{content}]]></description>
-    </item>
-"""
-        feed_xml += """  </channel>
-</rss>"""
-        return feed_xml
+        """Generate RSS 2.0 feed XML using template."""
+        # Prepare entries with CDATA-safe content
+        template_entries = [
+            {
+                "title": e.get("title", ""),
+                "url": e.get("url", ""),
+                "guid": e.get("guid", e.get("url", "")),
+                "published_at": e.get("published_at", ""),
+                "author": e.get("author", ""),
+                # Escape ]]> in CDATA to prevent breakout attacks (Issue 2.1)
+                "content_cdata": e.get("content", "").replace("]]>", "]]]]><![CDATA[>"),
+            }
+            for e in entries
+        ]
+        return render_template(
+            TEMPLATE_FEED_RSS,
+            planet=planet,
+            entries=template_entries,
+            last_build_date=datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000"),
+        )
 
     async def _export_opml(self):
-        """Export all active feeds as OPML."""
-        feeds = await self.env.DB.prepare("""
+        """Export all active feeds as OPML using template."""
+        feeds_result = await self.env.DB.prepare("""
             SELECT url, title, site_url
             FROM feeds
             WHERE is_active = 1
             ORDER BY title
         """).all()
 
+        # Prepare feed data for template
+        template_feeds = [
+            {
+                "title": f["title"] or f["url"],
+                "url": f["url"],
+                "site_url": f["site_url"] or "",
+            }
+            for f in _to_py_list(feeds_result.results)
+        ]
+
+        planet = self._get_planet_config()
         owner_name = getattr(self.env, "PLANET_OWNER_NAME", "Planet CF")
 
-        opml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<opml version="2.0">
-  <head>
-    <title>Planet CF Subscriptions</title>
-    <dateCreated>{datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000")}</dateCreated>
-    <ownerName>{owner_name}</ownerName>
-  </head>
-  <body>
-    <outline text="Planet CF Feeds" title="Planet CF Feeds">
-"""
-
-        for feed in _to_py_list(feeds.results):
-            title = html.escape(feed["title"] or feed["url"])
-            xml_url = html.escape(feed["url"])
-            html_url = html.escape(feed["site_url"] or "")
-            opml += (
-                f'      <outline type="rss" text="{title}" title="{title}" '
-                f'xmlUrl="{xml_url}" htmlUrl="{html_url}"/>\n'
-            )
-
-        opml += """    </outline>
-  </body>
-</opml>"""
+        opml = render_template(
+            TEMPLATE_FEEDS_OPML,
+            planet=planet,
+            feeds=template_feeds,
+            owner_name=owner_name,
+            date_created=datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000"),
+        )
 
         return Response(
             opml,
@@ -1679,364 +1667,13 @@ class Default(WorkerEntrypoint):
             )
         return Response("Not Found", status=404)
 
-    def _get_default_css(self):
-        """Return default CSS styling."""
-        return """
-/* Planet CF Styles */
-:root {
-    --primary-color: #f38020;
-    --text-color: #333;
-    --bg-color: #fff;
-    --sidebar-bg: #f5f5f5;
-    --border-color: #ddd;
-}
-
-* { box-sizing: border-box; margin: 0; padding: 0; }
-
-body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    line-height: 1.6;
-    color: var(--text-color);
-    background: var(--bg-color);
-}
-
-header {
-    background: var(--primary-color);
-    color: white;
-    padding: 2rem;
-    text-align: center;
-}
-
-header h1 { margin-bottom: 0.5rem; }
-header a { color: white; }
-
-.search-form {
-    margin-top: 1rem;
-    display: flex;
-    justify-content: center;
-    gap: 0.5rem;
-}
-
-.search-form input {
-    padding: 0.5rem 1rem;
-    border: none;
-    border-radius: 4px;
-    width: 300px;
-}
-
-.search-form button {
-    padding: 0.5rem 1rem;
-    background: white;
-    color: var(--primary-color);
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.container {
-    display: grid;
-    grid-template-columns: 1fr 300px;
-    gap: 2rem;
-    max-width: 1200px;
-    margin: 2rem auto;
-    padding: 0 1rem;
-}
-
-main { min-width: 0; }
-
-.day { margin-bottom: 2rem; }
-.day h2 {
-    border-bottom: 2px solid var(--primary-color);
-    padding-bottom: 0.5rem;
-    margin-bottom: 1rem;
-}
-
-article {
-    background: white;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 1.5rem;
-    margin-bottom: 1rem;
-}
-
-article h3 { margin-bottom: 0.5rem; }
-article h3 a { color: var(--primary-color); text-decoration: none; }
-article h3 a:hover { text-decoration: underline; }
-
-.meta {
-    color: #666;
-    font-size: 0.9rem;
-    margin-bottom: 1rem;
-}
-
-.content {
-    overflow-wrap: break-word;
-}
-
-.content img {
-    max-width: 100%;
-    height: auto;
-}
-
-.content pre {
-    background: #f5f5f5;
-    padding: 1rem;
-    overflow-x: auto;
-    border-radius: 4px;
-}
-
-.sidebar {
-    background: var(--sidebar-bg);
-    padding: 1.5rem;
-    border-radius: 8px;
-    height: fit-content;
-    position: sticky;
-    top: 1rem;
-}
-
-.sidebar h2 {
-    margin-bottom: 1rem;
-    font-size: 1.1rem;
-}
-
-.feeds {
-    list-style: none;
-}
-
-.feeds li {
-    padding: 0.5rem 0;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.feeds li.unhealthy { color: #c00; }
-.feeds .last-updated {
-    display: block;
-    font-size: 0.8rem;
-    color: #666;
-}
-
-footer {
-    text-align: center;
-    padding: 2rem;
-    background: #f5f5f5;
-    margin-top: 2rem;
-}
-
-footer a { color: var(--primary-color); }
-
-/* Search results */
-.search-results {
-    list-style: none;
-}
-
-.search-results li {
-    background: white;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 1.5rem;
-    margin-bottom: 1rem;
-}
-
-.search-results h3 { margin-bottom: 0.5rem; }
-.search-results .score { margin-left: 1rem; color: #666; }
-
-/* Admin styles */
-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 1rem 0;
-}
-
-th, td {
-    padding: 0.75rem;
-    text-align: left;
-    border-bottom: 1px solid var(--border-color);
-}
-
-th { background: var(--sidebar-bg); }
-tr.unhealthy { background: #fee; }
-
-.add-feed-form {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-}
-
-.add-feed-form input {
-    padding: 0.5rem;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-}
-
-.add-feed-form input[type="url"] { flex: 1; }
-
-button {
-    padding: 0.5rem 1rem;
-    background: var(--primary-color);
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-button:hover { opacity: 0.9; }
-
-/* Responsive */
-@media (max-width: 768px) {
-    .container {
-        grid-template-columns: 1fr;
-    }
-    .sidebar {
-        position: static;
-    }
-    .search-form input { width: 200px; }
-}
-"""
+    def _get_default_css(self) -> str:
+        """Return default CSS styling from templates module."""
+        return STATIC_CSS
 
     def _get_admin_js(self) -> str:
-        """Return admin dashboard JavaScript (external file for CSP compliance)."""
-        return """
-// Admin Dashboard JavaScript
-// Served from /static/admin.js to comply with Content Security Policy
-
-function showTab(tabId) {
-    // Remove active class from all tabs and content
-    document.querySelectorAll('.tab').forEach(function(t) {
-        t.classList.remove('active');
-    });
-    document.querySelectorAll('.tab-content').forEach(function(c) {
-        c.classList.remove('active');
-    });
-
-    // Add active class to selected tab and content
-    var tabs = document.querySelectorAll('.tab');
-    for (var i = 0; i < tabs.length; i++) {
-        if (tabs[i].getAttribute('data-tab') === tabId) {
-            tabs[i].classList.add('active');
-            break;
-        }
-    }
-    document.getElementById(tabId).classList.add('active');
-
-    // Load data for specific tabs
-    if (tabId === 'dlq') loadDLQ();
-    if (tabId === 'audit') loadAuditLog();
-}
-
-function toggleFeed(feedId, isActive) {
-    fetch('/admin/feeds/' + feedId, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_active: isActive ? 1 : 0 })
-    }).then(function(r) {
-        if (!r.ok) alert('Failed to update feed');
-    }).catch(function(err) {
-        alert('Error updating feed: ' + err.message);
-    });
-}
-
-function loadDLQ() {
-    fetch('/admin/dlq')
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            var container = document.getElementById('dlq-list');
-            if (!data.failed_feeds || data.failed_feeds.length === 0) {
-                container.innerHTML = '<p class="empty-state">' +
-                    'No failed feeds. All feeds are healthy!</p>';
-                return;
-            }
-            var html = '';
-            for (var i = 0; i < data.failed_feeds.length; i++) {
-                var f = data.failed_feeds[i];
-                html += '<div class="dlq-item">';
-                html += '<div><strong>' + escapeHtml(f.title || 'Untitled') + '</strong></div>';
-                html += '<div style="font-size:0.85rem;color:#666;word-break:break-all;">';
-                html += escapeHtml(f.url) + '</div>';
-                html += '<div style="font-size:0.8rem;color:#dc3545;margin-top:0.25rem;">';
-                html += f.consecutive_failures + ' consecutive failures';
-                html += (f.fetch_error ? ' - ' + escapeHtml(f.fetch_error) : '');
-                html += '</div>';
-                html += '<form action="/admin/dlq/' + f.id + '/retry" method="POST" ';
-                html += 'style="margin-top:0.5rem;">';
-                html += '<button type="submit" class="btn btn-warning btn-sm">Retry</button>';
-                html += '</form></div>';
-            }
-            container.innerHTML = html;
-        })
-        .catch(function(err) {
-            document.getElementById('dlq-list').innerHTML = '<p class="empty-state" ' +
-                'style="color:#dc3545;">Error loading: ' + err.message + '</p>';
-        });
-}
-
-function loadAuditLog() {
-    fetch('/admin/audit')
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            var container = document.getElementById('audit-list');
-            if (!data.audit_log || data.audit_log.length === 0) {
-                container.innerHTML = '<p class="empty-state">No audit log entries yet.</p>';
-                return;
-            }
-            var html = '';
-            for (var i = 0; i < data.audit_log.length; i++) {
-                var a = data.audit_log[i];
-                var details = {};
-                try {
-                    if (a.details) details = JSON.parse(a.details);
-                } catch (e) {}
-                var detailParts = [];
-                for (var key in details) {
-                    if (details.hasOwnProperty(key)) {
-                        detailParts.push(key + ': ' + details[key]);
-                    }
-                }
-                var detailStr = detailParts.join(', ');
-                html += '<div class="audit-item">';
-                html += '<div class="audit-action">' + escapeHtml(a.action) + '</div>';
-                html += '<div class="audit-time">' + escapeHtml(a.created_at) + ' by ';
-                html += escapeHtml(a.display_name || a.github_username || 'Unknown');
-                html += '</div>';
-                if (detailStr) {
-                    html += '<div class="audit-details">' + escapeHtml(detailStr) + '</div>';
-                }
-                html += '</div>';
-            }
-            container.innerHTML = html;
-        })
-        .catch(function(err) {
-            document.getElementById('audit-list').innerHTML = '<p class="empty-state" ' +
-                'style="color:#dc3545;">Error loading: ' + err.message + '</p>';
-        });
-}
-
-function escapeHtml(text) {
-    if (text === null || text === undefined) return '';
-    var div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-// Initialize tab click handlers when DOM is ready
-document.addEventListener('DOMContentLoaded', function() {
-    var tabs = document.querySelectorAll('.tab');
-    for (var i = 0; i < tabs.length; i++) {
-        tabs[i].addEventListener('click', function() {
-            var tabId = this.getAttribute('data-tab');
-            if (tabId) showTab(tabId);
-        });
-    }
-
-    // Initialize toggle handlers
-    var toggles = document.querySelectorAll('.feed-toggle');
-    for (var j = 0; j < toggles.length; j++) {
-        toggles[j].addEventListener('change', function() {
-            var feedId = this.getAttribute('data-feed-id');
-            toggleFeed(feedId, this.checked);
-        });
-    }
-});
-"""
+        """Return admin dashboard JavaScript from templates module."""
+        return ADMIN_JS
 
     # =========================================================================
     # Admin Routes
