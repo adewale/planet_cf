@@ -1680,14 +1680,21 @@ button:hover { opacity: 0.9; }
                 print(f"GitHub OAuth error: {token_data}")
                 return Response(f"Failed to get access token: {token_data}", status=400)
 
-            # Fetch user info
+            # Fetch user info (User-Agent required by GitHub API)
             async with httpx.AsyncClient() as client:
                 user_response = await client.get(
                     "https://api.github.com/user",
                     headers={
                         "Authorization": f"Bearer {access_token}",
                         "Accept": "application/json",
+                        "User-Agent": USER_AGENT,
                     },
+                )
+
+            if user_response.status_code != 200:
+                print(f"GitHub API error: {user_response.status_code} {user_response.text}")
+                return Response(
+                    f"GitHub API error: {user_response.status_code}", status=502
                 )
 
             user_data = user_response.json()
