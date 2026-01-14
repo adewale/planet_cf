@@ -30,8 +30,8 @@ _EMBEDDED_TEMPLATES = {
         .search-form input { padding: 0.5rem; width: 200px; }
         .search-form button { padding: 0.5rem 1rem; }
         .container { display: flex; gap: 2rem; }
-        main { flex: 1; }
-        aside { width: 250px; }
+        main { flex: 1; min-width: 0; }  /* min-width: 0 prevents flex overflow */
+        aside { width: 250px; flex-shrink: 0; }
         article { margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid #eee; }
         article h3 { margin-bottom: 0.25rem; }
         .meta { color: #666; font-size: 0.9rem; }
@@ -39,6 +39,52 @@ _EMBEDDED_TEMPLATES = {
         .feeds .healthy { color: green; }
         .feeds .unhealthy { color: red; }
         footer { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #ddd; text-align: center; color: #666; }
+
+        /* Content security: prevent foreign content from breaking layout */
+        .content {
+            overflow-wrap: break-word;      /* Break long words/URLs */
+            word-wrap: break-word;          /* Fallback for older browsers */
+            word-break: break-word;         /* Additional fallback */
+        }
+        .content img {
+            max-width: 100%;                /* Images constrained to container */
+            height: auto;                   /* Maintain aspect ratio */
+            max-height: 600px;              /* Prevent extremely tall images */
+            object-fit: contain;            /* Scale within bounds */
+            border-radius: 4px;
+        }
+        .content pre, .content code {
+            overflow-x: auto;               /* Horizontal scroll for code */
+            max-width: 100%;
+            background: #f5f5f5;
+            padding: 0.5rem;
+            border-radius: 4px;
+        }
+        .content pre {
+            padding: 1rem;
+        }
+        .content table {
+            display: block;                 /* Enable overflow handling */
+            overflow-x: auto;               /* Horizontal scroll for wide tables */
+            max-width: 100%;
+            border-collapse: collapse;
+        }
+        .content th, .content td {
+            border: 1px solid #ddd;
+            padding: 0.5rem;
+        }
+        .content blockquote {
+            border-left: 3px solid #ddd;
+            margin-left: 0;
+            padding-left: 1rem;
+            color: #666;
+        }
+        .content a {
+            word-break: break-all;          /* Break long URLs in links */
+        }
+        .content iframe, .content object, .content embed {
+            display: none !important;       /* Extra defense: hide any that slip through */
+        }
     </style>
 </head>
 <body>
@@ -695,10 +741,10 @@ function loadDLQ() {
                 html += '<div style="font-size:0.85rem;color:#666;word-break:break-all;">';
                 html += escapeHtml(f.url) + '</div>';
                 html += '<div style="font-size:0.8rem;color:#dc3545;margin-top:0.25rem;">';
-                html += f.consecutive_failures + ' consecutive failures';
+                html += escapeHtml(String(f.consecutive_failures)) + ' consecutive failures';
                 html += (f.fetch_error ? ' - ' + escapeHtml(f.fetch_error) : '');
                 html += '</div>';
-                html += '<form action="/admin/dlq/' + f.id + '/retry" method="POST" ';
+                html += '<form action="/admin/dlq/' + encodeURIComponent(f.id) + '/retry" method="POST" ';
                 html += 'style="margin-top:0.5rem;">';
                 html += '<button type="submit" class="btn btn-warning btn-sm">Retry</button>';
                 html += '</form></div>';
@@ -707,7 +753,7 @@ function loadDLQ() {
         })
         .catch(function(err) {
             document.getElementById('dlq-list').innerHTML = '<p class="empty-state" ' +
-                'style="color:#dc3545;">Error loading: ' + err.message + '</p>';
+                'style="color:#dc3545;">Error loading: ' + escapeHtml(err.message || 'Unknown error') + '</p>';
         });
 }
 
@@ -748,7 +794,7 @@ function loadAuditLog() {
         })
         .catch(function(err) {
             document.getElementById('audit-list').innerHTML = '<p class="empty-state" ' +
-                'style="color:#dc3545;">Error loading: ' + err.message + '</p>';
+                'style="color:#dc3545;">Error loading: ' + escapeHtml(err.message || 'Unknown error') + '</p>';
         });
 }
 

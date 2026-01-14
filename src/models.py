@@ -279,13 +279,50 @@ class BleachSanitizer:
         "tr",
         "ul",
     ]
+    # Note: target and loading are added dynamically via callbacks
     ALLOWED_ATTRS = {
-        "a": ["href", "title", "rel"],
-        "img": ["src", "alt", "title", "width", "height"],
+        "a": ["href", "title", "rel", "target"],
+        "img": ["src", "alt", "title", "width", "height", "loading"],
         "abbr": ["title"],
         "acronym": ["title"],
     }
     ALLOWED_PROTOCOLS = ["http", "https", "mailto"]
+
+    def _link_callback(self, attrs, new=False):
+        """
+        Callback to add security attributes to links.
+
+        Adds rel="noopener noreferrer" and target="_blank" to external links
+        to prevent window.opener attacks and referrer leakage.
+        """
+        # Get the href attribute
+        href_key = (None, "href")
+        href = attrs.get(href_key, "")
+
+        # Check if it's an external link (http/https, not same-origin)
+        if href.startswith(("http://", "https://")):
+            # Add target="_blank" for external links
+            attrs[(None, "target")] = "_blank"
+            # Add rel="noopener noreferrer" for security
+            attrs[(None, "rel")] = "noopener noreferrer"
+
+        return attrs
+
+    def _img_callback(self, attrs, new=False):
+        """
+        Callback to add performance and accessibility attributes to images.
+
+        Adds loading="lazy" for performance and ensures alt attribute exists.
+        """
+        # Add lazy loading for performance
+        attrs[(None, "loading")] = "lazy"
+
+        # Ensure alt attribute exists for accessibility (empty string if missing)
+        alt_key = (None, "alt")
+        if alt_key not in attrs:
+            attrs[alt_key] = ""
+
+        return attrs
 
     def clean(self, html: str) -> str:
         import re
@@ -298,13 +335,39 @@ class BleachSanitizer:
         html = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL | re.IGNORECASE)
         html = re.sub(r"<style[^>]*>.*?</style>", "", html, flags=re.DOTALL | re.IGNORECASE)
 
-        return bleach.clean(
+        # Clean HTML with bleach
+        cleaned = bleach.clean(
             html,
             tags=self.ALLOWED_TAGS,
             attributes=self.ALLOWED_ATTRS,
             protocols=self.ALLOWED_PROTOCOLS,
             strip=True,
         )
+
+        # Post-process: Add security attributes to links and enhancements to images
+        # Use regex since bleach callbacks don't work the way we need
+        # Add rel="noopener noreferrer" and target="_blank" to external links
+        cleaned = re.sub(
+            r'<a\s+href="(https?://[^"]+)"([^>]*)>',
+            r'<a href="\1" target="_blank" rel="noopener noreferrer"\2>',
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+
+        # Add loading="lazy" to images and ensure alt exists
+        def add_img_attrs(match):
+            tag = match.group(0)
+            # Add loading="lazy" if not present
+            if "loading=" not in tag:
+                tag = tag.replace("<img ", '<img loading="lazy" ')
+            # Add alt="" if not present
+            if "alt=" not in tag:
+                tag = tag.replace("<img ", '<img alt="" ')
+            return tag
+
+        cleaned = re.sub(r"<img\s+[^>]*>", add_img_attrs, cleaned, flags=re.IGNORECASE)
+
+        return cleaned
 
 
 class NoOpSanitizer:

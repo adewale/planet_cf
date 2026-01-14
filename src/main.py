@@ -522,11 +522,22 @@ def log_op(event_type: str, **kwargs) -> None:
 
 def html_response(content: str, cache_max_age: int = 3600) -> Response:
     """Create an HTML response with caching and security headers."""
+    # Content Security Policy - defense in depth against XSS
+    # - default-src 'self': Only allow same-origin resources by default
+    # - script-src 'self': Only allow same-origin scripts (blocks inline)
+    # - style-src 'self' 'unsafe-inline': Allow inline styles (needed for templates)
+    # - img-src https: data:: HTTPS images + data URIs (for inline images)
+    # - frame-ancestors 'none': Prevent clickjacking (cannot be framed)
+    # - base-uri 'self': Prevent base tag injection attacks
+    # - form-action 'self': Forms can only submit to same origin
     csp = (
         "default-src 'self'; "
+        "script-src 'self'; "
         "style-src 'self' 'unsafe-inline'; "
-        "img-src https: data:; "  # Restrict to HTTPS images only
-        "frame-ancestors 'none'"
+        "img-src https: data:; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
     )
     return Response(
         content,
@@ -853,6 +864,42 @@ class Default(WorkerEntrypoint):
         log_op("feed_processed", feed_url=url, entries_added=entries_added)
         return {"status": "ok", "entries_added": entries_added, "entries_found": entries_found}
 
+    def _normalize_urls(self, content: str, base_url: str) -> str:
+        """
+        Convert relative URLs in content to absolute URLs.
+
+        Handles href and src attributes with relative paths like:
+        - /images/foo.png -> https://example.com/images/foo.png
+        - ../assets/bar.css -> https://example.com/assets/bar.css
+        - image.jpg -> https://example.com/path/image.jpg
+        """
+        parsed_base = urlparse(base_url)
+        base_origin = f"{parsed_base.scheme}://{parsed_base.netloc}"
+        base_path = parsed_base.path.rsplit("/", 1)[0] if "/" in parsed_base.path else ""
+
+        def resolve_url(match):
+            attr = match.group(1)  # href or src
+            quote = match.group(2)  # ' or "
+            url = match.group(3)  # the URL value
+
+            # Skip if already absolute or special protocol
+            if url.startswith(("http://", "https://", "//", "data:", "mailto:", "#")):
+                return match.group(0)
+
+            # Resolve relative URL
+            if url.startswith("/"):
+                # Absolute path relative to origin
+                resolved = f"{base_origin}{url}"
+            else:
+                # Relative path
+                resolved = f"{base_origin}{base_path}/{url}"
+
+            return f"{attr}={quote}{resolved}{quote}"
+
+        # Match href="..." or src="..." with relative URLs
+        pattern = r'(href|src)=(["\'])([^"\']+)\2'
+        return re.sub(pattern, resolve_url, content, flags=re.I)
+
     async def _fetch_full_content(self, url: str) -> str | None:
         """
         Fetch full article content from a URL when feed only provides summary.
@@ -906,6 +953,8 @@ class Default(WorkerEntrypoint):
                     content = "".join(f"<p>{p}</p>" for p in paragraphs[:50])
 
             if content and len(content) > 500:
+                # Normalize relative URLs to absolute URLs
+                content = self._normalize_urls(content, url)
                 return content
 
             return None
