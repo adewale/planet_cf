@@ -14,6 +14,7 @@ import hashlib
 import hmac
 import ipaddress
 import json
+import re
 import secrets
 import time
 import xml.etree.ElementTree as ET
@@ -852,6 +853,67 @@ class Default(WorkerEntrypoint):
         log_op("feed_processed", feed_url=url, entries_added=entries_added)
         return {"status": "ok", "entries_added": entries_added, "entries_found": entries_found}
 
+    async def _fetch_full_content(self, url: str) -> str | None:
+        """
+        Fetch full article content from a URL when feed only provides summary.
+
+        Uses regex-based extraction for Pyodide compatibility (no BeautifulSoup).
+        Returns None if extraction fails, so caller can fall back to summary.
+        """
+        if not url or not self._is_safe_url(url):
+            return None
+
+        try:
+            response = await safe_http_fetch(
+                url,
+                headers={"User-Agent": USER_AGENT},
+                timeout_seconds=HTTP_TIMEOUT_SECONDS,
+            )
+
+            if response.status_code != 200:
+                return None
+
+            html = response.text
+
+            # Remove script and style tags with their content
+            html = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL | re.I)
+            html = re.sub(r"<style[^>]*>.*?</style>", "", html, flags=re.DOTALL | re.I)
+            html = re.sub(r"<nav[^>]*>.*?</nav>", "", html, flags=re.DOTALL | re.I)
+            html = re.sub(r"<footer[^>]*>.*?</footer>", "", html, flags=re.DOTALL | re.I)
+
+            # Try to extract content from common article containers
+            # Order matters - more specific patterns first
+            patterns = [
+                r"<article[^>]*>(.*?)</article>",
+                r"<main[^>]*>(.*?)</main>",
+                r'<div[^>]*class="[^"]*(?:post-content|entry-content|article-content)[^"]*"[^>]*>(.*?)</div>',
+                r'<div[^>]*class="[^"]*content[^"]*"[^>]*>(.*?)</div>',
+                r'<div[^>]*id="content"[^>]*>(.*?)</div>',
+            ]
+
+            content = None
+            for pattern in patterns:
+                match = re.search(pattern, html, flags=re.DOTALL | re.I)
+                if match:
+                    content = match.group(1)
+                    break
+
+            if not content:
+                # Fallback: extract all paragraphs
+                paragraphs = re.findall(r"<p[^>]*>(.*?)</p>", html, flags=re.DOTALL | re.I)
+                if len(paragraphs) >= 3:
+                    # Join paragraphs into content
+                    content = "".join(f"<p>{p}</p>" for p in paragraphs[:50])
+
+            if content and len(content) > 500:
+                return content
+
+            return None
+
+        except Exception as e:
+            log_op("content_fetch_error", url=url, error=str(e)[:100])
+            return None
+
     async def _upsert_entry(self, feed_id, entry):
         """Insert or update a single entry with sanitized content."""
 
@@ -877,6 +939,19 @@ class Default(WorkerEntrypoint):
                 content = str(first_content)
         elif entry.get("summary"):
             content = entry.get("summary", "")
+
+        # If content is just a short summary, try to fetch full article content
+        # This handles feeds that only provide <description> without <content:encoded>
+        entry_url = entry.get("link")
+        if len(content) < 500 and entry_url:
+            fetched_content = await self._fetch_full_content(entry_url)
+            if fetched_content:
+                content = fetched_content
+                log_op(
+                    "full_content_fetched",
+                    url=entry_url[:100],
+                    content_len=len(content),
+                )
 
         # Sanitize HTML (XSS prevention)
         sanitized_content = self._sanitize_html(content)
