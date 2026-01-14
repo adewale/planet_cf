@@ -182,8 +182,9 @@ def is_safe_url(url: str) -> bool:
         ip = ipaddress.ip_address(hostname)
         if ip.is_private or ip.is_loopback or ip.is_link_local:
             return False
-        # Block IPv6 unique local addresses (fd00::/8)
-        if ip.version == 6 and ip.packed[0] == 0xFD:
+        # Block IPv6 unique local addresses (fc00::/7, which includes fd00::/8)
+        # Check first byte: 0xFC or 0xFD (binary: 1111110x)
+        if ip.version == 6 and (ip.packed[0] & 0xFE) == 0xFC:
             return False
     except ValueError:
         pass  # Not an IP, that's fine
@@ -191,7 +192,7 @@ def is_safe_url(url: str) -> bool:
     # Block cloud metadata hostnames
     metadata_hosts = [
         "metadata.google.internal",
-        "metadata.azure.internal",
+        "metadata.azure.internal",  # Azure IMDS hostname
         "instance-data",
     ]
     if any(hostname == h or hostname.endswith("." + h) for h in metadata_hosts):
@@ -312,3 +313,58 @@ class TestUrlValidation:
     def test_allows_url_with_port(self):
         """URLs with non-standard ports are allowed (if not internal)."""
         assert is_safe_url("https://example.com:8443/feed")
+
+    # Comprehensive IPv6 SSRF tests
+    @pytest.mark.parametrize(
+        "url",
+        [
+            # fc00::/8 - Unique Local (not guaranteed private, but blocked)
+            "http://[fc00::1]/feed",
+            "http://[fc00:ffff:ffff::1]/feed",
+            "http://[fcff:ffff:ffff:ffff::1]/feed",
+            # fd00::/8 - Unique Local (RFC 4193 private)
+            "http://[fd00::1]/feed",
+            "http://[fd00::face:1234]/feed",
+            "http://[fdff:ffff:ffff:ffff::1]/feed",
+        ],
+    )
+    def test_blocks_ipv6_unique_local(self, url):
+        """IPv6 unique local addresses (fc00::/7) are blocked."""
+        assert not is_safe_url(url)
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            # IPv6 loopback
+            "http://[::1]/feed",
+            # IPv6 link-local
+            "http://[fe80::1]/feed",
+            "http://[fe80::1%25eth0]/feed",  # URL-encoded % for interface
+        ],
+    )
+    def test_blocks_ipv6_special_addresses(self, url):
+        """IPv6 loopback and link-local addresses are blocked."""
+        assert not is_safe_url(url)
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            # Valid public IPv6 addresses (real routable addresses)
+            "http://[2607:f8b0:4004:800::200e]/feed",  # Google's IPv6
+            "http://[2600:1901:0:38d7::]/feed",  # Google Cloud
+        ],
+    )
+    def test_allows_public_ipv6(self, url):
+        """Public IPv6 addresses are allowed (for valid use cases)."""
+        assert is_safe_url(url)
+
+    def test_blocks_documentation_ipv6(self):
+        """RFC 3849 documentation addresses (2001:db8::/32) are blocked as reserved."""
+        # 2001:db8::/32 is reserved for documentation, not routable
+        # Python's ipaddress treats it as reserved, which is correct
+        assert not is_safe_url("http://[2001:db8::1]/feed")
+
+    def test_blocks_azure_metadata(self):
+        """Azure IMDS metadata hostname is blocked."""
+        assert not is_safe_url("http://metadata.azure.internal/")
+        assert not is_safe_url("http://metadata.azure.internal/metadata/instance")

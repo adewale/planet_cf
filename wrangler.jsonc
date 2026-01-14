@@ -29,6 +29,8 @@
   // - GITHUB_CLIENT_ID: OAuth client ID
   // - GITHUB_CLIENT_SECRET: OAuth client secret
   // - SESSION_SECRET: HMAC key for signed cookies (generate with: openssl rand -hex 32)
+  // - OAUTH_REDIRECT_URI: Full OAuth callback URL for production (e.g., https://planetcf.com/auth/github/callback)
+  //   This is a security best practice to prevent open redirect attacks. If not set, falls back to request origin.
 
   // Workers Observability
   "observability": {

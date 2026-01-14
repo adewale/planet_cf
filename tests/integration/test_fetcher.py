@@ -70,7 +70,6 @@ async def test_fetcher_respects_304_not_modified(mock_env):
 @respx.mock
 async def test_fetcher_handles_timeout(mock_env):
     """Fetcher should handle timeout gracefully."""
-    import httpx
 
     respx.get("https://slow.example.com/feed.xml").mock(
         side_effect=httpx.TimeoutException("Connection timed out")
@@ -109,8 +108,8 @@ async def test_fetcher_handles_404(mock_env):
         "url": "https://example.com/missing.xml",
     }
 
-    # Should raise HTTPStatusError
-    with pytest.raises(httpx.HTTPStatusError):
+    # Should raise ValueError with HTTP error message (after safe_http_fetch change)
+    with pytest.raises(ValueError, match="HTTP error 404"):
         await worker._process_single_feed(job)
 
 

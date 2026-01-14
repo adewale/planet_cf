@@ -59,7 +59,7 @@ _EMBEDDED_TEMPLATES = {
                 {% for entry in day_entries %}
                 <article>
                     <header>
-                        <h3><a href="{{ entry.url }}">{{ entry.title }}</a></h3>
+                        <h3><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
                         <p class="meta">
                             <span class="author">{{ entry.author or entry.feed_title }}</span>
                             <time datetime="{{ entry.published_at }}">{{ entry.published_at_formatted }}</time>
@@ -70,7 +70,7 @@ _EMBEDDED_TEMPLATES = {
                 {% endfor %}
             </section>
             {% else %}
-            <p>No entries yet. Add some feeds to get started!</p>
+            <p>No entries yet.</p>
             {% endfor %}
         </main>
 
@@ -79,7 +79,7 @@ _EMBEDDED_TEMPLATES = {
             <ul class="feeds">
                 {% for feed in feeds %}
                 <li class="{{ 'healthy' if feed.is_healthy else 'unhealthy' }}">
-                    <a href="{{ feed.site_url }}">{{ feed.title }}</a>
+                    {% if feed.site_url %}<a href="{{ feed.site_url }}">{{ feed.title or 'Untitled' }}</a>{% else %}{{ feed.title or 'Untitled' }}{% endif %}
                 </li>
                 {% else %}
                 <li>No feeds configured</li>
@@ -90,7 +90,7 @@ _EMBEDDED_TEMPLATES = {
 
     <footer>
         <p><a href="/feed.atom">Atom</a> · <a href="/feed.rss">RSS</a> · <a href="/feeds.opml">OPML</a></p>
-        <p>Powered by Planet CF</p>
+        <p>Powered by Planet CF · <a href="/admin" style="color: #999; font-size: 0.8em;">Admin</a></p>
         <p>Last updated: {{ generated_at }}</p>
     </footer>
 </body>
@@ -124,7 +124,7 @@ _EMBEDDED_TEMPLATES = {
         <ul class="search-results">
             {% for entry in results %}
             <li>
-                <h3><a href="{{ entry.url }}">{{ entry.title }}</a></h3>
+                <h3><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
                 <p class="meta">{{ entry.author or entry.feed_title }}</p>
             </li>
             {% endfor %}
@@ -143,66 +143,160 @@ _EMBEDDED_TEMPLATES = {
     <meta charset="UTF-8">
     <title>Admin - {{ planet.name }}</title>
     <style>
-        body { font-family: system-ui; max-width: 900px; margin: 0 auto; padding: 1rem; }
+        body { font-family: system-ui; max-width: 1000px; margin: 0 auto; padding: 1rem; }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid #ddd; padding-bottom: 1rem; }
-        .user-info { display: flex; align-items: center; gap: 1rem; }
-        .logout-btn { background: #dc3545; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
-        .logout-btn:hover { background: #c82333; }
-        .add-form { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
-        .add-form input[type="url"] { flex: 1; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; }
+        .header-actions { display: flex; align-items: center; gap: 1rem; }
+        .user-info { display: flex; align-items: center; gap: 0.5rem; }
+        .btn { border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-size: 0.875rem; }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-primary:hover { background: #0056b3; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-success:hover { background: #218838; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-danger:hover { background: #c82333; }
+        .btn-warning { background: #ffc107; color: #212529; }
+        .btn-warning:hover { background: #e0a800; }
+        .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.8rem; }
+        .section { margin-bottom: 2rem; padding: 1rem; background: #f8f9fa; border-radius: 8px; }
+        .section h2 { margin-top: 0; margin-bottom: 1rem; font-size: 1.25rem; }
+        .add-form { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .add-form input[type="url"] { flex: 1; min-width: 200px; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; }
         .add-form input[type="text"] { width: 200px; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; }
-        .add-form button { background: #28a745; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
-        .feed-list { list-style: none; padding: 0; }
-        .feed-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border: 1px solid #eee; margin-bottom: 0.5rem; border-radius: 4px; }
+        .add-form input[type="file"] { padding: 0.5rem; }
+        .feed-list { list-style: none; padding: 0; margin: 0; }
+        .feed-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: white; border: 1px solid #dee2e6; margin-bottom: 0.5rem; border-radius: 4px; }
         .feed-info { flex: 1; }
         .feed-title { font-weight: bold; }
-        .feed-url { color: #666; font-size: 0.9rem; }
-        .feed-status { font-size: 0.8rem; }
+        .feed-url { color: #666; font-size: 0.85rem; word-break: break-all; }
+        .feed-status { font-size: 0.8rem; margin-top: 0.25rem; }
         .feed-status.healthy { color: #28a745; }
         .feed-status.failing { color: #dc3545; }
-        .delete-btn { background: #dc3545; color: white; border: none; padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
+        .feed-status.disabled { color: #6c757d; }
+        .feed-actions { display: flex; gap: 0.5rem; align-items: center; }
+        .toggle { position: relative; display: inline-block; width: 50px; height: 24px; }
+        .toggle input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider { position: absolute; cursor: pointer; inset: 0; background: #ccc; border-radius: 24px; transition: 0.3s; }
+        .toggle-slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: 0.3s; }
+        .toggle input:checked + .toggle-slider { background: #28a745; }
+        .toggle input:checked + .toggle-slider:before { transform: translateX(26px); }
+        .tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; border-bottom: 2px solid #dee2e6; }
+        .tab { padding: 0.5rem 1rem; cursor: pointer; border: none; background: none; font-size: 0.9rem; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+        .tab.active { border-bottom-color: #007bff; color: #007bff; font-weight: bold; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .dlq-item, .audit-item { padding: 0.75rem; background: white; border: 1px solid #dee2e6; margin-bottom: 0.5rem; border-radius: 4px; }
+        .dlq-item { border-left: 4px solid #dc3545; }
+        .audit-item { border-left: 4px solid #6c757d; }
+        .audit-action { font-weight: bold; color: #495057; }
+        .audit-time { color: #6c757d; font-size: 0.8rem; }
+        .audit-details { font-size: 0.85rem; color: #666; margin-top: 0.25rem; }
+        .empty-state { color: #6c757d; font-style: italic; padding: 1rem; text-align: center; }
+        #dlq-list, #audit-list { max-height: 400px; overflow-y: auto; }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>Admin Dashboard</h1>
-        <div class="user-info">
-            <span>Welcome, {{ admin.display_name or admin.github_username }}</span>
-            <form action="/admin/logout" method="POST" style="margin: 0;">
-                <button type="submit" class="logout-btn">Logout</button>
+        <div class="header-actions">
+            <form action="/admin/regenerate" method="POST" style="margin: 0;">
+                <button type="submit" class="btn btn-primary" title="Re-fetch all feeds now">Refresh All Feeds</button>
+            </form>
+            <div class="user-info">
+                <span>{{ admin.display_name or admin.github_username }}</span>
+                <form action="/admin/logout" method="POST" style="margin: 0;">
+                    <button type="submit" class="btn btn-danger btn-sm">Logout</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <button class="tab active" data-tab="feeds">Feeds</button>
+        <button class="tab" data-tab="import">Import OPML</button>
+        <button class="tab" data-tab="dlq">Failed Feeds</button>
+        <button class="tab" data-tab="audit">Audit Log</button>
+    </div>
+
+    <div id="feeds" class="tab-content active">
+        <div class="section">
+            <h2>Add Feed</h2>
+            <form action="/admin/feeds" method="POST" class="add-form">
+                <input type="url" name="url" placeholder="https://example.com/feed.xml" required>
+                <input type="text" name="title" placeholder="Feed title (optional)">
+                <button type="submit" class="btn btn-success">Add Feed</button>
+            </form>
+        </div>
+
+        <div class="section">
+            <h2>Feeds ({{ feeds | length }})</h2>
+            {% if feeds %}
+            <ul class="feed-list">
+                {% for feed in feeds %}
+                <li class="feed-item">
+                    <div class="feed-info">
+                        <div class="feed-title">{{ feed.title or 'Untitled' }}</div>
+                        <div class="feed-url">{{ feed.url }}</div>
+                        <div class="feed-status {% if not feed.is_active %}disabled{% elif feed.consecutive_failures >= 3 %}failing{% else %}healthy{% endif %}">
+                            {% if not feed.is_active %}
+                                Disabled
+                            {% elif feed.consecutive_failures >= 3 %}
+                                Failing ({{ feed.consecutive_failures }} errors)
+                            {% else %}
+                                Healthy
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="feed-actions">
+                        <label class="toggle" title="Enable/Disable feed">
+                            <input type="checkbox" class="feed-toggle" data-feed-id="{{ feed.id }}" {% if feed.is_active %}checked{% endif %}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <form action="/admin/feeds/{{ feed.id }}" method="POST" style="margin: 0;">
+                            <input type="hidden" name="_method" value="DELETE">
+                            <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete this feed?')">Delete</button>
+                        </form>
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="empty-state">No feeds yet. Add one above!</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div id="import" class="tab-content">
+        <div class="section">
+            <h2>Import OPML</h2>
+            <p style="margin-bottom: 1rem; color: #666;">Upload an OPML file to import multiple feeds at once.</p>
+            <form action="/admin/import-opml" method="POST" enctype="multipart/form-data" class="add-form">
+                <input type="file" name="opml" accept=".opml,.xml" required>
+                <button type="submit" class="btn btn-success">Import Feeds</button>
             </form>
         </div>
     </div>
 
-    <h2>Add Feed</h2>
-    <form action="/admin/feeds" method="POST" class="add-form">
-        <input type="url" name="url" placeholder="https://example.com/feed.xml" required>
-        <input type="text" name="title" placeholder="Feed title (optional)">
-        <button type="submit">Add Feed</button>
-    </form>
-
-    <h2>Feeds ({{ feeds | length }})</h2>
-    {% if feeds %}
-    <ul class="feed-list">
-        {% for feed in feeds %}
-        <li class="feed-item">
-            <div class="feed-info">
-                <div class="feed-title">{{ feed.title or 'Untitled' }}</div>
-                <div class="feed-url">{{ feed.url }}</div>
-                <div class="feed-status {{ 'healthy' if feed.consecutive_failures < 3 else 'failing' }}">
-                    {% if feed.consecutive_failures >= 3 %}Failing ({{ feed.consecutive_failures }} errors){% else %}Healthy{% endif %}
-                </div>
+    <div id="dlq" class="tab-content">
+        <div class="section">
+            <h2>Failed Feeds (Dead Letter Queue)</h2>
+            <p style="margin-bottom: 1rem; color: #666;">Feeds that have failed 3 or more times consecutively.</p>
+            <div id="dlq-list">
+                <p class="empty-state">Loading...</p>
             </div>
-            <form action="/admin/feeds/{{ feed.id }}" method="POST" style="margin: 0;">
-                <input type="hidden" name="_method" value="DELETE">
-                <button type="submit" class="delete-btn" onclick="return confirm('Delete this feed?')">Delete</button>
-            </form>
-        </li>
-        {% endfor %}
-    </ul>
-    {% else %}
-    <p>No feeds yet. Add one above!</p>
-    {% endif %}
+        </div>
+    </div>
+
+    <div id="audit" class="tab-content">
+        <div class="section">
+            <h2>Audit Log</h2>
+            <p style="margin-bottom: 1rem; color: #666;">Recent admin actions.</p>
+            <div id="audit-list">
+                <p class="empty-state">Loading...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/admin.js"></script>
 </body>
 </html>""",
     "admin/login.html": """<!DOCTYPE html>

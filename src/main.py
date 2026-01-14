@@ -24,10 +24,21 @@ from xml.sax.saxutils import escape
 
 import feedparser
 import httpx
-import js
-from js import fetch as js_fetch
-from pyodide.ffi import to_js
 from workers import Response, WorkerEntrypoint
+
+# Pyodide-specific imports (only available in Cloudflare Workers environment)
+try:
+    import js
+    from js import fetch as js_fetch
+    from pyodide.ffi import to_js
+
+    HAS_PYODIDE = True
+except ImportError:
+    # Test environment - these will not be used
+    js = None
+    js_fetch = None
+    to_js = None
+    HAS_PYODIDE = False
 
 from models import BleachSanitizer
 from observability import (
@@ -51,11 +62,192 @@ from templates import (
 
 FEED_TIMEOUT_SECONDS = 60  # Max wall time per feed
 HTTP_TIMEOUT_SECONDS = 30  # HTTP request timeout
-USER_AGENT = "PlanetCF/1.0 (+https://planetcf.com)"
+# Issue 9.3/9.5: Include contact info for good netizen behavior
+USER_AGENT = "PlanetCF/1.0 (+https://planetcf.com; contact@planetcf.com)"
 SESSION_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
+# Security: Maximum search query length to prevent DoS
+MAX_SEARCH_QUERY_LENGTH = 1000
 
 # HTML sanitizer instance (uses settings from types.py)
 _sanitizer = BleachSanitizer()
+
+# Constants for content limits
+EMBEDDING_MAX_CONTENT_LENGTH = 2000
+SUMMARY_MAX_LENGTH = 500
+
+
+# =============================================================================
+# Form Data Helper (handles JsProxy in production, dict in tests)
+# =============================================================================
+
+
+def _is_js_undefined(value) -> bool:
+    """Check if a value is JavaScript undefined (wrapped as JsProxy in Pyodide)."""
+    if value is None:
+        return False
+    if not HAS_PYODIDE:
+        return False
+    # In Pyodide, JavaScript undefined has typeof == "undefined"
+    try:
+        if hasattr(value, "typeof") and value.typeof == "undefined":
+            return True
+        # Also check for JsUndefined type from pyodide.ffi
+        type_name = type(value).__name__
+        if type_name in ("JsUndefined", "JsNull"):
+            return True
+    except (AttributeError, TypeError):
+        # Ignore type check errors
+        pass
+    return False
+
+
+def _safe_str(value) -> str | None:
+    """
+    Convert a value to Python string, handling JsProxy/undefined/null.
+
+    Returns None for JavaScript undefined/null or Python None.
+    Returns str for any other value.
+    """
+    if value is None:
+        return None
+    if _is_js_undefined(value):
+        return None
+    # Convert to Python if JsProxy
+    py_val = _to_py_primitive(value)
+    if py_val is None:
+        return None
+    return str(py_val) if py_val else None
+
+
+def _to_py_primitive(value):
+    """
+    Force convert a value to a Python primitive type.
+
+    This is more aggressive than to_py() and handles cases where
+    JsProxy values are nested or not properly converted.
+    """
+    if value is None:
+        return None
+
+    # Check for undefined BEFORE any other checks
+    if _is_js_undefined(value):
+        return None
+
+    # If it's already a basic Python type, return it
+    if isinstance(value, int | float | str | bool):
+        return value
+
+    # Handle JsProxy with to_py() - try multiple approaches
+    if HAS_PYODIDE and hasattr(value, "to_py"):
+        try:
+            converted = value.to_py()
+            # to_py() might return a dict with JsProxy values, recurse
+            return _to_py_primitive(converted)
+        except (AttributeError, TypeError, ValueError):
+            # JsProxy conversion failed, try other approaches
+            pass
+
+    # For dicts, recursively convert all values
+    if isinstance(value, dict):
+        return {k: _to_py_primitive(v) for k, v in value.items()}
+
+    # For lists, recursively convert all items
+    if isinstance(value, list):
+        return [_to_py_primitive(item) for item in value]
+
+    # Try to convert to string as last resort
+    try:
+        str_val = str(value)
+        # Check if it's a number string
+        if str_val.isdigit():
+            return int(str_val)
+        return str_val
+    except Exception:
+        return None
+
+
+def _to_py_safe(value):
+    """
+    Safely convert a JsProxy value to Python, handling undefined.
+
+    Returns None for JavaScript undefined/null.
+    Returns Python primitive for JsProxy primitives.
+    Recursively converts dicts and lists.
+    Passes through Python values unchanged.
+    """
+    return _to_py_primitive(value)
+
+
+def _extract_form_value(form, key: str) -> str | None:
+    """
+    Extract a value from form data, handling both JsProxy (production) and dict (tests).
+
+    In Cloudflare Workers Python (Pyodide), form_data() returns a JavaScript FormData
+    object wrapped as JsProxy. The .get() method may return JavaScript undefined for
+    missing keys (NOT Python None).
+    """
+    try:
+        value = form.get(key)
+        # Check for None and JavaScript undefined
+        if value is None or _is_js_undefined(value):
+            return None
+        # In Pyodide, convert JsProxy to Python
+        py_value = _to_py_safe(value)
+        if py_value is None:
+            return None
+        # Handle case where value is already a string or has string conversion
+        return str(py_value) if py_value else None
+    except Exception:
+        return None
+
+
+def _to_py_list(js_array) -> list[dict]:
+    """
+    Convert D1 query results (JsProxy array) to Python list of dicts.
+
+    In Cloudflare Workers Python, D1 .results returns a JavaScript array of objects.
+    We need to convert each row to a Python dict for proper dict access.
+    """
+    if js_array is None:
+        return []
+
+    # In test environment, it's already a Python list
+    if isinstance(js_array, list):
+        return js_array
+
+    # In Pyodide, convert JsProxy array to Python list
+    if HAS_PYODIDE and hasattr(js_array, "to_py"):
+        return js_array.to_py()
+
+    # Try iteration as fallback
+    try:
+        return [dict(row) if hasattr(row, "items") else row.to_py() for row in js_array]
+    except Exception:
+        return list(js_array)
+
+
+def _to_d1_value(value):
+    """
+    Convert a Python value to a D1-safe value.
+
+    This is the central conversion point for all D1 bind parameters.
+    Handles the Python-to-JavaScript boundary for database operations.
+
+    ALWAYS converts through _to_py_primitive() first to ensure no JsProxy
+    values slip through, then converts None back to JS null for D1.
+    """
+    # First: Force convert to Python primitive (catches all JsProxy/undefined)
+    py_value = _to_py_primitive(value)
+
+    # Second: Handle None - must be JS null for D1 in Pyodide
+    if py_value is None:
+        if HAS_PYODIDE:
+            return to_js(None)  # Returns JS null
+        return None
+
+    # Primitives pass through (they're already safe Python types)
+    return py_value
+
 
 # Cloud metadata endpoints to block (SSRF protection)
 BLOCKED_METADATA_IPS = {
@@ -63,6 +255,243 @@ BLOCKED_METADATA_IPS = {
     "100.100.100.200",  # Alibaba Cloud metadata
     "192.0.0.192",  # Oracle Cloud metadata
 }
+
+
+# =============================================================================
+# JavaScript/Python Boundary Layer
+# =============================================================================
+#
+# These wrapper classes provide a clean boundary between JavaScript (Pyodide/JsProxy)
+# and Python. All JavaScript bindings (D1, AI, Vectorize, Queue) are wrapped to
+# automatically convert JsProxy objects to native Python types.
+#
+# This ensures that application code NEVER sees JsProxy objects - they are
+# converted at the boundary layer before reaching business logic.
+# =============================================================================
+
+
+class SafeD1Statement:
+    """Wrapper for D1 prepared statement that auto-converts results to Python."""
+
+    def __init__(self, stmt):
+        self._stmt = stmt
+
+    def bind(self, *args):
+        """Bind parameters and return self for chaining.
+
+        All parameters are converted via _to_d1_value() which:
+        - Converts None to JS null (required by D1)
+        - Catches any leaked JsProxy/undefined (defensive)
+        """
+        converted = []
+        for i, arg in enumerate(args):
+            val = _to_d1_value(arg)
+            # Debug: log type information
+            log_op(
+                "d1_bind_debug",
+                index=i,
+                raw_type=type(arg).__name__,
+                converted_type=type(val).__name__,
+                is_none=(val is None),
+            )
+            converted.append(val)
+        self._stmt = self._stmt.bind(*tuple(converted))
+        return self
+
+    async def first(self) -> dict | None:
+        """Execute and return first result as Python dict."""
+        result = await self._stmt.first()
+        return _to_py_safe(result)
+
+    async def all(self):
+        """Execute and return all results with Python list of dicts.
+
+        Returns an object with .results (list[dict]) and .success (bool)
+        to match the D1 API that callers expect.
+        """
+        result = await self._stmt.all()
+
+        # Create result object with attributes (to match D1 API)
+        class D1Result:
+            def __init__(self, results: list, success: bool):
+                self.results = results
+                self.success = success
+
+        return D1Result(
+            results=_to_py_list(result.results) if result else [],
+            success=getattr(result, "success", True),
+        )
+
+    async def run(self):
+        """Execute statement (for INSERT/UPDATE/DELETE)."""
+        return await self._stmt.run()
+
+
+class SafeD1:
+    """Wrapper for D1 database that auto-converts all results to Python."""
+
+    def __init__(self, db):
+        self._db = db
+
+    def prepare(self, sql: str) -> SafeD1Statement:
+        """Prepare a SQL statement with automatic result conversion."""
+        return SafeD1Statement(self._db.prepare(sql))
+
+
+class SafeAI:
+    """Wrapper for Workers AI that auto-converts results to Python."""
+
+    def __init__(self, ai):
+        self._ai = ai
+
+    async def run(self, model: str, inputs: dict) -> dict:
+        """Run AI model and return Python dict result."""
+        result = await self._ai.run(model, inputs)
+        return _to_py_safe(result)
+
+
+class SafeVectorize:
+    """Wrapper for Vectorize index that auto-converts results to Python."""
+
+    def __init__(self, index):
+        self._index = index
+
+    async def query(self, vector, options: dict) -> dict:
+        """Query the index and return Python dict with matches."""
+        result = await self._index.query(vector, options)
+        # Convert the result and its nested matches
+        py_result = _to_py_safe(result)
+        if py_result is None:
+            return {"matches": []}
+        return py_result
+
+    async def upsert(self, vectors):
+        """Upsert vectors into the index."""
+        return await self._index.upsert(vectors)
+
+    async def deleteByIds(self, ids: list[str]):
+        """Delete vectors by their IDs."""
+        return await self._index.deleteByIds(ids)
+
+
+class SafeQueue:
+    """Wrapper for Queue that ensures Python dicts are sent correctly."""
+
+    def __init__(self, queue):
+        self._queue = queue
+
+    async def send(self, message: dict):
+        """Send a message to the queue."""
+        return await self._queue.send(message)
+
+
+class HttpResponse:
+    """Normalized HTTP response for boundary layer."""
+
+    def __init__(self, status_code: int, text: str, headers: dict, final_url: str):
+        self.status_code = status_code
+        self.text = text
+        self.headers = headers  # Python dict
+        self.final_url = final_url
+
+    def json(self) -> dict:
+        """Parse response text as JSON."""
+        import json
+
+        return json.loads(self.text)
+
+
+async def safe_http_fetch(
+    url: str,
+    method: str = "GET",
+    headers: dict | None = None,
+    data: dict | None = None,
+    timeout_seconds: int = 30,
+) -> HttpResponse:
+    """
+    Boundary-layer HTTP fetch that works in both Pyodide and test environments.
+
+    Returns a normalized HttpResponse with all JavaScript values converted to Python.
+    This centralizes all js_fetch/httpx logic so business code doesn't need HAS_PYODIDE.
+
+    Args:
+        url: The URL to fetch
+        method: HTTP method (GET, POST, etc.)
+        headers: Request headers
+        data: Form data for POST requests (will be URL-encoded)
+        timeout_seconds: Request timeout in seconds
+    """
+    headers = headers or {}
+
+    if HAS_PYODIDE:
+        # Production: Use native Workers fetch
+        fetch_options_dict = {"method": method, "headers": headers, "redirect": "follow"}
+
+        # Handle form data for POST
+        if data and method.upper() == "POST":
+            # URL-encode form data
+            body = "&".join(f"{k}={v}" for k, v in data.items())
+            fetch_options_dict["body"] = body
+            if "content-type" not in {k.lower() for k in headers}:
+                fetch_options_dict["headers"] = {
+                    **headers,
+                    "Content-Type": "application/x-www-form-urlencoded",
+                }
+
+        fetch_options = to_js(fetch_options_dict, dict_converter=js.Object.fromEntries)
+        js_response = await js_fetch(url, fetch_options)
+
+        # Extract all values to Python before returning
+        status_code = int(js_response.status)
+        final_url = str(js_response.url) if js_response.url else url
+        text = await js_response.text()
+
+        # Convert headers to Python dict
+        response_headers = {}
+        headers_iter = js_response.headers.entries()
+        while True:
+            entry = headers_iter.next()
+            done = entry.done if hasattr(entry, "done") else getattr(entry, "done", True)
+            if done:
+                break
+            pair = entry.value if hasattr(entry, "value") else entry
+            key = str(pair[0]).lower()
+            value = str(pair[1])
+            response_headers[key] = value
+
+        return HttpResponse(status_code, text, response_headers, final_url)
+    else:
+        # Test environment: Use httpx
+        async with httpx.AsyncClient(follow_redirects=True, timeout=timeout_seconds) as client:
+            response = await client.request(method, url, headers=headers, data=data)
+            return HttpResponse(
+                status_code=response.status_code,
+                text=response.text,
+                headers=dict(response.headers),
+                final_url=str(response.url),
+            )
+
+
+class SafeEnv:
+    """
+    Wrapper for Worker environment bindings with automatic JsProxy conversion.
+
+    This is the primary boundary layer between JavaScript and Python.
+    All bindings are wrapped to ensure Python code never sees JsProxy objects.
+    """
+
+    def __init__(self, env):
+        self._env = env
+        # Wrap each binding with its safe wrapper
+        self.DB = SafeD1(env.DB)
+        self.AI = SafeAI(env.AI)
+        self.SEARCH_INDEX = SafeVectorize(env.SEARCH_INDEX)
+        self.FEED_QUEUE = SafeQueue(env.FEED_QUEUE)
+        self.DEAD_LETTER_QUEUE = SafeQueue(env.DEAD_LETTER_QUEUE)
+
+    def __getattr__(self, name: str):
+        """Pass through other environment variables (strings, etc.)."""
+        return getattr(self._env, name)
 
 
 # =============================================================================
@@ -95,7 +524,7 @@ def html_response(content: str, cache_max_age: int = 3600) -> Response:
     csp = (
         "default-src 'self'; "
         "style-src 'self' 'unsafe-inline'; "
-        "img-src * data:; "
+        "img-src https: data:; "  # Restrict to HTTPS images only
         "frame-ancestors 'none'"
     )
     return Response(
@@ -104,6 +533,10 @@ def html_response(content: str, cache_max_age: int = 3600) -> Response:
             "Content-Type": "text/html; charset=utf-8",
             "Cache-Control": f"public, max-age={cache_max_age}, stale-while-revalidate=60",
             "Content-Security-Policy": csp,
+            "X-Frame-Options": "DENY",
+            "X-Content-Type-Options": "nosniff",
+            "Referrer-Policy": "strict-origin-when-cross-origin",
+            "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
         },
     )
 
@@ -151,6 +584,28 @@ class Default(WorkerEntrypoint):
     - fetch(): HTTP request handling (generates content on-demand)
     """
 
+    _cached_safe_env = None  # Cached wrapped environment
+
+    @property
+    def env(self):
+        """
+        Override env access to return a SafeEnv-wrapped version.
+
+        This ensures all D1/AI/Vectorize/Queue access goes through our
+        boundary layer wrappers that handle JsProxy conversion.
+        """
+        # Get the actual env from the parent class
+        raw_env = super().__getattribute__("_env_from_runtime")
+        if self._cached_safe_env is None:
+            object.__setattr__(self, "_cached_safe_env", SafeEnv(raw_env))
+        return self._cached_safe_env
+
+    @env.setter
+    def env(self, value):
+        """Store raw env from runtime, will be wrapped on access."""
+        object.__setattr__(self, "_env_from_runtime", value)
+        object.__setattr__(self, "_cached_safe_env", None)  # Clear cache
+
     # =========================================================================
     # Cron Handler - Scheduler
     # =========================================================================
@@ -159,6 +614,9 @@ class Default(WorkerEntrypoint):
         """
         Hourly cron trigger - enqueue feeds for fetching.
         Content (HTML/RSS/Atom) is generated on-demand by fetch(), not pre-generated.
+
+        Note: env and ctx are passed by the runtime but we use self.env and self.ctx
+        which are set up during worker initialization.
         """
         return await self._run_scheduler()
 
@@ -180,7 +638,7 @@ class Default(WorkerEntrypoint):
             WHERE is_active = 1
         """).all()
 
-        feeds = result.results
+        feeds = _to_py_list(result.results)
         enqueue_count = 0
 
         # Enqueue each feed as a SEPARATE message
@@ -205,18 +663,27 @@ class Default(WorkerEntrypoint):
     # Queue Handler - Feed Fetcher
     # =========================================================================
 
-    async def queue(self, batch):
+    async def queue(self, batch, env, ctx):
         """
         Process a batch of feed messages from the queue.
 
         Each message contains exactly ONE feed to fetch.
         This ensures isolated retries and timeouts per feed.
+
+        Note: Workers Python runtime passes (batch, env, ctx) but we use self.env from __init__.
         """
 
         log_op("queue_batch_received", batch_size=len(batch.messages))
 
         for message in batch.messages:
-            feed_job = message.body
+            # CRITICAL: Convert JsProxy message body to Python dict
+            feed_job_raw = message.body
+            feed_job = _to_py_safe(feed_job_raw)
+            if not feed_job or not isinstance(feed_job, dict):
+                log_op("queue_message_invalid", body_type=type(feed_job_raw).__name__)
+                message.ack()  # Don't retry invalid messages
+                continue
+
             feed_url = feed_job.get("url", "unknown")
             feed_id = feed_job.get("feed_id", 0)
 
@@ -286,78 +753,98 @@ class Default(WorkerEntrypoint):
         # Build conditional request headers (good netizen behavior)
         headers = {"User-Agent": USER_AGENT}
         if etag:
-            headers["If-None-Match"] = etag
+            headers["If-None-Match"] = str(etag)
         if last_modified:
-            headers["If-Modified-Since"] = last_modified
+            headers["If-Modified-Since"] = str(last_modified)
 
-        # Fetch with timeout and track HTTP latency
+        # Fetch using boundary-layer safe_http_fetch
         with Timer() as http_timer:
-            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
-                response = await client.get(url, headers=headers, follow_redirects=True)
+            http_response = await safe_http_fetch(
+                url, headers=headers, timeout_seconds=HTTP_TIMEOUT_SECONDS
+            )
+
+        # Extract normalized response data (all values are Python)
+        status_code = http_response.status_code
+        final_url = http_response.final_url
+        response_headers = http_response.headers
+        response_text = http_response.text if status_code != 304 else ""
+        response_size = len(response_text.encode("utf-8")) if response_text else 0
 
         # Populate event with HTTP details
         if event:
             event.http_latency_ms = http_timer.elapsed_ms
-            event.http_status = response.status_code
-            event.http_cached = response.status_code == 304
-            event.http_redirected = bool(response.history)
-            event.response_size_bytes = len(response.content) if response.content else 0
-            event.etag_present = bool(response.headers.get("etag"))
-            event.last_modified_present = bool(response.headers.get("last-modified"))
+            event.http_status = status_code
+            event.http_cached = status_code == 304
+            event.http_redirected = final_url != url
+            event.response_size_bytes = response_size
+            event.etag_present = bool(response_headers.get("etag"))
+            event.last_modified_present = bool(response_headers.get("last-modified"))
 
         # Re-validate final URL after redirects (SSRF protection)
-        final_url = str(response.url)
         if final_url != url and not self._is_safe_url(final_url):
             raise ValueError(f"Redirect target failed SSRF validation: {final_url}")
 
         # Handle 429/503 with Retry-After (good netizen behavior)
-        if response.status_code in (429, 503):
-            retry_after = response.headers.get("Retry-After")
-            error_msg = f"Rate limited (HTTP {response.status_code})"
+        if status_code in (429, 503):
+            retry_after = response_headers.get("retry-after")
+            error_msg = f"Rate limited (HTTP {status_code})"
             if retry_after:
                 error_msg += f", retry after {retry_after}"
                 await self._set_feed_retry_after(feed_id, retry_after)
-            raise httpx.HTTPStatusError(error_msg, request=response.request, response=response)
+            raise ValueError(error_msg)
 
         # Handle 304 Not Modified - feed hasn't changed
-        if response.status_code == 304:
+        if status_code == 304:
             await self._update_feed_success(feed_id, etag, last_modified)
             return {"status": "not_modified", "entries_added": 0, "entries_found": 0}
 
         # Handle permanent redirects (301, 308) - update stored URL
-        if response.history:
-            for resp in response.history:
-                if resp.status_code in (301, 308):
-                    new_url = str(response.url)
-                    await self._update_feed_url(feed_id, new_url)
-                    log_op("feed_url_updated", old_url=url, new_url=new_url)
-                    break
+        if final_url != url:
+            # Note: We can't distinguish redirect types with fetch API
+            # Treat any redirect as potentially permanent
+            await self._update_feed_url(feed_id, final_url)
+            log_op("feed_url_updated", old_url=url, new_url=final_url)
 
-        response.raise_for_status()
+        # Check for HTTP errors
+        if status_code >= 400:
+            raise ValueError(f"HTTP error {status_code}")
 
-        # Parse feed with feedparser
-        feed_data = feedparser.parse(response.text)
+        # Parse feed with feedparser - response_text is now pure Python string
+        feed_data = feedparser.parse(response_text)
 
         if feed_data.bozo and not feed_data.entries:
             raise ValueError(f"Feed parse error: {feed_data.bozo_exception}")
 
-        # Extract cache headers from response
-        new_etag = response.headers.get("etag")
-        new_last_modified = response.headers.get("last-modified")
+        # Extract cache headers from response (response_headers is Python dict in both paths)
+        new_etag = response_headers.get("etag")
+        new_last_modified = response_headers.get("last-modified")
 
         # Update feed metadata
         await self._update_feed_metadata(feed_id, feed_data.feed, new_etag, new_last_modified)
 
-        # Process and store entries
+        # Process and store entries (boundary conversion handled by _to_py_list)
+        entries_list = _to_py_list(feed_data.entries)
+
         entries_added = 0
-        entries_found = len(feed_data.entries)
+        entries_found = len(entries_list)
         if event:
             event.entries_found = entries_found
 
-        for entry in feed_data.entries:
-            entry_id = await self._upsert_entry(feed_id, entry)
+        log_op("feed_entries_found", feed_id=feed_id, entries_count=entries_found)
+
+        for entry in entries_list:
+            # Ensure entry is Python dict (boundary conversion handled by _to_py_safe)
+            py_entry = _to_py_safe(entry)
+            if not isinstance(py_entry, dict):
+                log_op("entry_not_dict", entry_type=type(py_entry).__name__)
+                continue
+
+            entry_id = await self._upsert_entry(feed_id, py_entry)
             if entry_id:
                 entries_added += 1
+            else:
+                entry_title = str(py_entry.get("title", ""))[:50]
+                log_op("entry_upsert_failed", feed_id=feed_id, entry_title=entry_title)
 
         # Mark fetch as successful
         await self._update_feed_success(feed_id, new_etag, new_last_modified)
@@ -368,37 +855,58 @@ class Default(WorkerEntrypoint):
     async def _upsert_entry(self, feed_id, entry):
         """Insert or update a single entry with sanitized content."""
 
-        # Generate stable GUID
+        # Generate stable GUID - must be non-empty
         guid = entry.get("id") or entry.get("link") or entry.get("title")
-        if not guid:
-            return None
+        # Ensure GUID is valid (not empty, whitespace-only, or None)
+        if not guid or not str(guid).strip():
+            # Generate hash-based GUID as fallback
+            content_hash = hashlib.sha256(
+                f"{feed_id}:{entry.get('title', '')}:{entry.get('link', '')}".encode()
+            ).hexdigest()[:16]
+            guid = f"generated:{content_hash}"
 
         # Extract content (prefer full content over summary)
+        # Note: After JsProxy conversion, entry is a plain dict, so use .get() not hasattr()
         content = ""
-        if hasattr(entry, "content") and entry.content:
-            content = entry.content[0].get("value", "")
-        elif hasattr(entry, "summary"):
-            content = entry.summary or ""
+        entry_content = entry.get("content")
+        if entry_content and isinstance(entry_content, list) and len(entry_content) > 0:
+            first_content = entry_content[0]
+            if isinstance(first_content, dict):
+                content = first_content.get("value", "")
+            else:
+                content = str(first_content)
+        elif entry.get("summary"):
+            content = entry.get("summary", "")
 
         # Sanitize HTML (XSS prevention)
         sanitized_content = self._sanitize_html(content)
 
-        # Parse published date
+        # Parse published date - use None if missing (don't fake current time)
+        # This ensures retention policy can correctly identify old entries
+        # Note: After JsProxy conversion, entry is a plain dict, so use .get() not hasattr()
         published_at = None
-        if hasattr(entry, "published_parsed") and entry.published_parsed:
-            published_at = datetime(*entry.published_parsed[:6]).isoformat()
-        elif hasattr(entry, "updated_parsed") and entry.updated_parsed:
-            published_at = datetime(*entry.updated_parsed[:6]).isoformat()
-        else:
-            published_at = datetime.utcnow().isoformat()
+        pub_parsed = entry.get("published_parsed")
+        upd_parsed = entry.get("updated_parsed")
+        if pub_parsed and isinstance(pub_parsed, list | tuple) and len(pub_parsed) >= 6:
+            published_at = datetime(*pub_parsed[:6]).isoformat()
+        elif upd_parsed and isinstance(upd_parsed, list | tuple) and len(upd_parsed) >= 6:
+            published_at = datetime(*upd_parsed[:6]).isoformat()
+        # If no date available, leave as None (will use CURRENT_TIMESTAMP in DB)
 
         title = entry.get("title", "")
 
-        # Upsert to D1
-        result = (
+        # Truncate summary with indicator
+        raw_summary = entry.get("summary") or ""
+        if len(raw_summary) > SUMMARY_MAX_LENGTH:
+            summary = raw_summary[: SUMMARY_MAX_LENGTH - 3] + "..."
+        else:
+            summary = raw_summary
+
+        # Upsert to D1 - use _safe_str to convert any JsProxy/undefined to Python
+        result_raw = (
             await self.env.DB.prepare("""
             INSERT INTO entries (feed_id, guid, url, title, author, content, summary, published_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
             ON CONFLICT(feed_id, guid) DO UPDATE SET
                 title = excluded.title,
                 content = excluded.content,
@@ -407,18 +915,20 @@ class Default(WorkerEntrypoint):
         """)
             .bind(
                 feed_id,
-                guid,
-                entry.get("link"),
-                title,
-                entry.get("author"),
-                sanitized_content,
-                (entry.get("summary") or "")[:500],  # Truncate summary
-                published_at,
+                _safe_str(guid),
+                _safe_str(entry.get("link")),
+                _safe_str(title),
+                _safe_str(entry.get("author")),
+                _safe_str(sanitized_content),
+                _safe_str(summary),
+                _safe_str(published_at),
             )
             .first()
         )
 
-        entry_id = result["id"] if result else None
+        # Convert JsProxy to Python dict
+        result = _to_py_safe(result_raw)
+        entry_id = result.get("id") if result else None
 
         # Index for semantic search
         if entry_id and title:
@@ -430,12 +940,16 @@ class Default(WorkerEntrypoint):
         """Generate embedding and store in Vectorize for semantic search."""
 
         # Combine title and content for embedding (truncate to model limit)
-        text = f"{title}\n\n{content[:2000]}"
+        text = f"{title}\n\n{content[:EMBEDDING_MAX_CONTENT_LENGTH]}"
 
         # Generate embedding using Workers AI with cls pooling for accuracy
+        # Note: SafeAI.run() already converts result to Python dict
         embedding_result = await self.env.AI.run(
             "@cf/baai/bge-base-en-v1.5", {"text": [text], "pooling": "cls"}
         )
+        if not embedding_result or "data" not in embedding_result:
+            log_op("embedding_failed", entry_id=entry_id, reason="no_data_in_result")
+            return
 
         vector = embedding_result["data"][0]
 
@@ -485,8 +999,9 @@ class Default(WorkerEntrypoint):
             ip = ipaddress.ip_address(hostname)
             if ip.is_private or ip.is_loopback or ip.is_link_local:
                 return False
-            # Block IPv6 unique local addresses (fd00::/8)
-            if ip.version == 6 and ip.packed[0] == 0xFD:
+            # Block IPv6 unique local addresses (fc00::/7, which includes fd00::/8)
+            # Check first byte: 0xFC or 0xFD (binary: 1111110x)
+            if ip.version == 6 and (ip.packed[0] & 0xFE) == 0xFC:
                 return False
         except ValueError:
             pass  # Not an IP address
@@ -517,25 +1032,37 @@ class Default(WorkerEntrypoint):
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
         """)
-            .bind(etag, last_modified, feed_id)
+            .bind(_safe_str(etag), _safe_str(last_modified), feed_id)
             .run()
         )
 
     async def _record_feed_error(self, feed_id, error_message):
-        """Record a feed fetch error."""
-        await (
+        """Record a feed fetch error and auto-deactivate after too many failures."""
+        # Issue 9.4: Auto-deactivate feeds after 10+ consecutive failures
+        result_raw = await (
             self.env.DB.prepare("""
             UPDATE feeds SET
                 last_fetch_at = CURRENT_TIMESTAMP,
                 fetch_error = ?,
                 fetch_error_count = fetch_error_count + 1,
                 consecutive_failures = consecutive_failures + 1,
+                is_active = CASE WHEN consecutive_failures >= 10 THEN 0 ELSE is_active END,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
+            RETURNING consecutive_failures, is_active
         """)
             .bind(error_message[:500], feed_id)
-            .run()
+            .first()
         )
+        # Convert JsProxy to Python dict
+        result = _to_py_safe(result_raw)
+        if result and result.get("is_active") == 0:
+            log_op(
+                "feed_auto_deactivated",
+                feed_id=feed_id,
+                consecutive_failures=result.get("consecutive_failures"),
+                reason="Too many consecutive failures",
+            )
 
     async def _update_feed_url(self, feed_id, new_url):
         """Update feed URL after permanent redirect."""
@@ -579,20 +1106,43 @@ class Default(WorkerEntrypoint):
 
     async def _update_feed_metadata(self, feed_id, feed_info, etag, last_modified):
         """Update feed title and other metadata from feed content."""
-        title = feed_info.get("title")
-        site_url = feed_info.get("link")
+        # Convert feedparser's FeedParserDict to plain Python dict (boundary-safe)
+        safe_info = dict(_to_py_safe(feed_info)) if feed_info else {}
+
+        title = _safe_str(safe_info.get("title"))
+        site_url = _safe_str(safe_info.get("link"))
+
+        # Issue 1.1: Extract author info from feed
+        author_name = None
+        author_email = None
+        author_detail = safe_info.get("author_detail")
+        if author_detail and isinstance(author_detail, dict):
+            author_name = _safe_str(author_detail.get("name"))
+            author_email = _safe_str(author_detail.get("email"))
+        elif safe_info.get("author"):
+            author_name = _safe_str(safe_info.get("author"))
 
         await (
             self.env.DB.prepare("""
             UPDATE feeds SET
                 title = COALESCE(?, title),
                 site_url = COALESCE(?, site_url),
+                author_name = COALESCE(?, author_name),
+                author_email = COALESCE(?, author_email),
                 etag = ?,
                 last_modified = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
         """)
-            .bind(title, site_url, etag, last_modified, feed_id)
+            .bind(
+                title,
+                site_url,
+                author_name,
+                author_email,
+                _safe_str(etag),
+                _safe_str(last_modified),
+                feed_id,
+            )
             .run()
         )
 
@@ -600,7 +1150,7 @@ class Default(WorkerEntrypoint):
     # HTTP Handler
     # =========================================================================
 
-    async def fetch(self, request):
+    async def fetch(self, request, env=None, ctx=None):
         """Handle HTTP requests."""
 
         # Initialize page serve event
@@ -613,11 +1163,15 @@ class Default(WorkerEntrypoint):
         if not path.startswith("/"):
             path = "/" + path
 
+        # Safely extract request headers (may be JsProxy in Pyodide)
+        user_agent = _safe_str(request.headers.get("user-agent")) or ""
+        referer = _safe_str(request.headers.get("referer")) or ""
+
         event = PageServeEvent(
             method=request.method,
             path=path,
-            user_agent=(request.headers.get("user-agent", ""))[:200],
-            referer=(request.headers.get("referer", ""))[:200],
+            user_agent=user_agent[:200],
+            referer=referer[:200],
             country=getattr(request.cf, "country", None) if hasattr(request, "cf") else None,
             colo=getattr(request.cf, "colo", None) if hasattr(request, "cf") else None,
         )
@@ -677,6 +1231,17 @@ class Default(WorkerEntrypoint):
         # Finalize and emit event
         event.wall_time_ms = timer.elapsed()
         event.status_code = response.status
+        # Issue 10.3: Set response size if available (skip if JsProxy)
+        try:
+            if hasattr(response, "body") and response.body:
+                body = response.body
+                if isinstance(body, str):
+                    event.response_size_bytes = len(body.encode("utf-8"))
+                elif isinstance(body, bytes):
+                    event.response_size_bytes = len(body)
+                # Skip JsProxy or other non-standard types
+        except (TypeError, AttributeError):
+            pass  # Size calculation failed (JsProxy or other non-standard type)
         emit_event(event)
 
         return response
@@ -709,83 +1274,93 @@ class Default(WorkerEntrypoint):
         # Initialize generation event
         event = GenerationEvent(trigger=trigger, triggered_by=triggered_by)
 
-        with Timer() as total_timer:
-            # Get planet config from environment
-            planet = self._get_planet_config()
+        try:
+            with Timer() as total_timer:
+                # Get planet config from environment
+                planet = self._get_planet_config()
 
-            # Apply retention policy first (delete old entries and their vectors)
-            await self._apply_retention_policy()
+                # Apply retention policy first (delete old entries and their vectors)
+                await self._apply_retention_policy()
 
-            # Query entries (last 30 days, max 100 per feed) - track D1 query time
-            with Timer() as d1_timer:
-                entries_result = await self.env.DB.prepare("""
-                    WITH ranked AS (
+                # Query entries (last 30 days, max 100 per feed) - track D1 query time
+                with Timer() as d1_timer:
+                    entries_result = await self.env.DB.prepare("""
+                        WITH ranked AS (
+                            SELECT
+                                e.*,
+                                f.title as feed_title,
+                                f.site_url as feed_site_url,
+                                ROW_NUMBER() OVER (
+                                    PARTITION BY e.feed_id ORDER BY e.published_at DESC
+                                ) as rn
+                            FROM entries e
+                            JOIN feeds f ON e.feed_id = f.id
+                            WHERE e.published_at >= datetime('now', '-30 days')
+                            AND f.is_active = 1
+                        )
+                        SELECT * FROM ranked WHERE rn <= 100
+                        ORDER BY published_at DESC
+                        LIMIT 500
+                    """).all()
+
+                    # Get feeds for sidebar
+                    feeds_result = await self.env.DB.prepare("""
                         SELECT
-                            e.*,
-                            f.title as feed_title,
-                            f.site_url as feed_site_url,
-                            ROW_NUMBER() OVER (
-                                PARTITION BY e.feed_id ORDER BY e.published_at DESC
-                            ) as rn
-                        FROM entries e
-                        JOIN feeds f ON e.feed_id = f.id
-                        WHERE e.published_at >= datetime('now', '-30 days')
-                        AND f.is_active = 1
+                            id, title, site_url, last_success_at,
+                            CASE WHEN consecutive_failures < 3 THEN 1 ELSE 0 END as is_healthy
+                        FROM feeds
+                        WHERE is_active = 1
+                        ORDER BY title
+                    """).all()
+
+                event.d1_query_time_ms = d1_timer.elapsed_ms
+
+                # Convert JsProxy results to Python lists for dict access
+                entries = _to_py_list(entries_result.results)
+                feeds = _to_py_list(feeds_result.results)
+
+                # Group entries by date
+                entries_by_date = {}
+                for entry in entries:
+                    date_str = entry["published_at"][:10]  # YYYY-MM-DD
+                    if date_str not in entries_by_date:
+                        entries_by_date[date_str] = []
+
+                    entry["published_at_formatted"] = self._format_datetime(entry["published_at"])
+                    entries_by_date[date_str].append(entry)
+
+                for feed in feeds:
+                    feed["last_success_at_relative"] = self._relative_time(feed["last_success_at"])
+
+                # Render template - track template time
+                with Timer() as render_timer:
+                    html = render_template(
+                        TEMPLATE_INDEX,
+                        planet=planet,
+                        entries_by_date=entries_by_date,
+                        feeds=feeds,
+                        generated_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
                     )
-                    SELECT * FROM ranked WHERE rn <= 100
-                    ORDER BY published_at DESC
-                    LIMIT 500
-                """).all()
 
-                # Get feeds for sidebar
-                feeds_result = await self.env.DB.prepare("""
-                    SELECT
-                        id, title, site_url, last_success_at,
-                        CASE WHEN consecutive_failures < 3 THEN 1 ELSE 0 END as is_healthy
-                    FROM feeds
-                    WHERE is_active = 1
-                    ORDER BY title
-                """).all()
+                event.template_render_time_ms = render_timer.elapsed_ms
 
-            event.d1_query_time_ms = d1_timer.elapsed_ms
+            # Populate and emit event on success
+            event.wall_time_ms = total_timer.elapsed_ms
+            event.entries_total = len(entries)
+            event.feeds_active = len(feeds)
+            event.feeds_healthy = sum(1 for f in feeds if f.get("is_healthy"))
+            event.html_size_bytes = len(html.encode("utf-8"))
+            emit_event(event)
 
-            entries = entries_result.results
-            feeds = feeds_result.results
+            return html
 
-            # Group entries by date
-            entries_by_date = {}
-            for entry in entries:
-                date_str = entry["published_at"][:10]  # YYYY-MM-DD
-                if date_str not in entries_by_date:
-                    entries_by_date[date_str] = []
-
-                entry["published_at_formatted"] = self._format_datetime(entry["published_at"])
-                entries_by_date[date_str].append(entry)
-
-            for feed in feeds:
-                feed["last_success_at_relative"] = self._relative_time(feed["last_success_at"])
-
-            # Render template - track template time
-            with Timer() as render_timer:
-                html = render_template(
-                    TEMPLATE_INDEX,
-                    planet=planet,
-                    entries_by_date=entries_by_date,
-                    feeds=feeds,
-                    generated_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
-                )
-
-            event.template_render_time_ms = render_timer.elapsed_ms
-
-        # Populate and emit event
-        event.wall_time_ms = total_timer.elapsed_ms
-        event.entries_total = len(entries)
-        event.feeds_active = len(feeds)
-        event.feeds_healthy = sum(1 for f in feeds if f.get("is_healthy"))
-        event.html_size_bytes = len(html.encode("utf-8"))
-        emit_event(event)
-
-        return html
+        except Exception as e:
+            # Issue 4.4: Mark event as error and emit before re-raising
+            event.outcome = "error"
+            event.error_type = type(e).__name__
+            event.error_message = str(e)[:200]
+            emit_event(event, force=True)  # Always emit errors
+            raise
 
     async def _apply_retention_policy(self):
         """Delete entries older than 30 days or beyond 100 per feed, and clean up vectors."""
@@ -811,11 +1386,20 @@ class Default(WorkerEntrypoint):
             SELECT id FROM entries_to_delete
         """).all()
 
-        deleted_ids = [row["id"] for row in to_delete.results]
+        deleted_ids = [row["id"] for row in _to_py_list(to_delete.results)]
 
         if deleted_ids:
-            # Delete vectors from Vectorize
-            await self.env.SEARCH_INDEX.deleteByIds([str(id) for id in deleted_ids])
+            # Delete vectors from Vectorize (Issue 11.2: handle errors gracefully)
+            try:
+                await self.env.SEARCH_INDEX.deleteByIds([str(id) for id in deleted_ids])
+            except Exception as e:
+                log_op(
+                    "vectorize_delete_error",
+                    error_type=type(e).__name__,
+                    error_message=str(e)[:200],
+                    ids_count=len(deleted_ids),
+                )
+                # Continue with D1 deletion even if vector cleanup fails
 
             # Delete entries from D1 (in batches to stay under parameter limit)
             for i in range(0, len(deleted_ids), 50):
@@ -831,7 +1415,7 @@ class Default(WorkerEntrypoint):
 
             log_op("retention_cleanup", entries_deleted=len(deleted_ids))
 
-    def _format_datetime(self, iso_string):
+    def _format_datetime(self, iso_string: str | None) -> str:
         """Format ISO datetime string for display."""
         if not iso_string:
             return ""
@@ -841,7 +1425,7 @@ class Default(WorkerEntrypoint):
         except (ValueError, AttributeError):
             return iso_string
 
-    def _relative_time(self, iso_string):
+    def _relative_time(self, iso_string: str | None) -> str:
         """Convert ISO datetime to relative time (e.g., '2 hours ago')."""
         if not iso_string:
             return "never"
@@ -893,9 +1477,9 @@ class Default(WorkerEntrypoint):
             .all()
         )
 
-        return result.results
+        return _to_py_list(result.results)
 
-    def _get_planet_config(self):
+    def _get_planet_config(self) -> dict[str, str]:
         """Get planet configuration from environment."""
         return {
             "name": getattr(self.env, "PLANET_NAME", None) or "Planet CF",
@@ -942,13 +1526,15 @@ class Default(WorkerEntrypoint):
     <lastBuildDate>{datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000")}</lastBuildDate>
 '''
         for entry in entries:
+            # Issue 2.1: Escape ]]> in CDATA to prevent breakout attacks
+            content = entry.get("content", "").replace("]]>", "]]]]><![CDATA[>")
             feed_xml += f"""    <item>
       <title>{escape(entry.get("title", ""))}</title>
       <link>{escape(entry.get("url", ""))}</link>
       <guid>{escape(entry.get("guid", entry.get("url", "")))}</guid>
       <pubDate>{entry.get("published_at", "")}</pubDate>
       <author>{escape(entry.get("author", ""))}</author>
-      <description><![CDATA[{entry.get("content", "")}]]></description>
+      <description><![CDATA[{content}]]></description>
     </item>
 """
         feed_xml += """  </channel>
@@ -977,7 +1563,7 @@ class Default(WorkerEntrypoint):
     <outline text="Planet CF Feeds" title="Planet CF Feeds">
 """
 
-        for feed in feeds.results:
+        for feed in _to_py_list(feeds.results):
             title = html.escape(feed["title"] or feed["url"])
             xml_url = html.escape(feed["url"])
             html_url = html.escape(feed["site_url"] or "")
@@ -1010,26 +1596,33 @@ class Default(WorkerEntrypoint):
 
         if not query or len(query) < 2:
             return json_error("Query too short")
+        if len(query) > MAX_SEARCH_QUERY_LENGTH:
+            return json_error("Query too long (max 1000 characters)")
 
         # Generate embedding for search query
+        # Note: SafeAI.run() already converts result to Python dict
         embedding_result = await self.env.AI.run(
             "@cf/baai/bge-base-en-v1.5", {"text": [query], "pooling": "cls"}
         )
+        if not embedding_result or "data" not in embedding_result:
+            return json_error("Failed to generate embedding")
         query_vector = embedding_result["data"][0]
 
         # Search Vectorize
+        # Note: SafeVectorize.query() already converts result to Python dict
         results = await self.env.SEARCH_INDEX.query(
             query_vector, {"topK": 20, "returnMetadata": True}
         )
+        matches = results.get("matches", []) if results else []
 
         # Fetch full entries from D1
-        if not results.matches:
+        if not matches:
             # Return HTML search page with no results
             planet = self._get_planet_config()
             html = render_template(TEMPLATE_SEARCH, planet=planet, query=query, results=[])
             return html_response(html, cache_max_age=0)
 
-        entry_ids = [int(m.id) for m in results.matches]
+        entry_ids = [int(m["id"]) for m in matches]
         placeholders = ",".join("?" * len(entry_ids))
 
         entries = (
@@ -1044,11 +1637,11 @@ class Default(WorkerEntrypoint):
         )
 
         # Sort by Vectorize score
-        entry_map = {e["id"]: e for e in entries.results}
+        entry_map = {e["id"]: e for e in _to_py_list(entries.results)}
         sorted_results = [
-            {**entry_map[int(m.id)], "score": m.score}
-            for m in results.matches
-            if int(m.id) in entry_map
+            {**entry_map[int(m["id"])], "score": m.get("score", 0)}
+            for m in matches
+            if int(m["id"]) in entry_map
         ]
 
         # Return HTML search results page
@@ -1059,13 +1652,22 @@ class Default(WorkerEntrypoint):
     async def _serve_static(self, path):
         """Serve static files."""
         # In production, static files would be served via assets binding
-        # For now, just return CSS inline
+        # For now, serve CSS and JS inline
         if path == "/static/style.css":
             css = self._get_default_css()
             return Response(
                 css,
                 headers={
                     "Content-Type": "text/css",
+                    "Cache-Control": "public, max-age=86400",
+                },
+            )
+        if path == "/static/admin.js":
+            js = self._get_admin_js()
+            return Response(
+                js,
+                headers={
+                    "Content-Type": "application/javascript",
                     "Cache-Control": "public, max-age=86400",
                 },
             )
@@ -1285,6 +1887,151 @@ button:hover { opacity: 0.9; }
 }
 """
 
+    def _get_admin_js(self) -> str:
+        """Return admin dashboard JavaScript (external file for CSP compliance)."""
+        return """
+// Admin Dashboard JavaScript
+// Served from /static/admin.js to comply with Content Security Policy
+
+function showTab(tabId) {
+    // Remove active class from all tabs and content
+    document.querySelectorAll('.tab').forEach(function(t) {
+        t.classList.remove('active');
+    });
+    document.querySelectorAll('.tab-content').forEach(function(c) {
+        c.classList.remove('active');
+    });
+
+    // Add active class to selected tab and content
+    var tabs = document.querySelectorAll('.tab');
+    for (var i = 0; i < tabs.length; i++) {
+        if (tabs[i].getAttribute('data-tab') === tabId) {
+            tabs[i].classList.add('active');
+            break;
+        }
+    }
+    document.getElementById(tabId).classList.add('active');
+
+    // Load data for specific tabs
+    if (tabId === 'dlq') loadDLQ();
+    if (tabId === 'audit') loadAuditLog();
+}
+
+function toggleFeed(feedId, isActive) {
+    fetch('/admin/feeds/' + feedId, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: isActive ? 1 : 0 })
+    }).then(function(r) {
+        if (!r.ok) alert('Failed to update feed');
+    }).catch(function(err) {
+        alert('Error updating feed: ' + err.message);
+    });
+}
+
+function loadDLQ() {
+    fetch('/admin/dlq')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var container = document.getElementById('dlq-list');
+            if (!data.failed_feeds || data.failed_feeds.length === 0) {
+                container.innerHTML = '<p class="empty-state">' +
+                    'No failed feeds. All feeds are healthy!</p>';
+                return;
+            }
+            var html = '';
+            for (var i = 0; i < data.failed_feeds.length; i++) {
+                var f = data.failed_feeds[i];
+                html += '<div class="dlq-item">';
+                html += '<div><strong>' + escapeHtml(f.title || 'Untitled') + '</strong></div>';
+                html += '<div style="font-size:0.85rem;color:#666;word-break:break-all;">';
+                html += escapeHtml(f.url) + '</div>';
+                html += '<div style="font-size:0.8rem;color:#dc3545;margin-top:0.25rem;">';
+                html += f.consecutive_failures + ' consecutive failures';
+                html += (f.fetch_error ? ' - ' + escapeHtml(f.fetch_error) : '');
+                html += '</div>';
+                html += '<form action="/admin/dlq/' + f.id + '/retry" method="POST" ';
+                html += 'style="margin-top:0.5rem;">';
+                html += '<button type="submit" class="btn btn-warning btn-sm">Retry</button>';
+                html += '</form></div>';
+            }
+            container.innerHTML = html;
+        })
+        .catch(function(err) {
+            document.getElementById('dlq-list').innerHTML = '<p class="empty-state" ' +
+                'style="color:#dc3545;">Error loading: ' + err.message + '</p>';
+        });
+}
+
+function loadAuditLog() {
+    fetch('/admin/audit')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var container = document.getElementById('audit-list');
+            if (!data.audit_log || data.audit_log.length === 0) {
+                container.innerHTML = '<p class="empty-state">No audit log entries yet.</p>';
+                return;
+            }
+            var html = '';
+            for (var i = 0; i < data.audit_log.length; i++) {
+                var a = data.audit_log[i];
+                var details = {};
+                try {
+                    if (a.details) details = JSON.parse(a.details);
+                } catch (e) {}
+                var detailParts = [];
+                for (var key in details) {
+                    if (details.hasOwnProperty(key)) {
+                        detailParts.push(key + ': ' + details[key]);
+                    }
+                }
+                var detailStr = detailParts.join(', ');
+                html += '<div class="audit-item">';
+                html += '<div class="audit-action">' + escapeHtml(a.action) + '</div>';
+                html += '<div class="audit-time">' + escapeHtml(a.created_at) + ' by ';
+                html += escapeHtml(a.display_name || a.github_username || 'Unknown');
+                html += '</div>';
+                if (detailStr) {
+                    html += '<div class="audit-details">' + escapeHtml(detailStr) + '</div>';
+                }
+                html += '</div>';
+            }
+            container.innerHTML = html;
+        })
+        .catch(function(err) {
+            document.getElementById('audit-list').innerHTML = '<p class="empty-state" ' +
+                'style="color:#dc3545;">Error loading: ' + err.message + '</p>';
+        });
+}
+
+function escapeHtml(text) {
+    if (text === null || text === undefined) return '';
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Initialize tab click handlers when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    var tabs = document.querySelectorAll('.tab');
+    for (var i = 0; i < tabs.length; i++) {
+        tabs[i].addEventListener('click', function() {
+            var tabId = this.getAttribute('data-tab');
+            if (tabId) showTab(tabId);
+        });
+    }
+
+    // Initialize toggle handlers
+    var toggles = document.querySelectorAll('.feed-toggle');
+    for (var j = 0; j < toggles.length; j++) {
+        toggles[j].addEventListener('change', function() {
+            var feedId = this.getAttribute('data-feed-id');
+            toggleFeed(feedId, this.checked);
+        });
+    }
+});
+"""
+
     # =========================================================================
     # Admin Routes
     # =========================================================================
@@ -1299,7 +2046,7 @@ button:hover { opacity: 0.9; }
             return self._serve_admin_login()
 
         # Verify user is still an authorized admin (may have been revoked)
-        admin = (
+        admin_result = (
             await self.env.DB.prepare(
                 "SELECT * FROM admins WHERE github_username = ? AND is_active = 1"
             )
@@ -1307,8 +2054,15 @@ button:hover { opacity: 0.9; }
             .first()
         )
 
+        # Convert JsProxy to Python dict
+        admin = _to_py_safe(admin_result)
+
         if not admin:
             return Response("Unauthorized: Not an admin", status=403)
+
+        # Ensure admin_id is a Python int (D1 requires Python primitives)
+        if "id" in admin:
+            admin["id"] = int(admin["id"]) if admin["id"] is not None else None
 
         # Route admin requests
         method = request.method
@@ -1332,8 +2086,8 @@ button:hover { opacity: 0.9; }
 
         if path.startswith("/admin/feeds/") and method == "POST":
             # Handle form override for DELETE
-            form = await request.formData()
-            if form.get("_method") == "DELETE":
+            form = await request.form_data()
+            if _extract_form_value(form, "_method") == "DELETE":
                 feed_id = path.split("/")[-1]
                 return await self._remove_feed(feed_id, admin)
             return Response("Method not allowed", status=405)
@@ -1346,6 +2100,14 @@ button:hover { opacity: 0.9; }
 
         if path == "/admin/dlq" and method == "GET":
             return await self._view_dlq()
+
+        if path.startswith("/admin/dlq/") and path.endswith("/retry") and method == "POST":
+            # Extract feed_id from /admin/dlq/{id}/retry
+            parts = path.split("/")
+            if len(parts) >= 4:
+                feed_id = parts[3]
+                return await self._retry_dlq_feed(feed_id, admin)
+            return Response("Invalid path", status=400)
 
         if path == "/admin/audit" and method == "GET":
             return await self._view_audit_log()
@@ -1372,7 +2134,7 @@ button:hover { opacity: 0.9; }
             TEMPLATE_ADMIN_DASHBOARD,
             planet=planet,
             admin=admin,
-            feeds=feeds_result.results,
+            feeds=_to_py_list(feeds_result.results),
         )
         return html_response(html, cache_max_age=0)
 
@@ -1381,13 +2143,98 @@ button:hover { opacity: 0.9; }
         result = await self.env.DB.prepare("""
             SELECT * FROM feeds ORDER BY title
         """).all()
-        return json_response({"feeds": result.results})
+        return json_response({"feeds": _to_py_list(result.results)})
+
+    async def _validate_feed_url(self, url: str) -> dict:
+        """
+        Validate a feed URL by fetching and parsing it.
+
+        Returns dict with:
+        - valid: bool
+        - title: str or None (extracted from feed)
+        - site_url: str or None
+        - entry_count: int
+        - error: str or None (if invalid)
+        """
+        try:
+            headers = {"User-Agent": USER_AGENT}
+
+            # Use centralized safe_http_fetch for boundary-safe HTTP
+            http_response = await safe_http_fetch(url, headers=headers, timeout_seconds=10)
+            status_code = http_response.status_code
+            final_url = http_response.final_url
+            response_text = http_response.text
+
+            if status_code >= 400:
+                return {"valid": False, "error": f"HTTP {status_code}"}
+
+            # Check for redirects to unsafe URLs
+            if final_url != url and not self._is_safe_url(final_url):
+                return {
+                    "valid": False,
+                    "error": f"Redirect to unsafe URL: {final_url}",
+                }
+
+            # Parse with feedparser - response_text is pure Python string
+            feed_data = feedparser.parse(response_text)
+
+            # Check for parse errors
+            if feed_data.bozo and not feed_data.entries:
+                # Security: Log detailed error internally, return generic message
+                bozo_exc = feed_data.bozo_exception
+                log_op(
+                    "feed_validation_parse_error",
+                    url=url,
+                    error_type=type(bozo_exc).__name__ if bozo_exc else "Unknown",
+                    error_detail=str(bozo_exc)[:200] if bozo_exc else "Invalid format",
+                )
+                return {
+                    "valid": False,
+                    "error": "Feed format is invalid or not a recognized RSS/Atom feed",
+                }
+
+            # Extract metadata - use _safe_str for JsProxy safety
+            feed_info = feed_data.feed
+            title = _safe_str(feed_info.get("title"))
+            site_url = _safe_str(feed_info.get("link"))
+            entry_count = len(feed_data.entries)
+
+            # Require at least a title or some entries to be considered valid
+            if not title and entry_count == 0:
+                return {
+                    "valid": False,
+                    "error": "Feed has no title and no entries",
+                }
+
+            return {
+                "valid": True,
+                "title": title,
+                "site_url": site_url,
+                "entry_count": entry_count,
+                "final_url": final_url if final_url != url else None,
+                "error": None,
+            }
+
+        except Exception as e:
+            error_msg = str(e)[:200]
+            if "timeout" in error_msg.lower():
+                return {"valid": False, "error": "Timeout fetching feed (10s)"}
+            return {"valid": False, "error": error_msg}
 
     async def _add_feed(self, request, admin):
-        """Add a new feed."""
-        form = await request.formData()
-        url = form.get("url")
-        title = form.get("title")
+        """
+        Add a new feed with validation.
+
+        Flow:
+        1. Validate URL (SSRF protection)
+        2. Fetch and parse the feed to verify it works
+        3. Extract title if not provided
+        4. Insert into database
+        5. Queue for immediate full processing
+        """
+        form = await request.form_data()
+        url = _extract_form_value(form, "url")
+        title = _extract_form_value(form, "title")
 
         if not url:
             return json_error("URL is required")
@@ -1396,22 +2243,63 @@ button:hover { opacity: 0.9; }
         if not self._is_safe_url(url):
             return json_error("Invalid or unsafe URL")
 
+        # Validate the feed by fetching and parsing it
+        validation = await self._validate_feed_url(url)
+
+        if not validation["valid"]:
+            return json_error(f"Feed validation failed: {validation['error']}")
+
+        # Use extracted title if admin didn't provide one
+        if not title:
+            title = validation.get("title")
+
+        # If feed was permanently redirected, use the new URL
+        final_url = validation.get("final_url") or url
+
         try:
-            result = (
+            # Insert the validated feed
+            result_raw = (
                 await self.env.DB.prepare("""
-                INSERT INTO feeds (url, title, is_active)
-                VALUES (?, ?, 1)
+                INSERT INTO feeds (url, title, site_url, is_active)
+                VALUES (?, ?, ?, 1)
                 RETURNING id
             """)
-                .bind(url, title)
+                .bind(final_url, title, validation.get("site_url"))
                 .first()
             )
 
-            feed_id = result["id"] if result else None
+            # Convert JsProxy to Python dict
+            result = _to_py_safe(result_raw)
+            feed_id = result.get("id") if result else None
 
-            # Audit log
+            # Audit log with validation info
             await self._log_admin_action(
-                admin["id"], "add_feed", "feed", feed_id, {"url": url, "title": title}
+                admin["id"],
+                "add_feed",
+                "feed",
+                feed_id,
+                {
+                    "url": final_url,
+                    "original_url": url if final_url != url else None,
+                    "title": title,
+                    "entry_count": validation.get("entry_count", 0),
+                },
+            )
+
+            # Queue the feed for immediate full processing (fetch entries)
+            await self.env.FEED_QUEUE.send(
+                {
+                    "feed_id": feed_id,
+                    "url": final_url,
+                }
+            )
+
+            log_op(
+                "feed_added_and_queued",
+                feed_id=feed_id,
+                url=final_url,
+                title=title,
+                entry_count=validation.get("entry_count", 0),
             )
 
             # Redirect back to admin
@@ -1426,23 +2314,26 @@ button:hover { opacity: 0.9; }
             feed_id = int(feed_id)
 
             # Get feed info for audit log
-            feed = (
+            feed_result = (
                 await self.env.DB.prepare("SELECT * FROM feeds WHERE id = ?").bind(feed_id).first()
             )
 
-            if not feed:
+            # Convert JsProxy to Python dict
+            feed = _to_py_safe(feed_result)
+
+            if not feed or not isinstance(feed, dict):
                 return json_error("Feed not found", status=404)
 
             # Delete feed (entries will cascade)
             await self.env.DB.prepare("DELETE FROM feeds WHERE id = ?").bind(feed_id).run()
 
-            # Audit log
+            # Audit log - feed is now a Python dict
             await self._log_admin_action(
                 admin["id"],
                 "remove_feed",
                 "feed",
                 feed_id,
-                {"url": feed["url"], "title": feed.get("title")},
+                {"url": feed.get("url"), "title": feed.get("title")},
             )
 
             # Redirect back to admin
@@ -1455,7 +2346,10 @@ button:hover { opacity: 0.9; }
         """Update a feed (enable/disable)."""
         try:
             feed_id = int(feed_id)
-            data = await request.json()
+            data_raw = await request.json()
+
+            # Convert JsProxy to Python dict if needed
+            data = _to_py_safe(data_raw) or {}
 
             is_active = data.get("is_active", 1)
 
@@ -1482,19 +2376,35 @@ button:hover { opacity: 0.9; }
 
     async def _import_opml(self, request, admin):
         """Import feeds from uploaded OPML file. Admin only."""
-        form = await request.formData()
+        form = await request.form_data()
+        # File uploads need direct access, not string conversion
         opml_file = form.get("opml")
 
-        if not opml_file:
+        # Check for both Python None and JavaScript undefined
+        if not opml_file or _is_js_undefined(opml_file):
             return json_error("No file uploaded")
 
-        content = await opml_file.text()
+        # Handle both JsProxy File and test mock
+        if hasattr(opml_file, "text"):
+            result = opml_file.text()
+            # Await if it's a coroutine or JS Promise (JsProxy with 'then' method)
+            if asyncio.iscoroutine(result) or hasattr(result, "then"):
+                content = await result
+            else:
+                content = result
+        else:
+            # Already a string (test fallback)
+            content = str(opml_file)
 
-        # Parse OPML
+        # Parse OPML with XXE/Billion Laughs protection
+        # Security: forbid_dtd=True prevents DOCTYPE declarations and entity expansion
         try:
-            root = ET.fromstring(content)
+            parser = ET.XMLParser(forbid_dtd=True)
+            root = ET.fromstring(content, parser=parser)
         except ET.ParseError as e:
-            return json_error(f"Invalid OPML: {e}")
+            # Don't expose detailed parse errors to users
+            log_op("opml_parse_error", error=str(e)[:200])
+            return json_error("Invalid OPML format")
 
         imported = 0
         skipped = 0
@@ -1551,9 +2461,67 @@ button:hover { opacity: 0.9; }
         return redirect_response("/admin")
 
     async def _view_dlq(self):
-        """View dead letter queue contents."""
-        # DLQ is managed by Cloudflare Queues - this would need queue API access
-        return json_response({"message": "DLQ viewing requires Cloudflare dashboard"})
+        """View dead letter queue contents (failed feeds with 3+ consecutive failures)."""
+        result = await self.env.DB.prepare("""
+            SELECT id, url, title, consecutive_failures, last_fetch_at, fetch_error as last_error
+            FROM feeds
+            WHERE consecutive_failures >= 3
+            ORDER BY consecutive_failures DESC, last_fetch_at DESC
+        """).all()
+        return json_response({"failed_feeds": _to_py_list(result.results)})
+
+    async def _retry_dlq_feed(self, feed_id, admin):
+        """Retry a failed feed by resetting its failure count and re-queuing."""
+        try:
+            feed_id = int(feed_id)
+
+            # Get feed info
+            feed_result = (
+                await self.env.DB.prepare("SELECT * FROM feeds WHERE id = ?").bind(feed_id).first()
+            )
+
+            # Convert JsProxy to Python dict
+            feed = _to_py_safe(feed_result)
+
+            if not feed or not isinstance(feed, dict):
+                return json_error("Feed not found", status=404)
+
+            # Reset failure count
+            await (
+                self.env.DB.prepare("""
+                UPDATE feeds SET
+                    consecutive_failures = 0,
+                    is_active = 1,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """)
+                .bind(feed_id)
+                .run()
+            )
+
+            # Queue the feed for immediate fetch - feed is now a Python dict
+            message = {
+                "feed_id": feed_id,
+                "url": feed.get("url"),
+                "etag": feed.get("etag"),
+                "last_modified": feed.get("last_modified"),
+            }
+            await self.env.FEED_QUEUE.send(message)
+
+            # Audit log
+            await self._log_admin_action(
+                admin["id"],
+                "retry_dlq",
+                "feed",
+                feed_id,
+                {"url": feed.get("url"), "previous_failures": feed.get("consecutive_failures")},
+            )
+
+            return redirect_response("/admin")
+
+        except Exception as e:
+            log_op("dlq_retry_error", feed_id=feed_id, error=str(e))
+            return json_error(str(e), status=500)
 
     async def _view_audit_log(self):
         """View audit log."""
@@ -1564,16 +2532,39 @@ button:hover { opacity: 0.9; }
             ORDER BY al.created_at DESC
             LIMIT 100
         """).all()
-        return json_response({"audit_log": result.results})
+        return json_response({"audit_log": _to_py_list(result.results)})
 
     async def _log_admin_action(self, admin_id, action, target_type, target_id, details):
         """Log an admin action to the audit log."""
+        # CRITICAL: First convert all inputs through _to_py_primitive to handle JsProxy
+        # Python None can become JavaScript undefined, which D1 rejects
+        admin_id_py = _to_py_primitive(admin_id)
+        action_py = _to_py_primitive(action)
+        target_type_py = _to_py_primitive(target_type)
+        target_id_py = _to_py_primitive(target_id)
+
+        # Convert to safe types with fallbacks
+        safe_admin_id = int(admin_id_py) if admin_id_py is not None else 0
+        safe_action = str(action_py) if action_py else ""
+        safe_target_type = str(target_type_py) if target_type_py else ""
+        safe_target_id = int(target_id_py) if target_id_py is not None else 0
+
+        # Ensure details dict values are Python primitives for json.dumps
+        # Filter out None values to avoid any potential undefined issues
+        safe_details = {}
+        if details:
+            for k, v in details.items():
+                v_py = _to_py_primitive(v)
+                if v_py is not None:
+                    safe_details[k] = v_py
+
+        details_json = json.dumps(safe_details)
         await (
             self.env.DB.prepare("""
             INSERT INTO audit_log (admin_id, action, target_type, target_id, details)
             VALUES (?, ?, ?, ?, ?)
         """)
-            .bind(admin_id, action, target_type, target_id, json.dumps(details))
+            .bind(safe_admin_id, safe_action, safe_target_type, safe_target_id, details_json)
             .run()
         )
 
@@ -1587,7 +2578,8 @@ button:hover { opacity: 0.9; }
         Cookie format: base64(json_payload).signature
         """
 
-        cookies = request.headers.get("Cookie", "")
+        # Safely extract Cookie header (may be JsProxy in Pyodide)
+        cookies = _safe_str(request.headers.get("Cookie")) or ""
         session_cookie = None
         for cookie in cookies.split(";"):
             if cookie.strip().startswith("session="):
@@ -1611,8 +2603,8 @@ button:hover { opacity: 0.9; }
             # Decode payload
             payload = json.loads(base64.urlsafe_b64decode(payload_b64))
 
-            # Check expiration
-            if payload.get("exp", 0) < time.time():
+            # Check expiration (Issue 10.4: 60-second grace period for clock skew)
+            if payload.get("exp", 0) < time.time() - 60:
                 return None
 
             return payload
@@ -1626,20 +2618,27 @@ button:hover { opacity: 0.9; }
         state = secrets.token_urlsafe(32)
         client_id = getattr(self.env, "GITHUB_CLIENT_ID", "")
 
-        # Extract origin from request URL (not from config, so it works on any domain)
-        url = request.url
-        if hasattr(url, "origin"):
-            origin = url.origin
+        # Security: Use configured redirect_uri to prevent open redirect attacks
+        # OAUTH_REDIRECT_URI should be set in wrangler.toml for production
+        configured_redirect = getattr(self.env, "OAUTH_REDIRECT_URI", None)
+        if configured_redirect:
+            redirect_uri = configured_redirect
         else:
-            # Fallback: parse URL string to get origin
-            url_str = str(url)
-            parsed = urlparse(url_str)
-            origin = f"{parsed.scheme}://{parsed.netloc}"
+            # Fallback for local dev: extract origin from request URL
+            # Note: In Cloudflare Workers, request.url is not user-controlled
+            url = request.url
+            if hasattr(url, "origin"):
+                origin = url.origin
+            else:
+                url_str = str(url)
+                parsed = urlparse(url_str)
+                origin = f"{parsed.scheme}://{parsed.netloc}"
+            redirect_uri = f"{origin}/auth/github/callback"
 
         auth_url = (
             f"https://github.com/login/oauth/authorize"
             f"?client_id={client_id}"
-            f"&redirect_uri={origin}/auth/github/callback"
+            f"&redirect_uri={redirect_uri}"
             f"&scope=read:user"
             f"&state={state}"
         )
@@ -1663,7 +2662,8 @@ button:hover { opacity: 0.9; }
                 return Response("Missing authorization code", status=400)
 
             # Verify state parameter matches cookie (CSRF protection)
-            cookies = request.headers.get("Cookie", "")
+            # Safely extract Cookie header (may be JsProxy in Pyodide)
+            cookies = _safe_str(request.headers.get("Cookie")) or ""
             expected_state = None
             for cookie in cookies.split(";"):
                 if cookie.strip().startswith("oauth_state="):
@@ -1676,17 +2676,17 @@ button:hover { opacity: 0.9; }
             client_id = getattr(self.env, "GITHUB_CLIENT_ID", "")
             client_secret = getattr(self.env, "GITHUB_CLIENT_SECRET", "")
 
-            # Exchange code for access token
-            async with httpx.AsyncClient() as client:
-                token_response = await client.post(
-                    "https://github.com/login/oauth/access_token",
-                    data={
-                        "client_id": client_id,
-                        "client_secret": client_secret,
-                        "code": code,
-                    },
-                    headers={"Accept": "application/json", "User-Agent": USER_AGENT},
-                )
+            # Exchange code for access token using centralized safe_http_fetch
+            token_response = await safe_http_fetch(
+                "https://github.com/login/oauth/access_token",
+                method="POST",
+                data={
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "code": code,
+                },
+                headers={"Accept": "application/json", "User-Agent": USER_AGENT},
+            )
 
             if token_response.status_code != 200:
                 log_op("github_token_exchange_failed", status_code=token_response.status_code)
@@ -1700,41 +2700,42 @@ button:hover { opacity: 0.9; }
                 log_op("github_oauth_error", error=token_data.get("error"), description=error_desc)
                 return Response(f"GitHub OAuth failed: {error_desc}", status=400)
 
-            # Fetch user info using native Workers fetch (more reliable headers)
+            # Fetch user info using centralized safe_http_fetch
             github_headers = {
                 "Authorization": f"Bearer {access_token}",
                 "Accept": "application/vnd.github+json",
                 "User-Agent": USER_AGENT,
                 "X-GitHub-Api-Version": "2022-11-28",
             }
-            fetch_options = to_js(
-                {"method": "GET", "headers": github_headers},
-                dict_converter=js.Object.fromEntries,
-            )
-            user_response = await js_fetch("https://api.github.com/user", fetch_options)
 
-            if user_response.status != 200:
-                response_text = await user_response.text()
+            user_response = await safe_http_fetch(
+                "https://api.github.com/user",
+                headers=github_headers,
+            )
+
+            if user_response.status_code != 200:
                 log_op(
                     "github_api_error",
-                    status_code=user_response.status,
-                    response=response_text[:200],
+                    status_code=user_response.status_code,
+                    response=user_response.text[:200],
                 )
-                return Response(f"GitHub API error: {user_response.status}", status=502)
+                return Response(f"GitHub API error: {user_response.status_code}", status=502)
 
-            user_data = await user_response.json()
-            user_data = user_data.to_py()
+            user_data = user_response.json()
             github_username = user_data.get("login")
             github_id = user_data.get("id")
 
             # Verify user is an admin
-            admin = (
+            admin_result = (
                 await self.env.DB.prepare(
                     "SELECT * FROM admins WHERE github_username = ? AND is_active = 1"
                 )
                 .bind(github_username)
                 .first()
             )
+
+            # Convert JsProxy to Python dict using centralized helper
+            admin = _to_py_safe(admin_result)
 
             if not admin:
                 return Response("Unauthorized: Not an admin", status=403)
@@ -1777,15 +2778,11 @@ button:hover { opacity: 0.9; }
             )
 
         except Exception as e:
-            # Log error internally (structured) but don't expose details to client
-            print(
-                json.dumps(
-                    {
-                        "event_type": "oauth_error",
-                        "error_type": type(e).__name__,
-                        "error_message": str(e)[:200],
-                    }
-                )
+            # Issue 4.5/6.5: Use log_op() for structured logging
+            log_op(
+                "oauth_error",
+                error_type=type(e).__name__,
+                error_message=str(e)[:200],
             )
             return Response("Authentication failed. Please try again.", status=500)
 
@@ -1812,3 +2809,7 @@ button:hover { opacity: 0.9; }
                 "Set-Cookie": "session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0",
             },
         )
+
+
+# Alias for tests which import PlanetCF
+PlanetCF = Default

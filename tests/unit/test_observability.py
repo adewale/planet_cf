@@ -144,8 +144,11 @@ class TestShouldSample:
             "wall_time_ms": 100,
             "feed_id": 42,
         }
+        # Feed 42 is in debug list - always keep
         assert should_sample(event, debug_feed_ids=["42"]) is True
-        assert should_sample(event, debug_feed_ids=["99"]) is not True  # Not in debug list
+        # Feed 42 is NOT in debug list ["99"] - falls through to random sampling
+        # With sample_rate=0, should never be sampled
+        assert should_sample(event, debug_feed_ids=["99"], sample_rate=0) is False
 
     def test_samples_fast_successful_operations(self):
         event = {"event_type": "feed_fetch", "outcome": "success", "wall_time_ms": 100}

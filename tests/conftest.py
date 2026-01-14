@@ -4,10 +4,16 @@
 import sys
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from types import ModuleType
 from typing import Any
 
 import pytest
+
+# Add src directory to path so imports work like in Workers environment
+_src_path = str(Path(__file__).parent.parent / "src")
+if _src_path not in sys.path:
+    sys.path.insert(0, _src_path)
 
 # =============================================================================
 # Mock Workers Module (must be set up before importing src.main)
@@ -176,14 +182,9 @@ class MockVectorize:
                 self.metadata[v["id"]] = v["metadata"]
 
     async def query(self, vector: list[float], options: dict) -> Any:
-        # Simple mock - return all stored IDs
-        @dataclass
-        class Match:
-            id: str
-            score: float = 0.9
-
-        matches = [Match(id=id, score=0.9) for id in self.vectors]
-        return type("QueryResult", (), {"matches": matches})()
+        # Return a dict structure matching what SafeVectorize.query() returns
+        matches = [{"id": id, "score": 0.9} for id in self.vectors]
+        return {"matches": matches}
 
     async def deleteByIds(self, ids: list[str]) -> None:
         for id in ids:
@@ -206,6 +207,7 @@ class MockEnv:
 
     DB: MockD1
     FEED_QUEUE: MockQueue
+    DEAD_LETTER_QUEUE: MockQueue
     SEARCH_INDEX: MockVectorize
     AI: MockAI
     PLANET_NAME: str = "Test Planet"
@@ -229,6 +231,7 @@ def mock_env() -> MockEnv:
     return MockEnv(
         DB=MockD1(),
         FEED_QUEUE=MockQueue(),
+        DEAD_LETTER_QUEUE=MockQueue(),
         SEARCH_INDEX=MockVectorize(),
         AI=MockAI(),
     )
