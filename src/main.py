@@ -24,6 +24,9 @@ from xml.sax.saxutils import escape
 
 import feedparser
 import httpx
+import js
+from js import fetch as js_fetch
+from pyodide.ffi import to_js
 from workers import Response, WorkerEntrypoint
 
 from models import BleachSanitizer
@@ -1697,26 +1700,30 @@ button:hover { opacity: 0.9; }
                 log_op("github_oauth_error", error=token_data.get("error"), description=error_desc)
                 return Response(f"GitHub OAuth failed: {error_desc}", status=400)
 
-            # Fetch user info (User-Agent required by GitHub API)
-            async with httpx.AsyncClient() as client:
-                user_response = await client.get(
-                    "https://api.github.com/user",
-                    headers={
-                        "Authorization": f"Bearer {access_token}",
-                        "Accept": "application/json",
-                        "User-Agent": USER_AGENT,
-                    },
-                )
+            # Fetch user info using native Workers fetch (more reliable headers)
+            github_headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/vnd.github+json",
+                "User-Agent": USER_AGENT,
+                "X-GitHub-Api-Version": "2022-11-28",
+            }
+            fetch_options = to_js(
+                {"method": "GET", "headers": github_headers},
+                dict_converter=js.Object.fromEntries,
+            )
+            user_response = await js_fetch("https://api.github.com/user", fetch_options)
 
-            if user_response.status_code != 200:
+            if user_response.status != 200:
+                response_text = await user_response.text()
                 log_op(
                     "github_api_error",
-                    status_code=user_response.status_code,
-                    response=user_response.text[:200],
+                    status_code=user_response.status,
+                    response=response_text[:200],
                 )
-                return Response(f"GitHub API error: {user_response.status_code}", status=502)
+                return Response(f"GitHub API error: {user_response.status}", status=502)
 
-            user_data = user_response.json()
+            user_data = await user_response.json()
+            user_data = user_data.to_py()
             github_username = user_data.get("login")
             github_id = user_data.get("id")
 
