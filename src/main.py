@@ -1670,15 +1670,20 @@ button:hover { opacity: 0.9; }
                         "client_secret": client_secret,
                         "code": code,
                     },
-                    headers={"Accept": "application/json"},
+                    headers={"Accept": "application/json", "User-Agent": USER_AGENT},
                 )
+
+            if token_response.status_code != 200:
+                print(f"GitHub token exchange failed: {token_response.status_code}")
+                return Response("Failed to exchange authorization code", status=502)
 
             token_data = token_response.json()
             access_token = token_data.get("access_token")
 
             if not access_token:
-                print(f"GitHub OAuth error: {token_data}")
-                return Response(f"Failed to get access token: {token_data}", status=400)
+                error_desc = token_data.get("error_description", "Unknown error")
+                print(f"GitHub OAuth error: {token_data.get('error')}: {error_desc}")
+                return Response(f"GitHub OAuth failed: {error_desc}", status=400)
 
             # Fetch user info (User-Agent required by GitHub API)
             async with httpx.AsyncClient() as client:
@@ -1733,14 +1738,21 @@ button:hover { opacity: 0.9; }
                 }
             )
 
-            cookie = (
+            # Clear oauth_state cookie and set session cookie
+            # Use list of tuples to support multiple Set-Cookie headers
+            clear_state = "oauth_state=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0"
+            session = (
                 f"session={session_cookie}; HttpOnly; Secure; "
                 f"SameSite=Lax; Path=/; Max-Age={SESSION_TTL_SECONDS}"
             )
             return Response(
                 "",
                 status=302,
-                headers={"Location": "/admin", "Set-Cookie": cookie},
+                headers=[
+                    ("Location", "/admin"),
+                    ("Set-Cookie", clear_state),
+                    ("Set-Cookie", session),
+                ],
             )
 
         except Exception as e:

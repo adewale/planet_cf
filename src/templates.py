@@ -144,11 +144,24 @@ _EMBEDDED_TEMPLATES = {
 <head>
     <meta charset="UTF-8">
     <title>Admin - {{ planet.name }}</title>
-    <style>body { font-family: system-ui; max-width: 900px; margin: 0 auto; padding: 1rem; }</style>
+    <style>
+        body { font-family: system-ui; max-width: 900px; margin: 0 auto; padding: 1rem; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid #ddd; padding-bottom: 1rem; }
+        .user-info { display: flex; align-items: center; gap: 1rem; }
+        .logout-btn { background: #dc3545; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
+        .logout-btn:hover { background: #c82333; }
+    </style>
 </head>
 <body>
-    <h1>Admin Dashboard</h1>
-    <p>Welcome, {{ admin.display_name or admin.github_username }}</p>
+    <div class="header">
+        <h1>Admin Dashboard</h1>
+        <div class="user-info">
+            <span>Welcome, {{ admin.display_name or admin.github_username }}</span>
+            <form action="/admin/logout" method="POST" style="margin: 0;">
+                <button type="submit" class="logout-btn">Logout</button>
+            </form>
+        </div>
+    </div>
     <h2>Feeds</h2>
     <ul>{% for feed in feeds %}<li>{{ feed.title }} - {{ feed.url }}</li>{% endfor %}</ul>
 </body>
