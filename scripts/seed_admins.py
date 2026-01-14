@@ -51,7 +51,7 @@ def seed_admins():
         result = subprocess.run(
             ["wrangler", "d1", "execute", "planetcf", "--command", sql],
             capture_output=True,
-            text=True
+            text=True,
         )
 
         if result.returncode == 0:

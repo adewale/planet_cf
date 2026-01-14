@@ -77,7 +77,9 @@ class TestSessionProperties:
     """Property-based tests for Session."""
 
     @given(
-        username=st.text(min_size=1, max_size=50, alphabet=st.characters(whitelist_categories=("L", "N"))),
+        username=st.text(
+            min_size=1, max_size=50, alphabet=st.characters(whitelist_categories=("L", "N"))
+        ),
         github_id=st.integers(min_value=1),
         exp=st.integers(min_value=0, max_value=2**32),
     )
@@ -94,7 +96,9 @@ class TestSessionProperties:
         assert restored == original
 
     @given(
-        username=st.text(min_size=1, max_size=50, alphabet=st.characters(whitelist_categories=("L", "N"))),
+        username=st.text(
+            min_size=1, max_size=50, alphabet=st.characters(whitelist_categories=("L", "N"))
+        ),
         github_id=st.integers(min_value=1),
         avatar_url=st.none() | st.from_regex(r"https://[a-z]+\.com/[a-z]+\.png", fullmatch=True),
         exp=st.integers(min_value=0, max_value=2**32),
@@ -128,7 +132,9 @@ class TestSessionProperties:
         assert result1 == result2
 
     @given(
-        username=st.text(min_size=1, max_size=50, alphabet=st.characters(whitelist_categories=("L", "N"))),
+        username=st.text(
+            min_size=1, max_size=50, alphabet=st.characters(whitelist_categories=("L", "N"))
+        ),
         github_id=st.integers(min_value=1),
     )
     @settings(max_examples=50)

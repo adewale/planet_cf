@@ -29,14 +29,29 @@ async def test_scheduler_enqueues_active_feeds(mock_env_with_feeds):
 @pytest.mark.asyncio
 async def test_scheduler_skips_inactive_feeds(mock_env):
     """Scheduler should not enqueue inactive feeds."""
-    mock_env.DB = MockD1({
-        "feeds": [
-            {"id": 1, "url": "https://active.com/feed", "is_active": 1, "etag": None, "last_modified": None},
-            {"id": 2, "url": "https://inactive.com/feed", "is_active": 0, "etag": None, "last_modified": None},
-        ]
-    })
+    mock_env.DB = MockD1(
+        {
+            "feeds": [
+                {
+                    "id": 1,
+                    "url": "https://active.com/feed",
+                    "is_active": 1,
+                    "etag": None,
+                    "last_modified": None,
+                },
+                {
+                    "id": 2,
+                    "url": "https://inactive.com/feed",
+                    "is_active": 0,
+                    "etag": None,
+                    "last_modified": None,
+                },
+            ]
+        }
+    )
 
     from src.main import PlanetCF
+
     worker = PlanetCF()
     worker.env = mock_env
 
@@ -54,6 +69,7 @@ async def test_scheduler_with_no_feeds(mock_env):
     mock_env.DB = MockD1({"feeds": []})
 
     from src.main import PlanetCF
+
     worker = PlanetCF()
     worker.env = mock_env
 
@@ -66,19 +82,22 @@ async def test_scheduler_with_no_feeds(mock_env):
 @pytest.mark.asyncio
 async def test_scheduler_includes_cache_headers(mock_env):
     """Scheduler includes etag and last_modified in messages."""
-    mock_env.DB = MockD1({
-        "feeds": [
-            {
-                "id": 1,
-                "url": "https://example.com/feed",
-                "is_active": 1,
-                "etag": '"abc123"',
-                "last_modified": "Sat, 01 Jan 2026 00:00:00 GMT",
-            },
-        ]
-    })
+    mock_env.DB = MockD1(
+        {
+            "feeds": [
+                {
+                    "id": 1,
+                    "url": "https://example.com/feed",
+                    "is_active": 1,
+                    "etag": '"abc123"',
+                    "last_modified": "Sat, 01 Jan 2026 00:00:00 GMT",
+                },
+            ]
+        }
+    )
 
     from src.main import PlanetCF
+
     worker = PlanetCF()
     worker.env = mock_env
 

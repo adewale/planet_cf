@@ -138,7 +138,12 @@ class TestShouldSample:
         assert should_sample(event) is True
 
     def test_always_keeps_debug_feeds(self):
-        event = {"event_type": "feed_fetch", "outcome": "success", "wall_time_ms": 100, "feed_id": 42}
+        event = {
+            "event_type": "feed_fetch",
+            "outcome": "success",
+            "wall_time_ms": 100,
+            "feed_id": 42,
+        }
         assert should_sample(event, debug_feed_ids=["42"]) is True
         assert should_sample(event, debug_feed_ids=["99"]) is not True  # Not in debug list
 

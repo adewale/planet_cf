@@ -12,6 +12,7 @@ from src.models import BleachSanitizer, NoOpSanitizer
 # HTML Sanitization Tests
 # =============================================================================
 
+
 class TestBleachSanitizer:
     """Tests for BleachSanitizer (XSS prevention)."""
 
@@ -86,20 +87,23 @@ class TestBleachSanitizer:
         result = sanitizer.clean(html)
         assert "<embed" not in result
 
-    @pytest.mark.parametrize("malicious", [
-        '<svg onload="alert(1)">',
-        '<math><mi xlink:href="javascript:alert(1)">',
-        '<iframe src="javascript:alert(1)">',
-        '<object data="javascript:alert(1)">',
-        '<embed src="javascript:alert(1)">',
-        '<style>@import "javascript:alert(1)"</style>',
-        '<img src=x onerror=alert(1)>',
-        '<body onload=alert(1)>',
-        '<input onfocus=alert(1) autofocus>',
-        '<marquee onstart=alert(1)>',
-        '<video><source onerror=alert(1)>',
-        '<audio src=x onerror=alert(1)>',
-    ])
+    @pytest.mark.parametrize(
+        "malicious",
+        [
+            '<svg onload="alert(1)">',
+            '<math><mi xlink:href="javascript:alert(1)">',
+            '<iframe src="javascript:alert(1)">',
+            '<object data="javascript:alert(1)">',
+            '<embed src="javascript:alert(1)">',
+            '<style>@import "javascript:alert(1)"</style>',
+            "<img src=x onerror=alert(1)>",
+            "<body onload=alert(1)>",
+            "<input onfocus=alert(1) autofocus>",
+            "<marquee onstart=alert(1)>",
+            "<video><source onerror=alert(1)>",
+            "<audio src=x onerror=alert(1)>",
+        ],
+    )
     def test_strips_various_xss_vectors(self, sanitizer, malicious):
         """Various XSS attack vectors are neutralized."""
         result = sanitizer.clean(malicious)
@@ -129,13 +133,14 @@ class TestNoOpSanitizer:
     def test_passes_through_unchanged(self):
         """NoOpSanitizer preserves all content."""
         sanitizer = NoOpSanitizer()
-        html = '<script>alert(1)</script>'
+        html = "<script>alert(1)</script>"
         assert sanitizer.clean(html) == html
 
 
 # =============================================================================
 # URL Validation Tests (SSRF Protection)
 # =============================================================================
+
 
 def is_safe_url(url: str) -> bool:
     """
@@ -178,7 +183,7 @@ def is_safe_url(url: str) -> bool:
         if ip.is_private or ip.is_loopback or ip.is_link_local:
             return False
         # Block IPv6 unique local addresses (fd00::/8)
-        if ip.version == 6 and ip.packed[0] == 0xfd:
+        if ip.version == 6 and ip.packed[0] == 0xFD:
             return False
     except ValueError:
         pass  # Not an IP, that's fine
@@ -193,72 +198,84 @@ def is_safe_url(url: str) -> bool:
         return False
 
     # Block internal domain patterns
-    if hostname.endswith(".internal") or hostname.endswith(".local"):
-        return False
-
-    return True
+    return not (hostname.endswith(".internal") or hostname.endswith(".local"))
 
 
 class TestUrlValidation:
     """Tests for URL validation (SSRF protection)."""
 
-    @pytest.mark.parametrize("url", [
-        "https://example.com/feed.xml",
-        "https://blog.example.com/rss",
-        "http://feeds.feedburner.com/example",
-        "https://news.ycombinator.com/rss",
-        "https://jvns.ca/atom.xml",
-        "https://rachelbythebay.com/w/atom.xml",
-        "http://example.org:8080/feed",
-    ])
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://example.com/feed.xml",
+            "https://blog.example.com/rss",
+            "http://feeds.feedburner.com/example",
+            "https://news.ycombinator.com/rss",
+            "https://jvns.ca/atom.xml",
+            "https://rachelbythebay.com/w/atom.xml",
+            "http://example.org:8080/feed",
+        ],
+    )
     def test_allows_valid_urls(self, url):
         """Valid external URLs are allowed."""
         assert is_safe_url(url)
 
-    @pytest.mark.parametrize("url", [
-        "http://localhost/feed",
-        "http://localhost:8080/feed",
-        "http://127.0.0.1/feed",
-        "http://127.0.0.1:3000/feed",
-        "http://[::1]/feed",
-        "http://0.0.0.0/feed",
-    ])
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://localhost/feed",
+            "http://localhost:8080/feed",
+            "http://127.0.0.1/feed",
+            "http://127.0.0.1:3000/feed",
+            "http://[::1]/feed",
+            "http://0.0.0.0/feed",
+        ],
+    )
     def test_blocks_localhost(self, url):
         """Localhost variants are blocked."""
         assert not is_safe_url(url)
 
-    @pytest.mark.parametrize("url", [
-        "http://10.0.0.1/feed",
-        "http://10.255.255.255/feed",
-        "http://172.16.0.1/feed",
-        "http://172.31.255.255/feed",
-        "http://192.168.1.1/feed",
-        "http://192.168.255.255/feed",
-    ])
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://10.0.0.1/feed",
+            "http://10.255.255.255/feed",
+            "http://172.16.0.1/feed",
+            "http://172.31.255.255/feed",
+            "http://192.168.1.1/feed",
+            "http://192.168.255.255/feed",
+        ],
+    )
     def test_blocks_private_networks(self, url):
         """Private network IPs are blocked."""
         assert not is_safe_url(url)
 
-    @pytest.mark.parametrize("url", [
-        "http://169.254.169.254/latest/meta-data/",
-        "http://169.254.169.254/latest/api/token",
-        "http://100.100.100.200/",
-        "http://192.0.0.192/",
-        "http://metadata.google.internal/",
-        "http://metadata.google.internal/computeMetadata/v1/",
-    ])
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://169.254.169.254/latest/meta-data/",
+            "http://169.254.169.254/latest/api/token",
+            "http://100.100.100.200/",
+            "http://192.0.0.192/",
+            "http://metadata.google.internal/",
+            "http://metadata.google.internal/computeMetadata/v1/",
+        ],
+    )
     def test_blocks_cloud_metadata(self, url):
         """Cloud metadata endpoints are blocked."""
         assert not is_safe_url(url)
 
-    @pytest.mark.parametrize("url", [
-        "ftp://example.com/feed",
-        "file:///etc/passwd",
-        "javascript:alert(1)",
-        "data:text/html,<script>alert(1)</script>",
-        "gopher://example.com/",
-        "dict://example.com/",
-    ])
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "ftp://example.com/feed",
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "data:text/html,<script>alert(1)</script>",
+            "gopher://example.com/",
+            "dict://example.com/",
+        ],
+    )
     def test_blocks_non_http_schemes(self, url):
         """Non-HTTP schemes are blocked."""
         assert not is_safe_url(url)
@@ -272,11 +289,14 @@ class TestUrlValidation:
         assert not is_safe_url("not a url")
         assert not is_safe_url("://missing-scheme")
 
-    @pytest.mark.parametrize("url", [
-        "http://internal.local/feed",
-        "http://app.internal/feed",
-        "http://service.internal/api",
-    ])
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://internal.local/feed",
+            "http://app.internal/feed",
+            "http://service.internal/api",
+        ],
+    )
     def test_blocks_internal_domains(self, url):
         """Internal domain patterns are blocked."""
         assert not is_safe_url(url)

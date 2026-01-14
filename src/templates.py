@@ -15,7 +15,7 @@ from jinja2 import BaseLoader, Environment, TemplateNotFound
 # =============================================================================
 
 _EMBEDDED_TEMPLATES = {
-    "index.html": '''<!DOCTYPE html>
+    "index.html": """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -94,9 +94,8 @@ _EMBEDDED_TEMPLATES = {
         <p>Last updated: {{ generated_at }}</p>
     </footer>
 </body>
-</html>''',
-
-    "search.html": '''<!DOCTYPE html>
+</html>""",
+    "search.html": """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -137,9 +136,8 @@ _EMBEDDED_TEMPLATES = {
 
     <footer><p><a href="/">Back to Planet CF</a></p></footer>
 </body>
-</html>''',
-
-    "admin/dashboard.html": '''<!DOCTYPE html>
+</html>""",
+    "admin/dashboard.html": """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -165,9 +163,8 @@ _EMBEDDED_TEMPLATES = {
     <h2>Feeds</h2>
     <ul>{% for feed in feeds %}<li>{{ feed.title }} - {{ feed.url }}</li>{% endfor %}</ul>
 </body>
-</html>''',
-
-    "admin/login.html": '''<!DOCTYPE html>
+</html>""",
+    "admin/login.html": """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -232,7 +229,7 @@ _EMBEDDED_TEMPLATES = {
         </p>
     </div>
 </body>
-</html>'''
+</html>""",
 }
 
 # =============================================================================
@@ -248,6 +245,7 @@ TEMPLATE_ADMIN_LOGIN = "admin/login.html"
 # =============================================================================
 # Template Loader
 # =============================================================================
+
 
 class DictLoader(BaseLoader):
     """Load templates from a dictionary."""
@@ -304,6 +302,7 @@ def set_jinja_env(env: Environment) -> None:
 # =============================================================================
 # Template Rendering Helpers
 # =============================================================================
+
 
 def render_template(template_name: str, **context) -> str:
     """Render a template with the given context."""

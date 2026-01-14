@@ -14,8 +14,8 @@
 #   Add bleach to required_packages.txt in pyodide-build-scripts
 #   bleach and its dependency (webencodings) are both pure Python
 
-from workers import Response, WorkerEntrypoint
 import bleach
+from workers import Response, WorkerEntrypoint
 
 # Malicious HTML for testing sanitization
 TEST_HTML = '<script>alert("xss")</script><p>safe content</p>'
@@ -24,10 +24,10 @@ TEST_HTML = '<script>alert("xss")</script><p>safe content</p>'
 class BleachTest(WorkerEntrypoint):
     async def fetch(self, request):
         # Sanitize the HTML (should strip script tag)
-        clean = bleach.clean(TEST_HTML, tags=['p'], strip=True)
+        clean = bleach.clean(TEST_HTML, tags=["p"], strip=True)
 
         # Return success with sanitized content
         return Response(
             f'{{"status": "ok", "sanitized": "{clean}"}}',
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
         )

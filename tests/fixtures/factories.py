@@ -9,6 +9,7 @@ from src.models import EntryRow, FeedId, FeedJob, FeedRow, Session
 
 class FeedFactory:
     """Factory for creating test feed data."""
+
     _counter = 0
 
     @classmethod
@@ -40,6 +41,7 @@ class FeedFactory:
 
 class EntryFactory:
     """Factory for creating test entry data."""
+
     _counter = 0
 
     @classmethod
@@ -71,6 +73,7 @@ class EntryFactory:
 
 class FeedJobFactory:
     """Factory for creating test FeedJob data."""
+
     _counter = 0
 
     @classmethod

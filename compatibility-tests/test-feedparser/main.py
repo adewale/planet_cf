@@ -14,8 +14,8 @@
 #   1. Build sgmllib3k as a wheel and include in Pyodide
 #   2. Add feedparser to required_packages.txt
 
-from workers import Response, WorkerEntrypoint
 import feedparser
+from workers import Response, WorkerEntrypoint
 
 # Minimal valid RSS feed for testing
 TEST_RSS = """<?xml version="1.0"?>
@@ -35,5 +35,5 @@ class FeedparserTest(WorkerEntrypoint):
         # Return success with parsed data
         return Response(
             f'{{"status": "ok", "entries": {len(feed.entries)}, "title": "{feed.feed.title}"}}',
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
         )

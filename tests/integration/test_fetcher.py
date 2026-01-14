@@ -1,6 +1,7 @@
 # tests/integration/test_fetcher.py
 """Integration tests for the feed fetcher (queue consumer) functionality."""
 
+import httpx
 import pytest
 import respx
 from httpx import Response
@@ -25,9 +26,7 @@ async def test_fetcher_processes_valid_feed(mock_env):
         </channel>
     </rss>"""
 
-    respx.get("https://example.com/feed.xml").mock(
-        return_value=Response(200, content=feed_xml)
-    )
+    respx.get("https://example.com/feed.xml").mock(return_value=Response(200, content=feed_xml))
 
     from src.main import PlanetCF
 
@@ -49,9 +48,7 @@ async def test_fetcher_processes_valid_feed(mock_env):
 @respx.mock
 async def test_fetcher_respects_304_not_modified(mock_env):
     """Fetcher should skip processing when feed returns 304."""
-    respx.get("https://example.com/feed.xml").mock(
-        return_value=Response(304)
-    )
+    respx.get("https://example.com/feed.xml").mock(return_value=Response(304))
 
     from src.main import PlanetCF
 
@@ -74,6 +71,7 @@ async def test_fetcher_respects_304_not_modified(mock_env):
 async def test_fetcher_handles_timeout(mock_env):
     """Fetcher should handle timeout gracefully."""
     import httpx
+
     respx.get("https://slow.example.com/feed.xml").mock(
         side_effect=httpx.TimeoutException("Connection timed out")
     )
@@ -112,7 +110,7 @@ async def test_fetcher_handles_404(mock_env):
     }
 
     # Should raise HTTPStatusError
-    with pytest.raises(Exception):
+    with pytest.raises(httpx.HTTPStatusError):
         await worker._process_single_feed(job)
 
 
@@ -120,9 +118,7 @@ async def test_fetcher_handles_404(mock_env):
 @respx.mock
 async def test_fetcher_sends_conditional_headers(mock_env):
     """Fetcher should send If-None-Match and If-Modified-Since headers."""
-    respx.get("https://example.com/feed.xml").mock(
-        return_value=Response(304)
-    )
+    respx.get("https://example.com/feed.xml").mock(return_value=Response(304))
 
     from src.main import PlanetCF
 
@@ -148,9 +144,7 @@ async def test_fetcher_sends_conditional_headers(mock_env):
 @respx.mock
 async def test_fetcher_sends_user_agent(mock_env):
     """Fetcher should send proper User-Agent header."""
-    respx.get("https://example.com/feed.xml").mock(
-        return_value=Response(304)
-    )
+    respx.get("https://example.com/feed.xml").mock(return_value=Response(304))
 
     from src.main import PlanetCF
 
@@ -209,9 +203,7 @@ async def test_fetcher_parses_atom_feed(mock_env):
         </entry>
     </feed>"""
 
-    respx.get("https://example.com/feed.atom").mock(
-        return_value=Response(200, content=atom_xml)
-    )
+    respx.get("https://example.com/feed.atom").mock(return_value=Response(200, content=atom_xml))
 
     from src.main import PlanetCF
 

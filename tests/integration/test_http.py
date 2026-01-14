@@ -197,9 +197,6 @@ async def test_html_contains_planet_name(mock_env_with_entries):
     request = MockRequest("https://planetcf.com/")
     response = await worker.fetch(request)
 
-    # Get response body
-    body = response.body if hasattr(response, "body") else ""
-    # Planet name from mock_env
     assert response.status == 200
 
 

@@ -12,11 +12,13 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import html
 import ipaddress
 import json
 import secrets
 import time
-from datetime import datetime
+import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 from xml.sax.saxutils import escape
 
@@ -58,6 +60,26 @@ BLOCKED_METADATA_IPS = {
     "100.100.100.200",  # Alibaba Cloud metadata
     "192.0.0.192",  # Oracle Cloud metadata
 }
+
+
+# =============================================================================
+# Structured Logging Helper
+# =============================================================================
+
+
+def log_op(event_type: str, **kwargs) -> None:
+    """
+    Log an operational event as structured JSON.
+
+    Unlike wide events (FeedFetchEvent, etc.), these are simpler operational
+    logs for debugging and monitoring internal operations.
+    """
+    event = {
+        "event_type": event_type,
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        **kwargs,
+    }
+    print(json.dumps(event))
 
 
 # =============================================================================
@@ -172,7 +194,7 @@ class Default(WorkerEntrypoint):
             await self.env.FEED_QUEUE.send(message)
             enqueue_count += 1
 
-        print(f"Scheduler: Enqueued {enqueue_count} feeds as separate messages")
+        log_op("scheduler_complete", feeds_enqueued=enqueue_count)
 
         return {"enqueued": enqueue_count}
 
@@ -188,7 +210,7 @@ class Default(WorkerEntrypoint):
         This ensures isolated retries and timeouts per feed.
         """
 
-        print(f"Feed Fetcher: Received batch of {len(batch.messages)} feed(s)")
+        log_op("queue_batch_received", batch_size=len(batch.messages))
 
         for message in batch.messages:
             feed_job = message.body
@@ -305,7 +327,7 @@ class Default(WorkerEntrypoint):
                 if resp.status_code in (301, 308):
                     new_url = str(response.url)
                     await self._update_feed_url(feed_id, new_url)
-                    print(f"Feed URL updated: {url} -> {new_url}")
+                    log_op("feed_url_updated", old_url=url, new_url=new_url)
                     break
 
         response.raise_for_status()
@@ -337,7 +359,7 @@ class Default(WorkerEntrypoint):
         # Mark fetch as successful
         await self._update_feed_success(feed_id, new_etag, new_last_modified)
 
-        print(f"Feed processed: {url}, {entries_added} new/updated entries")
+        log_op("feed_processed", feed_url=url, entries_added=entries_added)
         return {"status": "ok", "entries_added": entries_added, "entries_found": entries_found}
 
     async def _upsert_entry(self, feed_id, entry):
@@ -435,7 +457,7 @@ class Default(WorkerEntrypoint):
         try:
             parsed = urlparse(url)
         except Exception as e:
-            print(f"URL parse error for {url}: {type(e).__name__}: {e}")
+            log_op("url_parse_error", url=url, error_type=type(e).__name__, error=str(e))
             return False
 
         # Only allow http/https
@@ -536,10 +558,6 @@ class Default(WorkerEntrypoint):
         # Parse retry_after - could be seconds or HTTP date
         try:
             seconds = int(retry_after)
-            retry_until = datetime.utcnow().isoformat() + "Z"
-            # Add seconds to current time
-            from datetime import timedelta
-
             retry_until = (datetime.utcnow() + timedelta(seconds=seconds)).isoformat() + "Z"
         except ValueError:
             # Assume it's an HTTP date, store as-is for simplicity
@@ -647,7 +665,7 @@ class Default(WorkerEntrypoint):
                     event.content_type = "error"
 
             except Exception as e:
-                print(f"Request error for {path}: {type(e).__name__}: {e}")
+                log_op("request_error", path=path, error_type=type(e).__name__, error=str(e)[:200])
                 event.wall_time_ms = timer.elapsed()
                 event.status_code = 500
                 emit_event(event)
@@ -808,7 +826,7 @@ class Default(WorkerEntrypoint):
                     .run()
                 )
 
-            print(f"Retention: Deleted {len(deleted_ids)} old entries and their vectors")
+            log_op("retention_cleanup", entries_deleted=len(deleted_ids))
 
     def _format_datetime(self, iso_string):
         """Format ISO datetime string for display."""
@@ -936,8 +954,6 @@ class Default(WorkerEntrypoint):
 
     async def _export_opml(self):
         """Export all active feeds as OPML."""
-        import html
-
         feeds = await self.env.DB.prepare("""
             SELECT url, title, site_url
             FROM feeds
@@ -1463,8 +1479,6 @@ button:hover { opacity: 0.9; }
 
     async def _import_opml(self, request, admin):
         """Import feeds from uploaded OPML file. Admin only."""
-        import xml.etree.ElementTree as ET
-
         form = await request.formData()
         opml_file = form.get("opml")
 
@@ -1600,7 +1614,7 @@ button:hover { opacity: 0.9; }
 
             return payload
         except Exception as e:
-            print(f"Session cookie verification failed: {type(e).__name__}: {e}")
+            log_op("session_verify_failed", error_type=type(e).__name__, error=str(e)[:100])
             return None
 
     def _redirect_to_github_oauth(self, request):
@@ -1627,9 +1641,7 @@ button:hover { opacity: 0.9; }
             f"&state={state}"
         )
 
-        state_cookie = (
-            f"oauth_state={state}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600"
-        )
+        state_cookie = f"oauth_state={state}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600"
         return Response(
             "",
             status=302,
@@ -1674,7 +1686,7 @@ button:hover { opacity: 0.9; }
                 )
 
             if token_response.status_code != 200:
-                print(f"GitHub token exchange failed: {token_response.status_code}")
+                log_op("github_token_exchange_failed", status_code=token_response.status_code)
                 return Response("Failed to exchange authorization code", status=502)
 
             token_data = token_response.json()
@@ -1682,7 +1694,7 @@ button:hover { opacity: 0.9; }
 
             if not access_token:
                 error_desc = token_data.get("error_description", "Unknown error")
-                print(f"GitHub OAuth error: {token_data.get('error')}: {error_desc}")
+                log_op("github_oauth_error", error=token_data.get("error"), description=error_desc)
                 return Response(f"GitHub OAuth failed: {error_desc}", status=400)
 
             # Fetch user info (User-Agent required by GitHub API)
@@ -1697,10 +1709,12 @@ button:hover { opacity: 0.9; }
                 )
 
             if user_response.status_code != 200:
-                print(f"GitHub API error: {user_response.status_code} {user_response.text}")
-                return Response(
-                    f"GitHub API error: {user_response.status_code}", status=502
+                log_op(
+                    "github_api_error",
+                    status_code=user_response.status_code,
+                    response=user_response.text[:200],
                 )
+                return Response(f"GitHub API error: {user_response.status_code}", status=502)
 
             user_data = user_response.json()
             github_username = user_data.get("login")
@@ -1757,11 +1771,15 @@ button:hover { opacity: 0.9; }
 
         except Exception as e:
             # Log error internally (structured) but don't expose details to client
-            print(json.dumps({
-                "event_type": "oauth_error",
-                "error_type": type(e).__name__,
-                "error_message": str(e)[:200],
-            }))
+            print(
+                json.dumps(
+                    {
+                        "event_type": "oauth_error",
+                        "error_type": type(e).__name__,
+                        "error_message": str(e)[:200],
+                    }
+                )
+            )
             return Response("Authentication failed. Please try again.", status=500)
 
     def _create_signed_cookie(self, payload):

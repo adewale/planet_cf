@@ -57,9 +57,11 @@ from src.models import EntryRow, FeedRow, Session
 # Mock Cloudflare Bindings
 # =============================================================================
 
+
 @dataclass
 class MockD1Result:
     """Mock D1 query result."""
+
     results: list[dict]
     success: bool = True
 
@@ -79,11 +81,12 @@ class MockD1Statement:
     def _filter_results(self) -> list[dict]:
         """Apply basic filtering based on SQL WHERE clause."""
         import re
+
         results = self._results
 
         # Check for is_active filtering (common pattern)
         if "where" in self._sql.lower() and "is_active" in self._sql.lower():
-            match = re.search(r'is_active\s*=\s*(\d+)', self._sql.lower())
+            match = re.search(r"is_active\s*=\s*(\d+)", self._sql.lower())
             if match:
                 is_active_val = int(match.group(1))
                 results = [r for r in results if r.get("is_active") == is_active_val]
@@ -119,14 +122,15 @@ class MockD1:
         5. Simple table name match as fallback
         """
         import re
+
         sql_lower = sql.lower()
 
         # Try to find the primary table from SQL patterns
         patterns = [
-            r'delete\s+from\s+(\w+)',
-            r'insert\s+into\s+(\w+)',
-            r'update\s+(\w+)',
-            r'from\s+(\w+)',  # Primary table in SELECT
+            r"delete\s+from\s+(\w+)",
+            r"insert\s+into\s+(\w+)",
+            r"update\s+(\w+)",
+            r"from\s+(\w+)",  # Primary table in SELECT
         ]
 
         for pattern in patterns:
@@ -178,7 +182,7 @@ class MockVectorize:
             id: str
             score: float = 0.9
 
-        matches = [Match(id=id, score=0.9) for id in self.vectors.keys()]
+        matches = [Match(id=id, score=0.9) for id in self.vectors]
         return type("QueryResult", (), {"matches": matches})()
 
     async def deleteByIds(self, ids: list[str]) -> None:
@@ -191,14 +195,15 @@ class MockAI:
     """Mock Workers AI."""
 
     async def run(self, model: str, inputs: dict) -> dict:
-        # Return fake 768-dim embedding
-        text = inputs.get("text", [""])[0]
+        # Return fake 768-dim embedding (inputs ignored for mock)
+        _ = model, inputs  # Acknowledge unused params
         return {"data": [[0.1] * 768]}
 
 
 @dataclass
 class MockEnv:
     """Mock Cloudflare Worker environment bindings."""
+
     DB: MockD1
     FEED_QUEUE: MockQueue
     SEARCH_INDEX: MockVectorize
@@ -217,6 +222,7 @@ class MockEnv:
 # Pytest Fixtures
 # =============================================================================
 
+
 @pytest.fixture
 def mock_env() -> MockEnv:
     """Create a mock environment with empty data."""
@@ -231,38 +237,96 @@ def mock_env() -> MockEnv:
 @pytest.fixture
 def mock_env_with_feeds(mock_env: MockEnv) -> MockEnv:
     """Create a mock environment with sample feeds."""
-    mock_env.DB = MockD1({
-        "feeds": [
-            {"id": 1, "url": "https://example.com/feed.xml", "title": "Example", "is_active": 1, "site_url": "https://example.com", "etag": None, "last_modified": None},
-            {"id": 2, "url": "https://test.com/rss", "title": "Test Blog", "is_active": 1, "site_url": "https://test.com", "etag": None, "last_modified": None},
-        ]
-    })
+    mock_env.DB = MockD1(
+        {
+            "feeds": [
+                {
+                    "id": 1,
+                    "url": "https://example.com/feed.xml",
+                    "title": "Example",
+                    "is_active": 1,
+                    "site_url": "https://example.com",
+                    "etag": None,
+                    "last_modified": None,
+                },
+                {
+                    "id": 2,
+                    "url": "https://test.com/rss",
+                    "title": "Test Blog",
+                    "is_active": 1,
+                    "site_url": "https://test.com",
+                    "etag": None,
+                    "last_modified": None,
+                },
+            ]
+        }
+    )
     return mock_env
 
 
 @pytest.fixture
 def mock_env_with_entries(mock_env: MockEnv) -> MockEnv:
     """Create a mock environment with sample entries."""
-    mock_env.DB = MockD1({
-        "feeds": [
-            {"id": 1, "url": "https://example.com/feed.xml", "title": "Example", "is_active": 1, "site_url": "https://example.com", "consecutive_failures": 0, "last_success_at": "2026-01-01T00:00:00Z"},
-        ],
-        "entries": [
-            {"id": 1, "feed_id": 1, "guid": "entry-1", "url": "https://example.com/post/1", "title": "Test Entry 1", "content": "<p>Content 1</p>", "published_at": "2026-01-01T12:00:00Z", "feed_title": "Example", "feed_site_url": "https://example.com"},
-            {"id": 2, "feed_id": 1, "guid": "entry-2", "url": "https://example.com/post/2", "title": "Test Entry 2", "content": "<p>Content 2</p>", "published_at": "2026-01-01T14:00:00Z", "feed_title": "Example", "feed_site_url": "https://example.com"},
-        ]
-    })
+    mock_env.DB = MockD1(
+        {
+            "feeds": [
+                {
+                    "id": 1,
+                    "url": "https://example.com/feed.xml",
+                    "title": "Example",
+                    "is_active": 1,
+                    "site_url": "https://example.com",
+                    "consecutive_failures": 0,
+                    "last_success_at": "2026-01-01T00:00:00Z",
+                },
+            ],
+            "entries": [
+                {
+                    "id": 1,
+                    "feed_id": 1,
+                    "guid": "entry-1",
+                    "url": "https://example.com/post/1",
+                    "title": "Test Entry 1",
+                    "content": "<p>Content 1</p>",
+                    "published_at": "2026-01-01T12:00:00Z",
+                    "feed_title": "Example",
+                    "feed_site_url": "https://example.com",
+                },
+                {
+                    "id": 2,
+                    "feed_id": 1,
+                    "guid": "entry-2",
+                    "url": "https://example.com/post/2",
+                    "title": "Test Entry 2",
+                    "content": "<p>Content 2</p>",
+                    "published_at": "2026-01-01T14:00:00Z",
+                    "feed_title": "Example",
+                    "feed_site_url": "https://example.com",
+                },
+            ],
+        }
+    )
     return mock_env
 
 
 @pytest.fixture
 def mock_env_with_admins(mock_env: MockEnv) -> MockEnv:
     """Create a mock environment with sample admins."""
-    mock_env.DB = MockD1({
-        "admins": [
-            {"id": 1, "github_username": "testadmin", "github_id": 12345, "display_name": "Test Admin", "is_active": 1, "last_login_at": None, "created_at": "2026-01-01T00:00:00Z"},
-        ]
-    })
+    mock_env.DB = MockD1(
+        {
+            "admins": [
+                {
+                    "id": 1,
+                    "github_username": "testadmin",
+                    "github_id": 12345,
+                    "display_name": "Test Admin",
+                    "is_active": 1,
+                    "last_login_at": None,
+                    "created_at": "2026-01-01T00:00:00Z",
+                },
+            ]
+        }
+    )
     return mock_env
 
 
@@ -270,8 +334,10 @@ def mock_env_with_admins(mock_env: MockEnv) -> MockEnv:
 # Test Data Factories
 # =============================================================================
 
+
 class FeedFactory:
     """Factory for creating test feed data."""
+
     _counter = 0
 
     @classmethod
@@ -296,6 +362,7 @@ class FeedFactory:
 
 class EntryFactory:
     """Factory for creating test entry data."""
+
     _counter = 0
 
     @classmethod

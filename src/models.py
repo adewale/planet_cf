@@ -186,6 +186,7 @@ class AdminRow(TypedDict):
 # Result Type for Error Handling
 # =============================================================================
 
+
 @dataclass(frozen=True, slots=True)
 class Ok[T]:
     """Success case of Result."""
@@ -294,8 +295,8 @@ class BleachSanitizer:
         # Pre-process: Remove script and style tags with their content
         # These tags' content should never appear in output, unlike other tags
         # where we might want to preserve text but strip the tag.
-        html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
-        html = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
+        html = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL | re.IGNORECASE)
+        html = re.sub(r"<style[^>]*>.*?</style>", "", html, flags=re.DOTALL | re.IGNORECASE)
 
         return bleach.clean(
             html,
