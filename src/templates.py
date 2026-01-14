@@ -406,70 +406,97 @@ _EMBEDDED_TEMPLATES = {
 STATIC_CSS = """
 /* Planet CF Styles */
 :root {
-    /* Cloudflare-inspired palette */
-    --primary: #f6821f;
-    --primary-dark: #e5731a;
-    --primary-light: #fff4eb;
+    /* Accent color - used sparingly */
+    --accent: #f6821f;
+    --accent-dark: #e5731a;
+    --accent-light: #fff7ed;
+    --accent-subtle: #fed7aa;
 
     /* Neutral tones */
-    --text-primary: #1a1a2e;
-    --text-secondary: #4a5568;
-    --text-muted: #718096;
+    --text-primary: #111827;
+    --text-secondary: #374151;
+    --text-muted: #6b7280;
 
     /* Backgrounds */
     --bg-primary: #ffffff;
-    --bg-secondary: #f7fafc;
-    --bg-tertiary: #edf2f7;
+    --bg-secondary: #f9fafb;
+    --bg-tertiary: #f3f4f6;
 
-    /* Borders & accents */
-    --border-light: #e2e8f0;
-    --border-medium: #cbd5e0;
+    /* Borders */
+    --border-light: #e5e7eb;
+    --border-medium: #d1d5db;
+    --border-accent: var(--accent);
 
     /* Code blocks */
-    --code-bg: #1e293b;
-    --code-text: #e2e8f0;
+    --code-bg: #1f2937;
+    --code-text: #f3f4f6;
 
     /* Semantic colors */
-    --success: #38a169;
-    --error: #e53e3e;
+    --success: #059669;
+    --error: #dc2626;
 
     /* Shadows */
-    --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
-    --shadow-md: 0 4px 6px rgba(0,0,0,0.07);
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.07);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-    font-size: 16px;
-    line-height: 1.7;
+    font-family: 'Georgia', 'Times New Roman', serif;
+    font-size: 18px;
+    line-height: 1.8;
     color: var(--text-primary);
     background: var(--bg-secondary);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
 
+/* Headings use sans-serif for contrast */
+h1, h2, h3, h4, h5, h6,
+.search-form, .sidebar, footer, .meta, button {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
 header {
-    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-    color: white;
-    padding: 2.5rem 2rem;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border-light);
+    padding: 2rem;
     text-align: center;
 }
 
 header h1 {
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.375rem;
     font-weight: 700;
-    font-size: 2rem;
+    font-size: 1.75rem;
     letter-spacing: -0.02em;
+    color: var(--text-primary);
+}
+
+header h1::before {
+    content: '';
+    display: inline-block;
+    width: 4px;
+    height: 1.5rem;
+    background: var(--accent);
+    margin-right: 0.75rem;
+    vertical-align: middle;
+    border-radius: 2px;
 }
 
 header p {
-    opacity: 0.9;
-    font-size: 1.05rem;
+    color: var(--text-muted);
+    font-size: 1rem;
 }
 
-header a { color: white; }
+header a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+header a:hover {
+    text-decoration: underline;
+}
 
 .search-form {
     margin-top: 1.25rem;
@@ -480,34 +507,35 @@ header a { color: white; }
 
 .search-form input {
     padding: 0.625rem 1rem;
-    border: none;
+    border: 1px solid var(--border-medium);
     border-radius: 6px;
     width: 300px;
     font-size: 0.95rem;
-    background: rgba(255,255,255,0.95);
-    transition: box-shadow 0.2s ease;
+    background: var(--bg-primary);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .search-form input:focus {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(255,255,255,0.3);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-light);
 }
 
 .search-form button {
     padding: 0.625rem 1.25rem;
-    background: white;
-    color: var(--primary);
-    border: none;
+    background: var(--bg-primary);
+    color: var(--accent);
+    border: 2px solid var(--accent);
     border-radius: 6px;
     cursor: pointer;
     font-weight: 600;
     font-size: 0.95rem;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    transition: background 0.15s ease, color 0.15s ease;
 }
 
 .search-form button:hover {
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-md);
+    background: var(--accent);
+    color: white;
 }
 
 .container {
@@ -523,22 +551,22 @@ main { min-width: 0; }
 
 .day { margin-bottom: 2.5rem; }
 .day h2 {
-    color: var(--text-secondary);
-    font-size: 0.85rem;
+    color: var(--text-muted);
+    font-size: 0.8rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    border-bottom: 2px solid var(--primary);
+    letter-spacing: 0.08em;
     padding-bottom: 0.5rem;
     margin-bottom: 1.25rem;
+    border-bottom: 1px solid var(--border-light);
 }
 
 article {
     background: var(--bg-primary);
     border: 1px solid var(--border-light);
-    border-radius: 10px;
-    padding: 1.75rem;
-    margin-bottom: 1.25rem;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
     box-shadow: var(--shadow-sm);
     transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
@@ -549,11 +577,11 @@ article:hover {
 }
 
 article h3 {
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.625rem;
     font-size: 1.25rem;
     font-weight: 600;
-    letter-spacing: -0.01em;
-    line-height: 1.4;
+    letter-spacing: -0.02em;
+    line-height: 1.35;
 }
 
 article h3 a {
@@ -563,7 +591,14 @@ article h3 a {
 }
 
 article h3 a:hover {
-    color: var(--primary);
+    color: var(--accent);
+}
+
+article header {
+    background: transparent;
+    border-bottom: none;
+    padding: 0;
+    text-align: left;
 }
 
 .meta {
@@ -587,12 +622,21 @@ article h3 a:hover {
     word-wrap: break-word;
     word-break: break-word;
     color: var(--text-secondary);
-    font-size: 0.975rem;
-    line-height: 1.75;
+    font-size: 1.0625rem;
+    line-height: 1.85;
 }
 
 .content p {
-    margin-bottom: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.content p:last-child {
+    margin-bottom: 0;
+}
+
+/* First entry from each feed gets subtle highlight */
+.content:first-of-type {
+    /* Subtle indicator this is the newest from this source */
 }
 
 .content img {
@@ -611,7 +655,7 @@ article h3 a:hover {
 
 .content code {
     background: var(--bg-tertiary);
-    color: var(--primary-dark);
+    color: var(--accent-dark);
     padding: 0.15rem 0.4rem;
     border-radius: 4px;
 }
@@ -654,17 +698,17 @@ article h3 a:hover {
 }
 
 .content blockquote {
-    border-left: 4px solid var(--primary);
+    border-left: 3px solid var(--border-medium);
     margin: 1.25rem 0;
     padding: 0.75rem 1.25rem;
-    background: var(--primary-light);
+    background: var(--bg-tertiary);
     color: var(--text-secondary);
     border-radius: 0 6px 6px 0;
     font-style: italic;
 }
 
 .content a {
-    color: var(--primary);
+    color: var(--accent);
     text-decoration: none;
     border-bottom: 1px solid transparent;
     transition: border-color 0.15s ease;
@@ -672,7 +716,7 @@ article h3 a:hover {
 }
 
 .content a:hover {
-    border-bottom-color: var(--primary);
+    border-bottom-color: var(--accent);
 }
 
 .content h1, .content h2, .content h3, .content h4 {
@@ -741,7 +785,7 @@ article h3 a:hover {
 }
 
 .feeds li a:hover {
-    color: var(--primary);
+    color: var(--accent);
 }
 
 .feeds li.healthy::before {
@@ -792,13 +836,13 @@ footer p {
 }
 
 footer a {
-    color: var(--primary);
+    color: var(--accent);
     text-decoration: none;
     transition: color 0.15s ease;
 }
 
 footer a:hover {
-    color: var(--primary-dark);
+    color: var(--accent-dark);
 }
 
 /* Search results */
@@ -832,7 +876,7 @@ footer a:hover {
 }
 
 .search-results h3 a:hover {
-    color: var(--primary);
+    color: var(--accent);
 }
 
 .search-results .score {
@@ -879,27 +923,27 @@ tr.unhealthy { background: #fef2f2; }
 
 .add-feed-form input:focus {
     outline: none;
-    border-color: var(--primary);
-    box-shadow: 0 0 0 3px var(--primary-light);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-light);
 }
 
 .add-feed-form input[type="url"] { flex: 1; }
 
 button {
     padding: 0.625rem 1.25rem;
-    background: var(--primary);
-    color: white;
-    border: none;
+    background: var(--bg-primary);
+    color: var(--accent);
+    border: 2px solid var(--accent);
     border-radius: 6px;
     cursor: pointer;
     font-weight: 600;
     font-size: 0.95rem;
-    transition: background 0.15s ease, transform 0.15s ease;
+    transition: background 0.15s ease, color 0.15s ease;
 }
 
 button:hover {
-    background: var(--primary-dark);
-    transform: translateY(-1px);
+    background: var(--accent);
+    color: white;
 }
 
 /* Responsive */

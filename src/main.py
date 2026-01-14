@@ -1420,29 +1420,38 @@ class Default(WorkerEntrypoint):
                 # Apply retention policy first (delete old entries and their vectors)
                 await self._apply_retention_policy()
 
-                # Query entries (last 30 days, max 100 per feed) - track D1 query time
+                # Query entries (last 30 days, max 5 per feed per day) - track D1 query time
                 # Uses first_seen for ordering/grouping to prevent spam from retroactive entries
+                # Per-feed-per-day limit prevents any single feed from dominating when added
                 with Timer() as d1_timer:
-                    entries_result = await self.env.DB.prepare("""
+                    entries_result = await self.env.DB.prepare(
+                        """
                         WITH ranked AS (
                             SELECT
                                 e.*,
                                 f.title as feed_title,
                                 f.site_url as feed_site_url,
                                 ROW_NUMBER() OVER (
+                                    PARTITION BY e.feed_id,
+                                        date(COALESCE(e.first_seen, e.published_at))
+                                    ORDER BY COALESCE(e.first_seen, e.published_at) DESC
+                                ) as rn_per_day,
+                                ROW_NUMBER() OVER (
                                     PARTITION BY e.feed_id
                                     ORDER BY COALESCE(e.first_seen, e.published_at) DESC
-                                ) as rn
+                                ) as rn_total
                             FROM entries e
                             JOIN feeds f ON e.feed_id = f.id
                             WHERE COALESCE(e.first_seen, e.published_at)
                                 >= datetime('now', '-30 days')
                             AND f.is_active = 1
                         )
-                        SELECT * FROM ranked WHERE rn <= 100
+                        SELECT * FROM ranked
+                        WHERE rn_per_day <= 5 AND rn_total <= 100
                         ORDER BY COALESCE(first_seen, published_at) DESC
                         LIMIT 500
-                    """).all()
+                        """
+                    ).all()
 
                     # Get feeds for sidebar
                     feeds_result = await self.env.DB.prepare("""
