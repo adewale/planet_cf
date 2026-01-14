@@ -21,71 +21,9 @@ _EMBEDDED_TEMPLATES = {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ planet.name }}</title>
+    <link rel="stylesheet" href="/static/style.css">
     <link rel="alternate" type="application/atom+xml" title="{{ planet.name }} Atom Feed" href="/feed.atom">
     <link rel="alternate" type="application/rss+xml" title="{{ planet.name }} RSS Feed" href="/feed.rss">
-    <style>
-        body { font-family: system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 1rem; }
-        header { border-bottom: 1px solid #ddd; margin-bottom: 1rem; }
-        .search-form { margin: 1rem 0; }
-        .search-form input { padding: 0.5rem; width: 200px; }
-        .search-form button { padding: 0.5rem 1rem; }
-        .container { display: flex; gap: 2rem; }
-        main { flex: 1; min-width: 0; }  /* min-width: 0 prevents flex overflow */
-        aside { width: 250px; flex-shrink: 0; }
-        article { margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid #eee; }
-        article h3 { margin-bottom: 0.25rem; }
-        .meta { color: #666; font-size: 0.9rem; }
-        .feeds li { margin: 0.5rem 0; }
-        .feeds .healthy { color: green; }
-        .feeds .unhealthy { color: red; }
-        footer { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #ddd; text-align: center; color: #666; }
-
-        /* Content security: prevent foreign content from breaking layout */
-        .content {
-            overflow-wrap: break-word;      /* Break long words/URLs */
-            word-wrap: break-word;          /* Fallback for older browsers */
-            word-break: break-word;         /* Additional fallback */
-        }
-        .content img {
-            max-width: 100%;                /* Images constrained to container */
-            height: auto;                   /* Maintain aspect ratio */
-            max-height: 600px;              /* Prevent extremely tall images */
-            object-fit: contain;            /* Scale within bounds */
-            border-radius: 4px;
-        }
-        .content pre, .content code {
-            overflow-x: auto;               /* Horizontal scroll for code */
-            max-width: 100%;
-            background: #f5f5f5;
-            padding: 0.5rem;
-            border-radius: 4px;
-        }
-        .content pre {
-            padding: 1rem;
-        }
-        .content table {
-            display: block;                 /* Enable overflow handling */
-            overflow-x: auto;               /* Horizontal scroll for wide tables */
-            max-width: 100%;
-            border-collapse: collapse;
-        }
-        .content th, .content td {
-            border: 1px solid #ddd;
-            padding: 0.5rem;
-        }
-        .content blockquote {
-            border-left: 3px solid #ddd;
-            margin-left: 0;
-            padding-left: 1rem;
-            color: #666;
-        }
-        .content a {
-            word-break: break-all;          /* Break long URLs in links */
-        }
-        .content iframe, .content object, .content embed {
-            display: none !important;       /* Extra defense: hide any that slip through */
-        }
-    </style>
 </head>
 <body>
     <header>
@@ -147,13 +85,7 @@ _EMBEDDED_TEMPLATES = {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Search Results - {{ planet.name }}</title>
-    <style>
-        body { font-family: system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 1rem; }
-        .search-form input { padding: 0.5rem; width: 200px; }
-        .search-form button { padding: 0.5rem 1rem; }
-        .search-results li { margin: 1rem 0; }
-        .meta { color: #666; font-size: 0.9rem; }
-    </style>
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
     <header>
@@ -559,20 +491,58 @@ article h3 a:hover { text-decoration: underline; }
     margin-bottom: 1rem;
 }
 
+/* Content security: prevent foreign content from breaking layout */
 .content {
     overflow-wrap: break-word;
+    word-wrap: break-word;
+    word-break: break-word;
 }
 
 .content img {
     max-width: 100%;
     height: auto;
+    max-height: 600px;
+    object-fit: contain;
+    border-radius: 4px;
+}
+
+.content pre, .content code {
+    overflow-x: auto;
+    max-width: 100%;
+    background: #f5f5f5;
+    padding: 0.5rem;
+    border-radius: 4px;
 }
 
 .content pre {
-    background: #f5f5f5;
     padding: 1rem;
+}
+
+.content table {
+    display: block;
     overflow-x: auto;
-    border-radius: 4px;
+    max-width: 100%;
+    border-collapse: collapse;
+}
+
+.content th, .content td {
+    border: 1px solid var(--border-color);
+    padding: 0.5rem;
+}
+
+.content blockquote {
+    border-left: 3px solid var(--border-color);
+    margin-left: 0;
+    padding-left: 1rem;
+    color: #666;
+}
+
+.content a {
+    word-break: break-all;
+}
+
+.content iframe, .content object, .content embed {
+    display: none !important;
 }
 
 .sidebar {
