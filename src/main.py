@@ -130,7 +130,7 @@ class Default(WorkerEntrypoint):
     # Cron Handler - Scheduler
     # =========================================================================
 
-    async def scheduled(self, event):
+    async def scheduled(self, event, env, ctx):
         """
         Hourly cron trigger - enqueue feeds for fetching.
         Content (HTML/RSS/Atom) is generated on-demand by fetch(), not pre-generated.
@@ -1638,99 +1638,109 @@ button:hover { opacity: 0.9; }
 
     async def _handle_github_callback(self, request):
         """Handle GitHub OAuth callback."""
+        try:
+            url_str = str(request.url)
+            qs = parse_qs(url_str.split("?", 1)[1]) if "?" in url_str else {}
+            code = qs.get("code", [""])[0]
+            state = qs.get("state", [""])[0]
 
-        url_str = str(request.url)
-        qs = parse_qs(url_str.split("?", 1)[1]) if "?" in url_str else {}
-        code = qs.get("code", [""])[0]
-        state = qs.get("state", [""])[0]
+            if not code:
+                return Response("Missing authorization code", status=400)
 
-        if not code:
-            return Response("Missing authorization code", status=400)
+            # Verify state parameter matches cookie (CSRF protection)
+            cookies = request.headers.get("Cookie", "")
+            expected_state = None
+            for cookie in cookies.split(";"):
+                if cookie.strip().startswith("oauth_state="):
+                    expected_state = cookie.strip()[12:]
+                    break
 
-        # Verify state parameter matches cookie (CSRF protection)
-        cookies = request.headers.get("Cookie", "")
-        expected_state = None
-        for cookie in cookies.split(";"):
-            if cookie.strip().startswith("oauth_state="):
-                expected_state = cookie.strip()[12:]
-                break
+            if not state or not expected_state or state != expected_state:
+                return Response("Invalid state parameter", status=400)
 
-        if not state or not expected_state or state != expected_state:
-            return Response("Invalid state parameter", status=400)
+            client_id = getattr(self.env, "GITHUB_CLIENT_ID", "")
+            client_secret = getattr(self.env, "GITHUB_CLIENT_SECRET", "")
 
-        client_id = getattr(self.env, "GITHUB_CLIENT_ID", "")
-        client_secret = getattr(self.env, "GITHUB_CLIENT_SECRET", "")
+            # Exchange code for access token
+            async with httpx.AsyncClient() as client:
+                token_response = await client.post(
+                    "https://github.com/login/oauth/access_token",
+                    data={
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                        "code": code,
+                    },
+                    headers={"Accept": "application/json"},
+                )
 
-        # Exchange code for access token
-        async with httpx.AsyncClient() as client:
-            token_response = await client.post(
-                "https://github.com/login/oauth/access_token",
-                data={
-                    "client_id": client_id,
-                    "client_secret": client_secret,
-                    "code": code,
-                },
-                headers={"Accept": "application/json"},
+            token_data = token_response.json()
+            access_token = token_data.get("access_token")
+
+            if not access_token:
+                print(f"GitHub OAuth error: {token_data}")
+                return Response(f"Failed to get access token: {token_data}", status=400)
+
+            # Fetch user info
+            async with httpx.AsyncClient() as client:
+                user_response = await client.get(
+                    "https://api.github.com/user",
+                    headers={
+                        "Authorization": f"Bearer {access_token}",
+                        "Accept": "application/json",
+                    },
+                )
+
+            user_data = user_response.json()
+            github_username = user_data.get("login")
+            github_id = user_data.get("id")
+
+            # Verify user is an admin
+            admin = (
+                await self.env.DB.prepare(
+                    "SELECT * FROM admins WHERE github_username = ? AND is_active = 1"
+                )
+                .bind(github_username)
+                .first()
             )
 
-        token_data = token_response.json()
-        access_token = token_data.get("access_token")
+            if not admin:
+                return Response("Unauthorized: Not an admin", status=403)
 
-        if not access_token:
-            return Response("Failed to get access token", status=400)
-
-        # Fetch user info
-        async with httpx.AsyncClient() as client:
-            user_response = await client.get(
-                "https://api.github.com/user",
-                headers={"Authorization": f"Bearer {access_token}", "Accept": "application/json"},
+            # Update admin's github_id and last_login_at
+            await (
+                self.env.DB.prepare("""
+                UPDATE admins SET github_id = ?, last_login_at = CURRENT_TIMESTAMP
+                WHERE github_username = ?
+            """)
+                .bind(github_id, github_username)
+                .run()
             )
 
-        user_data = user_response.json()
-        github_username = user_data.get("login")
-        github_id = user_data.get("id")
-
-        # Verify user is an admin
-        admin = (
-            await self.env.DB.prepare(
-                "SELECT * FROM admins WHERE github_username = ? AND is_active = 1"
+            # Create signed session cookie (stateless, no KV)
+            session_cookie = self._create_signed_cookie(
+                {
+                    "github_username": github_username,
+                    "github_id": github_id,
+                    "avatar_url": user_data.get("avatar_url"),
+                    "exp": int(time.time()) + SESSION_TTL_SECONDS,
+                }
             )
-            .bind(github_username)
-            .first()
-        )
 
-        if not admin:
-            return Response("Unauthorized: Not an admin", status=403)
+            cookie = (
+                f"session={session_cookie}; HttpOnly; Secure; "
+                f"SameSite=Lax; Path=/; Max-Age={SESSION_TTL_SECONDS}"
+            )
+            return Response(
+                "",
+                status=302,
+                headers={"Location": "/admin", "Set-Cookie": cookie},
+            )
 
-        # Update admin's github_id and last_login_at
-        await (
-            self.env.DB.prepare("""
-            UPDATE admins SET github_id = ?, last_login_at = CURRENT_TIMESTAMP
-            WHERE github_username = ?
-        """)
-            .bind(github_id, github_username)
-            .run()
-        )
-
-        # Create signed session cookie (stateless, no KV)
-        session_cookie = self._create_signed_cookie(
-            {
-                "github_username": github_username,
-                "github_id": github_id,
-                "avatar_url": user_data.get("avatar_url"),
-                "exp": int(time.time()) + SESSION_TTL_SECONDS,
-            }
-        )
-
-        cookie = (
-            f"session={session_cookie}; HttpOnly; Secure; "
-            f"SameSite=Lax; Path=/; Max-Age={SESSION_TTL_SECONDS}"
-        )
-        return Response(
-            "",
-            status=302,
-            headers={"Location": "/admin", "Set-Cookie": cookie},
-        )
+        except Exception as e:
+            print(f"OAuth callback error: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            return Response(f"OAuth error: {type(e).__name__}: {e}", status=500)
 
     def _create_signed_cookie(self, payload):
         """Create an HMAC-signed cookie. Format: base64(json_payload).signature"""
