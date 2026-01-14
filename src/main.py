@@ -33,11 +33,16 @@ try:
     from pyodide.ffi import to_js
 
     HAS_PYODIDE = True
+    # Create a proper JavaScript null value for D1 bindings
+    # Python None -> JS undefined, but D1 needs JS null for SQL NULL
+    # Note: js.eval() is disallowed in Workers, so use JSON.parse instead
+    JS_NULL = js.JSON.parse("null")
 except ImportError:
     # Test environment - these will not be used
     js = None
     js_fetch = None
     to_js = None
+    JS_NULL = None
     HAS_PYODIDE = False
 
 from models import BleachSanitizer
@@ -234,18 +239,19 @@ def _to_d1_value(value):
     Handles the Python-to-JavaScript boundary for database operations.
 
     ALWAYS converts through _to_py_primitive() first to ensure no JsProxy
-    values slip through, then converts None back to JS null for D1.
+    values slip through, then converts None to JS null for D1.
+
+    IMPORTANT: In Pyodide, Python None becomes JS undefined when passed
+    to JavaScript functions, but D1 requires JS null for SQL NULL values.
     """
-    # First: Force convert to Python primitive (catches all JsProxy/undefined)
+    # Force convert to Python primitive (catches all JsProxy/undefined)
     py_value = _to_py_primitive(value)
 
-    # Second: Handle None - must be JS null for D1 in Pyodide
-    if py_value is None:
-        if HAS_PYODIDE:
-            return to_js(None)  # Returns JS null
-        return None
+    # Convert None to JS null (required by D1 in Pyodide)
+    # Python None -> JS undefined (wrong), JS_NULL -> JS null (correct)
+    if py_value is None and HAS_PYODIDE:
+        return JS_NULL
 
-    # Primitives pass through (they're already safe Python types)
     return py_value
 
 
@@ -284,17 +290,8 @@ class SafeD1Statement:
         - Catches any leaked JsProxy/undefined (defensive)
         """
         converted = []
-        for i, arg in enumerate(args):
-            val = _to_d1_value(arg)
-            # Debug: log type information
-            log_op(
-                "d1_bind_debug",
-                index=i,
-                raw_type=type(arg).__name__,
-                converted_type=type(val).__name__,
-                is_none=(val is None),
-            )
-            converted.append(val)
+        for arg in args:
+            converted.append(_to_d1_value(arg))
         self._stmt = self._stmt.bind(*tuple(converted))
         return self
 
@@ -930,9 +927,18 @@ class Default(WorkerEntrypoint):
         result = _to_py_safe(result_raw)
         entry_id = result.get("id") if result else None
 
-        # Index for semantic search
+        # Index for semantic search (may fail in local dev - Vectorize not supported)
         if entry_id and title:
-            await self._index_entry_for_search(entry_id, title, sanitized_content)
+            try:
+                await self._index_entry_for_search(entry_id, title, sanitized_content)
+            except Exception as e:
+                # Log but don't fail - entry is still usable without search
+                log_op(
+                    "search_index_skipped",
+                    entry_id=entry_id,
+                    error_type=type(e).__name__,
+                    error=str(e)[:100],
+                )
 
         return entry_id
 
