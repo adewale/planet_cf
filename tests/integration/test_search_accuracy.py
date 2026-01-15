@@ -442,6 +442,26 @@ class TestEdgeCases:
         assert "Background processing with Queues" in body
 
     @pytest.mark.asyncio
+    async def test_quoted_query_strips_quotes(self, indexed_env, fixtures):
+        """Quoted queries should strip quotes and still match."""
+        from src.main import PlanetCF
+
+        worker = PlanetCF()
+        worker.env = indexed_env
+
+        # Test double quotes
+        request = MockRequest('https://planetcf.com/search?q="context%20is%20the%20work"')
+        response = await worker.fetch(request)
+        body = response.body if hasattr(response, "body") else str(response)
+        assert "Context is the work" in body, "Double-quoted query should match"
+
+        # Test single quotes
+        request = MockRequest("https://planetcf.com/search?q='python%20workers'")
+        response = await worker.fetch(request)
+        body = response.body if hasattr(response, "body") else str(response)
+        assert "Announcing Python Workers" in body, "Single-quoted query should match"
+
+    @pytest.mark.asyncio
     async def test_no_results_returns_empty(self, mock_env_with_fixtures):
         """Query with no matches should return empty results gracefully.
 

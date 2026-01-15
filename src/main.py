@@ -1870,6 +1870,14 @@ class Default(WorkerEntrypoint):
             qs = parse_qs(url_str.split("?", 1)[1])
             query = qs.get("q", [""])[0]
 
+        # Normalize query: strip surrounding quotes (users often quote phrases)
+        # "what the day-to-day looks like" → what the day-to-day looks like
+        query = query.strip()
+        if (query.startswith('"') and query.endswith('"')) or (
+            query.startswith("'") and query.endswith("'")
+        ):
+            query = query[1:-1].strip()
+
         if not query or len(query) < 2:
             return json_error("Query too short")
         if len(query) > MAX_SEARCH_QUERY_LENGTH:

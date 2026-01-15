@@ -210,6 +210,20 @@
       "query": "John Graham-Cumming context",
       "expected_first_result_id": 2,
       "description": "Author + topic should narrow results"
+    },
+    {
+      "query": "\"what the day-to-day looks like\"",
+      "expected_first_result_id": 1,
+      "expected_first_result_title": "What the day-to-day looks like",
+      "match_type": "title_in_query",
+      "description": "Quoted query should strip quotes and still match"
+    },
+    {
+      "query": "'context is the work'",
+      "expected_first_result_id": 2,
+      "expected_first_result_title": "Context is the work",
+      "match_type": "exact_title",
+      "description": "Single-quoted query should strip quotes and match"
     }
   ]
 }
