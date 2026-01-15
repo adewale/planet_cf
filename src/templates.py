@@ -1,4 +1,6 @@
 # src/templates.py
+# AUTO-GENERATED - DO NOT EDIT DIRECTLY
+# Edit files in templates/ and run: python scripts/build_templates.py
 """
 Template loading and rendering utilities for Planet CF.
 
@@ -40,7 +42,7 @@ _EMBEDDED_TEMPLATES = {
                 <article>
                     <h3><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
                     <p class="meta">
-                        <span class="author">{{ entry.author or entry.feed_title }}</span>
+                        <span class="author">{{ entry.author if entry.author and '@' not in entry.author else entry.feed_title }}</span>
                         {% if entry.published_at_display %}<span class="date-sep">·</span> <time datetime="{{ entry.published_at }}">{{ entry.published_at_display }}</time>{% endif %}
                     </p>
                     <div class="content">{{ entry.content | safe }}</div>
@@ -77,7 +79,8 @@ _EMBEDDED_TEMPLATES = {
         <p>Last updated: {{ generated_at }}</p>
     </footer>
 </body>
-</html>""",
+</html>
+""",
     "search.html": """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -100,7 +103,7 @@ _EMBEDDED_TEMPLATES = {
                 {% for entry in results %}
                 <li>
                     <h3><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
-                    <p class="meta">{{ entry.author or entry.feed_title }}</p>
+                    <p class="meta">{{ entry.author if entry.author and '@' not in entry.author else entry.feed_title }}</p>
                 </li>
                 {% endfor %}
             </ul>
@@ -121,7 +124,8 @@ _EMBEDDED_TEMPLATES = {
 
     <footer><p><a href="/">Back to Planet CF</a></p></footer>
 </body>
-</html>""",
+</html>
+""",
     "admin/dashboard.html": """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -285,7 +289,8 @@ _EMBEDDED_TEMPLATES = {
 
     <script src="/static/admin.js"></script>
 </body>
-</html>""",
+</html>
+""",
     "admin/login.html": """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -351,7 +356,8 @@ _EMBEDDED_TEMPLATES = {
         </p>
     </div>
 </body>
-</html>""",
+</html>
+""",
     "feed.atom.xml": """<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
   <title>{{ planet.name | e }}</title>
@@ -370,7 +376,8 @@ _EMBEDDED_TEMPLATES = {
     <content type="html">{{ entry.content | e }}</content>
   </entry>
 {% endfor %}
-</feed>""",
+</feed>
+""",
     "feed.rss.xml": """<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
@@ -390,7 +397,8 @@ _EMBEDDED_TEMPLATES = {
     </item>
 {% endfor %}
   </channel>
-</rss>""",
+</rss>
+""",
     "feeds.opml": """<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
   <head>
@@ -405,15 +413,11 @@ _EMBEDDED_TEMPLATES = {
 {% endfor %}
     </outline>
   </body>
-</opml>""",
+</opml>
+""",
 }
 
-# =============================================================================
-# Static Assets (CSS and JavaScript)
-# =============================================================================
-
-STATIC_CSS = """
-/* Planet CF Styles */
+STATIC_CSS = """/* Planet CF Styles - Generated from templates/style.css */
 :root {
     /* Accent color - used sparingly */
     --accent: #f6821f;
@@ -656,18 +660,8 @@ article header {
     line-height: 1.85;
 }
 
-.content p {
-    margin-bottom: 1.25rem;
-}
-
-.content p:last-child {
-    margin-bottom: 0;
-}
-
-/* First entry from each feed gets subtle highlight */
-.content:first-of-type {
-    /* Subtle indicator this is the newest from this source */
-}
+.content p { margin-bottom: 1.25rem; }
+.content p:last-child { margin-bottom: 0; }
 
 .content img {
     max-width: 100%;
@@ -745,9 +739,7 @@ article header {
     word-break: break-all;
 }
 
-.content a:hover {
-    border-bottom-color: var(--accent);
-}
+.content a:hover { border-bottom-color: var(--accent); }
 
 .content h1, .content h2, .content h3, .content h4 {
     color: var(--text-primary);
@@ -766,9 +758,7 @@ article header {
     padding-left: 1.5rem;
 }
 
-.content li {
-    margin-bottom: 0.5rem;
-}
+.content li { margin-bottom: 0.5rem; }
 
 .content iframe, .content object, .content embed {
     display: none !important;
@@ -794,9 +784,7 @@ article header {
     color: var(--text-muted);
 }
 
-.feeds {
-    list-style: none;
-}
+.feeds { list-style: none; }
 
 .feeds li {
     padding: 0.625rem 0;
@@ -804,9 +792,7 @@ article header {
     font-size: 0.925rem;
 }
 
-.feeds li:last-child {
-    border-bottom: none;
-}
+.feeds li:last-child { border-bottom: none; }
 
 .feeds li a {
     color: var(--text-secondary);
@@ -814,9 +800,7 @@ article header {
     transition: color 0.15s ease;
 }
 
-.feeds li a:hover {
-    color: var(--accent);
-}
+.feeds li a:hover { color: var(--accent); }
 
 .feeds li.healthy::before {
     content: '';
@@ -829,9 +813,7 @@ article header {
     vertical-align: middle;
 }
 
-.feeds li.unhealthy {
-    color: var(--error);
-}
+.feeds li.unhealthy { color: var(--error); }
 
 .feeds li.unhealthy::before {
     content: '';
@@ -842,13 +824,6 @@ article header {
     border-radius: 50%;
     margin-right: 0.5rem;
     vertical-align: middle;
-}
-
-.feeds .last-updated {
-    display: block;
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    margin-top: 0.25rem;
 }
 
 footer {
@@ -871,14 +846,10 @@ footer a {
     transition: color 0.15s ease;
 }
 
-footer a:hover {
-    color: var(--accent-dark);
-}
+footer a:hover { color: var(--accent-dark); }
 
 /* Search results */
-.search-results {
-    list-style: none;
-}
+.search-results { list-style: none; }
 
 .search-results li {
     background: var(--bg-primary);
@@ -890,9 +861,7 @@ footer a:hover {
     transition: box-shadow 0.2s ease;
 }
 
-.search-results li:hover {
-    box-shadow: var(--shadow-md);
-}
+.search-results li:hover { box-shadow: var(--shadow-md); }
 
 .search-results h3 {
     margin-bottom: 0.5rem;
@@ -905,17 +874,9 @@ footer a:hover {
     transition: color 0.15s ease;
 }
 
-.search-results h3 a:hover {
-    color: var(--accent);
-}
+.search-results h3 a:hover { color: var(--accent); }
 
-.search-results .score {
-    margin-left: 1rem;
-    color: var(--text-muted);
-    font-size: 0.875rem;
-}
-
-/* Admin styles */
+/* Admin table styles */
 table {
     width: 100%;
     border-collapse: collapse;
@@ -934,30 +895,6 @@ th {
     color: var(--text-secondary);
     font-size: 0.875rem;
 }
-
-tr.unhealthy { background: #fef2f2; }
-
-.add-feed-form {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-}
-
-.add-feed-form input {
-    padding: 0.625rem 1rem;
-    border: 1px solid var(--border-medium);
-    border-radius: 6px;
-    font-size: 0.95rem;
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.add-feed-form input:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-light);
-}
-
-.add-feed-form input[type="url"] { flex: 1; }
 
 button {
     padding: 0.625rem 1.25rem;
@@ -983,107 +920,77 @@ button:hover {
         flex-direction: column;
         gap: 0.125rem;
     }
-    header h1 {
-        font-size: 1rem;
-    }
-    header p {
-        font-size: 0.75rem;
-    }
-    header p::before {
-        display: none;
-    }
+    header h1 { font-size: 1rem; }
+    header p { font-size: 0.75rem; }
+    header p::before { display: none; }
     .container {
         grid-template-columns: 1fr;
         gap: 1.5rem;
         margin: 1.5rem auto;
     }
-    .sidebar {
-        position: static;
-    }
+    .sidebar { position: static; }
     .search-form {
         flex-direction: column;
         align-items: stretch;
     }
-    .search-form input {
-        width: 100%;
-    }
-    article {
-        padding: 1.25rem;
-    }
+    .search-form input { width: 100%; }
+    article { padding: 1.25rem; }
 }
 """
 
+
+# =============================================================================
+# Admin JavaScript (for Workers environment)
+# =============================================================================
+
 ADMIN_JS = """
-// Admin Dashboard JavaScript
-// Served from /static/admin.js to comply with Content Security Policy
-
-function showTab(tabId) {
-    // Remove active class from all tabs and content
-    document.querySelectorAll('.tab').forEach(function(t) {
-        t.classList.remove('active');
+// Admin dashboard functionality
+document.addEventListener('DOMContentLoaded', function() {
+    // Tab switching
+    document.querySelectorAll('.tab').forEach(function(tab) {
+        tab.addEventListener('click', function() {
+            var target = this.dataset.tab;
+            document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+            document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+            this.classList.add('active');
+            document.getElementById(target).classList.add('active');
+            if (target === 'dlq') loadDLQ();
+            if (target === 'audit') loadAuditLog();
+        });
     });
-    document.querySelectorAll('.tab-content').forEach(function(c) {
-        c.classList.remove('active');
+
+    // Feed toggles
+    document.querySelectorAll('.feed-toggle').forEach(function(toggle) {
+        toggle.addEventListener('change', function() {
+            var feedId = this.dataset.feedId;
+            var isActive = this.checked;
+            fetch('/admin/feeds/' + feedId + '/toggle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_active: isActive })
+            });
+        });
     });
-
-    // Add active class to selected tab and content
-    var tabs = document.querySelectorAll('.tab');
-    for (var i = 0; i < tabs.length; i++) {
-        if (tabs[i].getAttribute('data-tab') === tabId) {
-            tabs[i].classList.add('active');
-            break;
-        }
-    }
-    document.getElementById(tabId).classList.add('active');
-
-    // Load data for specific tabs
-    if (tabId === 'dlq') loadDLQ();
-    if (tabId === 'audit') loadAuditLog();
-}
-
-function toggleFeed(feedId, isActive) {
-    fetch('/admin/feeds/' + feedId, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_active: isActive ? 1 : 0 })
-    }).then(function(r) {
-        if (!r.ok) alert('Failed to update feed');
-    }).catch(function(err) {
-        alert('Error updating feed: ' + err.message);
-    });
-}
+});
 
 function loadDLQ() {
     fetch('/admin/dlq')
         .then(function(r) { return r.json(); })
         .then(function(data) {
-            var container = document.getElementById('dlq-list');
-            if (!data.failed_feeds || data.failed_feeds.length === 0) {
-                container.innerHTML = '<p class="empty-state">' +
-                    'No failed feeds. All feeds are healthy!</p>';
+            var list = document.getElementById('dlq-list');
+            if (!data.feeds || data.feeds.length === 0) {
+                list.innerHTML = '<p class="empty-state">No failed feeds</p>';
                 return;
             }
-            var html = '';
-            for (var i = 0; i < data.failed_feeds.length; i++) {
-                var f = data.failed_feeds[i];
-                html += '<div class="dlq-item">';
-                html += '<div><strong>' + escapeHtml(f.title || 'Untitled') + '</strong></div>';
-                html += '<div style="font-size:0.85rem;color:#666;word-break:break-all;">';
-                html += escapeHtml(f.url) + '</div>';
-                html += '<div style="font-size:0.8rem;color:#dc3545;margin-top:0.25rem;">';
-                html += escapeHtml(String(f.consecutive_failures)) + ' consecutive failures';
-                html += (f.fetch_error ? ' - ' + escapeHtml(f.fetch_error) : '');
-                html += '</div>';
-                html += '<form action="/admin/dlq/' + encodeURIComponent(f.id) + '/retry" method="POST" ';
-                html += 'style="margin-top:0.5rem;">';
-                html += '<button type="submit" class="btn btn-warning btn-sm">Retry</button>';
-                html += '</form></div>';
-            }
-            container.innerHTML = html;
-        })
-        .catch(function(err) {
-            document.getElementById('dlq-list').innerHTML = '<p class="empty-state" ' +
-                'style="color:#dc3545;">Error loading: ' + escapeHtml(err.message || 'Unknown error') + '</p>';
+            list.innerHTML = data.feeds.map(function(f) {
+                return '<div class="dlq-item">' +
+                    '<strong>' + (f.title || 'Untitled') + '</strong><br>' +
+                    '<small>' + f.url + '</small><br>' +
+                    '<small>Failures: ' + f.consecutive_failures + '</small>' +
+                    '<form action="/admin/feeds/' + f.id + '/retry" method="POST" style="margin-top:0.5rem">' +
+                    '<button type="submit" class="btn btn-sm btn-warning">Retry</button></form>' +
+                    '</div>';
+            }).join('');
         });
 }
 
@@ -1091,48 +998,24 @@ function loadAuditLog() {
     fetch('/admin/audit')
         .then(function(r) { return r.json(); })
         .then(function(data) {
-            var container = document.getElementById('audit-list');
-            if (!data.audit_log || data.audit_log.length === 0) {
-                container.innerHTML = '<p class="empty-state">No audit log entries yet.</p>';
+            var list = document.getElementById('audit-list');
+            if (!data.entries || data.entries.length === 0) {
+                list.innerHTML = '<p class="empty-state">No audit entries</p>';
                 return;
             }
-            var html = '';
-            for (var i = 0; i < data.audit_log.length; i++) {
-                var a = data.audit_log[i];
-                var details = {};
-                try {
-                    if (a.details) details = JSON.parse(a.details);
-                } catch (e) {}
-                var detailParts = [];
-                for (var key in details) {
-                    if (details.hasOwnProperty(key)) {
-                        detailParts.push(key + ': ' + details[key]);
-                    }
-                }
-                var detailStr = detailParts.join(', ');
-                html += '<div class="audit-item">';
-                html += '<div class="audit-action">' + escapeHtml(a.action) + '</div>';
-                html += '<div class="audit-time">' + escapeHtml(a.created_at) + ' by ';
-                html += escapeHtml(a.display_name || a.github_username || 'Unknown');
-                html += '</div>';
-                if (detailStr) {
-                    html += '<div class="audit-details">' + escapeHtml(detailStr) + '</div>';
-                }
-                html += '</div>';
-            }
-            container.innerHTML = html;
-        })
-        .catch(function(err) {
-            document.getElementById('audit-list').innerHTML = '<p class="empty-state" ' +
-                'style="color:#dc3545;">Error loading: ' + escapeHtml(err.message || 'Unknown error') + '</p>';
+            list.innerHTML = data.entries.map(function(e) {
+                return '<div class="audit-item">' +
+                    '<span class="audit-action">' + e.action + '</span> ' +
+                    '<span class="audit-time">' + e.created_at + '</span>' +
+                    (e.details ? '<div class="audit-details">' + e.details + '</div>' : '') +
+                    '</div>';
+            }).join('');
         });
 }
 
 function rebuildSearchIndex() {
     var btn = document.getElementById('reindex-btn');
     var originalText = btn.textContent;
-
-    // Show loading state
     btn.disabled = true;
     btn.textContent = 'Rebuilding...';
     btn.style.opacity = '0.7';
@@ -1145,79 +1028,50 @@ function rebuildSearchIndex() {
     .then(function(data) {
         btn.disabled = false;
         btn.style.opacity = '1';
-
         if (data.success) {
             btn.textContent = 'Done! (' + data.indexed + ' indexed)';
-            btn.classList.remove('btn-warning');
-            btn.classList.add('btn-success');
-
-            // Reset after 3 seconds
-            setTimeout(function() {
-                btn.textContent = originalText;
-                btn.classList.remove('btn-success');
-                btn.classList.add('btn-warning');
-            }, 3000);
+            setTimeout(function() { btn.textContent = originalText; }, 3000);
         } else {
-            btn.textContent = 'Failed';
-            btn.classList.remove('btn-warning');
-            btn.classList.add('btn-danger');
-
-            setTimeout(function() {
-                btn.textContent = originalText;
-                btn.classList.remove('btn-danger');
-                btn.classList.add('btn-warning');
-            }, 3000);
+            btn.textContent = 'Error: ' + (data.error || 'Unknown');
+            setTimeout(function() { btn.textContent = originalText; }, 3000);
         }
     })
     .catch(function(err) {
         btn.disabled = false;
         btn.style.opacity = '1';
         btn.textContent = 'Error';
-        btn.classList.remove('btn-warning');
-        btn.classList.add('btn-danger');
-
-        setTimeout(function() {
-            btn.textContent = originalText;
-            btn.classList.remove('btn-danger');
-            btn.classList.add('btn-warning');
-        }, 3000);
-
-        console.error('Reindex error:', err);
+        setTimeout(function() { btn.textContent = originalText; }, 3000);
     });
 }
-
-function escapeHtml(text) {
-    if (text === null || text === undefined) return '';
-    var div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-// Initialize tab click handlers when DOM is ready
-document.addEventListener('DOMContentLoaded', function() {
-    var tabs = document.querySelectorAll('.tab');
-    for (var i = 0; i < tabs.length; i++) {
-        tabs[i].addEventListener('click', function() {
-            var tabId = this.getAttribute('data-tab');
-            if (tabId) showTab(tabId);
-        });
-    }
-
-    // Initialize toggle handlers
-    var toggles = document.querySelectorAll('.feed-toggle');
-    for (var j = 0; j < toggles.length; j++) {
-        toggles[j].addEventListener('change', function() {
-            var feedId = this.getAttribute('data-feed-id');
-            toggleFeed(feedId, this.checked);
-        });
-    }
-});
 """
 
+
 # =============================================================================
-# Template Names Constants
+# Template Loader and Environment
 # =============================================================================
 
+
+class EmbeddedLoader(BaseLoader):
+    """Jinja2 loader that loads templates from embedded strings."""
+
+    def get_source(self, environment, template):
+        if template in _EMBEDDED_TEMPLATES:
+            source = _EMBEDDED_TEMPLATES[template]
+            return source, template, lambda: True
+        raise TemplateNotFound(template)
+
+
+# Shared Jinja2 environment
+_jinja_env = Environment(loader=EmbeddedLoader(), autoescape=True)
+
+
+def render_template(name: str, **context) -> str:
+    """Render a template with the given context."""
+    template = _jinja_env.get_template(name)
+    return template.render(**context)
+
+
+# Template name constants for type safety
 TEMPLATE_INDEX = "index.html"
 TEMPLATE_SEARCH = "search.html"
 TEMPLATE_ADMIN_DASHBOARD = "admin/dashboard.html"
@@ -1225,79 +1079,3 @@ TEMPLATE_ADMIN_LOGIN = "admin/login.html"
 TEMPLATE_FEED_ATOM = "feed.atom.xml"
 TEMPLATE_FEED_RSS = "feed.rss.xml"
 TEMPLATE_FEEDS_OPML = "feeds.opml"
-
-
-# =============================================================================
-# Template Loader
-# =============================================================================
-
-
-class DictLoader(BaseLoader):
-    """Load templates from a dictionary."""
-
-    def __init__(self, templates: dict[str, str]):
-        self.templates = templates
-
-    def get_source(self, environment: Environment, template: str) -> tuple[str, str, callable]:
-        if template not in self.templates:
-            raise TemplateNotFound(template)
-        return self.templates[template], template, lambda: True
-
-
-# =============================================================================
-# Shared Jinja2 Environment
-# =============================================================================
-
-_jinja_env: Environment | None = None
-
-
-def _create_environment(loader: BaseLoader | None = None) -> Environment:
-    """Create a Jinja2 environment with appropriate settings."""
-    if loader is None:
-        loader = DictLoader(_EMBEDDED_TEMPLATES)
-
-    return Environment(
-        loader=loader,
-        autoescape=True,
-        trim_blocks=True,
-        lstrip_blocks=True,
-    )
-
-
-def get_jinja_env() -> Environment:
-    """Get the shared Jinja2 environment."""
-    global _jinja_env
-    if _jinja_env is None:
-        _jinja_env = _create_environment()
-    return _jinja_env
-
-
-def reset_jinja_env() -> None:
-    """Reset the shared Jinja2 environment (for testing)."""
-    global _jinja_env
-    _jinja_env = None
-
-
-def set_jinja_env(env: Environment) -> None:
-    """Set a custom Jinja2 environment (for testing)."""
-    global _jinja_env
-    _jinja_env = env
-
-
-# =============================================================================
-# Template Rendering Helpers
-# =============================================================================
-
-
-def render_template(template_name: str, **context) -> str:
-    """Render a template with the given context."""
-    env = get_jinja_env()
-    template = env.get_template(template_name)
-    return template.render(**context)
-
-
-def render_string(template_string: str, **context) -> str:
-    """Render a template string with the given context."""
-    env = get_jinja_env()
-    template = env.from_string(template_string)
-    return template.render(**context)

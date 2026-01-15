@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>{{ planet.name | e }}</title>
+    <description>{{ planet.description | e }}</description>
+    <link>{{ planet.link }}</link>
+    <atom:link href="{{ planet.link }}/feed.rss" rel="self" type="application/rss+xml"/>
+    <lastBuildDate>{{ last_build_date }}</lastBuildDate>
+{% for entry in entries %}
+    <item>
+      <title>{{ entry.title | e }}</title>
+      <link>{{ entry.url | e }}</link>
+      <guid>{{ entry.guid | e }}</guid>
+      <pubDate>{{ entry.published_at }}</pubDate>
+      <author>{{ entry.author | e }}</author>
+      <description><![CDATA[{{ entry.content_cdata }}]]></description>
+    </item>
+{% endfor %}
+  </channel>
+</rss>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>{{ planet.name }} Subscriptions</title>
+    <dateCreated>{{ date_created }}</dateCreated>
+    <ownerName>{{ owner_name | e }}</ownerName>
+  </head>
+  <body>
+    <outline text="{{ planet.name }} Feeds" title="{{ planet.name }} Feeds">
+{% for feed in feeds %}
+      <outline type="rss" text="{{ feed.title | e }}" title="{{ feed.title | e }}" xmlUrl="{{ feed.url | e }}" htmlUrl="{{ feed.site_url | e }}"/>
+{% endfor %}
+    </outline>
+  </body>
+</opml>

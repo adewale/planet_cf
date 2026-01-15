@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>{{ planet.name | e }}</title>
+  <subtitle>{{ planet.description | e }}</subtitle>
+  <link href="{{ planet.link }}" rel="alternate"/>
+  <link href="{{ planet.link }}/feed.atom" rel="self"/>
+  <id>{{ planet.link }}/</id>
+  <updated>{{ updated_at }}</updated>
+{% for entry in entries %}
+  <entry>
+    <title>{{ entry.title | e }}</title>
+    <link href="{{ entry.url | e }}" rel="alternate"/>
+    <id>{{ entry.guid | e }}</id>
+    <published>{{ entry.published_at }}Z</published>
+    <author><name>{{ entry.author | e }}</name></author>
+    <content type="html">{{ entry.content | e }}</content>
+  </entry>
+{% endfor %}
+</feed>

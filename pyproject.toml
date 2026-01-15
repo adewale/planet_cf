@@ -83,7 +83,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"scripts/*" = ["S"]  # Security checks less relevant for admin scripts
+"scripts/*" = ["S", "E501"]  # Security checks less relevant; long JS strings OK
 "tests/*" = [
     "S101",  # Allow assert statements in tests
     "S105",  # Allow hardcoded test secrets

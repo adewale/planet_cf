@@ -7,17 +7,11 @@
     <link rel="stylesheet" href="/static/style.css">
     <link rel="alternate" type="application/atom+xml" title="{{ planet.name }} Atom Feed" href="/feed.atom">
     <link rel="alternate" type="application/rss+xml" title="{{ planet.name }} RSS Feed" href="/feed.rss">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https:; style-src 'self' 'unsafe-inline';">
 </head>
 <body>
     <header>
         <h1>{{ planet.name }}</h1>
         <p>{{ planet.description }}</p>
-        <form action="/search" method="GET" class="search-form">
-            <input type="search" name="q" placeholder="Search entries..."
-                   aria-label="Search entries">
-            <button type="submit">Search</button>
-        </form>
     </header>
 
     <div class="container">
@@ -27,42 +21,42 @@
                 <h2 class="date">{{ date }}</h2>
                 {% for entry in day_entries %}
                 <article>
-                    <header>
-                        <h3><a href="{{ entry.url }}">{{ entry.title }}</a></h3>
-                        <p class="meta">
-                            <span class="author">{{ entry.author or entry.feed_title }}</span>
-                            <time datetime="{{ entry.published_at }}">{{ entry.published_at_formatted }}</time>
-                        </p>
-                    </header>
-                    <div class="content">
-                        {{ entry.content | safe }}
-                    </div>
+                    <h3><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
+                    <p class="meta">
+                        <span class="author">{{ entry.author if entry.author and '@' not in entry.author else entry.feed_title }}</span>
+                        {% if entry.published_at_display %}<span class="date-sep">·</span> <time datetime="{{ entry.published_at }}">{{ entry.published_at_display }}</time>{% endif %}
+                    </p>
+                    <div class="content">{{ entry.content | safe }}</div>
                 </article>
                 {% endfor %}
             </section>
+            {% else %}
+            <p>No entries yet.</p>
             {% endfor %}
         </main>
 
         <aside class="sidebar">
+            <form action="/search" method="GET" class="search-form">
+                <input type="search" name="q" placeholder="Search entries..." aria-label="Search entries">
+                <button type="submit">Search</button>
+            </form>
+
             <h2>Subscriptions</h2>
             <ul class="feeds">
                 {% for feed in feeds %}
                 <li class="{{ 'healthy' if feed.is_healthy else 'unhealthy' }}">
-                    <a href="{{ feed.site_url }}">{{ feed.title }}</a>
-                    <span class="last-updated">{{ feed.last_success_at_relative }}</span>
+                    {% if feed.site_url %}<a href="{{ feed.site_url }}">{{ feed.title or 'Untitled' }}</a>{% else %}{{ feed.title or 'Untitled' }}{% endif %}
                 </li>
+                {% else %}
+                <li>No feeds configured</li>
                 {% endfor %}
             </ul>
         </aside>
     </div>
 
     <footer>
-        <p>
-            <a href="/feed.atom">Atom</a> ·
-            <a href="/feed.rss">RSS</a> ·
-            <a href="/feeds.opml">OPML</a>
-        </p>
-        <p>Powered by <a href="https://github.com/cloudflare/planetcf">Planet CF</a></p>
+        <p><a href="/feed.atom">Atom</a> · <a href="/feed.rss">RSS</a> · <a href="/feeds.opml">OPML</a></p>
+        <p>Powered by Planet CF · <a href="/admin" style="color: #999; font-size: 0.8em;">Admin</a></p>
         <p>Last updated: {{ generated_at }}</p>
     </footer>
 </body>

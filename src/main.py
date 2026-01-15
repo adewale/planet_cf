@@ -1965,21 +1965,44 @@ class Default(WorkerEntrypoint):
             for entry in _to_py_list(db_entries.results):
                 entry_map[entry["id"]] = entry
 
-        # 5. Build sorted results: semantic first (by score), then keyword (by recency)
+        # 5. Build sorted results with proper ranking:
+        #    1. Exact title matches (highest priority)
+        #    2. Semantic matches (by similarity score)
+        #    3. Other keyword matches (by date)
         sorted_results = []
+        added_ids = set()
 
-        # Add semantic matches sorted by score
+        # Normalize query for comparison
+        query_lower = query.lower().strip()
+
+        # First: Exact title matches get top priority
+        for entry in keyword_entries:
+            entry_title = (entry.get("title") or "").lower().strip()
+            if query_lower == entry_title or query_lower in entry_title:
+                # Exact or near-exact title match - boost to top
+                is_exact = query_lower == entry_title
+                sorted_results.append(
+                    {
+                        **entry,
+                        "score": 1.0 if is_exact else 0.95,  # Boost exact matches
+                        "match_type": "exact_title" if is_exact else "title_match",
+                    }
+                )
+                added_ids.add(entry["id"])
+
+        # Second: Semantic matches sorted by score (excluding already added)
         for match in sorted(semantic_matches, key=lambda m: m.get("score", 0), reverse=True):
             entry_id = int(match["id"])
-            if entry_id in entry_map:
+            if entry_id in entry_map and entry_id not in added_ids:
                 entry = entry_map[entry_id]
                 sorted_results.append(
                     {**entry, "score": match.get("score", 0), "match_type": "semantic"}
                 )
+                added_ids.add(entry_id)
 
-        # Add keyword-only matches (not in semantic results)
+        # Third: Remaining keyword matches (not in semantic results, not exact title)
         for entry in keyword_entries:
-            if entry["id"] not in semantic_ids:
+            if entry["id"] not in added_ids:
                 sorted_results.append(
                     {
                         **entry,
@@ -1987,6 +2010,7 @@ class Default(WorkerEntrypoint):
                         "match_type": "keyword",
                     }
                 )
+                added_ids.add(entry["id"])
 
         # Return HTML search results page
         planet = self._get_planet_config()

@@ -1,0 +1,337 @@
+# Lessons Learned
+
+Hard-won knowledge from building Planet CF on Cloudflare Workers Python.
+
+---
+
+## 1. JsProxy Conversion is Critical
+
+**Problem:** Pyodide (the Python-in-WebAssembly runtime) returns `JsProxy` objects when interacting with JavaScript APIs. These look like Python objects but aren't subscriptable or iterable.
+
+**Symptom:**
+```
+TypeError: 'pyodide.ffi.JsProxy' object is not subscriptable
+```
+
+**Solution:** Convert JsProxy to Python before use:
+```python
+from pyodide.ffi import to_js
+import js
+
+# For passing Python dicts TO JavaScript APIs (Vectorize, Workers AI):
+js_data = to_js(python_dict, dict_converter=js.Object.fromEntries)
+
+# For receiving data FROM JavaScript APIs:
+def _to_py_safe(obj):
+    """Convert JsProxy to Python dict, or return as-is if already Python."""
+    if obj is None:
+        return None
+    if hasattr(obj, 'to_py'):
+        return obj.to_py()
+    return obj
+```
+
+**Where this bites you:**
+- `request.form_data()` returns JsProxy FormData, not a Python dict
+- `env.AI.run()` results need conversion
+- `env.SEARCH_INDEX.query()` results need conversion
+- Vectorize `upsert()` needs Python→JS conversion for input
+
+---
+
+## 2. Mocks Don't Catch JsProxy Issues
+
+**Problem:** Unit tests with Python mocks pass, but production fails because mocks are pure Python while production involves JS interop.
+
+**Symptom:** All tests green, but production returns 500 errors.
+
+**Solution:**
+1. Create wrapper classes (SafeAI, SafeVectorize) that handle conversion
+2. Add E2E tests that run against real infrastructure (`wrangler dev --remote`)
+3. Test the actual JsProxy conversion paths
+
+```python
+# tests/e2e/test_search_real.py - runs against real Cloudflare bindings
+@pytest.mark.asyncio
+async def test_reindex_and_search(self, require_server, admin_session):
+    """This catches JsProxy issues that mocks miss."""
+    # ... test against http://localhost:8787 with wrangler dev --remote
+```
+
+---
+
+## 3. Templates Must Be Embedded (Workers Constraint)
+
+**Problem:** Cloudflare Workers Python runs in WebAssembly. There's no filesystem access for loading template files at runtime.
+
+**What doesn't work:**
+```python
+# This fails - no filesystem in Workers
+from jinja2 import FileSystemLoader
+loader = FileSystemLoader('templates/')
+```
+
+**Solution:** Embed templates as Python strings, compiled at build time:
+```
+templates/           # Source .html files (for editing)
+scripts/build_templates.py  # Compiles to Python
+src/templates.py     # Generated - don't edit directly
+```
+
+**Workflow:**
+```bash
+python scripts/build_templates.py  # Regenerate after template changes
+wrangler deploy
+```
+
+---
+
+## 4. Hybrid Search Beats Pure Semantic
+
+**Problem:** Semantic search (Vectorize) finds conceptually similar content but can miss exact keyword matches.
+
+**Symptom:** Searching "context" doesn't find articles containing the word "context" if they're not semantically similar to the query.
+
+**Solution:** Hybrid search combining both approaches:
+```python
+async def _search_entries(self, request):
+    # 1. Semantic search via Vectorize (finds similar concepts)
+    semantic_results = await self.env.SEARCH_INDEX.query(embedding, {"topK": 50})
+
+    # 2. Keyword search via D1 LIKE (finds exact matches)
+    keyword_results = await self.env.DB.prepare("""
+        SELECT * FROM entries
+        WHERE title LIKE ? OR content LIKE ?
+    """).bind(f"%{query}%", f"%{query}%").all()
+
+    # 3. Combine: semantic first (by score), then keyword-only (by date)
+```
+
+---
+
+## 5. D1 LIKE Queries Need Escaping
+
+**Problem:** User input in LIKE patterns can break queries or cause injection.
+
+**Solution:**
+```python
+# Escape special LIKE characters
+escaped = query.replace("%", "\\%").replace("_", "\\_")
+pattern = f"%{escaped}%"
+result = await db.prepare("SELECT * FROM t WHERE col LIKE ? ESCAPE '\\'").bind(pattern).all()
+```
+
+---
+
+## 6. SSRF Protection Must Be Comprehensive
+
+**Problem:** Feed URLs can point to internal resources, cloud metadata endpoints, or localhost.
+
+**Checklist:**
+```python
+def _is_safe_url(self, url):
+    # Block: localhost, 127.x.x.x, 0.0.0.0
+    # Block: private IPs (10.x, 172.16-31.x, 192.168.x)
+    # Block: link-local (169.254.x.x)
+    # Block: IPv6 loopback (::1), link-local (fe80::), ULA (fc00::/fd00::)
+    # Block: metadata endpoints:
+    #   - 169.254.169.254 (AWS/GCP)
+    #   - metadata.google.internal
+    #   - metadata.azure.internal  # Don't forget Azure!
+```
+
+---
+
+## 7. Feed Dates Can Be Missing or Malformed
+
+**Problem:** RSS/Atom feeds have inconsistent date formats, or omit dates entirely.
+
+**Bad approach:**
+```python
+# Don't do this - makes undated entries appear "new" forever
+published_at = entry.get('published') or datetime.now()
+```
+
+**Good approach:**
+```python
+# Store NULL for missing dates
+published_at = None
+if entry.get('published_parsed'):
+    published_at = datetime(*entry['published_parsed'][:6])
+# Let DB use CURRENT_TIMESTAMP only for first_seen, not published_at
+```
+
+---
+
+## 8. Stateless Sessions via Signed Cookies
+
+**Problem:** Workers are stateless. No server-side session storage.
+
+**Solution:** HMAC-signed cookies containing session data:
+```python
+import hmac, hashlib, base64, json
+
+def create_session(data, secret):
+    payload = base64.b64encode(json.dumps(data).encode()).decode()
+    sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return f"{payload}.{sig}"
+
+def verify_session(cookie, secret):
+    payload, sig = cookie.rsplit('.', 1)
+    expected = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(sig, expected):
+        return None  # Invalid signature
+    return json.loads(base64.b64decode(payload))
+```
+
+---
+
+## 9. Workers AI Embedding Model Choice
+
+**Problem:** Different embedding models have different dimensions and quality.
+
+**Choice:** `@cf/baai/bge-base-en-v1.5` with CLS pooling
+- 768 dimensions (must match Vectorize index)
+- Good balance of quality and speed
+- CLS pooling better than mean pooling for search
+
+```python
+result = await env.AI.run(
+    "@cf/baai/bge-base-en-v1.5",
+    {"text": [content], "pooling": "cls"}  # cls, not mean
+)
+```
+
+---
+
+## 10. Content Sanitization is Non-Negotiable
+
+**Problem:** Feed content can contain XSS payloads.
+
+**Solution:** Always sanitize HTML before storage:
+```python
+import nh3  # Safe HTML sanitizer
+
+ALLOWED_TAGS = {"p", "br", "a", "strong", "em", "code", "pre", "blockquote", "ul", "ol", "li", "h1", "h2", "h3"}
+ALLOWED_ATTRS = {"a": {"href", "title"}}
+
+def sanitize(html):
+    return nh3.clean(html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS)
+```
+
+---
+
+## 11. Queue Error Handling
+
+**Problem:** Queue consumers must handle errors gracefully or messages get stuck.
+
+**Pattern:**
+```python
+async def queue(self, batch, env):
+    for msg in batch.messages:
+        try:
+            await self._process_feed(msg.body["feed_id"])
+            msg.ack()
+        except Exception as e:
+            # Don't ack - let it retry or go to DLQ
+            log_op("feed_processing_failed", error=str(e))
+            msg.retry()  # or let it auto-retry based on queue config
+```
+
+---
+
+## 12. Observability From Day One
+
+**Problem:** Production issues are hard to debug without structured logging.
+
+**Solution:** Structured logging with operation context:
+```python
+def log_op(operation, **kwargs):
+    """Structured log entry for observability."""
+    print(json.dumps({
+        "op": operation,
+        "ts": datetime.utcnow().isoformat(),
+        **kwargs
+    }))
+
+# Usage
+log_op("feed_fetch", feed_id=123, status=200, entries=15)
+log_op("search_query", query="cloudflare", results=8, latency_ms=45)
+```
+
+Enable in wrangler.jsonc:
+```json
+{
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1.0
+  }
+}
+```
+
+---
+
+## 13. Test Cleanup is Essential for E2E Tests
+
+**Problem:** E2E tests that create real data can pollute the database.
+
+**Solution:** Always use try/finally for cleanup:
+```python
+async def test_full_flow(self):
+    created_id = None
+    try:
+        # Create test data
+        created_id = await create_feed(url)
+        # Test assertions...
+    finally:
+        # ALWAYS clean up
+        if created_id:
+            await delete_feed(created_id)
+```
+
+---
+
+## 14. Search Ranking: Exact Matches First
+
+**Problem:** Users expect searching for a literal phrase like "context is the work" to show an article with that exact title as the first result. Pure semantic search may rank conceptually similar content higher than exact matches.
+
+**Symptom:** Searching for a title doesn't return that article first, or at all.
+
+**Solution:** Three-tier ranking in hybrid search:
+```python
+# Priority 1: Exact title matches (score 1.0)
+# Priority 2: Semantic matches (by similarity score)
+# Priority 3: Keyword-only matches (by date)
+
+for entry in keyword_entries:
+    title_lower = (entry.get("title") or "").lower().strip()
+    query_lower = query.lower().strip()
+
+    if query_lower == title_lower:
+        # Exact title match - highest priority
+        results.append({**entry, "score": 1.0, "match_type": "exact_title"})
+    elif query_lower in title_lower:
+        # Partial title match - still high priority
+        results.append({**entry, "score": 0.95, "match_type": "title_match"})
+
+# Then add semantic matches (by score, excluding already-added)
+# Then add remaining keyword matches (by date)
+```
+
+**Why this matters:** Users searching for specific content expect literal matches to rank first. Semantic similarity is useful for discovery but shouldn't override explicit matches.
+
+---
+
+## Quick Reference: Common Gotchas
+
+| Issue | Solution |
+|-------|----------|
+| JsProxy not subscriptable | Use `to_js()` / `.to_py()` |
+| Tests pass, prod fails | Add E2E tests with real infra |
+| Templates not loading | Embed in Python, use build script |
+| Search misses keywords | Add hybrid search (semantic + LIKE) |
+| XSS in feed content | Sanitize with nh3 before storage |
+| Sessions in Workers | HMAC-signed cookies |
+| Missing feed dates | Store NULL, don't fake current time |
+| SSRF via feed URLs | Block private IPs + metadata endpoints |
+| Search misses exact matches | Rank exact title matches first (score 1.0) |
