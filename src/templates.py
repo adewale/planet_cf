@@ -186,6 +186,7 @@ _EMBEDDED_TEMPLATES = {
             <form action="/admin/regenerate" method="POST" style="margin: 0;">
                 <button type="submit" class="btn btn-primary" title="Re-fetch all feeds now">Refresh All Feeds</button>
             </form>
+            <button id="reindex-btn" class="btn btn-warning" title="Rebuild search index for all entries" onclick="rebuildSearchIndex()">Rebuild Search Index</button>
             <div class="user-info">
                 <span>{{ admin.display_name or admin.github_username }}</span>
                 <form action="/admin/logout" method="POST" style="margin: 0;">
@@ -1116,6 +1117,64 @@ function loadAuditLog() {
             document.getElementById('audit-list').innerHTML = '<p class="empty-state" ' +
                 'style="color:#dc3545;">Error loading: ' + escapeHtml(err.message || 'Unknown error') + '</p>';
         });
+}
+
+function rebuildSearchIndex() {
+    var btn = document.getElementById('reindex-btn');
+    var originalText = btn.textContent;
+
+    // Show loading state
+    btn.disabled = true;
+    btn.textContent = 'Rebuilding...';
+    btn.style.opacity = '0.7';
+
+    fetch('/admin/reindex', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+
+        if (data.success) {
+            btn.textContent = 'Done! (' + data.indexed + ' indexed)';
+            btn.classList.remove('btn-warning');
+            btn.classList.add('btn-success');
+
+            // Reset after 3 seconds
+            setTimeout(function() {
+                btn.textContent = originalText;
+                btn.classList.remove('btn-success');
+                btn.classList.add('btn-warning');
+            }, 3000);
+        } else {
+            btn.textContent = 'Failed';
+            btn.classList.remove('btn-warning');
+            btn.classList.add('btn-danger');
+
+            setTimeout(function() {
+                btn.textContent = originalText;
+                btn.classList.remove('btn-danger');
+                btn.classList.add('btn-warning');
+            }, 3000);
+        }
+    })
+    .catch(function(err) {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.textContent = 'Error';
+        btn.classList.remove('btn-warning');
+        btn.classList.add('btn-danger');
+
+        setTimeout(function() {
+            btn.textContent = originalText;
+            btn.classList.remove('btn-danger');
+            btn.classList.add('btn-warning');
+        }, 3000);
+
+        console.error('Reindex error:', err);
+    });
 }
 
 function escapeHtml(text) {

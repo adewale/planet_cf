@@ -1098,7 +1098,12 @@ class Default(WorkerEntrypoint):
             log_op("embedding_failed", entry_id=entry_id, reason="no_data_in_result")
             return
 
-        vector = embedding_result["data"][0]
+        data = embedding_result["data"]
+        if not data or len(data) == 0:
+            log_op("embedding_failed", entry_id=entry_id, reason="empty_data_array")
+            return
+
+        vector = data[0]
 
         # Upsert to Vectorize with entry_id as the vector ID
         await self.env.SEARCH_INDEX.upsert(
@@ -1987,6 +1992,9 @@ class Default(WorkerEntrypoint):
         if path == "/admin/audit" and method == "GET":
             return await self._view_audit_log()
 
+        if path == "/admin/reindex" and method == "POST":
+            return await self._reindex_all_entries(admin)
+
         if path == "/admin/logout" and method == "POST":
             return self._logout(request)
 
@@ -2408,6 +2416,59 @@ class Default(WorkerEntrypoint):
             LIMIT 100
         """).all()
         return json_response({"audit_log": _to_py_list(result.results)})
+
+    async def _reindex_all_entries(self, admin):
+        """Re-index all entries in Vectorize for search.
+
+        This is needed when entries exist in D1 but were never indexed
+        (e.g., added before Vectorize was configured, or indexing failed).
+        """
+        # Get all entries with their content
+        result = await self.env.DB.prepare("""
+            SELECT id, title, content FROM entries WHERE title IS NOT NULL
+        """).all()
+
+        entries = _to_py_list(result.results)
+        indexed = 0
+        failed = 0
+
+        for entry in entries:
+            entry_id = entry.get("id")
+            title = entry.get("title", "")
+            content = entry.get("content", "")
+
+            if not entry_id or not title:
+                continue
+
+            try:
+                await self._index_entry_for_search(entry_id, title, content)
+                indexed += 1
+            except Exception as e:
+                failed += 1
+                log_op(
+                    "reindex_entry_failed",
+                    entry_id=entry_id,
+                    error_type=type(e).__name__,
+                    error=str(e)[:100],
+                )
+
+        # Log admin action
+        await self._log_admin_action(
+            admin["id"],
+            "reindex",
+            "search_index",
+            0,
+            {"indexed": indexed, "failed": failed, "total": len(entries)},
+        )
+
+        return json_response(
+            {
+                "success": True,
+                "indexed": indexed,
+                "failed": failed,
+                "total": len(entries),
+            }
+        )
 
     async def _log_admin_action(self, admin_id, action, target_type, target_id, details):
         """Log an admin action to the audit log."""
