@@ -126,67 +126,64 @@ _EMBEDDED_TEMPLATES = {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin - {{ planet.name }}</title>
+    <link rel="stylesheet" href="/static/style.css">
     <style>
-        body { font-family: system-ui; max-width: 1000px; margin: 0 auto; padding: 1rem; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid #ddd; padding-bottom: 1rem; }
-        .header-actions { display: flex; align-items: center; gap: 1rem; }
-        .user-info { display: flex; align-items: center; gap: 0.5rem; }
-        .btn { border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-size: 0.875rem; }
-        .btn-primary { background: #007bff; color: white; }
-        .btn-primary:hover { background: #0056b3; }
-        .btn-success { background: #28a745; color: white; }
-        .btn-success:hover { background: #218838; }
-        .btn-danger { background: #dc3545; color: white; }
-        .btn-danger:hover { background: #c82333; }
-        .btn-warning { background: #ffc107; color: #212529; }
-        .btn-warning:hover { background: #e0a800; }
-        .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.8rem; }
-        .section { margin-bottom: 2rem; padding: 1rem; background: #f8f9fa; border-radius: 8px; }
-        .section h2 { margin-top: 0; margin-bottom: 1rem; font-size: 1.25rem; }
+        /* Admin-specific overrides */
+        body { max-width: 1000px; margin: 0 auto; padding: 0; }
+        header { display: flex; justify-content: space-between; align-items: center; text-align: left; }
+        header h1 { margin: 0; }
+        header h1::before { display: none; }
+        .header-actions { display: flex; align-items: center; gap: 0.75rem; }
+        .user-info { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; }
+        .admin-content { padding: 1rem 1.5rem; }
+        .section { margin-bottom: 1.5rem; padding: 1rem; background: var(--bg-tertiary); border-radius: 8px; }
+        .section h2 { margin-top: 0; margin-bottom: 1rem; font-size: 1.125rem; }
         .add-form { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-        .add-form input[type="url"] { flex: 1; min-width: 200px; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; }
-        .add-form input[type="text"] { width: 200px; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; }
-        .add-form input[type="file"] { padding: 0.5rem; }
+        .add-form input[type="url"] { flex: 1; min-width: 200px; padding: 0.5rem; border: 1px solid var(--border-light); border-radius: 4px; font-size: 0.875rem; }
+        .add-form input[type="text"] { width: 200px; padding: 0.5rem; border: 1px solid var(--border-light); border-radius: 4px; font-size: 0.875rem; }
+        .add-form input[type="file"] { padding: 0.5rem; font-size: 0.875rem; }
         .feed-list { list-style: none; padding: 0; margin: 0; }
-        .feed-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: white; border: 1px solid #dee2e6; margin-bottom: 0.5rem; border-radius: 4px; }
+        .feed-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: var(--bg-primary); border: 1px solid var(--border-light); margin-bottom: 0.5rem; border-radius: 4px; }
         .feed-info { flex: 1; }
-        .feed-title { font-weight: bold; }
-        .feed-url { color: #666; font-size: 0.85rem; word-break: break-all; }
-        .feed-status { font-size: 0.8rem; margin-top: 0.25rem; }
-        .feed-status.healthy { color: #28a745; }
-        .feed-status.failing { color: #dc3545; }
-        .feed-status.disabled { color: #6c757d; }
+        .feed-title { font-weight: bold; font-size: 0.9rem; }
+        .feed-url { color: var(--text-muted); font-size: 0.8rem; word-break: break-all; }
+        .feed-status { font-size: 0.75rem; margin-top: 0.25rem; }
+        .feed-status.healthy { color: var(--success); }
+        .feed-status.failing { color: var(--error); }
+        .feed-status.disabled { color: var(--text-muted); }
         .feed-actions { display: flex; gap: 0.5rem; align-items: center; }
-        .toggle { position: relative; display: inline-block; width: 50px; height: 24px; }
+        .toggle { position: relative; display: inline-block; width: 44px; height: 22px; }
         .toggle input { opacity: 0; width: 0; height: 0; }
-        .toggle-slider { position: absolute; cursor: pointer; inset: 0; background: #ccc; border-radius: 24px; transition: 0.3s; }
-        .toggle-slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: 0.3s; }
-        .toggle input:checked + .toggle-slider { background: #28a745; }
-        .toggle input:checked + .toggle-slider:before { transform: translateX(26px); }
-        .tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; border-bottom: 2px solid #dee2e6; }
-        .tab { padding: 0.5rem 1rem; cursor: pointer; border: none; background: none; font-size: 0.9rem; border-bottom: 2px solid transparent; margin-bottom: -2px; }
-        .tab.active { border-bottom-color: #007bff; color: #007bff; font-weight: bold; }
+        .toggle-slider { position: absolute; cursor: pointer; inset: 0; background: var(--border-medium); border-radius: 22px; transition: 0.3s; }
+        .toggle-slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: 0.3s; }
+        .toggle input:checked + .toggle-slider { background: var(--success); }
+        .toggle input:checked + .toggle-slider:before { transform: translateX(22px); }
+        .tabs { display: flex; gap: 0.25rem; margin-bottom: 1rem; border-bottom: 2px solid var(--border-light); }
+        .tab { padding: 0.5rem 1rem; cursor: pointer; border: none; background: none; font-size: 0.875rem; border-bottom: 2px solid transparent; margin-bottom: -2px; color: var(--text-secondary); }
+        .tab:hover { color: var(--text-primary); }
+        .tab.active { border-bottom-color: var(--accent); color: var(--accent); font-weight: 600; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
-        .dlq-item, .audit-item { padding: 0.75rem; background: white; border: 1px solid #dee2e6; margin-bottom: 0.5rem; border-radius: 4px; }
-        .dlq-item { border-left: 4px solid #dc3545; }
-        .audit-item { border-left: 4px solid #6c757d; }
-        .audit-action { font-weight: bold; color: #495057; }
-        .audit-time { color: #6c757d; font-size: 0.8rem; }
-        .audit-details { font-size: 0.85rem; color: #666; margin-top: 0.25rem; }
-        .empty-state { color: #6c757d; font-style: italic; padding: 1rem; text-align: center; }
+        .dlq-item, .audit-item { padding: 0.75rem; background: var(--bg-primary); border: 1px solid var(--border-light); margin-bottom: 0.5rem; border-radius: 4px; }
+        .dlq-item { border-left: 3px solid var(--error); }
+        .audit-item { border-left: 3px solid var(--text-muted); }
+        .audit-action { font-weight: bold; color: var(--text-secondary); font-size: 0.9rem; }
+        .audit-time { color: var(--text-muted); font-size: 0.75rem; }
+        .audit-details { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem; }
+        .empty-state { color: var(--text-muted); font-style: italic; padding: 1rem; text-align: center; }
         #dlq-list, #audit-list { max-height: 400px; overflow-y: auto; }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>Admin Dashboard</h1>
+    <header>
+        <h1><a href="/">{{ planet.name }}</a> <span style="color: var(--text-muted); font-weight: normal; font-size: 0.875rem;">Admin</span></h1>
         <div class="header-actions">
             <form action="/admin/regenerate" method="POST" style="margin: 0;">
-                <button type="submit" class="btn btn-primary" title="Re-fetch all feeds now">Refresh All Feeds</button>
+                <button type="submit" class="btn" title="Re-fetch all feeds now">Refresh Feeds</button>
             </form>
-            <button id="reindex-btn" class="btn btn-warning" title="Rebuild search index for all entries" onclick="rebuildSearchIndex()">Rebuild Search Index</button>
+            <button id="reindex-btn" class="btn" title="Rebuild search index" onclick="rebuildSearchIndex()">Reindex</button>
             <div class="user-info">
                 <span>{{ admin.display_name or admin.github_username }}</span>
                 <form action="/admin/logout" method="POST" style="margin: 0;">
@@ -194,7 +191,9 @@ _EMBEDDED_TEMPLATES = {
                 </form>
             </div>
         </div>
-    </div>
+    </header>
+
+    <div class="admin-content">
 
     <div class="tabs">
         <button class="tab active" data-tab="feeds">Feeds</button>
@@ -281,6 +280,8 @@ _EMBEDDED_TEMPLATES = {
             </div>
         </div>
     </div>
+
+    </div><!-- .admin-content -->
 
     <script src="/static/admin.js"></script>
 </body>
@@ -474,14 +475,14 @@ h1, h2, h3, h4, h5, h6 {
 header {
     background: var(--bg-primary);
     border-bottom: 1px solid var(--border-light);
-    padding: 2rem;
+    padding: 1rem 1.5rem;
     text-align: center;
 }
 
 header h1 {
-    margin-bottom: 0.375rem;
+    margin-bottom: 0.25rem;
     font-weight: 700;
-    font-size: 1.75rem;
+    font-size: 1.5rem;
     letter-spacing: -0.02em;
     color: var(--text-primary);
 }
@@ -978,10 +979,10 @@ button:hover {
 /* Responsive */
 @media (max-width: 768px) {
     header {
-        padding: 1.5rem 1rem;
+        padding: 0.75rem 1rem;
     }
     header h1 {
-        font-size: 1.5rem;
+        font-size: 1.25rem;
     }
     .container {
         grid-template-columns: 1fr;
