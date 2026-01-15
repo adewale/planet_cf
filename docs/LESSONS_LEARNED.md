@@ -39,7 +39,72 @@ def _to_py_safe(obj):
 
 ---
 
-## 2. Mocks Don't Catch JsProxy Issues
+## 2. Create a Boundary Layer for JS/Python Types
+
+**Problem:** JsProxy types leak throughout the codebase, requiring conversion checks everywhere. This spreads complexity and creates multiple failure points.
+
+**Anti-pattern:**
+```python
+# BAD: Checking for JsProxy in business logic
+async def process_feed(self, feed_data):
+    if hasattr(feed_data, 'to_py'):  # JsProxy check in business logic!
+        feed_data = feed_data.to_py()
+    # ... more code with more JsProxy checks
+```
+
+**Solution:** Create a thin boundary layer at the edge that converts all JS types to Python types immediately:
+
+```python
+# GOOD: Boundary layer at the edge
+class SafeD1:
+    """Boundary wrapper that quarantines JS types from Python core."""
+
+    def __init__(self, db):
+        self._db = db
+
+    async def query(self, sql, params):
+        result = await self._db.prepare(sql).bind(*params).all()
+        # Convert immediately at boundary
+        return [_to_py_safe(row) for row in result.results]
+
+
+class SafeVectorize:
+    """Boundary wrapper for Vectorize."""
+
+    async def query(self, vector, options):
+        result = await self._index.query(to_js(vector), to_js(options))
+        return _to_py_safe(result)  # Convert at boundary
+```
+
+**Architecture:**
+```
+┌─────────────────────────────────────────────────┐
+│            JavaScript / Cloudflare APIs          │
+│   (D1, Vectorize, Workers AI, Request, etc.)    │
+└─────────────────────────────────────────────────┘
+                        ↓
+┌─────────────────────────────────────────────────┐
+│            Boundary Layer (thin wrappers)        │
+│   SafeD1, SafeVectorize, _to_py_safe, to_js     │
+│   All JsProxy conversion happens HERE ONLY       │
+└─────────────────────────────────────────────────┘
+                        ↓
+┌─────────────────────────────────────────────────┐
+│               Python Core Logic                  │
+│   Pure Python types: dict, list, str, int       │
+│   No JsProxy checks needed - guaranteed clean    │
+└─────────────────────────────────────────────────┘
+```
+
+**Benefits:**
+- Business logic stays pure Python - easier to test with mocks
+- Single point of conversion - easier to debug type issues
+- Core code doesn't know about Pyodide/JsProxy
+- Tests with Python mocks actually reflect production behavior
+
+---
+
+## 3. Mocks Don't Catch JsProxy Issues
 
 **Problem:** Unit tests with Python mocks pass, but production fails because mocks are pure Python while production involves JS interop.
 
@@ -60,33 +125,74 @@ async def test_reindex_and_search(self, require_server, admin_session):
 
 ---
 
-## 3. Templates Must Be Embedded (Workers Constraint)
+## 4. Templates Must Be Embedded (No Filesystem Access)
 
-**Problem:** Cloudflare Workers Python runs in WebAssembly. There's no filesystem access for loading template files at runtime.
+**Problem:** Cloudflare Workers Python runs in WebAssembly inside V8 isolates. There is **no filesystem** - no `open()`, no `os.path`, no `pathlib` at runtime. This fundamentally changes how you approach file-based patterns.
 
 **What doesn't work:**
 ```python
-# This fails - no filesystem in Workers
+# ALL of these fail in Workers - there's no filesystem
 from jinja2 import FileSystemLoader
-loader = FileSystemLoader('templates/')
+loader = FileSystemLoader('templates/')  # No filesystem!
+
+with open('config.json') as f:  # No filesystem!
+    config = json.load(f)
+
+template_dir = Path(__file__).parent / 'templates'  # Path exists but can't read files!
 ```
 
-**Solution:** Embed templates as Python strings, compiled at build time:
+**Why this constraint exists:**
+- Workers run in V8 isolates, not a traditional OS
+- WebAssembly sandbox has no filesystem access
+- Each request gets a fresh isolate - no persistent local state
+- Only Cloudflare bindings (D1, KV, R2) provide storage
+
+**Solution:** Embed templates as Python strings at **build time**:
 ```
-templates/           # Source .html files (for editing)
-scripts/build_templates.py  # Compiles to Python
-src/templates.py     # Generated - don't edit directly
+templates/                  # Source .html files (edit these)
+├── index.html
+├── search.html
+├── style.css
+└── admin/
+    ├── dashboard.html
+    └── login.html
+
+scripts/build_templates.py  # Compiles templates into Python module
+src/templates.py            # Generated - contains embedded strings
+```
+
+**The build script pattern:**
+```python
+# scripts/build_templates.py
+def build_templates():
+    templates = {}
+    for path in TEMPLATE_FILES:
+        templates[path] = (TEMPLATE_DIR / path).read_text()
+
+    # Generate Python code with embedded strings
+    output = f'''
+_EMBEDDED_TEMPLATES = {repr(templates)}
+
+class EmbeddedLoader(BaseLoader):
+    def get_source(self, environment, template):
+        return _EMBEDDED_TEMPLATES[template], template, lambda: True
+'''
 ```
 
 **Workflow:**
 ```bash
-python scripts/build_templates.py  # Regenerate after template changes
-wrangler deploy
+# After editing any template:
+python scripts/build_templates.py  # Regenerate src/templates.py
+wrangler deploy                    # Deploy the new code
 ```
+
+**Key insight:** Anything you'd normally load from disk at runtime must be:
+1. Embedded in Python code at build time, OR
+2. Stored in Cloudflare bindings (KV, R2, D1) and fetched at runtime
 
 ---
 
-## 4. Hybrid Search Beats Pure Semantic
+## 5. Hybrid Search Beats Pure Semantic
 
 **Problem:** Semantic search (Vectorize) finds conceptually similar content but can miss exact keyword matches.
 
@@ -109,7 +215,7 @@ async def _search_entries(self, request):
 
 ---
 
-## 5. D1 LIKE Queries Need Escaping
+## 6. D1 LIKE Queries Need Escaping
 
 **Problem:** User input in LIKE patterns can break queries or cause injection.
 
@@ -123,7 +229,7 @@ result = await db.prepare("SELECT * FROM t WHERE col LIKE ? ESCAPE '\\'").bind(p
 
 ---
 
-## 6. SSRF Protection Must Be Comprehensive
+## 7. SSRF Protection Must Be Comprehensive
 
 **Problem:** Feed URLs can point to internal resources, cloud metadata endpoints, or localhost.
 
@@ -142,7 +248,7 @@ def _is_safe_url(self, url):
 
 ---
 
-## 7. Feed Dates Can Be Missing or Malformed
+## 8. Feed Dates Can Be Missing or Malformed
 
 **Problem:** RSS/Atom feeds have inconsistent date formats, or omit dates entirely.
 
@@ -163,7 +269,7 @@ if entry.get('published_parsed'):
 
 ---
 
-## 8. Stateless Sessions via Signed Cookies
+## 9. Stateless Sessions via Signed Cookies
 
 **Problem:** Workers are stateless. No server-side session storage.
 
@@ -186,7 +292,7 @@ def verify_session(cookie, secret):
 
 ---
 
-## 9. Workers AI Embedding Model Choice
+## 10. Workers AI Embedding Model Choice
 
 **Problem:** Different embedding models have different dimensions and quality.
 
@@ -204,7 +310,7 @@ result = await env.AI.run(
 
 ---
 
-## 10. Content Sanitization is Non-Negotiable
+## 11. Content Sanitization is Non-Negotiable
 
 **Problem:** Feed content can contain XSS payloads.
 
@@ -221,7 +327,7 @@ def sanitize(html):
 
 ---
 
-## 11. Queue Error Handling
+## 12. Queue Error Handling
 
 **Problem:** Queue consumers must handle errors gracefully or messages get stuck.
 
@@ -240,7 +346,7 @@ async def queue(self, batch, env):
 
 ---
 
-## 12. Observability From Day One
+## 13. Observability From Day One
 
 **Problem:** Production issues are hard to debug without structured logging.
 
@@ -271,7 +377,7 @@ Enable in wrangler.jsonc:
 
 ---
 
-## 13. Test Cleanup is Essential for E2E Tests
+## 14. Test Cleanup is Essential for E2E Tests
 
 **Problem:** E2E tests that create real data can pollute the database.
 
@@ -291,7 +397,7 @@ async def test_full_flow(self):
 
 ---
 
-## 14. Search Ranking: Exact Matches First
+## 15. Search Ranking: Exact Matches First
 
 **Problem:** Users expect searching for a literal phrase like "context is the work" to show an article with that exact title as the first result. Pure semantic search may rank conceptually similar content higher than exact matches.
 
@@ -322,7 +428,7 @@ for entry in keyword_entries:
 
 ---
 
-## 15. Search Accuracy Requires Real Infrastructure Tests
+## 16. Search Accuracy Requires Real Infrastructure Tests
 
 **Problem:** Mock-based tests pass but search doesn't work correctly in production.
 
@@ -368,6 +474,8 @@ async def test_semantic_search_returns_results(client):
 | Issue | Solution |
 |-------|----------|
 | JsProxy not subscriptable | Use `to_js()` / `.to_py()` |
+| JsProxy checks everywhere | Create boundary layer at edge |
+| No filesystem access | Embed files at build time, not runtime |
 | Tests pass, prod fails | Add E2E tests with real infra |
 | Templates not loading | Embed in Python, use build script |
 | Search misses keywords | Add hybrid search (semantic + LIKE) |
