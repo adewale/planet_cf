@@ -29,10 +29,6 @@ _EMBEDDED_TEMPLATES = {
     <header>
         <h1>{{ planet.name }}</h1>
         <p>{{ planet.description }}</p>
-        <form action="/search" method="GET" class="search-form">
-            <input type="search" name="q" placeholder="Search entries..." aria-label="Search entries">
-            <button type="submit">Search</button>
-        </form>
     </header>
 
     <div class="container">
@@ -42,13 +38,11 @@ _EMBEDDED_TEMPLATES = {
                 <h2 class="date">{{ date }}</h2>
                 {% for entry in day_entries %}
                 <article>
-                    <header>
-                        <h3><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
-                        <p class="meta">
-                            <span class="author">{{ entry.author or entry.feed_title }}</span>
-                            <time datetime="{{ entry.published_at }}" title="{{ entry.published_at_formatted }}">{{ entry.published_at_relative }}</time>
-                        </p>
-                    </header>
+                    <h3><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
+                    <p class="meta">
+                        <span class="author">{{ entry.author or entry.feed_title }}</span>
+                        {% if entry.published_at_display %}<span class="date-sep">·</span> <time datetime="{{ entry.published_at }}">{{ entry.published_at_display }}</time>{% endif %}
+                    </p>
                     <div class="content">{{ entry.content | safe }}</div>
                 </article>
                 {% endfor %}
@@ -59,6 +53,11 @@ _EMBEDDED_TEMPLATES = {
         </main>
 
         <aside class="sidebar">
+            <form action="/search" method="GET" class="search-form">
+                <input type="search" name="q" placeholder="Search entries..." aria-label="Search entries">
+                <button type="submit">Search</button>
+            </form>
+
             <h2>Subscriptions</h2>
             <ul class="feeds">
                 {% for feed in feeds %}
@@ -90,27 +89,35 @@ _EMBEDDED_TEMPLATES = {
 <body>
     <header>
         <h1><a href="/">{{ planet.name }}</a></h1>
-        <form action="/search" method="GET" class="search-form">
-            <input type="search" name="q" placeholder="Search entries..." value="{{ query }}">
-            <button type="submit">Search</button>
-        </form>
+        <p>Search Results</p>
     </header>
 
-    <main class="search-page">
-        <h2>Search Results for "{{ query }}"</h2>
-        {% if results %}
-        <ul class="search-results">
-            {% for entry in results %}
-            <li>
-                <h3><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
-                <p class="meta">{{ entry.author or entry.feed_title }}</p>
-            </li>
-            {% endfor %}
-        </ul>
-        {% else %}
-        <p>No results found for "{{ query }}"</p>
-        {% endif %}
-    </main>
+    <div class="container">
+        <main class="search-page">
+            <h2>Results for "{{ query }}"</h2>
+            {% if results %}
+            <ul class="search-results">
+                {% for entry in results %}
+                <li>
+                    <h3><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
+                    <p class="meta">{{ entry.author or entry.feed_title }}</p>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p>No results found for "{{ query }}"</p>
+            {% endif %}
+        </main>
+
+        <aside class="sidebar">
+            <form action="/search" method="GET" class="search-form">
+                <input type="search" name="q" placeholder="Search entries..." value="{{ query }}" aria-label="Search entries">
+                <button type="submit">Search</button>
+            </form>
+
+            <p style="margin-top: 1rem;"><a href="/">← Back to home</a></p>
+        </aside>
+    </div>
 
     <footer><p><a href="/">Back to Planet CF</a></p></footer>
 </body>
@@ -452,9 +459,14 @@ body {
     -moz-osx-font-smoothing: grayscale;
 }
 
-/* Headings use sans-serif for contrast */
-h1, h2, h3, h4, h5, h6,
-.search-form, .sidebar, footer, .meta, button {
+/* Headings use bold serif for elegance */
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+    font-weight: 700;
+}
+
+/* UI elements use clean sans-serif */
+.search-form, .sidebar, footer, .meta, button, .day h2 {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
@@ -476,12 +488,12 @@ header h1 {
 header h1::before {
     content: '';
     display: inline-block;
-    width: 4px;
-    height: 1.5rem;
-    background: var(--accent);
-    margin-right: 0.75rem;
+    width: 3px;
+    height: 1.25rem;
+    background: var(--accent-subtle);
+    margin-right: 0.625rem;
     vertical-align: middle;
-    border-radius: 2px;
+    border-radius: 1px;
 }
 
 header p {
@@ -499,43 +511,53 @@ header a:hover {
 }
 
 .search-form {
-    margin-top: 1.25rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border-light);
     display: flex;
-    justify-content: center;
-    gap: 0.5rem;
+    flex-direction: column;
+    gap: 0.625rem;
 }
 
 .search-form input {
-    padding: 0.625rem 1rem;
-    border: 1px solid var(--border-medium);
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border-light);
     border-radius: 6px;
-    width: 300px;
-    font-size: 0.95rem;
-    background: var(--bg-primary);
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 0.9rem;
+    background: var(--bg-secondary);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
 .search-form input:focus {
     outline: none;
     border-color: var(--accent);
+    background: var(--bg-primary);
     box-shadow: 0 0 0 3px var(--accent-light);
 }
 
 .search-form button {
-    padding: 0.625rem 1.25rem;
+    padding: 0.75rem 1rem;
     background: var(--bg-primary);
-    color: var(--accent);
-    border: 2px solid var(--accent);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-medium);
     border-radius: 6px;
     cursor: pointer;
     font-weight: 600;
-    font-size: 0.95rem;
-    transition: background 0.15s ease, color 0.15s ease;
+    font-size: 0.9rem;
+    width: 100%;
+    transition: all 0.15s ease;
 }
 
 .search-form button:hover {
-    background: var(--accent);
-    color: white;
+    background: var(--bg-secondary);
+    border-color: var(--accent-subtle);
+    color: var(--text-primary);
+}
+
+.search-form button:active {
+    transform: scale(0.98);
 }
 
 .container {
@@ -612,8 +634,14 @@ article header {
     font-weight: 500;
 }
 
+.meta .date-sep {
+    color: var(--text-muted);
+    margin: 0 0.25rem;
+}
+
 .meta time {
     color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
 }
 
 /* Content security: prevent foreign content from breaking layout */

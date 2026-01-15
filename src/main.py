@@ -77,6 +77,10 @@ SESSION_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
 # Security: Maximum search query length to prevent DoS
 MAX_SEARCH_QUERY_LENGTH = 1000
 
+# Retention policy defaults (can be overridden via env vars)
+DEFAULT_RETENTION_DAYS = 90  # Default to 90 days
+DEFAULT_MAX_ENTRIES_PER_FEED = 100  # Max entries to keep per feed
+
 # HTML sanitizer instance (uses settings from types.py)
 _sanitizer = BleachSanitizer()
 
@@ -162,6 +166,11 @@ def _to_py_primitive(value):
 
     # For lists, recursively convert all items
     if isinstance(value, list):
+        return [_to_py_primitive(item) for item in value]
+
+    # For tuples (including time.struct_time from feedparser), convert to list
+    # This ensures published_parsed can be indexed and converted to datetime
+    if isinstance(value, tuple):
         return [_to_py_primitive(item) for item in value]
 
     # Try to convert to string as last resort
@@ -1420,12 +1429,17 @@ class Default(WorkerEntrypoint):
                 # Apply retention policy first (delete old entries and their vectors)
                 await self._apply_retention_policy()
 
-                # Query entries (last 30 days, max 5 per feed per day) - track D1 query time
+                # Query entries using configurable retention period
                 # Uses first_seen for ordering/grouping to prevent spam from retroactive entries
                 # Per-feed-per-day limit prevents any single feed from dominating when added
+                retention_days = self._get_retention_days()
+                max_per_feed = self._get_max_entries_per_feed()
+
                 with Timer() as d1_timer:
+                    # Query entries, grouping by published_at (actual publication date)
+                    # Fall back to first_seen only when published_at is missing
                     entries_result = await self.env.DB.prepare(
-                        """
+                        f"""
                         WITH ranked AS (
                             SELECT
                                 e.*,
@@ -1433,22 +1447,22 @@ class Default(WorkerEntrypoint):
                                 f.site_url as feed_site_url,
                                 ROW_NUMBER() OVER (
                                     PARTITION BY e.feed_id,
-                                        date(COALESCE(e.first_seen, e.published_at))
-                                    ORDER BY COALESCE(e.first_seen, e.published_at) DESC
+                                        date(COALESCE(e.published_at, e.first_seen))
+                                    ORDER BY COALESCE(e.published_at, e.first_seen) DESC
                                 ) as rn_per_day,
                                 ROW_NUMBER() OVER (
                                     PARTITION BY e.feed_id
-                                    ORDER BY COALESCE(e.first_seen, e.published_at) DESC
+                                    ORDER BY COALESCE(e.published_at, e.first_seen) DESC
                                 ) as rn_total
                             FROM entries e
                             JOIN feeds f ON e.feed_id = f.id
-                            WHERE COALESCE(e.first_seen, e.published_at)
-                                >= datetime('now', '-30 days')
+                            WHERE COALESCE(e.published_at, e.first_seen)
+                                >= datetime('now', '-{retention_days} days')
                             AND f.is_active = 1
                         )
                         SELECT * FROM ranked
-                        WHERE rn_per_day <= 5 AND rn_total <= 100
-                        ORDER BY COALESCE(first_seen, published_at) DESC
+                        WHERE rn_per_day <= 5 AND rn_total <= {max_per_feed}
+                        ORDER BY COALESCE(published_at, first_seen) DESC
                         LIMIT 500
                         """
                     ).all()
@@ -1469,23 +1483,44 @@ class Default(WorkerEntrypoint):
                 entries = _to_py_list(entries_result.results)
                 feeds = _to_py_list(feeds_result.results)
 
-                # Group entries by first_seen date (prevents spam from retroactive entries)
-                # Use smart labels like "Today", "Yesterday", weekday names
+                # Group entries by published_at (actual publication date from feed)
+                # Fall back to first_seen only if published_at is missing
+                # This ensures entries appear under their true publication date
                 entries_by_date = {}
                 for entry in entries:
-                    # Use first_seen for grouping, fall back to published_at for legacy entries
-                    group_date = entry.get("first_seen") or entry.get("published_at") or ""
+                    # Prefer published_at for accurate grouping, fall back to first_seen
+                    group_date = entry.get("published_at") or entry.get("first_seen") or ""
                     date_str = group_date[:10] if group_date else "Unknown"  # YYYY-MM-DD
 
-                    # Convert to smart label (Today, Yesterday, etc.)
-                    date_label = self._smart_date_label(date_str)
+                    # Convert to absolute date label (e.g., "January 15, 2026")
+                    date_label = self._format_date_label(date_str)
                     if date_label not in entries_by_date:
                         entries_by_date[date_label] = []
 
-                    # Add formatted and relative times
-                    entry["published_at_formatted"] = self._format_datetime(entry["published_at"])
-                    entry["published_at_relative"] = self._relative_time(entry["published_at"])
+                    # Add display date (same as group date for consistency)
+                    if date_str and date_str != "Unknown":
+                        entry["published_at_display"] = self._format_pub_date(group_date)
+                    else:
+                        entry["published_at_display"] = ""
                     entries_by_date[date_label].append(entry)
+
+                # Sort entries within each day by published_at (newest first)
+                for date_label in entries_by_date:
+                    entries_by_date[date_label].sort(
+                        key=lambda e: e.get("published_at") or "", reverse=True
+                    )
+
+                # Sort date groups by date (most recent first)
+                # Extract YYYY-MM-DD from entries to sort properly
+                def get_sort_date(date_label_and_entries):
+                    entries_list = date_label_and_entries[1]
+                    if entries_list:
+                        return entries_list[0].get("published_at") or ""
+                    return ""
+
+                entries_by_date = dict(
+                    sorted(entries_by_date.items(), key=get_sort_date, reverse=True)
+                )
 
                 for feed in feeds:
                     feed["last_success_at_relative"] = self._relative_time(feed["last_success_at"])
@@ -1521,10 +1556,13 @@ class Default(WorkerEntrypoint):
             raise
 
     async def _apply_retention_policy(self):
-        """Delete entries older than 30 days or beyond 100 per feed, and clean up vectors."""
+        """Delete old entries and clean up vectors based on configurable retention policy."""
+
+        retention_days = self._get_retention_days()
+        max_per_feed = self._get_max_entries_per_feed()
 
         # Get IDs of entries to delete
-        to_delete = await self.env.DB.prepare("""
+        to_delete = await self.env.DB.prepare(f"""
             WITH ranked_entries AS (
                 SELECT
                     id,
@@ -1538,8 +1576,8 @@ class Default(WorkerEntrypoint):
             ),
             entries_to_delete AS (
                 SELECT id FROM ranked_entries
-                WHERE rn > 100
-                OR published_at < datetime('now', '-30 days')
+                WHERE rn > {max_per_feed}
+                OR published_at < datetime('now', '-{retention_days} days')
             )
             SELECT id FROM entries_to_delete
         """).all()
@@ -1583,6 +1621,21 @@ class Default(WorkerEntrypoint):
         except (ValueError, AttributeError):
             return iso_string
 
+    def _format_pub_date(self, iso_string: str | None) -> str:
+        """Format publication date concisely (e.g., 'Jun 2013' or 'Jan 15')."""
+        if not iso_string:
+            return ""
+        try:
+            dt = datetime.fromisoformat(iso_string.replace("Z", "+00:00"))
+            now = datetime.utcnow()
+            # If same year, show "Mon Day" (e.g., "Jun 15")
+            if dt.year == now.year:
+                return dt.strftime("%b %d")
+            # Otherwise show "Mon Year" (e.g., "Jun 2013")
+            return dt.strftime("%b %Y")
+        except (ValueError, AttributeError):
+            return ""
+
     def _relative_time(self, iso_string: str | None) -> str:
         """Convert ISO datetime to relative time (e.g., '2 hours ago')."""
         if not iso_string:
@@ -1605,28 +1658,17 @@ class Default(WorkerEntrypoint):
         except (ValueError, AttributeError):
             return "unknown"
 
-    def _smart_date_label(self, date_str: str) -> str:
+    def _format_date_label(self, date_str: str) -> str:
         """
-        Convert YYYY-MM-DD to smart labels like 'Today', 'Yesterday', weekday names.
+        Convert YYYY-MM-DD to absolute date like 'August 25, 2025'.
 
-        For recent dates (within 7 days), shows relative labels.
-        For older dates, shows formatted date like 'January 14, 2026'.
+        Always shows the actual date rather than relative labels like 'Today'.
+        This is clearer when there are gaps between posts.
         """
         try:
             entry_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-            today = datetime.utcnow().date()
-            delta_days = (today - entry_date).days
-
-            if delta_days == 0:
-                return "Today"
-            elif delta_days == 1:
-                return "Yesterday"
-            elif delta_days < 7:
-                # Show weekday name for recent dates (e.g., "Monday")
-                return entry_date.strftime("%A")
-            else:
-                # Show full date for older entries (e.g., "January 14, 2026")
-                return entry_date.strftime("%B %d, %Y")
+            # Format as "August 25, 2025"
+            return entry_date.strftime("%B %d, %Y")
         except (ValueError, AttributeError):
             return date_str
 
@@ -1670,6 +1712,22 @@ class Default(WorkerEntrypoint):
             or "Aggregated posts from Cloudflare employees and community",
             "link": getattr(self.env, "PLANET_URL", None) or "https://planetcf.com",
         }
+
+    def _get_retention_days(self) -> int:
+        """Get retention days from environment, default 90."""
+        try:
+            days = getattr(self.env, "RETENTION_DAYS", None)
+            return int(days) if days else DEFAULT_RETENTION_DAYS
+        except (ValueError, TypeError):
+            return DEFAULT_RETENTION_DAYS
+
+    def _get_max_entries_per_feed(self) -> int:
+        """Get max entries per feed from environment, default 100."""
+        try:
+            max_entries = getattr(self.env, "RETENTION_MAX_ENTRIES_PER_FEED", None)
+            return int(max_entries) if max_entries else DEFAULT_MAX_ENTRIES_PER_FEED
+        except (ValueError, TypeError):
+            return DEFAULT_MAX_ENTRIES_PER_FEED
 
     def _generate_atom_feed(self, planet, entries):
         """Generate Atom 1.0 feed XML using template."""

@@ -94,7 +94,7 @@ Inspired by [rogue_planet](https://github.com/adewale/rogue_planet):
 |-------------|-------|
 | Domain | https://planetcf.com |
 | Update frequency | Hourly |
-| Retention policy | Last 30 days OR last 100 posts (whichever is smaller) |
+| Retention policy | Last 90 days OR last 100 posts per feed (configurable via env vars) |
 | Content storage | Full post content |
 | Output format | Single aggregated HTML page + RSS/Atom feed + OPML |
 | Feed count | Dozens (50-100+) |
@@ -463,26 +463,31 @@ CREATE INDEX idx_audit_created ON audit_log(created_at DESC);
 
 ### 4.2 Retention Policy Implementation
 
+Retention is configurable via environment variables:
+- `RETENTION_DAYS`: Number of days to keep entries (default: 90)
+- `RETENTION_MAX_ENTRIES_PER_FEED`: Max entries per feed (default: 100)
+
 ```sql
--- Delete entries older than 30 days, keeping at most 100 per feed
+-- Delete entries older than retention period or beyond max per feed
+-- Uses configurable values from env vars (90 days, 100 entries default)
 WITH ranked_entries AS (
-    SELECT 
+    SELECT
         id,
         feed_id,
         published_at,
         ROW_NUMBER() OVER (
-            PARTITION BY feed_id 
+            PARTITION BY feed_id
             ORDER BY published_at DESC
         ) as rn
     FROM entries
 ),
-entries_to_keep AS (
+entries_to_delete AS (
     SELECT id FROM ranked_entries
-    WHERE rn <= 100
-    AND published_at >= datetime('now', '-30 days')
+    WHERE rn > {max_per_feed}
+    OR published_at < datetime('now', '-{retention_days} days')
 )
-DELETE FROM entries
-WHERE id NOT IN (SELECT id FROM entries_to_keep);
+SELECT id FROM entries_to_delete;
+-- Then delete in batches
 ```
 
 ---
@@ -1328,12 +1333,13 @@ class PlanetCF(WorkerEntrypoint):
 
 Layout Notes:
 - Two-column layout: main content (70%) + sidebar (30%)
-- Main content: entries grouped by date, newest first
-- Each entry shows: title (linked), author, time, full content
-- Sidebar: list of subscribed feeds with health status
+- Main content: entries grouped by published_at date (absolute dates like "January 15, 2026")
+- Grouping prioritizes published_at over first_seen to show accurate publication dates
+- Each entry shows: title (linked), author, publication date, full content
+- Sidebar: search form + list of subscribed feeds with health status
 - Footer: feed links (Atom, RSS, OPML) and last update time
-- Search bar in header (semantic search via Vectorize)
 - Responsive: collapses to single column on mobile
+- Max 5 entries per feed per day to prevent firehose from new feeds
 ```
 
 ```python
@@ -2319,7 +2325,7 @@ As of Wrangler v3.91.0 (late 2024), Cloudflare recommends **JSONC** (`wrangler.j
     "PLANET_URL": "https://planetcf.com",
     "PLANET_OWNER_NAME": "Cloudflare",
     "PLANET_OWNER_EMAIL": "planet@planetcf.com",
-    "RETENTION_DAYS": "30",
+    "RETENTION_DAYS": "90",
     "RETENTION_MAX_ENTRIES_PER_FEED": "100",
     "FEED_TIMEOUT_SECONDS": "60",
     "HTTP_TIMEOUT_SECONDS": "30",
