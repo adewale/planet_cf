@@ -284,6 +284,136 @@ class TestSearchWithRealInfrastructure:
             print("\n3. Pipeline verification complete!")
 
 
+class TestSearchWithDataCreation:
+    """
+    E2E tests that create test data and clean up afterward.
+
+    These tests add a feed, wait for processing, test search, then delete.
+    """
+
+    @pytest.mark.asyncio
+    async def test_full_e2e_add_feed_reindex_search_cleanup(self, require_server, admin_session):
+        """
+        Complete E2E test with cleanup:
+        1. Add a test feed
+        2. Trigger feed fetch
+        3. Reindex for search
+        4. Search for content
+        5. Clean up by deleting the feed
+
+        This test creates real data and MUST clean up after itself.
+        """
+        # Use a stable, fast-responding public feed
+        test_feed_url = "https://www.reddit.com/r/cloudflare/.rss"
+        created_feed_id = None
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            try:
+                print("\n=== Full E2E Test with Cleanup ===")
+
+                # Step 1: Add the test feed
+                print("\n1. Adding test feed...")
+                add_response = await client.post(
+                    f"{BASE_URL}/admin/feeds",
+                    data={"url": test_feed_url},
+                    cookies=admin_session,
+                    follow_redirects=False,
+                )
+
+                if add_response.status_code not in [200, 302]:
+                    pytest.skip(f"Could not add feed: {add_response.status_code}")
+
+                # Find the feed ID for cleanup
+                feeds_response = await client.get(
+                    f"{BASE_URL}/admin/feeds",
+                    cookies=admin_session,
+                )
+                if feeds_response.status_code == 200:
+                    feeds_data = feeds_response.json()
+                    for feed in feeds_data.get("feeds", []):
+                        if feed.get("url") == test_feed_url:
+                            created_feed_id = feed.get("id")
+                            print(f"   Created feed ID: {created_feed_id}")
+                            break
+
+                # Step 2: Trigger feed fetch
+                print("\n2. Triggering feed fetch...")
+                await client.post(
+                    f"{BASE_URL}/admin/regenerate",
+                    cookies=admin_session,
+                    follow_redirects=False,
+                )
+
+                # Wait for queue processing
+                print("   Waiting for queue processing...")
+                await asyncio.sleep(5)
+
+                # Step 3: Reindex for search
+                print("\n3. Reindexing entries...")
+                reindex_response = await client.post(
+                    f"{BASE_URL}/admin/reindex",
+                    cookies=admin_session,
+                )
+
+                if reindex_response.status_code == 200:
+                    result = reindex_response.json()
+                    print(f"   Indexed {result.get('indexed', 0)} entries")
+
+                # Wait for Vectorize
+                await asyncio.sleep(2)
+
+                # Step 4: Search for content
+                print("\n4. Searching for 'cloudflare'...")
+                search_response = await client.get(
+                    f"{BASE_URL}/search",
+                    params={"q": "cloudflare"},
+                )
+
+                assert search_response.status_code == 200
+                print(f"   Search returned {search_response.status_code}")
+
+                # Check results (may or may not find depending on feed content)
+                if "No results found" not in search_response.text:
+                    print("   Found search results!")
+                else:
+                    print("   No results yet (feed may not have processed)")
+
+            finally:
+                # Step 5: ALWAYS clean up - delete the test feed
+                print("\n5. Cleaning up - deleting test feed...")
+                if created_feed_id:
+                    delete_response = await client.post(
+                        f"{BASE_URL}/admin/feeds/{created_feed_id}",
+                        data={"_method": "DELETE"},
+                        cookies=admin_session,
+                        follow_redirects=False,
+                    )
+                    if delete_response.status_code in [200, 302]:
+                        print(f"   Deleted feed {created_feed_id}")
+                    else:
+                        print(f"   Warning: Could not delete feed: {delete_response.status_code}")
+                else:
+                    # Try to find and delete by URL
+                    feeds_response = await client.get(
+                        f"{BASE_URL}/admin/feeds",
+                        cookies=admin_session,
+                    )
+                    if feeds_response.status_code == 200:
+                        feeds_data = feeds_response.json()
+                        for feed in feeds_data.get("feeds", []):
+                            if feed.get("url") == test_feed_url:
+                                await client.post(
+                                    f"{BASE_URL}/admin/feeds/{feed['id']}",
+                                    data={"_method": "DELETE"},
+                                    cookies=admin_session,
+                                    follow_redirects=False,
+                                )
+                                print(f"   Deleted feed {feed['id']} by URL match")
+                                break
+
+                print("\n=== Cleanup complete ===")
+
+
 class TestSearchEdgeCases:
     """Edge case tests that require real infrastructure."""
 
