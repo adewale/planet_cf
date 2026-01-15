@@ -23,6 +23,10 @@
     "RETENTION_MAX_ENTRIES_PER_FEED": "100",
     "FEED_TIMEOUT_SECONDS": "60",
     "HTTP_TIMEOUT_SECONDS": "30"
+    // Search configuration (optional - uses defaults if not set):
+    // "EMBEDDING_MAX_CHARS": "2000",       // Max chars to embed per entry
+    // "SEARCH_SCORE_THRESHOLD": "0.3",     // Min cosine similarity (0.0-1.0)
+    // "SEARCH_TOP_K": "50"                 // Max semantic results before filtering
   },
 
   // Secrets (set via wrangler secret put):

@@ -3976,9 +3976,9 @@ Set up alerts via Workers Observability or external integration:
 
 ---
 
-## 13. Full-Text Search (Vectorize)
+## 13. Hybrid Search (Semantic + Keyword)
 
-Semantic search across entries using Workers AI for embeddings and Vectorize for storage/retrieval.
+Hybrid search combines semantic similarity (via Vectorize) with keyword matching (via D1 LIKE queries) to provide comprehensive search results. This ensures queries find both conceptually similar content AND exact keyword matches.
 
 ### 13.1 Vectorize Index Setup
 
@@ -3987,7 +3987,29 @@ Semantic search across entries using Workers AI for embeddings and Vectorize for
 wrangler vectorize create planetcf-entries --dimensions=768 --metric=cosine
 ```
 
-### 13.2 Embedding Generation
+### 13.2 Search Configuration
+
+Search behavior is configurable via environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EMBEDDING_MAX_CHARS` | 2000 | Max characters to include in embedding |
+| `SEARCH_SCORE_THRESHOLD` | 0.3 | Minimum cosine similarity score (0.0-1.0) |
+| `SEARCH_TOP_K` | 50 | Max semantic search results before filtering |
+
+**Configuration in wrangler.jsonc:**
+
+```json
+{
+  "vars": {
+    "EMBEDDING_MAX_CHARS": "2000",
+    "SEARCH_SCORE_THRESHOLD": "0.3",
+    "SEARCH_TOP_K": "50"
+  }
+}
+```
+
+### 13.3 Embedding Generation
 
 Embeddings are generated when entries are stored (see `_index_entry_for_search` in Section 5.2). Key implementation details:
 
@@ -3997,8 +4019,9 @@ Embeddings are generated when entries are stored (see `_index_entry_for_search` 
 async def _index_entry_for_search(self, entry_id, title, content):
     """Generate embedding and store in Vectorize for semantic search."""
 
-    # Combine title and content for embedding (truncate to model limit)
-    text = f"{title}\n\n{content[:2000]}"
+    # Combine title and content for embedding (configurable limit)
+    max_chars = self._get_embedding_max_chars()  # Default: 2000
+    text = f"{title}\n\n{content[:max_chars]}"
 
     # Generate embedding using Workers AI with cls pooling for accuracy
     embedding_result = await self.env.AI.run(
@@ -4023,45 +4046,92 @@ async def _index_entry_for_search(self, entry_id, title, content):
 
 **Note:** The `pooling: "cls"` parameter uses CLS token pooling which provides better accuracy than mean pooling for this use case.
 
-### 13.3 Search Endpoint
+### 13.4 Hybrid Search Algorithm
 
-The search endpoint is implemented in the `_search_entries` method (see Section 5.4). It handles the `/search?q=query` route:
+The search endpoint combines semantic and keyword search for comprehensive results:
 
 ```python
-# Inside PlanetCF class (see Section 5.4 for full implementation)
-
 async def _search_entries(self, request):
-    """Search entries by semantic similarity."""
+    """Hybrid search: combines semantic similarity with keyword matching."""
 
-    # Parse query from URL
-    query = self._get_query_param(request, "q")
-    if not query or len(query) < 2:
-        return Response(
-            json.dumps({"error": "Query too short"}),
-            status=400,
-            headers={"Content-Type": "application/json"}
-        )
+    # Get search configuration
+    top_k = self._get_search_top_k()  # Default: 50
+    score_threshold = self._get_search_score_threshold()  # Default: 0.3
 
-    # Generate embedding for search query
+    # 1. SEMANTIC SEARCH via Vectorize
     embedding_result = await self.env.AI.run(
         "@cf/baai/bge-base-en-v1.5",
         {"text": [query], "pooling": "cls"}
     )
     query_vector = embedding_result["data"][0]
-
-    # Search Vectorize
     results = await self.env.SEARCH_INDEX.query(query_vector, {
-        "topK": 20,
+        "topK": top_k,
         "returnMetadata": True
     })
 
-    # Fetch full entries from D1 and return sorted by score
-    # (see Section 5.4 for complete implementation)
+    # Apply score threshold
+    semantic_matches = [
+        m for m in results.get("matches", [])
+        if m.get("score", 0) >= score_threshold
+    ]
+
+    # 2. KEYWORD SEARCH via D1 (catches exact matches semantic might miss)
+    escaped_query = query.replace("%", "\\%").replace("_", "\\_")
+    like_pattern = f"%{escaped_query}%"
+    keyword_result = await self.env.DB.prepare("""
+        SELECT e.*, f.title as feed_title, f.site_url as feed_site_url
+        FROM entries e
+        JOIN feeds f ON e.feed_id = f.id
+        WHERE e.title LIKE ? ESCAPE '\\'
+           OR e.content LIKE ? ESCAPE '\\'
+        ORDER BY e.published_at DESC
+        LIMIT 50
+    """).bind(like_pattern, like_pattern).all()
+
+    # 3. COMBINE RESULTS: semantic first (by score), then keyword-only (by date)
+    # Deduplicate: entries found by both methods appear once with semantic score
 ```
 
-### 13.4 Search UI
+### 13.5 Why Hybrid Search?
 
-The search form is included in the HTML template header (see Section 5.3). Search results are returned as JSON and can be rendered client-side or via a separate results template.
+| Scenario | Semantic Only | Hybrid |
+|----------|---------------|--------|
+| Searching "context switching" | Finds articles about multitasking | Same results |
+| Searching exact term "context" | May miss articles with "context" in text | Finds all with keyword match |
+| New/unindexed entries | No results | Found via keyword fallback |
+| Misspelled queries | Semantic similarity still works | Keyword fails, semantic works |
+
+### 13.6 Search UI
+
+The search form is included in the HTML template header (see Section 5.3). Search results include a match type indicator and are rendered via the search results template.
+
+### 13.7 Admin Reindex Endpoint
+
+The `/admin/reindex` endpoint allows administrators to rebuild the search index for all existing entries. This is useful when:
+- Entries were added before Vectorize was configured
+- The embedding model or configuration changes
+- Index becomes out of sync with D1
+
+```python
+async def _reindex_all_entries(self, admin):
+    """Reindex all entries in Vectorize."""
+    entries = await self.env.DB.prepare(
+        "SELECT id, title, content FROM entries"
+    ).all()
+
+    indexed = 0
+    failed = 0
+    for entry in entries.results:
+        try:
+            await self._index_entry_for_search(
+                entry["id"], entry["title"], entry["content"]
+            )
+            indexed += 1
+        except Exception:
+            failed += 1
+
+    return {"success": True, "indexed": indexed, "failed": failed}
+```
 
 ---
 

@@ -81,11 +81,15 @@ MAX_SEARCH_QUERY_LENGTH = 1000
 DEFAULT_RETENTION_DAYS = 90  # Default to 90 days
 DEFAULT_MAX_ENTRIES_PER_FEED = 100  # Max entries to keep per feed
 
+# Search configuration defaults (can be overridden via env vars)
+DEFAULT_EMBEDDING_MAX_CHARS = 2000  # Max chars to embed per entry
+DEFAULT_SEARCH_SCORE_THRESHOLD = 0.3  # Minimum similarity score (0.0-1.0)
+DEFAULT_SEARCH_TOP_K = 50  # Max semantic search results before filtering
+
 # HTML sanitizer instance (uses settings from types.py)
 _sanitizer = BleachSanitizer()
 
 # Constants for content limits
-EMBEDDING_MAX_CONTENT_LENGTH = 2000
 SUMMARY_MAX_LENGTH = 500
 
 
@@ -1102,8 +1106,9 @@ class Default(WorkerEntrypoint):
     async def _index_entry_for_search(self, entry_id, title, content):
         """Generate embedding and store in Vectorize for semantic search."""
 
-        # Combine title and content for embedding (truncate to model limit)
-        text = f"{title}\n\n{content[:EMBEDDING_MAX_CONTENT_LENGTH]}"
+        # Combine title and content for embedding (truncate to configurable limit)
+        max_chars = self._get_embedding_max_chars()
+        text = f"{title}\n\n{content[:max_chars]}"
 
         # Generate embedding using Workers AI with cls pooling for accuracy
         # Note: SafeAI.run() already converts result to Python dict
@@ -1750,6 +1755,30 @@ class Default(WorkerEntrypoint):
         except (ValueError, TypeError):
             return DEFAULT_MAX_ENTRIES_PER_FEED
 
+    def _get_embedding_max_chars(self) -> int:
+        """Get max chars to embed per entry from environment, default 2000."""
+        try:
+            max_chars = getattr(self.env, "EMBEDDING_MAX_CHARS", None)
+            return int(max_chars) if max_chars else DEFAULT_EMBEDDING_MAX_CHARS
+        except (ValueError, TypeError):
+            return DEFAULT_EMBEDDING_MAX_CHARS
+
+    def _get_search_score_threshold(self) -> float:
+        """Get minimum similarity score threshold from environment, default 0.3."""
+        try:
+            threshold = getattr(self.env, "SEARCH_SCORE_THRESHOLD", None)
+            return float(threshold) if threshold else DEFAULT_SEARCH_SCORE_THRESHOLD
+        except (ValueError, TypeError):
+            return DEFAULT_SEARCH_SCORE_THRESHOLD
+
+    def _get_search_top_k(self) -> int:
+        """Get max semantic search results from environment, default 50."""
+        try:
+            top_k = getattr(self.env, "SEARCH_TOP_K", None)
+            return int(top_k) if top_k else DEFAULT_SEARCH_TOP_K
+        except (ValueError, TypeError):
+            return DEFAULT_SEARCH_TOP_K
+
     def _generate_atom_feed(self, planet, entries):
         """Generate Atom 1.0 feed XML using template."""
         # Prepare entries with defaults for template
@@ -1832,7 +1861,7 @@ class Default(WorkerEntrypoint):
         )
 
     async def _search_entries(self, request):
-        """Search entries by semantic similarity."""
+        """Hybrid search: combines semantic similarity with keyword matching."""
 
         # Parse query string
         url_str = str(request.url)
@@ -1846,50 +1875,118 @@ class Default(WorkerEntrypoint):
         if len(query) > MAX_SEARCH_QUERY_LENGTH:
             return json_error("Query too long (max 1000 characters)")
 
-        # Generate embedding for search query
-        # Note: SafeAI.run() already converts result to Python dict
-        embedding_result = await self.env.AI.run(
-            "@cf/baai/bge-base-en-v1.5", {"text": [query], "pooling": "cls"}
-        )
-        if not embedding_result or "data" not in embedding_result:
-            return json_error("Failed to generate embedding")
-        query_vector = embedding_result["data"][0]
+        # Get search configuration
+        top_k = self._get_search_top_k()
+        score_threshold = self._get_search_score_threshold()
 
-        # Search Vectorize
-        # Note: SafeVectorize.query() already converts result to Python dict
-        results = await self.env.SEARCH_INDEX.query(
-            query_vector, {"topK": 20, "returnMetadata": True}
-        )
-        matches = results.get("matches", []) if results else []
+        # Run semantic search and keyword search in parallel
+        semantic_matches = []
+        keyword_entries = []
 
-        # Fetch full entries from D1
-        if not matches:
-            # Return HTML search page with no results
+        # 1. Semantic search via Vectorize
+        try:
+            embedding_result = await self.env.AI.run(
+                "@cf/baai/bge-base-en-v1.5", {"text": [query], "pooling": "cls"}
+            )
+            if embedding_result and "data" in embedding_result:
+                query_vector = embedding_result["data"][0]
+                results = await self.env.SEARCH_INDEX.query(
+                    query_vector, {"topK": top_k, "returnMetadata": True}
+                )
+                semantic_matches = results.get("matches", []) if results else []
+                # Apply score threshold
+                semantic_matches = [
+                    m for m in semantic_matches if m.get("score", 0) >= score_threshold
+                ]
+        except Exception as e:
+            log_op("semantic_search_failed", error=str(e)[:100])
+
+        # 2. Keyword search via D1 (catches exact matches semantic might miss)
+        try:
+            # Escape special characters for LIKE pattern
+            escaped_query = query.replace("%", "\\%").replace("_", "\\_")
+            like_pattern = f"%{escaped_query}%"
+
+            keyword_result = (
+                await self.env.DB.prepare("""
+                SELECT e.id, e.feed_id, e.guid, e.url, e.title, e.author,
+                       e.content, e.summary, e.published_at, e.first_seen,
+                       f.title as feed_title, f.site_url as feed_site_url
+                FROM entries e
+                JOIN feeds f ON e.feed_id = f.id
+                WHERE e.title LIKE ? ESCAPE '\\'
+                   OR e.content LIKE ? ESCAPE '\\'
+                ORDER BY e.published_at DESC
+                LIMIT 50
+            """)
+                .bind(like_pattern, like_pattern)
+                .all()
+            )
+            keyword_entries = _to_py_list(keyword_result.results)
+        except Exception as e:
+            log_op("keyword_search_failed", error=str(e)[:100])
+
+        # 3. Combine results: semantic matches first, then keyword matches not in semantic
+        semantic_ids = {int(m["id"]) for m in semantic_matches}
+        combined_ids = list(semantic_ids)
+
+        # Add keyword matches that aren't already in semantic results
+        for entry in keyword_entries:
+            entry_id = entry.get("id")
+            if entry_id and entry_id not in semantic_ids:
+                combined_ids.append(entry_id)
+
+        if not combined_ids:
             planet = self._get_planet_config()
             html = render_template(TEMPLATE_SEARCH, planet=planet, query=query, results=[])
             return html_response(html, cache_max_age=0)
 
-        entry_ids = [int(m["id"]) for m in matches]
-        placeholders = ",".join("?" * len(entry_ids))
+        # 4. Fetch full entries for semantic matches (keyword entries already have data)
+        entry_map = {}
 
-        entries = (
-            await self.env.DB.prepare(f"""
-            SELECT e.*, f.title as feed_title, f.site_url as feed_site_url
-            FROM entries e
-            JOIN feeds f ON e.feed_id = f.id
-            WHERE e.id IN ({placeholders})
-        """)
-            .bind(*entry_ids)
-            .all()
-        )
+        # Add keyword entries to map
+        for entry in keyword_entries:
+            entry_map[entry["id"]] = entry
 
-        # Sort by Vectorize score
-        entry_map = {e["id"]: e for e in _to_py_list(entries.results)}
-        sorted_results = [
-            {**entry_map[int(m["id"])], "score": m.get("score", 0)}
-            for m in matches
-            if int(m["id"]) in entry_map
-        ]
+        # Fetch semantic entries not already in keyword results
+        semantic_only_ids = [eid for eid in semantic_ids if eid not in entry_map]
+        if semantic_only_ids:
+            placeholders = ",".join("?" * len(semantic_only_ids))
+            db_entries = (
+                await self.env.DB.prepare(f"""
+                SELECT e.*, f.title as feed_title, f.site_url as feed_site_url
+                FROM entries e
+                JOIN feeds f ON e.feed_id = f.id
+                WHERE e.id IN ({placeholders})
+            """)
+                .bind(*semantic_only_ids)
+                .all()
+            )
+            for entry in _to_py_list(db_entries.results):
+                entry_map[entry["id"]] = entry
+
+        # 5. Build sorted results: semantic first (by score), then keyword (by recency)
+        sorted_results = []
+
+        # Add semantic matches sorted by score
+        for match in sorted(semantic_matches, key=lambda m: m.get("score", 0), reverse=True):
+            entry_id = int(match["id"])
+            if entry_id in entry_map:
+                entry = entry_map[entry_id]
+                sorted_results.append(
+                    {**entry, "score": match.get("score", 0), "match_type": "semantic"}
+                )
+
+        # Add keyword-only matches (not in semantic results)
+        for entry in keyword_entries:
+            if entry["id"] not in semantic_ids:
+                sorted_results.append(
+                    {
+                        **entry,
+                        "score": 0,  # No semantic score
+                        "match_type": "keyword",
+                    }
+                )
 
         # Return HTML search results page
         planet = self._get_planet_config()

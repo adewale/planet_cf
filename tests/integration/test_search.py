@@ -82,14 +82,16 @@ async def test_search_returns_results_for_indexed_entries(mock_env_with_entries)
 
 
 @pytest.mark.asyncio
-async def test_search_returns_no_results_when_index_empty(mock_env_with_entries):
-    """Search should return 'no results' when Vectorize index is empty.
+async def test_hybrid_search_finds_entries_via_keyword_when_vectorize_empty(mock_env_with_entries):
+    """Hybrid search finds entries via keyword matching even when Vectorize is empty.
 
-    This test documents the bug behavior - entries in D1 but not indexed.
+    This tests the hybrid search behavior - keyword fallback catches entries
+    that semantic search might miss (e.g., when Vectorize is empty or query
+    doesn't match semantically).
     """
     from src.main import PlanetCF
 
-    # Don't populate Vectorize - simulating the bug condition
+    # Don't populate Vectorize - keyword search should still find entries
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
@@ -98,8 +100,9 @@ async def test_search_returns_no_results_when_index_empty(mock_env_with_entries)
 
     assert response.status == 200
     body = response.body if hasattr(response, "body") else str(response)
-    # With empty index, should show no results
-    assert "No results found" in body
+    # Hybrid search should find entries via keyword matching
+    assert "Test Entry" in body
+    assert "No results found" not in body
 
 
 @pytest.mark.asyncio
