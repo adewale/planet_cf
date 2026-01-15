@@ -1,0 +1,215 @@
+{
+  "description": "Sample blog posts for search accuracy testing",
+  "feeds": [
+    {
+      "id": 1,
+      "title": "Cloudflare Blog",
+      "url": "https://blog.cloudflare.com/rss",
+      "site_url": "https://blog.cloudflare.com"
+    },
+    {
+      "id": 2,
+      "title": "Workers Team Blog",
+      "url": "https://workers.cloudflare.com/rss",
+      "site_url": "https://workers.cloudflare.com"
+    },
+    {
+      "id": 3,
+      "title": "Engineering at Scale",
+      "url": "https://engineering.example.com/feed",
+      "site_url": "https://engineering.example.com"
+    }
+  ],
+  "entries": [
+    {
+      "id": 1,
+      "feed_id": 1,
+      "guid": "post-context-work-1",
+      "url": "https://blog.cloudflare.com/what-day-to-day-looks-like",
+      "title": "What the day-to-day looks like",
+      "author": "Rita Kozlov",
+      "content": "<p>When I joined Cloudflare as an engineer, I wasn't sure what to expect. Now, three years in, I want to share what the day-to-day work actually looks like. Context is everything when working on distributed systems at scale.</p><p>We work on systems that handle millions of requests per second. The context around each decision matters enormously.</p>",
+      "summary": "A look at daily engineering work at Cloudflare",
+      "published_at": "2024-03-15T10:00:00"
+    },
+    {
+      "id": 2,
+      "feed_id": 1,
+      "guid": "post-context-is-the-work",
+      "url": "https://blog.cloudflare.com/context-is-the-work",
+      "title": "Context is the work",
+      "author": "John Graham-Cumming",
+      "content": "<p>In software engineering, context is the work. Understanding the problem deeply before writing code is essential. This post explores why gathering context should be considered actual work, not just preparation for work.</p><p>Too often we rush to solutions without understanding the problem space.</p>",
+      "summary": "Why understanding context is essential to software engineering",
+      "published_at": "2024-02-20T14:30:00"
+    },
+    {
+      "id": 3,
+      "feed_id": 2,
+      "guid": "post-workers-python",
+      "url": "https://workers.cloudflare.com/python-workers-announcement",
+      "title": "Announcing Python Workers",
+      "author": "Kenton Varda",
+      "content": "<p>Today we're excited to announce Python support for Cloudflare Workers. You can now write serverless functions in Python that run at the edge, close to your users.</p><p>Python Workers use Pyodide to run Python in WebAssembly, giving you access to the Python ecosystem.</p>",
+      "summary": "Python now supported in Cloudflare Workers",
+      "published_at": "2024-04-01T09:00:00"
+    },
+    {
+      "id": 4,
+      "feed_id": 2,
+      "guid": "post-d1-database",
+      "url": "https://workers.cloudflare.com/d1-serverless-database",
+      "title": "D1: Serverless SQLite at the edge",
+      "author": "Aly Cabral",
+      "content": "<p>D1 is Cloudflare's serverless SQL database. It's built on SQLite and designed to work seamlessly with Workers. This post covers the architecture and how to get started.</p><p>Unlike traditional databases, D1 runs at the edge, reducing latency for read-heavy workloads.</p>",
+      "summary": "Introducing D1, a serverless database for Workers",
+      "published_at": "2024-01-15T16:00:00"
+    },
+    {
+      "id": 5,
+      "feed_id": 3,
+      "guid": "post-vectorize-search",
+      "url": "https://engineering.example.com/semantic-search-vectorize",
+      "title": "Building semantic search with Vectorize",
+      "author": "Sarah Chen",
+      "content": "<p>Semantic search goes beyond keyword matching to understand the meaning behind queries. In this post, we explore how to build semantic search using Cloudflare Vectorize and Workers AI.</p><p>Vector embeddings capture the semantic meaning of text, allowing you to find similar content even when the exact words don't match.</p>",
+      "summary": "How to implement semantic search with vector embeddings",
+      "published_at": "2024-05-10T11:00:00"
+    },
+    {
+      "id": 6,
+      "feed_id": 1,
+      "guid": "post-performance-tips",
+      "url": "https://blog.cloudflare.com/workers-performance-optimization",
+      "title": "10 tips for faster Workers",
+      "author": "Rita Kozlov",
+      "content": "<p>Performance matters. Here are 10 tips for making your Cloudflare Workers faster:</p><ol><li>Minimize cold starts</li><li>Use streaming responses</li><li>Cache aggressively</li><li>Avoid blocking operations</li><li>Use KV for hot data</li></ol><p>Each tip includes benchmarks and code examples.</p>",
+      "summary": "Optimize your Workers for maximum performance",
+      "published_at": "2024-03-01T08:00:00"
+    },
+    {
+      "id": 7,
+      "feed_id": 3,
+      "guid": "post-rss-aggregator",
+      "url": "https://engineering.example.com/building-rss-aggregator",
+      "title": "Building an RSS aggregator in 2024",
+      "author": "Mike Johnson",
+      "content": "<p>RSS is not dead! In this post, I show how to build a modern RSS/Atom feed aggregator using serverless technology. We'll cover feed parsing, content sanitization, and search.</p><p>The aggregator handles multiple feeds, deduplication, and provides a clean reading experience.</p>",
+      "summary": "A guide to building a feed aggregator with modern tools",
+      "published_at": "2024-06-01T13:00:00"
+    },
+    {
+      "id": 8,
+      "feed_id": 2,
+      "guid": "post-queues",
+      "url": "https://workers.cloudflare.com/queues-background-processing",
+      "title": "Background processing with Queues",
+      "author": "Greg McKeon",
+      "content": "<p>Cloudflare Queues enable background processing in Workers. Instead of blocking on slow operations, you can offload work to a queue for async processing.</p><p>This post covers queue configuration, message handling, and error recovery with dead letter queues.</p>",
+      "summary": "How to use Queues for async work in Workers",
+      "published_at": "2024-02-10T15:30:00"
+    },
+    {
+      "id": 9,
+      "feed_id": 1,
+      "guid": "post-birthday-week",
+      "url": "https://blog.cloudflare.com/birthday-week-2024-recap",
+      "title": "Birthday Week 2024: Everything we announced",
+      "author": "Matthew Prince",
+      "content": "<p>Birthday Week 2024 was our biggest yet! We announced new products including Workers AI improvements, expanded D1 capabilities, and new developer tools.</p><p>This recap covers all the announcements and what they mean for developers.</p>",
+      "summary": "All the announcements from Birthday Week 2024",
+      "published_at": "2024-09-30T12:00:00"
+    },
+    {
+      "id": 10,
+      "feed_id": 3,
+      "guid": "post-edge-computing",
+      "url": "https://engineering.example.com/edge-computing-patterns",
+      "title": "Edge computing patterns for web applications",
+      "author": "Lisa Park",
+      "content": "<p>Edge computing brings computation closer to users. This post explores common patterns: edge caching, geo-routing, A/B testing at the edge, and edge-side rendering.</p><p>Each pattern is illustrated with code examples and performance benchmarks.</p>",
+      "summary": "Design patterns for edge-first web applications",
+      "published_at": "2024-04-20T10:00:00"
+    }
+  ],
+  "test_queries": [
+    {
+      "query": "context is the work",
+      "expected_first_result_id": 2,
+      "expected_first_result_title": "Context is the work",
+      "match_type": "exact_title",
+      "description": "Exact title match should rank first"
+    },
+    {
+      "query": "what the day-to-day looks like now",
+      "expected_first_result_id": 1,
+      "expected_first_result_title": "What the day-to-day looks like",
+      "match_type": "title_in_query",
+      "description": "Query contains the title - should still match"
+    },
+    {
+      "query": "python workers",
+      "expected_first_result_id": 3,
+      "expected_first_result_title": "Announcing Python Workers",
+      "match_type": "query_in_title",
+      "description": "Partial title match"
+    },
+    {
+      "query": "D1 database",
+      "expected_first_result_id": 4,
+      "expected_first_result_title": "D1: Serverless SQLite at the edge",
+      "match_type": "query_in_title",
+      "description": "Query words appear in title"
+    },
+    {
+      "query": "semantic search",
+      "expected_first_result_id": 5,
+      "expected_first_result_title": "Building semantic search with Vectorize",
+      "match_type": "query_in_title",
+      "description": "Technical query matching title"
+    },
+    {
+      "query": "faster workers performance",
+      "expected_top_results": [6],
+      "description": "Should find performance tips post via keyword match"
+    },
+    {
+      "query": "RSS feed aggregator",
+      "expected_first_result_id": 7,
+      "expected_first_result_title": "Building an RSS aggregator in 2024",
+      "match_type": "keyword",
+      "description": "Content keyword match"
+    },
+    {
+      "query": "queues background processing",
+      "expected_first_result_id": 8,
+      "expected_first_result_title": "Background processing with Queues",
+      "match_type": "query_in_title",
+      "description": "Multi-word query in title"
+    },
+    {
+      "query": "birthday week announcements",
+      "expected_first_result_id": 9,
+      "expected_first_result_title": "Birthday Week 2024: Everything we announced",
+      "match_type": "query_in_title",
+      "description": "Partial match with synonyms"
+    },
+    {
+      "query": "edge caching patterns",
+      "expected_first_result_id": 10,
+      "expected_first_result_title": "Edge computing patterns for web applications",
+      "match_type": "keyword",
+      "description": "Query terms in content"
+    },
+    {
+      "query": "Rita Kozlov",
+      "expected_results_contain": [1, 6],
+      "description": "Author name search should return all posts by that author"
+    },
+    {
+      "query": "John Graham-Cumming context",
+      "expected_first_result_id": 2,
+      "description": "Author + topic should narrow results"
+    }
+  ]
+}

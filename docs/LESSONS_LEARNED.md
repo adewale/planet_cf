@@ -322,6 +322,47 @@ for entry in keyword_entries:
 
 ---
 
+## 15. Search Accuracy Requires Real Infrastructure Tests
+
+**Problem:** Mock-based tests pass but search doesn't work correctly in production.
+
+**Why mocks fail:**
+```python
+# MockVectorize returns ALL vectors for ANY query - no real similarity
+# MockAI returns [0.1, 0.1, ...] - not real semantic embeddings
+# MockD1 simulates LIKE but may differ from real D1 edge cases
+```
+
+**Solution:** Two-tier testing strategy:
+
+1. **Mock tests** for logic verification (fast, no network):
+   - Search ranking algorithm
+   - Title matching (bidirectional)
+   - Error handling
+
+2. **Real infrastructure tests** for integration (requires `wrangler dev --remote`):
+   - D1 LIKE query behavior
+   - Vectorize semantic similarity
+   - Workers AI embedding quality
+
+```python
+# tests/e2e/test_search_accuracy_real.py
+@pytest.mark.skipif(not os.environ.get("RUN_E2E_TESTS"))
+async def test_semantic_search_returns_results(client):
+    """Verifies real Vectorize similarity works."""
+    response = await client.get("/search", params={"q": "edge computing"})
+    assert response.status_code == 200
+```
+
+**Key insight:** Bidirectional title matching is critical:
+```python
+# Both should match the title "What the day-to-day looks like":
+"what the day-to-day looks like"      # Exact match
+"what the day-to-day looks like now"  # Query contains title
+```
+
+---
+
 ## Quick Reference: Common Gotchas
 
 | Issue | Solution |
@@ -335,3 +376,5 @@ for entry in keyword_entries:
 | Missing feed dates | Store NULL, don't fake current time |
 | SSRF via feed URLs | Block private IPs + metadata endpoints |
 | Search misses exact matches | Rank exact title matches first (score 1.0) |
+| Mock tests pass, prod fails | Add E2E tests against real infrastructure |
+| Query longer than title | Use bidirectional matching (title in query) |

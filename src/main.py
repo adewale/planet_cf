@@ -1976,18 +1976,23 @@ class Default(WorkerEntrypoint):
         query_lower = query.lower().strip()
 
         # First: Exact title matches get top priority
+        # Check bidirectionally: query in title OR title in query (user may quote imprecisely)
         for entry in keyword_entries:
             entry_title = (entry.get("title") or "").lower().strip()
-            if query_lower == entry_title or query_lower in entry_title:
-                # Exact or near-exact title match - boost to top
-                is_exact = query_lower == entry_title
-                sorted_results.append(
-                    {
-                        **entry,
-                        "score": 1.0 if is_exact else 0.95,  # Boost exact matches
-                        "match_type": "exact_title" if is_exact else "title_match",
-                    }
-                )
+            if not entry_title:
+                continue
+
+            # Exact match
+            if query_lower == entry_title:
+                sorted_results.append({**entry, "score": 1.0, "match_type": "exact_title"})
+                added_ids.add(entry["id"])
+            # Query contains title (user searched with extra words)
+            elif entry_title in query_lower:
+                sorted_results.append({**entry, "score": 0.98, "match_type": "title_in_query"})
+                added_ids.add(entry["id"])
+            # Title contains query (partial title match)
+            elif query_lower in entry_title:
+                sorted_results.append({**entry, "score": 0.95, "match_type": "query_in_title"})
                 added_ids.add(entry["id"])
 
         # Second: Semantic matches sorted by score (excluding already added)
