@@ -356,7 +356,12 @@ class SafeAI:
 
     async def run(self, model: str, inputs: dict) -> dict:
         """Run AI model and return Python dict result."""
-        result = await self._ai.run(model, inputs)
+        # Convert Python inputs dict to JavaScript for Workers AI
+        if HAS_PYODIDE and to_js is not None:
+            js_inputs = to_js(inputs, dict_converter=js.Object.fromEntries)
+            result = await self._ai.run(model, js_inputs)
+        else:
+            result = await self._ai.run(model, inputs)
         return _to_py_safe(result)
 
 
@@ -368,8 +373,14 @@ class SafeVectorize:
 
     async def query(self, vector, options: dict) -> dict:
         """Query the index and return Python dict with matches."""
-        result = await self._index.query(vector, options)
-        # Convert the result and its nested matches
+        # Convert Python vector and options to JavaScript for Vectorize
+        if HAS_PYODIDE and to_js is not None:
+            js_vector = to_js(vector)
+            js_options = to_js(options, dict_converter=js.Object.fromEntries)
+            result = await self._index.query(js_vector, js_options)
+        else:
+            result = await self._index.query(vector, options)
+        # Convert the result and its nested matches back to Python
         py_result = _to_py_safe(result)
         if py_result is None:
             return {"matches": []}
@@ -377,6 +388,11 @@ class SafeVectorize:
 
     async def upsert(self, vectors):
         """Upsert vectors into the index."""
+        # Convert Python list of dicts to JavaScript for Vectorize
+        # Without this, Pyodide passes a proxy that Vectorize may not understand
+        if HAS_PYODIDE and to_js is not None:
+            js_vectors = to_js(vectors, dict_converter=js.Object.fromEntries)
+            return await self._index.upsert(js_vectors)
         return await self._index.upsert(vectors)
 
     async def deleteByIds(self, ids: list[str]):
