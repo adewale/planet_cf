@@ -475,41 +475,41 @@ h1, h2, h3, h4, h5, h6 {
 header {
     background: var(--bg-primary);
     border-bottom: 1px solid var(--border-light);
-    padding: 1rem 1.5rem;
-    text-align: center;
+    padding: 0.5rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
 }
 
 header h1 {
-    margin-bottom: 0.25rem;
-    font-weight: 700;
-    font-size: 1.5rem;
-    letter-spacing: -0.02em;
+    margin: 0;
+    font-weight: 600;
+    font-size: 1.125rem;
+    letter-spacing: -0.01em;
     color: var(--text-primary);
-}
-
-header h1::before {
-    content: '';
-    display: inline-block;
-    width: 3px;
-    height: 1.25rem;
-    background: var(--accent-subtle);
-    margin-right: 0.625rem;
-    vertical-align: middle;
-    border-radius: 1px;
 }
 
 header p {
     color: var(--text-muted);
-    font-size: 1rem;
+    font-size: 0.8rem;
+    margin: 0;
+}
+
+header p::before {
+    content: '·';
+    margin-right: 0.5rem;
+    color: var(--border-medium);
 }
 
 header a {
-    color: var(--accent);
+    color: var(--text-primary);
     text-decoration: none;
 }
 
 header a:hover {
-    text-decoration: underline;
+    color: var(--accent);
 }
 
 .search-form {
@@ -979,10 +979,18 @@ button:hover {
 /* Responsive */
 @media (max-width: 768px) {
     header {
-        padding: 0.75rem 1rem;
+        padding: 0.5rem 1rem;
+        flex-direction: column;
+        gap: 0.125rem;
     }
     header h1 {
-        font-size: 1.25rem;
+        font-size: 1rem;
+    }
+    header p {
+        font-size: 0.75rem;
+    }
+    header p::before {
+        display: none;
     }
     .container {
         grid-template-columns: 1fr;
