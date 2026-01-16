@@ -203,3 +203,114 @@ class TestSignedCookies:
         # by checking it doesn't short-circuit on first byte mismatch
         # (We can't actually test timing, but we document the intent)
         assert verify_signed_cookie(cookie, SECRET) is not None
+
+
+# =============================================================================
+# Edge Case Tests
+# =============================================================================
+
+
+class TestSessionEdgeCases:
+    """Edge case tests for session handling."""
+
+    @freeze_time("2026-01-01 12:00:00")
+    def test_session_expiry_boundary(self):
+        """Cookie expiring exactly at current time is still valid (exp < check)."""
+        payload = {
+            "github_username": "testuser",
+            "exp": int(time.time()),  # Expires exactly now
+        }
+        cookie = create_signed_cookie(payload, SECRET)
+        # exp < time.time() check means exp==now is still valid (not less than)
+        # This is acceptable - the session expires within the same second
+        assert verify_signed_cookie(cookie, SECRET) is not None
+
+    @freeze_time("2026-01-01 12:00:00")
+    def test_session_very_old_timestamp(self):
+        """Very old exp timestamp is rejected."""
+        payload = {
+            "github_username": "testuser",
+            "exp": 0,  # Unix epoch
+        }
+        cookie = create_signed_cookie(payload, SECRET)
+        assert verify_signed_cookie(cookie, SECRET) is None
+
+    @freeze_time("2026-01-01 12:00:00")
+    def test_session_future_timestamp(self):
+        """Far future exp timestamp is accepted (no max check)."""
+        payload = {
+            "github_username": "testuser",
+            "exp": int(time.time()) + 86400 * 365 * 10,  # 10 years
+        }
+        cookie = create_signed_cookie(payload, SECRET)
+        verified = verify_signed_cookie(cookie, SECRET)
+        assert verified is not None
+
+    @freeze_time("2026-01-01 12:00:00")
+    def test_session_empty_avatar(self):
+        """Empty avatar URL is preserved."""
+        payload = {
+            "github_username": "testuser",
+            "avatar_url": "",
+            "exp": int(time.time()) + 3600,
+        }
+        cookie = create_signed_cookie(payload, SECRET)
+        verified = verify_signed_cookie(cookie, SECRET)
+        assert verified["avatar_url"] == ""
+
+    @freeze_time("2026-01-01 12:00:00")
+    def test_session_none_avatar(self):
+        """None avatar URL is preserved as null."""
+        payload = {
+            "github_username": "testuser",
+            "avatar_url": None,
+            "exp": int(time.time()) + 3600,
+        }
+        cookie = create_signed_cookie(payload, SECRET)
+        verified = verify_signed_cookie(cookie, SECRET)
+        assert verified["avatar_url"] is None
+
+    @freeze_time("2026-01-01 12:00:00")
+    def test_session_special_chars_username(self):
+        """Username with special characters is preserved."""
+        payload = {
+            "github_username": "user-name_123",
+            "exp": int(time.time()) + 3600,
+        }
+        cookie = create_signed_cookie(payload, SECRET)
+        verified = verify_signed_cookie(cookie, SECRET)
+        assert verified["github_username"] == "user-name_123"
+
+    @freeze_time("2026-01-01 12:00:00")
+    def test_session_unicode_username(self):
+        """Unicode characters in payload are handled."""
+        payload = {
+            "github_username": "test",
+            "display_name": "Test User \u2603",  # Snowman
+            "exp": int(time.time()) + 3600,
+        }
+        cookie = create_signed_cookie(payload, SECRET)
+        verified = verify_signed_cookie(cookie, SECRET)
+        assert verified["display_name"] == "Test User \u2603"
+
+    def test_signature_length(self):
+        """Signature is valid SHA256 hex (64 characters)."""
+        payload = {"github_username": "testuser", "exp": int(time.time()) + 3600}
+        cookie = create_signed_cookie(payload, SECRET)
+        signature = cookie.split(".")[-1]
+        assert len(signature) == 64
+        # Should be valid hex
+        int(signature, 16)
+
+    @freeze_time("2026-01-01 12:00:00")
+    def test_session_very_large_payload(self):
+        """Large payload is handled (within limits)."""
+        payload = {
+            "github_username": "testuser",
+            "extra_data": "x" * 1000,  # 1KB of data
+            "exp": int(time.time()) + 3600,
+        }
+        cookie = create_signed_cookie(payload, SECRET)
+        verified = verify_signed_cookie(cookie, SECRET)
+        assert verified is not None
+        assert len(verified["extra_data"]) == 1000

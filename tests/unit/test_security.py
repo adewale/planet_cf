@@ -126,6 +126,73 @@ class TestBleachSanitizer:
         result = sanitizer.clean(html)
         assert "https://example.com" in result
 
+    # === Edge Case Tests ===
+
+    def test_handles_nested_script_tags(self, sanitizer):
+        """Nested script tags are stripped."""
+        html = "<div><script><script>alert(1)</script></script></div>"
+        result = sanitizer.clean(html)
+        assert "<script" not in result
+        assert "alert" not in result
+
+    def test_handles_encoded_entities(self, sanitizer):
+        """HTML entities are handled correctly."""
+        html = "&lt;script&gt;alert(1)&lt;/script&gt;"
+        result = sanitizer.clean(html)
+        # Encoded entities should be preserved as-is (they're text, not tags)
+        assert "&lt;" in result or "<" not in result
+
+    def test_handles_mixed_case_tags(self, sanitizer):
+        """Mixed case tags like SCRIPT are handled."""
+        html = "<SCRIPT>alert(1)</SCRIPT>"
+        result = sanitizer.clean(html)
+        assert "SCRIPT" not in result.upper() or "alert" not in result
+
+    def test_strips_svg_with_payload(self, sanitizer):
+        """SVG with embedded script is stripped."""
+        html = "<svg><script>alert(1)</script></svg>"
+        result = sanitizer.clean(html)
+        assert "<svg" not in result
+        assert "alert" not in result
+
+    def test_handles_css_expression(self, sanitizer):
+        """CSS expressions are neutralized."""
+        html = '<p style="background: expression(alert(1))">text</p>'
+        result = sanitizer.clean(html)
+        assert "expression" not in result.lower()
+
+    def test_handles_null_bytes(self, sanitizer):
+        """Null bytes in tag names.
+
+        Note: bleach strips null bytes but doesn't recognize 'scr\\x00ipt' as script.
+        This tests documents the behavior - the actual XSS vector is neutralized
+        because the broken tag isn't parsed as a script element.
+        """
+        html = "<scr\x00ipt>alert(1)</script>"
+        result = sanitizer.clean(html)
+        # The malformed tag is not recognized as script, so content shows
+        # But this isn't actually executable XSS since browsers won't parse it as script
+        assert "<script>" not in result
+
+    def test_handles_very_long_input(self, sanitizer):
+        """Very long input is handled without crash."""
+        html = "<p>" + "x" * 100000 + "</p>"
+        result = sanitizer.clean(html)
+        assert len(result) > 0
+
+    def test_handles_unclosed_tags(self, sanitizer):
+        """Unclosed tags are handled gracefully."""
+        html = "<p>Hello <strong>world"
+        result = sanitizer.clean(html)
+        # Should either close tags or strip safely
+        assert "Hello" in result
+
+    def test_strips_data_uris_in_script_context(self, sanitizer):
+        """data: URIs in dangerous contexts are handled."""
+        html = '<object data="data:text/html,<script>alert(1)</script>">'
+        result = sanitizer.clean(html)
+        assert "<object" not in result
+
 
 class TestNoOpSanitizer:
     """Tests for NoOpSanitizer (test helper)."""

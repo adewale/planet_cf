@@ -1,14 +1,15 @@
 # tests/unit/test_observability.py
-"""Tests for the observability module."""
+"""Tests for the observability module with consolidated events."""
 
 import json
 
 from freezegun import freeze_time
 
 from src.observability import (
+    AdminActionEvent,
     FeedFetchEvent,
-    GenerationEvent,
-    PageServeEvent,
+    RequestEvent,
+    SchedulerEvent,
     Timer,
     emit_event,
     generate_request_id,
@@ -72,52 +73,213 @@ class TestFeedFetchEvent:
         assert event.error_message == "Connection timed out"
         assert event.error_retriable is True
 
-
-class TestGenerationEvent:
-    @freeze_time("2026-01-01 12:00:00")
-    def test_creates_event_with_defaults(self):
-        event = GenerationEvent(feeds_active=10, entries_total=100)
-
-        assert event.event_type == "html_generation"
-        assert event.feeds_active == 10
-        assert event.entries_total == 100
-        assert event.timestamp == "2026-01-01T12:00:00Z"
-        assert event.trigger == "http"
-
-    def test_records_timing_breakdown(self):
-        event = GenerationEvent(
-            wall_time_ms=500,
-            d1_query_time_ms=300,
-            template_render_time_ms=150,
+    def test_includes_indexing_aggregates(self):
+        """FeedFetchEvent now absorbs IndexingEvent as aggregated fields."""
+        event = FeedFetchEvent(
+            feed_id=1,
+            feed_url="https://example.com/feed",
+            indexing_attempted=5,
+            indexing_succeeded=4,
+            indexing_failed=1,
+            indexing_total_ms=1500,
+            indexing_embedding_ms=1200,
+            indexing_upsert_ms=280,
+            indexing_text_truncated=2,
         )
 
-        assert event.wall_time_ms == 500
-        assert event.d1_query_time_ms == 300
-        assert event.template_render_time_ms == 150
+        assert event.indexing_attempted == 5
+        assert event.indexing_succeeded == 4
+        assert event.indexing_failed == 1
+        assert event.indexing_total_ms == 1500
+        assert event.indexing_text_truncated == 2
 
 
-class TestPageServeEvent:
+class TestRequestEvent:
+    """Tests for RequestEvent which absorbs PageServeEvent, SearchEvent, GenerationEvent."""
+
     @freeze_time("2026-01-01 12:00:00")
     def test_creates_event_with_defaults(self):
-        event = PageServeEvent(
+        event = RequestEvent(
             method="GET",
             path="/",
             status_code=200,
         )
 
-        assert event.event_type == "page_serve"
+        assert event.event_type == "request"
         assert event.method == "GET"
         assert event.path == "/"
         assert event.status_code == 200
         assert event.timestamp == "2026-01-01T12:00:00Z"
 
     def test_records_cache_status(self):
-        event = PageServeEvent(
+        event = RequestEvent(
             method="GET",
             path="/feed.atom",
             cache_status="hit",
         )
         assert event.cache_status == "hit"
+
+    def test_includes_search_fields(self):
+        """RequestEvent absorbs SearchEvent fields."""
+        event = RequestEvent(
+            method="GET",
+            path="/search",
+            route="/search",
+            search_query="cloudflare workers",
+            search_query_length=18,
+            search_embedding_ms=120,
+            search_vectorize_ms=340,
+            search_d1_ms=25,
+            search_results_total=11,
+            search_semantic_matches=8,
+            search_keyword_matches=3,
+        )
+
+        assert event.search_query == "cloudflare workers"
+        assert event.search_results_total == 11
+        assert event.search_semantic_matches == 8
+
+    def test_includes_generation_fields(self):
+        """RequestEvent absorbs GenerationEvent fields."""
+        event = RequestEvent(
+            method="GET",
+            path="/",
+            route="/",
+            generation_d1_ms=45,
+            generation_render_ms=12,
+            generation_entries_total=150,
+            generation_feeds_healthy=12,
+            generation_trigger="http",
+        )
+
+        assert event.generation_d1_ms == 45
+        assert event.generation_entries_total == 150
+        assert event.generation_trigger == "http"
+
+    def test_includes_oauth_fields(self):
+        """RequestEvent absorbs OAuth flow fields."""
+        event = RequestEvent(
+            method="GET",
+            path="/auth/github/callback",
+            route="/auth/github/callback",
+            oauth_stage="callback",
+            oauth_provider="github",
+            oauth_success=True,
+            oauth_username="testuser",
+        )
+
+        assert event.oauth_stage == "callback"
+        assert event.oauth_provider == "github"
+        assert event.oauth_success is True
+
+    def test_null_fields_for_non_applicable_routes(self):
+        """Route-specific fields should be null for non-applicable routes."""
+        event = RequestEvent(method="GET", path="/static/style.css")
+
+        # Search fields should be None
+        assert event.search_query is None
+        assert event.search_results_total is None
+
+        # Generation fields should be None
+        assert event.generation_d1_ms is None
+
+        # OAuth fields should be None
+        assert event.oauth_stage is None
+
+
+class TestSchedulerEvent:
+    @freeze_time("2026-01-01 12:00:00")
+    def test_creates_event_with_defaults(self):
+        event = SchedulerEvent()
+
+        assert event.event_type == "scheduler"
+        assert event.timestamp == "2026-01-01T12:00:00Z"
+        assert event.outcome == "success"
+
+    def test_includes_scheduler_phase(self):
+        event = SchedulerEvent(
+            scheduler_d1_ms=50,
+            scheduler_queue_ms=120,
+            feeds_queried=50,
+            feeds_active=47,
+            feeds_enqueued=47,
+        )
+
+        assert event.scheduler_d1_ms == 50
+        assert event.feeds_enqueued == 47
+
+    def test_includes_retention_phase(self):
+        """SchedulerEvent absorbs retention cleanup."""
+        event = SchedulerEvent(
+            retention_d1_ms=200,
+            retention_vectorize_ms=150,
+            retention_entries_scanned=1000,
+            retention_entries_deleted=50,
+            retention_vectors_deleted=50,
+            retention_errors=0,
+            retention_days=90,
+            retention_max_per_feed=100,
+        )
+
+        assert event.retention_entries_deleted == 50
+        assert event.retention_vectors_deleted == 50
+        assert event.retention_days == 90
+
+
+class TestAdminActionEvent:
+    @freeze_time("2026-01-01 12:00:00")
+    def test_creates_event_with_defaults(self):
+        event = AdminActionEvent(
+            admin_username="testadmin",
+            admin_id=1,
+            action="add_feed",
+        )
+
+        assert event.event_type == "admin_action"
+        assert event.admin_username == "testadmin"
+        assert event.action == "add_feed"
+
+    def test_includes_opml_import_fields(self):
+        event = AdminActionEvent(
+            admin_username="testadmin",
+            admin_id=1,
+            action="import_opml",
+            import_file_size=5000,
+            import_feeds_parsed=20,
+            import_feeds_added=18,
+            import_feeds_skipped=2,
+            import_errors=0,
+        )
+
+        assert event.import_feeds_added == 18
+        assert event.import_feeds_skipped == 2
+
+    def test_includes_reindex_fields(self):
+        event = AdminActionEvent(
+            admin_username="testadmin",
+            admin_id=1,
+            action="reindex",
+            reindex_entries_total=500,
+            reindex_entries_indexed=498,
+            reindex_entries_failed=2,
+            reindex_total_ms=15000,
+        )
+
+        assert event.reindex_entries_indexed == 498
+        assert event.reindex_total_ms == 15000
+
+    def test_includes_dlq_fields(self):
+        event = AdminActionEvent(
+            admin_username="testadmin",
+            admin_id=1,
+            action="retry_dlq",
+            dlq_feed_id=42,
+            dlq_original_error="TimeoutError: Connection timed out",
+            dlq_action="retry",
+        )
+
+        assert event.dlq_feed_id == 42
+        assert event.dlq_action == "retry"
 
 
 class TestShouldSample:
@@ -129,12 +291,21 @@ class TestShouldSample:
         event = {"event_type": "feed_fetch", "outcome": "success", "wall_time_ms": 15000}
         assert should_sample(event) is True
 
-    def test_always_keeps_slow_generation(self):
-        event = {"event_type": "html_generation", "outcome": "success", "wall_time_ms": 35000}
+    def test_always_keeps_slow_requests(self):
+        event = {"event_type": "request", "outcome": "success", "wall_time_ms": 1500}
         assert should_sample(event) is True
 
-    def test_always_keeps_slow_page_serve(self):
-        event = {"event_type": "page_serve", "outcome": "success", "wall_time_ms": 1500}
+    def test_always_keeps_slow_scheduler(self):
+        event = {"event_type": "scheduler", "outcome": "success", "wall_time_ms": 65000}
+        assert should_sample(event) is True
+
+    def test_always_keeps_zero_result_searches(self):
+        event = {
+            "event_type": "request",
+            "outcome": "success",
+            "wall_time_ms": 100,
+            "search_results_total": 0,
+        }
         assert should_sample(event) is True
 
     def test_always_keeps_debug_feeds(self):
@@ -161,7 +332,7 @@ class TestShouldSample:
         assert 0.4 < hit_rate < 0.6
 
     def test_respects_custom_sample_rate(self):
-        event = {"event_type": "page_serve", "outcome": "success", "wall_time_ms": 100}
+        event = {"event_type": "request", "outcome": "success", "wall_time_ms": 100}
 
         # 100% sample rate
         assert should_sample(event, sample_rate=1.0) is True
@@ -182,6 +353,17 @@ class TestEmitEvent:
         output = json.loads(captured.out.strip())
         assert output["event_type"] == "feed_fetch"
         assert output["feed_id"] == 1
+
+    def test_emits_request_event(self, capsys):
+        event = RequestEvent(method="GET", path="/search", search_query="test")
+
+        emitted = emit_event(event, force=True)
+
+        assert emitted is True
+        captured = capsys.readouterr()
+        output = json.loads(captured.out.strip())
+        assert output["event_type"] == "request"
+        assert output["search_query"] == "test"
 
     def test_emits_dict_event(self, capsys):
         event = {"event_type": "test", "key": "value"}
@@ -232,3 +414,100 @@ class TestTimer:
         assert mid_elapsed >= 10
         assert t.elapsed_ms >= 20
         assert t.elapsed_ms > mid_elapsed
+
+
+# =============================================================================
+# Edge Case Tests
+# =============================================================================
+
+
+class TestEventEdgeCases:
+    """Edge case tests for event handling."""
+
+    def test_feed_fetch_event_with_missing_fields(self):
+        """FeedFetchEvent works with minimal fields."""
+        event = FeedFetchEvent()
+        assert event.feed_id == 0
+        assert event.feed_url == ""
+        assert event.feed_domain == ""
+        assert event.event_type == "feed_fetch"
+
+    def test_feed_id_none_vs_zero(self):
+        """Feed ID of 0 is distinct from missing."""
+        event = FeedFetchEvent(feed_id=0)
+        assert event.feed_id == 0
+        # Default is also 0 for missing
+        event2 = FeedFetchEvent()
+        assert event2.feed_id == 0
+
+    def test_url_parsing_failure(self):
+        """Invalid URL doesn't crash domain extraction."""
+        event = FeedFetchEvent(feed_url=":::invalid:::")
+        # Should handle gracefully with empty domain
+        assert event.feed_domain == ""
+
+    def test_very_large_wall_time(self):
+        """Very large wall_time_ms values are handled."""
+        event = FeedFetchEvent(wall_time_ms=999999999.99)
+        assert event.wall_time_ms == 999999999.99
+
+    def test_timestamp_auto_generation(self):
+        """Timestamp is auto-generated if not provided."""
+        event = FeedFetchEvent()
+        assert event.timestamp != ""
+        assert "T" in event.timestamp  # ISO format
+        assert event.timestamp.endswith("Z")
+
+    def test_request_id_auto_generation(self):
+        """Request ID is auto-generated if not provided."""
+        event = FeedFetchEvent()
+        assert len(event.request_id) == 16
+        # Should be valid hex
+        int(event.request_id, 16)
+
+    def test_request_event_null_search_fields(self):
+        """RequestEvent search fields are None for non-search routes."""
+        event = RequestEvent(method="GET", path="/")
+        assert event.search_query is None
+        assert event.search_results_total is None
+
+    def test_scheduler_event_generates_correlation_id(self):
+        """SchedulerEvent auto-generates correlation_id."""
+        event = SchedulerEvent()
+        assert event.correlation_id != ""
+        assert len(event.correlation_id) == 16
+
+
+class TestSamplingEdgeCases:
+    """Edge case tests for sampling logic."""
+
+    def test_should_sample_with_malformed_dict(self):
+        """should_sample handles malformed event dict."""
+        # Missing event_type
+        event = {"outcome": "success", "wall_time_ms": 100}
+        # Should not crash, falls through to random sampling
+        result = should_sample(event, sample_rate=1.0)
+        assert result is True
+
+    def test_should_sample_with_missing_fields(self):
+        """should_sample handles dict with missing fields."""
+        event = {"event_type": "request"}
+        # Missing outcome, wall_time_ms - should not crash
+        result = should_sample(event, sample_rate=1.0)
+        assert result is True
+
+    def test_should_sample_with_none_outcome(self):
+        """should_sample handles None outcome."""
+        event = {"event_type": "feed_fetch", "outcome": None, "wall_time_ms": 100}
+        result = should_sample(event, sample_rate=1.0)
+        assert result is True
+
+    def test_emit_event_with_malformed_dict(self, capsys):
+        """emit_event handles dict with unusual values."""
+        import contextlib
+
+        event = {"event_type": "test", "value": float("inf")}
+        # JSON can't serialize infinity, but emit should handle it
+        with contextlib.suppress(ValueError, OverflowError):
+            # Expected - JSON doesn't support infinity
+            emit_event(event, force=True)

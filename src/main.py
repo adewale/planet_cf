@@ -19,6 +19,7 @@ import secrets
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import feedparser
@@ -46,11 +47,10 @@ except ImportError:
 
 from models import BleachSanitizer
 from observability import (
+    AdminActionEvent,
     FeedFetchEvent,
-    GenerationEvent,
-    IndexingEvent,
-    PageServeEvent,
-    SearchEvent,
+    RequestEvent,
+    SchedulerEvent,
     Timer,
     emit_event,
 )
@@ -78,6 +78,8 @@ USER_AGENT = "PlanetCF/1.0 (+https://planetcf.com; contact@planetcf.com)"
 SESSION_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
 # Security: Maximum search query length to prevent DoS
 MAX_SEARCH_QUERY_LENGTH = 1000
+# Standardized error message truncation length
+ERROR_MESSAGE_MAX_LENGTH = 200
 
 # Retention policy defaults (can be overridden via env vars)
 DEFAULT_RETENTION_DAYS = 90  # Default to 90 days
@@ -87,6 +89,10 @@ DEFAULT_MAX_ENTRIES_PER_FEED = 100  # Max entries to keep per feed
 DEFAULT_EMBEDDING_MAX_CHARS = 2000  # Max chars to embed per entry
 DEFAULT_SEARCH_SCORE_THRESHOLD = 0.3  # Minimum similarity score (0.0-1.0)
 DEFAULT_SEARCH_TOP_K = 50  # Max semantic search results before filtering
+
+# Feed failure thresholds (can be overridden via env vars)
+DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD = 10  # Consecutive failures before auto-deactivate
+DEFAULT_FEED_FAILURE_THRESHOLD = 3  # Consecutive failures to show in DLQ
 
 # HTML sanitizer instance (uses settings from types.py)
 _sanitizer = BleachSanitizer()
@@ -138,7 +144,7 @@ def _safe_str(value) -> str | None:
     return str(py_val) if py_val else None
 
 
-def _to_py_primitive(value):
+def _to_py_primitive(value) -> Any:
     """
     Force convert a value to a Python primitive type.
 
@@ -190,7 +196,7 @@ def _to_py_primitive(value):
         return None
 
 
-def _to_py_safe(value):
+def _to_py_safe(value) -> Any:
     """
     Safely convert a JsProxy value to Python, handling undefined.
 
@@ -250,7 +256,7 @@ def _to_py_list(js_array) -> list[dict]:
         return list(js_array)
 
 
-def _to_d1_value(value):
+def _to_d1_value(value) -> Any:
     """
     Convert a Python value to a D1-safe value.
 
@@ -319,7 +325,7 @@ class SafeD1Statement:
         result = await self._stmt.first()
         return _to_py_safe(result)
 
-    async def all(self):
+    async def all(self) -> Any:
         """Execute and return all results with Python list of dicts.
 
         Returns an object with .results (list[dict]) and .success (bool)
@@ -338,7 +344,7 @@ class SafeD1Statement:
             success=getattr(result, "success", True),
         )
 
-    async def run(self):
+    async def run(self) -> Any:
         """Execute statement (for INSERT/UPDATE/DELETE)."""
         return await self._stmt.run()
 
@@ -531,7 +537,7 @@ class SafeEnv:
 # =============================================================================
 
 
-def log_op(event_type: str, **kwargs) -> None:
+def _log_op(event_type: str, **kwargs) -> None:
     """
     Log an operational event as structured JSON.
 
@@ -551,7 +557,7 @@ def log_op(event_type: str, **kwargs) -> None:
 # =============================================================================
 
 
-def html_response(content: str, cache_max_age: int = 3600) -> Response:
+def _html_response(content: str, cache_max_age: int = 3600) -> Response:
     """Create an HTML response with caching and security headers."""
     # Content Security Policy - defense in depth against XSS
     # - default-src 'self': Only allow same-origin resources by default
@@ -584,7 +590,7 @@ def html_response(content: str, cache_max_age: int = 3600) -> Response:
     )
 
 
-def json_response(data: dict, status: int = 200) -> Response:
+def _json_response(data: dict, status: int = 200) -> Response:
     """Create a JSON response."""
     return Response(
         json.dumps(data),
@@ -593,17 +599,17 @@ def json_response(data: dict, status: int = 200) -> Response:
     )
 
 
-def json_error(message: str, status: int = 400) -> Response:
+def _json_error(message: str, status: int = 400) -> Response:
     """Create a JSON error response."""
-    return json_response({"error": message}, status=status)
+    return _json_response({"error": message}, status=status)
 
 
-def redirect_response(location: str) -> Response:
+def _redirect_response(location: str) -> Response:
     """Create a redirect response."""
     return Response("", status=302, headers={"Location": location})
 
 
-def feed_response(content: str, content_type: str, cache_max_age: int = 3600) -> Response:
+def _feed_response(content: str, content_type: str, cache_max_age: int = 3600) -> Response:
     """Create a feed response (Atom/RSS/OPML) with caching headers."""
     return Response(
         content,
@@ -649,6 +655,29 @@ class Default(WorkerEntrypoint):
         object.__setattr__(self, "_env_from_runtime", value)
         object.__setattr__(self, "_cached_safe_env", None)  # Clear cache
 
+    def _get_deployment_context(self) -> dict:
+        """
+        Get deployment context from environment for observability.
+
+        Returns dict with:
+        - worker_version: Deployment version (e.g., "1.2.3" or commit hash)
+        - deployment_environment: Environment name (e.g., "production", "staging")
+        """
+        return {
+            "worker_version": getattr(self.env, "DEPLOYMENT_VERSION", None) or "",
+            "deployment_environment": getattr(self.env, "DEPLOYMENT_ENVIRONMENT", None) or "",
+        }
+
+    def _get_feed_timeout(self) -> int:
+        """Get feed timeout from environment, default 60 seconds."""
+        val = getattr(self.env, "FEED_TIMEOUT_SECONDS", None)
+        return int(val) if val else FEED_TIMEOUT_SECONDS
+
+    def _get_http_timeout(self) -> int:
+        """Get HTTP timeout from environment, default 30 seconds."""
+        val = getattr(self.env, "HTTP_TIMEOUT_SECONDS", None)
+        return int(val) if val else HTTP_TIMEOUT_SECONDS
+
     # =========================================================================
     # Cron Handler - Scheduler
     # =========================================================================
@@ -673,32 +702,73 @@ class Default(WorkerEntrypoint):
         - Accurate dead-lettering (DLQ shows exactly which feeds fail)
         - Parallel processing (consumers can scale independently)
         """
+        # Initialize SchedulerEvent for observability
+        # Note: correlation_id is auto-generated in __post_init__
+        deployment = self._get_deployment_context()
+        sched_event = SchedulerEvent(
+            worker_version=deployment["worker_version"],
+            deployment_environment=deployment["deployment_environment"],
+        )
 
-        # Get all active feeds from D1
-        result = await self.env.DB.prepare("""
-            SELECT id, url, etag, last_modified
-            FROM feeds
-            WHERE is_active = 1
-        """).all()
+        with Timer() as total_timer:
+            try:
+                # Get all active feeds from D1
+                with Timer() as d1_timer:
+                    result = await self.env.DB.prepare("""
+                        SELECT id, url, etag, last_modified
+                        FROM feeds
+                        WHERE is_active = 1
+                    """).all()
 
-        feeds = _to_py_list(result.results)
-        enqueue_count = 0
+                sched_event.scheduler_d1_ms = d1_timer.elapsed_ms
+                feeds = _to_py_list(result.results)
+                sched_event.feeds_queried = len(feeds)
+                sched_event.feeds_active = len(feeds)
 
-        # Enqueue each feed as a SEPARATE message
-        # Do NOT batch multiple feeds into one message
-        for feed in feeds:
-            message = {
-                "feed_id": feed["id"],
-                "url": feed["url"],
-                "etag": feed.get("etag"),
-                "last_modified": feed.get("last_modified"),
-                "scheduled_at": datetime.utcnow().isoformat(),
-            }
+                enqueue_count = 0
 
-            await self.env.FEED_QUEUE.send(message)
-            enqueue_count += 1
+                # Enqueue each feed as a SEPARATE message
+                # Do NOT batch multiple feeds into one message
+                with Timer() as queue_timer:
+                    for feed in feeds:
+                        message = {
+                            "feed_id": feed["id"],
+                            "url": feed["url"],
+                            "etag": feed.get("etag"),
+                            "last_modified": feed.get("last_modified"),
+                            "scheduled_at": datetime.utcnow().isoformat(),
+                            # Cross-boundary correlation: link scheduler -> feed fetch
+                            "correlation_id": sched_event.correlation_id,
+                        }
 
-        log_op("scheduler_complete", feeds_enqueued=enqueue_count)
+                        await self.env.FEED_QUEUE.send(message)
+                        enqueue_count += 1
+
+                sched_event.scheduler_queue_ms = queue_timer.elapsed_ms
+                sched_event.feeds_enqueued = enqueue_count
+
+                # Run retention policy after enqueueing feeds
+                # This ensures old entries are cleaned up once per cron cycle
+                retention_stats = await self._apply_retention_policy()
+                sched_event.retention_d1_ms = retention_stats.get("d1_ms", 0)
+                sched_event.retention_vectorize_ms = retention_stats.get("vectorize_ms", 0)
+                sched_event.retention_entries_scanned = retention_stats.get("entries_scanned", 0)
+                sched_event.retention_entries_deleted = retention_stats.get("entries_deleted", 0)
+                sched_event.retention_vectors_deleted = retention_stats.get("vectors_deleted", 0)
+                sched_event.retention_errors = retention_stats.get("errors", 0)
+                sched_event.retention_days = retention_stats.get("retention_days", 0)
+                sched_event.retention_max_per_feed = retention_stats.get("max_per_feed", 0)
+
+                sched_event.outcome = "success"
+
+            except Exception as e:
+                sched_event.outcome = "error"
+                sched_event.error_type = type(e).__name__
+                sched_event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
+                raise
+
+        sched_event.wall_time_ms = total_timer.elapsed_ms
+        emit_event(sched_event)
 
         return {"enqueued": enqueue_count}
 
@@ -716,19 +786,23 @@ class Default(WorkerEntrypoint):
         Note: Workers Python runtime passes (batch, env, ctx) but we use self.env from __init__.
         """
 
-        log_op("queue_batch_received", batch_size=len(batch.messages))
+        _log_op("queue_batch_received", batch_size=len(batch.messages))
 
         for message in batch.messages:
             # CRITICAL: Convert JsProxy message body to Python dict
             feed_job_raw = message.body
             feed_job = _to_py_safe(feed_job_raw)
             if not feed_job or not isinstance(feed_job, dict):
-                log_op("queue_message_invalid", body_type=type(feed_job_raw).__name__)
+                _log_op("queue_message_invalid", body_type=type(feed_job_raw).__name__)
                 message.ack()  # Don't retry invalid messages
                 continue
 
             feed_url = feed_job.get("url", "unknown")
             feed_id = feed_job.get("feed_id", 0)
+            correlation_id = feed_job.get("correlation_id", "")
+
+            # Get deployment context for observability
+            deployment = self._get_deployment_context()
 
             # Initialize wide event for this feed fetch
             event = FeedFetchEvent(
@@ -736,36 +810,42 @@ class Default(WorkerEntrypoint):
                 feed_url=feed_url,
                 queue_message_id=str(getattr(message, "id", "")),
                 queue_attempt=getattr(message, "attempts", 1),
+                # Deployment context
+                worker_version=deployment["worker_version"],
+                deployment_environment=deployment["deployment_environment"],
+                # Cross-boundary correlation from scheduler
+                correlation_id=correlation_id,
             )
 
+            feed_timeout = self._get_feed_timeout()
             with Timer() as timer:
                 try:
                     # Wrap entire feed processing in a timeout
                     # This is WALL TIME, not CPU time - network I/O counts here
                     result = await asyncio.wait_for(
-                        self._process_single_feed(feed_job, event), timeout=FEED_TIMEOUT_SECONDS
+                        self._process_single_feed(feed_job, event), timeout=feed_timeout
                     )
 
-                    event.wall_time_ms = timer.elapsed()
+                    event.wall_time_ms = timer.elapsed_ms
                     event.outcome = "success"
                     event.entries_added = result.get("entries_added", 0)
                     event.entries_found = result.get("entries_found", 0)
                     message.ack()
 
                 except TimeoutError:
-                    event.wall_time_ms = timer.elapsed()
+                    event.wall_time_ms = timer.elapsed_ms
                     event.outcome = "error"
                     event.error_type = "TimeoutError"
-                    event.error_message = f"Timeout after {FEED_TIMEOUT_SECONDS}s"
+                    event.error_message = f"Timeout after {feed_timeout}s"
                     event.error_retriable = True
                     await self._record_feed_error(feed_id, "Timeout")
                     message.retry()
 
                 except Exception as e:
-                    event.wall_time_ms = timer.elapsed()
+                    event.wall_time_ms = timer.elapsed_ms
                     event.outcome = "error"
                     event.error_type = type(e).__name__
-                    event.error_message = str(e)[:500]
+                    event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
                     event.error_retriable = not isinstance(e, ValueError)
                     await self._record_feed_error(feed_id, str(e))
                     message.retry()
@@ -773,7 +853,9 @@ class Default(WorkerEntrypoint):
             # Emit wide event (sampling applied)
             emit_event(event)
 
-    async def _process_single_feed(self, job, event: FeedFetchEvent | None = None):
+    async def _process_single_feed(
+        self, job: dict, event: FeedFetchEvent | None = None
+    ) -> dict[str, Any]:
         """
         Fetch, parse, and store a single feed.
 
@@ -803,7 +885,7 @@ class Default(WorkerEntrypoint):
         # Fetch using boundary-layer safe_http_fetch
         with Timer() as http_timer:
             http_response = await safe_http_fetch(
-                url, headers=headers, timeout_seconds=HTTP_TIMEOUT_SECONDS
+                url, headers=headers, timeout_seconds=self._get_http_timeout()
             )
 
         # Extract normalized response data (all values are Python)
@@ -846,7 +928,7 @@ class Default(WorkerEntrypoint):
             # Note: We can't distinguish redirect types with fetch API
             # Treat any redirect as potentially permanent
             await self._update_feed_url(feed_id, final_url)
-            log_op("feed_url_updated", old_url=url, new_url=final_url)
+            _log_op("feed_url_updated", old_url=url, new_url=final_url)
 
         # Check for HTTP errors
         if status_code >= 400:
@@ -873,26 +955,40 @@ class Default(WorkerEntrypoint):
         if event:
             event.entries_found = entries_found
 
-        log_op("feed_entries_found", feed_id=feed_id, entries_count=entries_found)
+        _log_op("feed_entries_found", feed_id=feed_id, entries_count=entries_found)
 
         for entry in entries_list:
             # Ensure entry is Python dict (boundary conversion handled by _to_py_safe)
             py_entry = _to_py_safe(entry)
             if not isinstance(py_entry, dict):
-                log_op("entry_not_dict", entry_type=type(py_entry).__name__)
+                _log_op("entry_not_dict", entry_type=type(py_entry).__name__)
                 continue
 
-            entry_id = await self._upsert_entry(feed_id, py_entry)
+            result = await self._upsert_entry(feed_id, py_entry)
+            entry_id = result.get("entry_id") if result else None
             if entry_id:
                 entries_added += 1
+                # Aggregate indexing stats onto FeedFetchEvent
+                if event and result.get("indexing_stats"):
+                    stats = result["indexing_stats"]
+                    event.indexing_attempted += 1
+                    if stats.get("success"):
+                        event.indexing_succeeded += 1
+                    else:
+                        event.indexing_failed += 1
+                    event.indexing_total_ms += stats.get("total_ms", 0)
+                    event.indexing_embedding_ms += stats.get("embedding_ms", 0)
+                    event.indexing_upsert_ms += stats.get("upsert_ms", 0)
+                    if stats.get("text_truncated"):
+                        event.indexing_text_truncated += 1
             else:
                 entry_title = str(py_entry.get("title", ""))[:50]
-                log_op("entry_upsert_failed", feed_id=feed_id, entry_title=entry_title)
+                _log_op("entry_upsert_failed", feed_id=feed_id, entry_title=entry_title)
 
         # Mark fetch as successful
         await self._update_feed_success(feed_id, new_etag, new_last_modified)
 
-        log_op("feed_processed", feed_url=url, entries_added=entries_added)
+        _log_op("feed_processed", feed_url=url, entries_added=entries_added)
         return {"status": "ok", "entries_added": entries_added, "entries_found": entries_found}
 
     def _normalize_urls(self, content: str, base_url: str) -> str:
@@ -908,7 +1004,7 @@ class Default(WorkerEntrypoint):
         base_origin = f"{parsed_base.scheme}://{parsed_base.netloc}"
         base_path = parsed_base.path.rsplit("/", 1)[0] if "/" in parsed_base.path else ""
 
-        def resolve_url(match):
+        def _resolve_url(match):
             attr = match.group(1)  # href or src
             quote = match.group(2)  # ' or "
             url = match.group(3)  # the URL value
@@ -929,7 +1025,7 @@ class Default(WorkerEntrypoint):
 
         # Match href="..." or src="..." with relative URLs
         pattern = r'(href|src)=(["\'])([^"\']+)\2'
-        return re.sub(pattern, resolve_url, content, flags=re.I)
+        return re.sub(pattern, _resolve_url, content, flags=re.I)
 
     async def _fetch_full_content(self, url: str) -> str | None:
         """
@@ -945,7 +1041,7 @@ class Default(WorkerEntrypoint):
             response = await safe_http_fetch(
                 url,
                 headers={"User-Agent": USER_AGENT},
-                timeout_seconds=HTTP_TIMEOUT_SECONDS,
+                timeout_seconds=self._get_http_timeout(),
             )
 
             if response.status_code != 200:
@@ -991,7 +1087,7 @@ class Default(WorkerEntrypoint):
             return None
 
         except Exception as e:
-            log_op("content_fetch_error", url=url, error=str(e)[:100])
+            _log_op("content_fetch_error", url=url, error=str(e)[:ERROR_MESSAGE_MAX_LENGTH])
             return None
 
     async def _upsert_entry(self, feed_id, entry):
@@ -1027,7 +1123,7 @@ class Default(WorkerEntrypoint):
             fetched_content = await self._fetch_full_content(entry_url)
             if fetched_content:
                 content = fetched_content
-                log_op(
+                _log_op(
                     "full_content_fetched",
                     url=entry_url[:100],
                     content_len=len(content),
@@ -1091,45 +1187,76 @@ class Default(WorkerEntrypoint):
         entry_id = result.get("id") if result else None
 
         # Index for semantic search (may fail in local dev - Vectorize not supported)
+        # Capture stats for aggregation on FeedFetchEvent
+        indexing_stats = None
         if entry_id and title:
             try:
-                await self._index_entry_for_search(
+                indexing_stats = await self._index_entry_for_search(
                     entry_id, title, sanitized_content, feed_id=feed_id
                 )
             except Exception as e:
                 # Log but don't fail - entry is still usable without search
-                log_op(
+                _log_op(
                     "search_index_skipped",
                     entry_id=entry_id,
                     error_type=type(e).__name__,
-                    error=str(e)[:100],
+                    error=str(e)[:ERROR_MESSAGE_MAX_LENGTH],
                 )
+                # Create failed stats for aggregation
+                indexing_stats = {
+                    "success": False,
+                    "embedding_ms": 0,
+                    "upsert_ms": 0,
+                    "total_ms": 0,
+                    "text_truncated": False,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)[:ERROR_MESSAGE_MAX_LENGTH],
+                }
 
-        return entry_id
+        return {"entry_id": entry_id, "indexing_stats": indexing_stats}
 
     async def _index_entry_for_search(
         self, entry_id, title, content, feed_id=0, trigger="feed_fetch"
-    ):
-        """Generate embedding and store in Vectorize for semantic search.
+    ) -> dict:
+        """
+        Generate embedding and store in Vectorize for semantic search.
 
         Args:
             entry_id: Database ID of the entry
             title: Entry title
             content: Entry content (HTML sanitized)
-            feed_id: Feed ID for observability
+            feed_id: Feed ID for observability (not used in event - aggregated by caller)
             trigger: What triggered indexing - "feed_fetch", "reindex", or "manual"
+
+        Returns:
+            dict with indexing stats for aggregation on parent event:
+            - success: bool
+            - embedding_ms: float
+            - upsert_ms: float
+            - total_ms: float
+            - text_truncated: bool
+            - error_type: str (if failed)
+            - error_message: str (if failed)
+
+        Note: Per wide event consolidation, indexing stats are aggregated on the
+        parent event (FeedFetchEvent or AdminActionEvent), not emitted separately.
         """
-        event = IndexingEvent(entry_id=entry_id, feed_id=feed_id, trigger=trigger)
-        event.title_length = len(title)
-        event.content_length = len(content)
+        stats = {
+            "success": False,
+            "embedding_ms": 0,
+            "upsert_ms": 0,
+            "total_ms": 0,
+            "text_truncated": False,
+            "error_type": None,
+            "error_message": None,
+        }
 
         with Timer() as wall_timer:
             try:
                 # Combine title and content for embedding (truncate to configurable limit)
                 max_chars = self._get_embedding_max_chars()
                 combined_text = f"{title}\n\n{content[:max_chars]}"
-                event.combined_text_length = len(combined_text)
-                event.text_truncated = len(content) > max_chars
+                stats["text_truncated"] = len(content) > max_chars
 
                 # Generate embedding using Workers AI with cls pooling for accuracy
                 with Timer() as embedding_timer:
@@ -1137,20 +1264,18 @@ class Default(WorkerEntrypoint):
                         "@cf/baai/bge-base-en-v1.5",
                         {"text": [combined_text], "pooling": "cls"},
                     )
-                event.embedding_time_ms = embedding_timer.elapsed_ms
+                stats["embedding_ms"] = embedding_timer.elapsed_ms
 
                 if not embedding_result or "data" not in embedding_result:
-                    event.outcome = "error"
-                    event.error_type = "NoEmbeddingData"
-                    event.error_message = "No data in embedding result"
-                    return
+                    stats["error_type"] = "NoEmbeddingData"
+                    stats["error_message"] = "No data in embedding result"
+                    return stats
 
                 data = embedding_result["data"]
                 if not data or len(data) == 0:
-                    event.outcome = "error"
-                    event.error_type = "EmptyEmbedding"
-                    event.error_message = "Empty data array in result"
-                    return
+                    stats["error_type"] = "EmptyEmbedding"
+                    stats["error_message"] = "Empty data array in result"
+                    return stats
 
                 vector = data[0]
 
@@ -1165,18 +1290,18 @@ class Default(WorkerEntrypoint):
                             }
                         ]
                     )
-                event.upsert_time_ms = upsert_timer.elapsed_ms
+                stats["upsert_ms"] = upsert_timer.elapsed_ms
+                stats["success"] = True
 
             except Exception as e:
-                event.outcome = "error"
-                event.error_type = type(e).__name__
-                event.error_message = str(e)[:200]
+                stats["error_type"] = type(e).__name__
+                stats["error_message"] = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
                 raise
 
-        event.wall_time_ms = wall_timer.elapsed_ms
-        emit_event(event)
+        stats["total_ms"] = wall_timer.elapsed_ms
+        return stats
 
-    def _sanitize_html(self, html_content):
+    def _sanitize_html(self, html_content: str) -> str:
         """Sanitize HTML to prevent XSS attacks (CVE-2009-2937 mitigation)."""
         return _sanitizer.clean(html_content)
 
@@ -1186,7 +1311,7 @@ class Default(WorkerEntrypoint):
         try:
             parsed = urlparse(url)
         except Exception as e:
-            log_op("url_parse_error", url=url, error_type=type(e).__name__, error=str(e))
+            _log_op("url_parse_error", url=url, error_type=type(e).__name__, error=str(e))
             return False
 
         # Only allow http/https
@@ -1250,15 +1375,16 @@ class Default(WorkerEntrypoint):
 
     async def _record_feed_error(self, feed_id, error_message):
         """Record a feed fetch error and auto-deactivate after too many failures."""
-        # Issue 9.4: Auto-deactivate feeds after 10+ consecutive failures
+        # Issue 9.4: Auto-deactivate feeds after configurable consecutive failures
+        threshold = self._get_feed_auto_deactivate_threshold()
         result_raw = await (
-            self.env.DB.prepare("""
+            self.env.DB.prepare(f"""
             UPDATE feeds SET
                 last_fetch_at = CURRENT_TIMESTAMP,
                 fetch_error = ?,
                 fetch_error_count = fetch_error_count + 1,
                 consecutive_failures = consecutive_failures + 1,
-                is_active = CASE WHEN consecutive_failures >= 10 THEN 0 ELSE is_active END,
+                is_active = CASE WHEN consecutive_failures >= {threshold} THEN 0 ELSE is_active END,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             RETURNING consecutive_failures, is_active
@@ -1269,7 +1395,7 @@ class Default(WorkerEntrypoint):
         # Convert JsProxy to Python dict
         result = _to_py_safe(result_raw)
         if result and result.get("is_active") == 0:
-            log_op(
+            _log_op(
                 "feed_auto_deactivated",
                 feed_id=feed_id,
                 consecutive_failures=result.get("consecutive_failures"),
@@ -1379,69 +1505,103 @@ class Default(WorkerEntrypoint):
         user_agent = _safe_str(request.headers.get("user-agent")) or ""
         referer = _safe_str(request.headers.get("referer")) or ""
 
-        event = PageServeEvent(
+        # Get deployment context for observability
+        deployment = self._get_deployment_context()
+
+        # Initialize consolidated RequestEvent (absorbs search, generation, OAuth)
+        event = RequestEvent(
             method=request.method,
             path=path,
             user_agent=user_agent[:200],
             referer=referer[:200],
-            country=getattr(request.cf, "country", None) if hasattr(request, "cf") else None,
-            colo=getattr(request.cf, "colo", None) if hasattr(request, "cf") else None,
+            worker_version=deployment["worker_version"],
+            deployment_environment=deployment["deployment_environment"],
         )
 
         with Timer() as timer:
             try:
-                # Public routes
+                # Public routes (cacheable at edge via Cache-Control headers)
                 if path == "/" or path == "/index.html":
-                    response = await self._serve_html()
+                    event.route = "/"
+                    response = await self._serve_html(event)
                     event.content_type = "html"
+                    event.cache_status = "cacheable"
 
                 elif path == "/feed.atom":
+                    event.route = "/feed.atom"
                     response = await self._serve_atom()
                     event.content_type = "atom"
+                    event.cache_status = "cacheable"
 
                 elif path == "/feed.rss":
+                    event.route = "/feed.rss"
                     response = await self._serve_rss()
                     event.content_type = "rss"
+                    event.cache_status = "cacheable"
 
                 elif path == "/feeds.opml":
+                    event.route = "/feeds.opml"
                     response = await self._export_opml()
                     event.content_type = "opml"
+                    event.cache_status = "cacheable"
 
                 elif path == "/search":
-                    response = await self._search_entries(request)
+                    event.route = "/search"
+                    response = await self._search_entries(request, event)
                     event.content_type = "search"
+                    event.cache_status = "bypass"  # Dynamic based on query
 
                 elif path.startswith("/static/"):
+                    event.route = "/static/*"
                     response = await self._serve_static(path)
                     event.content_type = "static"
+                    event.cache_status = "cacheable"
 
-                # OAuth routes
+                # OAuth routes (bypass cache - session handling)
                 elif path == "/auth/github":
+                    event.route = "/auth/github"
+                    event.oauth_stage = "redirect"
+                    event.oauth_provider = "github"
+                    event.oauth_success = None  # Redirect phase, not callback
                     response = self._redirect_to_github_oauth(request)
                     event.content_type = "auth"
+                    event.cache_status = "bypass"
 
                 elif path == "/auth/github/callback":
-                    response = await self._handle_github_callback(request)
+                    event.route = "/auth/github/callback"
+                    event.oauth_stage = "callback"
+                    event.oauth_provider = "github"
+                    response = await self._handle_github_callback(request, event)
                     event.content_type = "auth"
+                    event.cache_status = "bypass"
 
-                # Admin routes (show login page if not authenticated)
+                # Admin routes (bypass cache - authenticated, dynamic)
                 elif path.startswith("/admin"):
-                    response = await self._handle_admin(request, path)
+                    event.route = "/admin/*"
+                    response = await self._handle_admin(request, path, event)
                     event.content_type = "admin"
+                    event.cache_status = "bypass"
 
                 else:
-                    response = Response("Not Found", status=404)
+                    event.route = "unknown"
+                    response = _json_error("Not Found", status=404)
                     event.content_type = "error"
+                    event.cache_status = "bypass"
 
             except Exception as e:
-                log_op("request_error", path=path, error_type=type(e).__name__, error=str(e)[:200])
-                event.wall_time_ms = timer.elapsed()
+                _log_op(
+                    "request_error",
+                    path=path,
+                    error_type=type(e).__name__,
+                    error=str(e)[:ERROR_MESSAGE_MAX_LENGTH],
+                )
+                event.wall_time_ms = timer.elapsed_ms
                 event.status_code = 500
                 emit_event(event)
                 raise
 
         # Finalize and emit event
-        event.wall_time_ms = timer.elapsed()
+        event.wall_time_ms = timer.elapsed_ms
         event.status_code = response.status
         # Issue 10.3: Set response size if available (skip if JsProxy)
         try:
@@ -1458,7 +1618,7 @@ class Default(WorkerEntrypoint):
 
         return response
 
-    async def _serve_html(self):
+    async def _serve_html(self, event: RequestEvent | None = None):
         """
         Generate and serve the HTML page on-demand.
 
@@ -1470,10 +1630,15 @@ class Default(WorkerEntrypoint):
         For a planet aggregator with ~10-20 cache misses/hour globally,
         this latency is acceptable and eliminates KV complexity.
         """
-        html = await self._generate_html()
-        return html_response(html)
+        html = await self._generate_html(event=event)
+        return _html_response(html)
 
-    async def _generate_html(self, trigger: str = "http", triggered_by: str | None = None):
+    async def _generate_html(
+        self,
+        trigger: str = "http",
+        triggered_by: str | None = None,
+        event: RequestEvent | None = None,
+    ):
         """
         Generate the aggregated HTML page on-demand.
         Called by fetch() for / requests. Edge cache handles caching.
@@ -1481,186 +1646,198 @@ class Default(WorkerEntrypoint):
         Args:
             trigger: What triggered generation ("http", "cron", "admin_manual")
             triggered_by: Admin username if manually triggered
+            event: RequestEvent to populate with generation metrics (optional)
         """
+        # Get planet config from environment
+        planet = self._get_planet_config()
 
-        # Initialize generation event
-        event = GenerationEvent(trigger=trigger, triggered_by=triggered_by)
+        # NOTE: Retention policy now runs in scheduler (_run_scheduler), not here
+        # This ensures retention happens once per cron cycle, not on every page load
 
-        try:
-            with Timer() as total_timer:
-                # Get planet config from environment
-                planet = self._get_planet_config()
-
-                # Apply retention policy first (delete old entries and their vectors)
-                await self._apply_retention_policy()
-
-                # Query entries using configurable retention period
-                # Uses first_seen for ordering/grouping to prevent spam from retroactive entries
-                # Per-feed-per-day limit prevents any single feed from dominating when added
-                retention_days = self._get_retention_days()
-                max_per_feed = self._get_max_entries_per_feed()
-
-                with Timer() as d1_timer:
-                    # Query entries, grouping by published_at (actual publication date)
-                    # Fall back to first_seen only when published_at is missing
-                    entries_result = await self.env.DB.prepare(
-                        f"""
-                        WITH ranked AS (
-                            SELECT
-                                e.*,
-                                f.title as feed_title,
-                                f.site_url as feed_site_url,
-                                ROW_NUMBER() OVER (
-                                    PARTITION BY e.feed_id,
-                                        date(COALESCE(e.published_at, e.first_seen))
-                                    ORDER BY COALESCE(e.published_at, e.first_seen) DESC
-                                ) as rn_per_day,
-                                ROW_NUMBER() OVER (
-                                    PARTITION BY e.feed_id
-                                    ORDER BY COALESCE(e.published_at, e.first_seen) DESC
-                                ) as rn_total
-                            FROM entries e
-                            JOIN feeds f ON e.feed_id = f.id
-                            WHERE COALESCE(e.published_at, e.first_seen)
-                                >= datetime('now', '-{retention_days} days')
-                            AND f.is_active = 1
-                        )
-                        SELECT * FROM ranked
-                        WHERE rn_per_day <= 5 AND rn_total <= {max_per_feed}
-                        ORDER BY COALESCE(published_at, first_seen) DESC
-                        LIMIT 500
-                        """
-                    ).all()
-
-                    # Get feeds for sidebar
-                    feeds_result = await self.env.DB.prepare("""
-                        SELECT
-                            id, title, site_url, last_success_at,
-                            CASE WHEN consecutive_failures < 3 THEN 1 ELSE 0 END as is_healthy
-                        FROM feeds
-                        WHERE is_active = 1
-                        ORDER BY title
-                    """).all()
-
-                event.d1_query_time_ms = d1_timer.elapsed_ms
-
-                # Convert JsProxy results to Python lists for dict access
-                entries = _to_py_list(entries_result.results)
-                feeds = _to_py_list(feeds_result.results)
-
-                # Group entries by published_at (actual publication date from feed)
-                # Fall back to first_seen only if published_at is missing
-                # This ensures entries appear under their true publication date
-                entries_by_date = {}
-                for entry in entries:
-                    # Prefer published_at for accurate grouping, fall back to first_seen
-                    group_date = entry.get("published_at") or entry.get("first_seen") or ""
-                    date_str = group_date[:10] if group_date else "Unknown"  # YYYY-MM-DD
-
-                    # Convert to absolute date label (e.g., "January 15, 2026")
-                    date_label = self._format_date_label(date_str)
-                    if date_label not in entries_by_date:
-                        entries_by_date[date_label] = []
-
-                    # Add display date (same as group date for consistency)
-                    if date_str and date_str != "Unknown":
-                        entry["published_at_display"] = self._format_pub_date(group_date)
-                    else:
-                        entry["published_at_display"] = ""
-                    entries_by_date[date_label].append(entry)
-
-                # Sort entries within each day by published_at (newest first)
-                for date_label in entries_by_date:
-                    entries_by_date[date_label].sort(
-                        key=lambda e: e.get("published_at") or "", reverse=True
-                    )
-
-                # Sort date groups by date (most recent first)
-                # Extract YYYY-MM-DD from entries to sort properly
-                def get_sort_date(date_label_and_entries):
-                    entries_list = date_label_and_entries[1]
-                    if entries_list:
-                        return entries_list[0].get("published_at") or ""
-                    return ""
-
-                entries_by_date = dict(
-                    sorted(entries_by_date.items(), key=get_sort_date, reverse=True)
-                )
-
-                for feed in feeds:
-                    feed["last_success_at_relative"] = self._relative_time(feed["last_success_at"])
-
-                # Render template - track template time
-                with Timer() as render_timer:
-                    html = render_template(
-                        TEMPLATE_INDEX,
-                        planet=planet,
-                        entries_by_date=entries_by_date,
-                        feeds=feeds,
-                        generated_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
-                    )
-
-                event.template_render_time_ms = render_timer.elapsed_ms
-
-            # Populate and emit event on success
-            event.wall_time_ms = total_timer.elapsed_ms
-            event.entries_total = len(entries)
-            event.feeds_active = len(feeds)
-            event.feeds_healthy = sum(1 for f in feeds if f.get("is_healthy"))
-            event.html_size_bytes = len(html.encode("utf-8"))
-            emit_event(event)
-
-            return html
-
-        except Exception as e:
-            # Issue 4.4: Mark event as error and emit before re-raising
-            event.outcome = "error"
-            event.error_type = type(e).__name__
-            event.error_message = str(e)[:200]
-            emit_event(event, force=True)  # Always emit errors
-            raise
-
-    async def _apply_retention_policy(self):
-        """Delete old entries and clean up vectors based on configurable retention policy."""
-
+        # Query entries using configurable retention period
+        # Uses first_seen for ordering/grouping to prevent spam from retroactive entries
+        # Per-feed-per-day limit prevents any single feed from dominating when added
         retention_days = self._get_retention_days()
         max_per_feed = self._get_max_entries_per_feed()
 
-        # Get IDs of entries to delete
-        to_delete = await self.env.DB.prepare(f"""
-            WITH ranked_entries AS (
+        with Timer() as d1_timer:
+            # Query entries, grouping by published_at (actual publication date)
+            # Fall back to first_seen only when published_at is missing
+            entries_result = await self.env.DB.prepare(
+                f"""
+                WITH ranked AS (
+                    SELECT
+                        e.*,
+                        f.title as feed_title,
+                        f.site_url as feed_site_url,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY e.feed_id,
+                                date(COALESCE(e.published_at, e.first_seen))
+                            ORDER BY COALESCE(e.published_at, e.first_seen) DESC
+                        ) as rn_per_day,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY e.feed_id
+                            ORDER BY COALESCE(e.published_at, e.first_seen) DESC
+                        ) as rn_total
+                    FROM entries e
+                    JOIN feeds f ON e.feed_id = f.id
+                    WHERE COALESCE(e.published_at, e.first_seen)
+                        >= datetime('now', '-{retention_days} days')
+                    AND f.is_active = 1
+                )
+                SELECT * FROM ranked
+                WHERE rn_per_day <= 5 AND rn_total <= {max_per_feed}
+                ORDER BY COALESCE(published_at, first_seen) DESC
+                LIMIT 500
+                """
+            ).all()
+
+            # Get feeds for sidebar
+            feeds_result = await self.env.DB.prepare("""
                 SELECT
-                    id,
-                    feed_id,
-                    published_at,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY feed_id
-                        ORDER BY published_at DESC
-                    ) as rn
-                FROM entries
-            ),
-            entries_to_delete AS (
-                SELECT id FROM ranked_entries
-                WHERE rn > {max_per_feed}
-                OR published_at < datetime('now', '-{retention_days} days')
+                    id, title, site_url, last_success_at,
+                    CASE WHEN consecutive_failures < 3 THEN 1 ELSE 0 END as is_healthy
+                FROM feeds
+                WHERE is_active = 1
+                ORDER BY title
+            """).all()
+
+        # Populate generation metrics on the consolidated event
+        if event:
+            event.generation_d1_ms = d1_timer.elapsed_ms
+            event.generation_trigger = trigger
+
+        # Convert JsProxy results to Python lists for dict access
+        entries = _to_py_list(entries_result.results)
+        feeds = _to_py_list(feeds_result.results)
+
+        # Group entries by published_at (actual publication date from feed)
+        # Fall back to first_seen only if published_at is missing
+        # This ensures entries appear under their true publication date
+        entries_by_date = {}
+        for entry in entries:
+            # Prefer published_at for accurate grouping, fall back to first_seen
+            group_date = entry.get("published_at") or entry.get("first_seen") or ""
+            date_str = group_date[:10] if group_date else "Unknown"  # YYYY-MM-DD
+
+            # Convert to absolute date label (e.g., "January 15, 2026")
+            date_label = self._format_date_label(date_str)
+            if date_label not in entries_by_date:
+                entries_by_date[date_label] = []
+
+            # Add display date (same as group date for consistency)
+            if date_str and date_str != "Unknown":
+                entry["published_at_display"] = self._format_pub_date(group_date)
+            else:
+                entry["published_at_display"] = ""
+            entries_by_date[date_label].append(entry)
+
+        # Sort entries within each day by published_at (newest first)
+        for date_label in entries_by_date:
+            entries_by_date[date_label].sort(
+                key=lambda e: e.get("published_at") or "", reverse=True
             )
-            SELECT id FROM entries_to_delete
-        """).all()
+
+        # Sort date groups by date (most recent first)
+        # Extract YYYY-MM-DD from entries to sort properly
+        def get_sort_date(date_label_and_entries):
+            entries_list = date_label_and_entries[1]
+            if entries_list:
+                return entries_list[0].get("published_at") or ""
+            return ""
+
+        entries_by_date = dict(sorted(entries_by_date.items(), key=get_sort_date, reverse=True))
+
+        for feed in feeds:
+            feed["last_success_at_relative"] = self._relative_time(feed["last_success_at"])
+
+        # Render template - track template time
+        with Timer() as render_timer:
+            html = render_template(
+                TEMPLATE_INDEX,
+                planet=planet,
+                entries_by_date=entries_by_date,
+                feeds=feeds,
+                generated_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
+            )
+
+        # Populate remaining generation metrics
+        if event:
+            event.generation_render_ms = render_timer.elapsed_ms
+            event.generation_entries_total = len(entries)
+            event.generation_feeds_healthy = sum(1 for f in feeds if f.get("is_healthy"))
+
+        return html
+
+    async def _apply_retention_policy(self) -> dict:
+        """Delete old entries and clean up vectors based on configurable retention policy.
+
+        Returns:
+            dict with retention stats for aggregation on SchedulerEvent:
+            - retention_days: int
+            - max_per_feed: int
+            - entries_scanned: int
+            - entries_deleted: int
+            - vectors_deleted: int
+            - errors: int
+        """
+        retention_days = self._get_retention_days()
+        max_per_feed = self._get_max_entries_per_feed()
+
+        stats = {
+            "retention_days": retention_days,
+            "max_per_feed": max_per_feed,
+            "entries_scanned": 0,
+            "entries_deleted": 0,
+            "vectors_deleted": 0,
+            "errors": 0,
+        }
+
+        with Timer() as d1_timer:
+            # Get IDs of entries to delete
+            to_delete = await self.env.DB.prepare(f"""
+                WITH ranked_entries AS (
+                    SELECT
+                        id,
+                        feed_id,
+                        published_at,
+                        first_seen,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY feed_id
+                            ORDER BY published_at DESC
+                        ) as rn
+                    FROM entries
+                ),
+                entries_to_delete AS (
+                    SELECT id FROM ranked_entries
+                    WHERE rn > {max_per_feed}
+                       OR COALESCE(published_at, first_seen) <
+                          datetime('now', '-{retention_days} days')
+                )
+                SELECT id FROM entries_to_delete
+            """).all()
 
         deleted_ids = [row["id"] for row in _to_py_list(to_delete.results)]
+        stats["entries_scanned"] = len(deleted_ids)
+        stats["d1_ms"] = d1_timer.elapsed_ms
 
         if deleted_ids:
             # Delete vectors from Vectorize (Issue 11.2: handle errors gracefully)
-            try:
-                await self.env.SEARCH_INDEX.deleteByIds([str(id) for id in deleted_ids])
-            except Exception as e:
-                log_op(
-                    "vectorize_delete_error",
-                    error_type=type(e).__name__,
-                    error_message=str(e)[:200],
-                    ids_count=len(deleted_ids),
-                )
-                # Continue with D1 deletion even if vector cleanup fails
+            with Timer() as vectorize_timer:
+                try:
+                    await self.env.SEARCH_INDEX.deleteByIds([str(id) for id in deleted_ids])
+                    stats["vectors_deleted"] = len(deleted_ids)
+                except Exception as e:
+                    stats["errors"] += 1
+                    _log_op(
+                        "vectorize_delete_error",
+                        error_type=type(e).__name__,
+                        error_message=str(e)[:ERROR_MESSAGE_MAX_LENGTH],
+                        ids_count=len(deleted_ids),
+                    )
+                    # Continue with D1 deletion even if vector cleanup fails
+
+            stats["vectorize_ms"] = vectorize_timer.elapsed_ms
 
             # Delete entries from D1 (in batches to stay under parameter limit)
             for i in range(0, len(deleted_ids), 50):
@@ -1674,7 +1851,10 @@ class Default(WorkerEntrypoint):
                     .run()
                 )
 
-            log_op("retention_cleanup", entries_deleted=len(deleted_ids))
+            stats["entries_deleted"] = len(deleted_ids)
+            _log_op("retention_cleanup", entries_deleted=len(deleted_ids))
+
+        return stats
 
     def _format_datetime(self, iso_string: str | None) -> str:
         """Format ISO datetime string for display."""
@@ -1742,14 +1922,14 @@ class Default(WorkerEntrypoint):
         entries = await self._get_recent_entries(50)
         planet = self._get_planet_config()
         atom = self._generate_atom_feed(planet, entries)
-        return feed_response(atom, "application/atom+xml")
+        return _feed_response(atom, "application/atom+xml")
 
     async def _serve_rss(self):
         """Generate and serve RSS feed on-demand."""
         entries = await self._get_recent_entries(50)
         planet = self._get_planet_config()
         rss = self._generate_rss_feed(planet, entries)
-        return feed_response(rss, "application/rss+xml")
+        return _feed_response(rss, "application/rss+xml")
 
     async def _get_recent_entries(self, limit):
         """Query recent entries for feeds."""
@@ -1817,6 +1997,22 @@ class Default(WorkerEntrypoint):
             return int(top_k) if top_k else DEFAULT_SEARCH_TOP_K
         except (ValueError, TypeError):
             return DEFAULT_SEARCH_TOP_K
+
+    def _get_feed_auto_deactivate_threshold(self) -> int:
+        """Get threshold for auto-deactivating feeds from environment, default 10."""
+        try:
+            threshold = getattr(self.env, "FEED_AUTO_DEACTIVATE_THRESHOLD", None)
+            return int(threshold) if threshold else DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD
+        except (ValueError, TypeError):
+            return DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD
+
+    def _get_feed_failure_threshold(self) -> int:
+        """Get threshold for DLQ display from environment, default 3."""
+        try:
+            threshold = getattr(self.env, "FEED_FAILURE_THRESHOLD", None)
+            return int(threshold) if threshold else DEFAULT_FEED_FAILURE_THRESHOLD
+        except (ValueError, TypeError):
+            return DEFAULT_FEED_FAILURE_THRESHOLD
 
     def _generate_atom_feed(self, planet, entries):
         """Generate Atom 1.0 feed XML using template."""
@@ -1899,240 +2095,218 @@ class Default(WorkerEntrypoint):
             },
         )
 
-    async def _search_entries(self, request):
-        """Hybrid search: combines semantic similarity with keyword matching."""
+    async def _search_entries(self, request, event: RequestEvent | None = None):
+        """
+        Hybrid search: combines semantic similarity with keyword matching.
 
-        # Initialize search event for observability
-        event = SearchEvent(
-            user_agent=(_safe_str(request.headers.get("user-agent")) or "")[:100],
-            referer=(_safe_str(request.headers.get("referer")) or "")[:100],
-        )
+        Args:
+            request: HTTP request object
+            event: RequestEvent to populate with search metrics (optional)
+        """
+        # Parse query string
+        url_str = str(request.url)
+        query = ""
+        if "?" in url_str:
+            qs = parse_qs(url_str.split("?", 1)[1])
+            query = qs.get("q", [""])[0]
 
+        # Normalize query: strip surrounding quotes (users often quote phrases)
+        query = query.strip()
+        if (query.startswith('"') and query.endswith('"')) or (
+            query.startswith("'") and query.endswith("'")
+        ):
+            query = query[1:-1].strip()
+
+        # Populate search query fields on consolidated event
+        if event:
+            event.search_query = query[:200]
+            event.search_query_length = len(query)
+
+        if not query or len(query) < 2:
+            if event:
+                event.outcome = "error"
+                event.error_type = "ValidationError"
+                event.error_message = "Query too short"
+            return _json_error("Query too short")
+        if len(query) > MAX_SEARCH_QUERY_LENGTH:
+            if event:
+                event.outcome = "error"
+                event.error_type = "ValidationError"
+                event.error_message = "Query too long"
+            return _json_error("Query too long (max 1000 characters)")
+
+        # Get search configuration
+        top_k = self._get_search_top_k()
+        score_threshold = self._get_search_score_threshold()
+
+        # Run semantic search and keyword search
+        semantic_matches = []
+        semantic_matches_raw = []
+        keyword_entries = []
+
+        # 1. Semantic search via Vectorize
         try:
-            with Timer() as total_timer:
-                # Parse query string
-                url_str = str(request.url)
-                query = ""
-                if "?" in url_str:
-                    qs = parse_qs(url_str.split("?", 1)[1])
-                    query = qs.get("q", [""])[0]
-
-                # Normalize query: strip surrounding quotes (users often quote phrases)
-                query = query.strip()
-                if (query.startswith('"') and query.endswith('"')) or (
-                    query.startswith("'") and query.endswith("'")
-                ):
-                    query = query[1:-1].strip()
-
-                event.query = query[:200]
-                event.query_length = len(query)
-
-                if not query or len(query) < 2:
-                    event.outcome = "error"
-                    event.error_type = "ValidationError"
-                    event.error_message = "Query too short"
-                    return json_error("Query too short")
-                if len(query) > MAX_SEARCH_QUERY_LENGTH:
-                    event.outcome = "error"
-                    event.error_type = "ValidationError"
-                    event.error_message = "Query too long"
-                    return json_error("Query too long (max 1000 characters)")
-
-                # Get search configuration
-                top_k = self._get_search_top_k()
-                score_threshold = self._get_search_score_threshold()
-                event.score_threshold = score_threshold
-
-                # Run semantic search and keyword search
-                semantic_matches = []
-                semantic_matches_raw = []
-                keyword_entries = []
-
-                # 1. Semantic search via Vectorize
-                try:
-                    with Timer() as embedding_timer:
-                        embedding_result = await self.env.AI.run(
-                            "@cf/baai/bge-base-en-v1.5", {"text": [query], "pooling": "cls"}
-                        )
-                    event.embedding_time_ms = embedding_timer.elapsed_ms
-
-                    if embedding_result and "data" in embedding_result:
-                        query_vector = embedding_result["data"][0]
-                        with Timer() as vectorize_timer:
-                            results = await self.env.SEARCH_INDEX.query(
-                                query_vector, {"topK": top_k, "returnMetadata": True}
-                            )
-                        event.vectorize_time_ms = vectorize_timer.elapsed_ms
-
-                        semantic_matches_raw = results.get("matches", []) if results else []
-                        event.semantic_matches_raw = len(semantic_matches_raw)
-
-                        # Track top score before filtering
-                        if semantic_matches_raw:
-                            event.semantic_top_score = max(
-                                m.get("score", 0) for m in semantic_matches_raw
-                            )
-
-                        # Apply score threshold
-                        semantic_matches = [
-                            m for m in semantic_matches_raw if m.get("score", 0) >= score_threshold
-                        ]
-                        event.semantic_matches_filtered = len(semantic_matches)
-                except Exception as e:
-                    log_op("semantic_search_failed", error=str(e)[:100])
-
-                # 2. Keyword search via D1 (catches exact matches semantic might miss)
-                try:
-                    with Timer() as d1_timer:
-                        # Escape special characters for LIKE pattern
-                        escaped_query = query.replace("%", "\\%").replace("_", "\\_")
-                        like_pattern = f"%{escaped_query}%"
-
-                        keyword_result = (
-                            await self.env.DB.prepare("""
-                            SELECT e.id, e.feed_id, e.guid, e.url, e.title, e.author,
-                                   e.content, e.summary, e.published_at, e.first_seen,
-                                   f.title as feed_title, f.site_url as feed_site_url
-                            FROM entries e
-                            JOIN feeds f ON e.feed_id = f.id
-                            WHERE e.title LIKE ? ESCAPE '\\'
-                               OR e.content LIKE ? ESCAPE '\\'
-                            ORDER BY e.published_at DESC
-                            LIMIT 50
-                        """)
-                            .bind(like_pattern, like_pattern)
-                            .all()
-                        )
-                        keyword_entries = _to_py_list(keyword_result.results)
-                    event.d1_time_ms = d1_timer.elapsed_ms
-                    event.keyword_matches = len(keyword_entries)
-                except Exception as e:
-                    log_op("keyword_search_failed", error=str(e)[:100])
-
-                # 3. Combine results: semantic matches first, then keyword matches not in semantic
-                semantic_ids = {int(m["id"]) for m in semantic_matches}
-                combined_ids = list(semantic_ids)
-
-                # Add keyword matches that aren't already in semantic results
-                for entry in keyword_entries:
-                    entry_id = entry.get("id")
-                    if entry_id and entry_id not in semantic_ids:
-                        combined_ids.append(entry_id)
-
-                if not combined_ids:
-                    event.total_results = 0
-                    planet = self._get_planet_config()
-                    html = render_template(TEMPLATE_SEARCH, planet=planet, query=query, results=[])
-                    return html_response(html, cache_max_age=0)
-
-                # 4. Fetch full entries for semantic matches (keyword entries already have data)
-                entry_map = {}
-
-                # Add keyword entries to map
-                for entry in keyword_entries:
-                    entry_map[entry["id"]] = entry
-
-                # Fetch semantic entries not already in keyword results
-                semantic_only_ids = [eid for eid in semantic_ids if eid not in entry_map]
-                if semantic_only_ids:
-                    placeholders = ",".join("?" * len(semantic_only_ids))
-                    db_entries = (
-                        await self.env.DB.prepare(f"""
-                        SELECT e.*, f.title as feed_title, f.site_url as feed_site_url
-                        FROM entries e
-                        JOIN feeds f ON e.feed_id = f.id
-                        WHERE e.id IN ({placeholders})
-                    """)
-                        .bind(*semantic_only_ids)
-                        .all()
-                    )
-                    for entry in _to_py_list(db_entries.results):
-                        entry_map[entry["id"]] = entry
-
-                # 5. Build sorted results with proper ranking
-                sorted_results = []
-                added_ids = set()
-
-                # Normalize query for comparison
-                query_lower = query.lower().strip()
-
-                # Counters for event metrics
-                exact_title_count = 0
-                title_in_query_count = 0
-                query_in_title_count = 0
-
-                # First: Exact title matches get top priority
-                for entry in keyword_entries:
-                    entry_title = (entry.get("title") or "").lower().strip()
-                    if not entry_title:
-                        continue
-
-                    # Exact match
-                    if query_lower == entry_title:
-                        sorted_results.append({**entry, "score": 1.0, "match_type": "exact_title"})
-                        added_ids.add(entry["id"])
-                        exact_title_count += 1
-                    # Query contains title (user searched with extra words)
-                    elif entry_title in query_lower:
-                        sorted_results.append(
-                            {**entry, "score": 0.98, "match_type": "title_in_query"}
-                        )
-                        added_ids.add(entry["id"])
-                        title_in_query_count += 1
-                    # Title contains query (partial title match)
-                    elif query_lower in entry_title:
-                        sorted_results.append(
-                            {**entry, "score": 0.95, "match_type": "query_in_title"}
-                        )
-                        added_ids.add(entry["id"])
-                        query_in_title_count += 1
-
-                event.exact_title_matches = exact_title_count
-                event.title_in_query_matches = title_in_query_count
-                event.query_in_title_matches = query_in_title_count
-
-                # Second: Semantic matches sorted by score (excluding already added)
-                semantic_only_count = 0
-                for match in sorted(
-                    semantic_matches, key=lambda m: m.get("score", 0), reverse=True
-                ):
-                    entry_id = int(match["id"])
-                    if entry_id in entry_map and entry_id not in added_ids:
-                        entry = entry_map[entry_id]
-                        sorted_results.append(
-                            {**entry, "score": match.get("score", 0), "match_type": "semantic"}
-                        )
-                        added_ids.add(entry_id)
-                        semantic_only_count += 1
-
-                event.semantic_only_results = semantic_only_count
-
-                # Third: Remaining keyword matches (not in semantic results, not exact title)
-                keyword_only_count = 0
-                for entry in keyword_entries:
-                    if entry["id"] not in added_ids:
-                        sorted_results.append({**entry, "score": 0, "match_type": "keyword"})
-                        added_ids.add(entry["id"])
-                        keyword_only_count += 1
-
-                event.keyword_only_results = keyword_only_count
-                event.total_results = len(sorted_results)
-
-                # Return HTML search results page
-                planet = self._get_planet_config()
-                html = render_template(
-                    TEMPLATE_SEARCH, planet=planet, query=query, results=sorted_results
+            with Timer() as embedding_timer:
+                embedding_result = await self.env.AI.run(
+                    "@cf/baai/bge-base-en-v1.5", {"text": [query], "pooling": "cls"}
                 )
-                return html_response(html, cache_max_age=0)
+            if event:
+                event.search_embedding_ms = embedding_timer.elapsed_ms
 
+            if embedding_result and "data" in embedding_result:
+                query_vector = embedding_result["data"][0]
+                with Timer() as vectorize_timer:
+                    results = await self.env.SEARCH_INDEX.query(
+                        query_vector, {"topK": top_k, "returnMetadata": True}
+                    )
+                if event:
+                    event.search_vectorize_ms = vectorize_timer.elapsed_ms
+
+                semantic_matches_raw = results.get("matches", []) if results else []
+
+                # Apply score threshold
+                semantic_matches = [
+                    m for m in semantic_matches_raw if m.get("score", 0) >= score_threshold
+                ]
         except Exception as e:
-            event.outcome = "error"
-            event.error_type = type(e).__name__
-            event.error_message = str(e)[:200]
-            raise
-        finally:
-            event.wall_time_ms = total_timer.elapsed()
-            emit_event(event)
+            _log_op("semantic_search_failed", error=str(e)[:ERROR_MESSAGE_MAX_LENGTH])
+
+        # 2. Keyword search via D1 (catches exact matches semantic might miss)
+        try:
+            with Timer() as d1_timer:
+                # Escape special characters for LIKE pattern
+                escaped_query = query.replace("%", "\\%").replace("_", "\\_")
+                like_pattern = f"%{escaped_query}%"
+
+                keyword_result = (
+                    await self.env.DB.prepare(f"""
+                    SELECT e.id, e.feed_id, e.guid, e.url, e.title, e.author,
+                           e.content, e.summary, e.published_at, e.first_seen,
+                           f.title as feed_title, f.site_url as feed_site_url
+                    FROM entries e
+                    JOIN feeds f ON e.feed_id = f.id
+                    WHERE e.title LIKE ? ESCAPE '\\'
+                       OR e.content LIKE ? ESCAPE '\\'
+                    ORDER BY e.published_at DESC
+                    LIMIT {self._get_search_top_k()}
+                """)
+                    .bind(like_pattern, like_pattern)
+                    .all()
+                )
+                keyword_entries = _to_py_list(keyword_result.results)
+            if event:
+                event.search_d1_ms = d1_timer.elapsed_ms
+        except Exception as e:
+            _log_op("keyword_search_failed", error=str(e)[:ERROR_MESSAGE_MAX_LENGTH])
+
+        # 3. Combine results: semantic matches first, then keyword matches not in semantic
+        semantic_ids = {int(m["id"]) for m in semantic_matches}
+        combined_ids = list(semantic_ids)
+
+        # Add keyword matches that aren't already in semantic results
+        for entry in keyword_entries:
+            entry_id = entry.get("id")
+            if entry_id and entry_id not in semantic_ids:
+                combined_ids.append(entry_id)
+
+        if not combined_ids:
+            if event:
+                event.search_results_total = 0
+            planet = self._get_planet_config()
+            html = render_template(TEMPLATE_SEARCH, planet=planet, query=query, results=[])
+            return _html_response(html, cache_max_age=0)
+
+        # 4. Fetch full entries for semantic matches (keyword entries already have data)
+        entry_map = {}
+
+        # Add keyword entries to map
+        for entry in keyword_entries:
+            entry_map[entry["id"]] = entry
+
+        # Fetch semantic entries not already in keyword results
+        semantic_only_ids = [eid for eid in semantic_ids if eid not in entry_map]
+        if semantic_only_ids:
+            placeholders = ",".join("?" * len(semantic_only_ids))
+            db_entries = (
+                await self.env.DB.prepare(f"""
+                SELECT e.*, f.title as feed_title, f.site_url as feed_site_url
+                FROM entries e
+                JOIN feeds f ON e.feed_id = f.id
+                WHERE e.id IN ({placeholders})
+            """)
+                .bind(*semantic_only_ids)
+                .all()
+            )
+            for entry in _to_py_list(db_entries.results):
+                entry_map[entry["id"]] = entry
+
+        # 5. Build sorted results with proper ranking
+        sorted_results = []
+        added_ids = set()
+
+        # Normalize query for comparison
+        query_lower = query.lower().strip()
+
+        # Counters for event metrics
+        exact_title_count = 0
+        title_in_query_count = 0
+        query_in_title_count = 0
+
+        # First: Exact title matches get top priority
+        for entry in keyword_entries:
+            entry_title = (entry.get("title") or "").lower().strip()
+            if not entry_title:
+                continue
+
+            # Exact match
+            if query_lower == entry_title:
+                sorted_results.append({**entry, "score": 1.0, "match_type": "exact_title"})
+                added_ids.add(entry["id"])
+                exact_title_count += 1
+            # Query contains title (user searched with extra words)
+            elif entry_title in query_lower:
+                sorted_results.append({**entry, "score": 0.98, "match_type": "title_in_query"})
+                added_ids.add(entry["id"])
+                title_in_query_count += 1
+            # Title contains query (partial title match)
+            elif query_lower in entry_title:
+                sorted_results.append({**entry, "score": 0.95, "match_type": "query_in_title"})
+                added_ids.add(entry["id"])
+                query_in_title_count += 1
+
+        # Second: Semantic matches sorted by score (excluding already added)
+        semantic_only_count = 0
+        for match in sorted(semantic_matches, key=lambda m: m.get("score", 0), reverse=True):
+            entry_id = int(match["id"])
+            if entry_id in entry_map and entry_id not in added_ids:
+                entry = entry_map[entry_id]
+                sorted_results.append(
+                    {**entry, "score": match.get("score", 0), "match_type": "semantic"}
+                )
+                added_ids.add(entry_id)
+                semantic_only_count += 1
+
+        # Third: Remaining keyword matches (not in semantic results, not exact title)
+        keyword_only_count = 0
+        for entry in keyword_entries:
+            if entry["id"] not in added_ids:
+                sorted_results.append({**entry, "score": 0, "match_type": "keyword"})
+                added_ids.add(entry["id"])
+                keyword_only_count += 1
+
+        # Populate search metrics on consolidated event
+        if event:
+            event.search_results_total = len(sorted_results)
+            event.search_semantic_matches = len(semantic_matches)
+            event.search_keyword_matches = len(keyword_entries)
+            event.search_exact_title_matches = exact_title_count
+            event.search_title_in_query_matches = title_in_query_count
+            event.search_query_in_title_matches = query_in_title_count
+
+        # Return HTML search results page
+        planet = self._get_planet_config()
+        html = render_template(TEMPLATE_SEARCH, planet=planet, query=query, results=sorted_results)
+        return _html_response(html, cache_max_age=0)
 
     async def _serve_static(self, path):
         """Serve static files."""
@@ -2156,7 +2330,7 @@ class Default(WorkerEntrypoint):
                     "Cache-Control": "public, max-age=86400",
                 },
             )
-        return Response("Not Found", status=404)
+        return _json_error("Not Found", status=404)
 
     def _get_default_css(self) -> str:
         """Return default CSS styling from templates module."""
@@ -2170,7 +2344,7 @@ class Default(WorkerEntrypoint):
     # Admin Routes
     # =========================================================================
 
-    async def _handle_admin(self, request, path):
+    async def _handle_admin(self, request, path, event: RequestEvent | None = None):
         """Handle admin routes with GitHub OAuth."""
 
         # Verify signed session cookie (stateless, no KV)
@@ -2192,7 +2366,7 @@ class Default(WorkerEntrypoint):
         admin = _to_py_safe(admin_result)
 
         if not admin:
-            return Response("Unauthorized: Not an admin", status=403)
+            return _json_error("Unauthorized: Not an admin", status=403)
 
         # Ensure admin_id is a Python int (D1 requires Python primitives)
         if "id" in admin:
@@ -2224,7 +2398,7 @@ class Default(WorkerEntrypoint):
             if _extract_form_value(form, "_method") == "DELETE":
                 feed_id = path.split("/")[-1]
                 return await self._remove_feed(feed_id, admin)
-            return Response("Method not allowed", status=405)
+            return _json_error("Method not allowed", status=405)
 
         if path == "/admin/import-opml" and method == "POST":
             return await self._import_opml(request, admin)
@@ -2241,7 +2415,7 @@ class Default(WorkerEntrypoint):
             if len(parts) >= 4:
                 feed_id = parts[3]
                 return await self._retry_dlq_feed(feed_id, admin)
-            return Response("Invalid path", status=400)
+            return _json_error("Invalid path", status=400)
 
         if path == "/admin/audit" and method == "GET":
             return await self._view_audit_log()
@@ -2252,13 +2426,13 @@ class Default(WorkerEntrypoint):
         if path == "/admin/logout" and method == "POST":
             return self._logout(request)
 
-        return Response("Not Found", status=404)
+        return _json_error("Not Found", status=404)
 
     def _serve_admin_login(self):
         """Serve the admin login page."""
         planet = self._get_planet_config()
         html = render_template(TEMPLATE_ADMIN_LOGIN, planet=planet)
-        return html_response(html, cache_max_age=0)
+        return _html_response(html, cache_max_age=0)
 
     async def _serve_admin_dashboard(self, admin):
         """Serve the admin dashboard."""
@@ -2273,14 +2447,14 @@ class Default(WorkerEntrypoint):
             admin=admin,
             feeds=_to_py_list(feeds_result.results),
         )
-        return html_response(html, cache_max_age=0)
+        return _html_response(html, cache_max_age=0)
 
     async def _list_feeds(self):
         """List all feeds as JSON."""
         result = await self.env.DB.prepare("""
             SELECT * FROM feeds ORDER BY title
         """).all()
-        return json_response({"feeds": _to_py_list(result.results)})
+        return _json_response({"feeds": _to_py_list(result.results)})
 
     async def _validate_feed_url(self, url: str) -> dict:
         """
@@ -2319,11 +2493,13 @@ class Default(WorkerEntrypoint):
             if feed_data.bozo and not feed_data.entries:
                 # Security: Log detailed error internally, return generic message
                 bozo_exc = feed_data.bozo_exception
-                log_op(
+                _log_op(
                     "feed_validation_parse_error",
                     url=url,
                     error_type=type(bozo_exc).__name__ if bozo_exc else "Unknown",
-                    error_detail=str(bozo_exc)[:200] if bozo_exc else "Invalid format",
+                    error_detail=str(bozo_exc)[:ERROR_MESSAGE_MAX_LENGTH]
+                    if bozo_exc
+                    else "Invalid format",
                 )
                 return {
                     "valid": False,
@@ -2353,7 +2529,7 @@ class Default(WorkerEntrypoint):
             }
 
         except Exception as e:
-            error_msg = str(e)[:200]
+            error_msg = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
             if "timeout" in error_msg.lower():
                 return {"valid": False, "error": "Timeout fetching feed (10s)"}
             return {"valid": False, "error": error_msg}
@@ -2369,223 +2545,331 @@ class Default(WorkerEntrypoint):
         4. Insert into database
         5. Queue for immediate full processing
         """
-        form = await request.form_data()
-        url = _extract_form_value(form, "url")
-        title = _extract_form_value(form, "title")
+        # Initialize admin action event for observability
+        deployment = self._get_deployment_context()
+        admin_event = AdminActionEvent(
+            admin_username=admin.get("github_username", ""),
+            admin_id=admin.get("id", 0),
+            action="add_feed",
+            target_type="feed",
+            worker_version=deployment["worker_version"],
+            deployment_environment=deployment["deployment_environment"],
+        )
 
-        if not url:
-            return json_error("URL is required")
+        with Timer() as timer:
+            try:
+                form = await request.form_data()
+                url = _extract_form_value(form, "url")
+                title = _extract_form_value(form, "title")
 
-        # Validate URL (SSRF protection)
-        if not self._is_safe_url(url):
-            return json_error("Invalid or unsafe URL")
+                if not url:
+                    admin_event.outcome = "error"
+                    admin_event.error_type = "ValidationError"
+                    admin_event.error_message = "URL is required"
+                    return _json_error("URL is required")
 
-        # Validate the feed by fetching and parsing it
-        validation = await self._validate_feed_url(url)
+                # Validate URL (SSRF protection)
+                if not self._is_safe_url(url):
+                    admin_event.outcome = "error"
+                    admin_event.error_type = "ValidationError"
+                    admin_event.error_message = "Invalid or unsafe URL"
+                    return _json_error("Invalid or unsafe URL")
 
-        if not validation["valid"]:
-            return json_error(f"Feed validation failed: {validation['error']}")
+                # Validate the feed by fetching and parsing it
+                validation = await self._validate_feed_url(url)
 
-        # Use extracted title if admin didn't provide one
-        if not title:
-            title = validation.get("title")
+                if not validation["valid"]:
+                    admin_event.outcome = "error"
+                    admin_event.error_type = "ValidationError"
+                    admin_event.error_message = validation["error"][:ERROR_MESSAGE_MAX_LENGTH]
+                    return _json_error(f"Feed validation failed: {validation['error']}")
 
-        # If feed was permanently redirected, use the new URL
-        final_url = validation.get("final_url") or url
+                # Use extracted title if admin didn't provide one
+                if not title:
+                    title = validation.get("title")
 
-        try:
-            # Insert the validated feed
-            result_raw = (
-                await self.env.DB.prepare("""
-                INSERT INTO feeds (url, title, site_url, is_active)
-                VALUES (?, ?, ?, 1)
-                RETURNING id
-            """)
-                .bind(final_url, title, validation.get("site_url"))
-                .first()
-            )
+                # If feed was permanently redirected, use the new URL
+                final_url = validation.get("final_url") or url
 
-            # Convert JsProxy to Python dict
-            result = _to_py_safe(result_raw)
-            feed_id = result.get("id") if result else None
+                # Insert the validated feed
+                result_raw = (
+                    await self.env.DB.prepare("""
+                    INSERT INTO feeds (url, title, site_url, is_active)
+                    VALUES (?, ?, ?, 1)
+                    RETURNING id
+                """)
+                    .bind(final_url, title, validation.get("site_url"))
+                    .first()
+                )
 
-            # Audit log with validation info
-            await self._log_admin_action(
-                admin["id"],
-                "add_feed",
-                "feed",
-                feed_id,
-                {
-                    "url": final_url,
-                    "original_url": url if final_url != url else None,
-                    "title": title,
-                    "entry_count": validation.get("entry_count", 0),
-                },
-            )
+                # Convert JsProxy to Python dict
+                result = _to_py_safe(result_raw)
+                feed_id = result.get("id") if result else None
+                admin_event.target_id = feed_id
 
-            # Queue the feed for immediate full processing (fetch entries)
-            await self.env.FEED_QUEUE.send(
-                {
-                    "feed_id": feed_id,
-                    "url": final_url,
-                }
-            )
+                # Audit log with validation info
+                await self._log_admin_action(
+                    admin["id"],
+                    "add_feed",
+                    "feed",
+                    feed_id,
+                    {
+                        "url": final_url,
+                        "original_url": url if final_url != url else None,
+                        "title": title,
+                        "entry_count": validation.get("entry_count", 0),
+                    },
+                )
 
-            log_op(
-                "feed_added_and_queued",
-                feed_id=feed_id,
-                url=final_url,
-                title=title,
-                entry_count=validation.get("entry_count", 0),
-            )
+                # Queue the feed for immediate full processing (fetch entries)
+                await self.env.FEED_QUEUE.send(
+                    {
+                        "feed_id": feed_id,
+                        "url": final_url,
+                    }
+                )
 
-            # Redirect back to admin
-            return redirect_response("/admin")
+                admin_event.outcome = "success"
 
-        except Exception as e:
-            return json_error(str(e), status=500)
+                # Redirect back to admin
+                return _redirect_response("/admin")
+
+            except Exception as e:
+                admin_event.outcome = "error"
+                admin_event.error_type = type(e).__name__
+                admin_event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
+                return _json_error(str(e), status=500)
+            finally:
+                admin_event.wall_time_ms = timer.elapsed_ms
+                emit_event(admin_event)
 
     async def _remove_feed(self, feed_id, admin):
         """Remove a feed."""
-        try:
-            feed_id = int(feed_id)
+        # Initialize admin action event for observability
+        deployment = self._get_deployment_context()
+        admin_event = AdminActionEvent(
+            admin_username=admin.get("github_username", ""),
+            admin_id=admin.get("id", 0),
+            action="remove_feed",
+            target_type="feed",
+            worker_version=deployment["worker_version"],
+            deployment_environment=deployment["deployment_environment"],
+        )
 
-            # Get feed info for audit log
-            feed_result = (
-                await self.env.DB.prepare("SELECT * FROM feeds WHERE id = ?").bind(feed_id).first()
-            )
+        with Timer() as timer:
+            try:
+                feed_id = int(feed_id)
+                admin_event.target_id = feed_id
 
-            # Convert JsProxy to Python dict
-            feed = _to_py_safe(feed_result)
+                # Get feed info for audit log
+                feed_result = (
+                    await self.env.DB.prepare("SELECT * FROM feeds WHERE id = ?")
+                    .bind(feed_id)
+                    .first()
+                )
 
-            if not feed or not isinstance(feed, dict):
-                return json_error("Feed not found", status=404)
+                # Convert JsProxy to Python dict
+                feed = _to_py_safe(feed_result)
 
-            # Delete feed (entries will cascade)
-            await self.env.DB.prepare("DELETE FROM feeds WHERE id = ?").bind(feed_id).run()
+                if not feed or not isinstance(feed, dict):
+                    admin_event.outcome = "error"
+                    admin_event.error_type = "NotFound"
+                    admin_event.error_message = "Feed not found"
+                    return _json_error("Feed not found", status=404)
 
-            # Audit log - feed is now a Python dict
-            await self._log_admin_action(
-                admin["id"],
-                "remove_feed",
-                "feed",
-                feed_id,
-                {"url": feed.get("url"), "title": feed.get("title")},
-            )
+                # Delete feed (entries will cascade)
+                await self.env.DB.prepare("DELETE FROM feeds WHERE id = ?").bind(feed_id).run()
 
-            # Redirect back to admin
-            return redirect_response("/admin")
+                # Audit log - feed is now a Python dict
+                await self._log_admin_action(
+                    admin["id"],
+                    "remove_feed",
+                    "feed",
+                    feed_id,
+                    {"url": feed.get("url"), "title": feed.get("title")},
+                )
 
-        except Exception as e:
-            return json_error(str(e), status=500)
+                admin_event.outcome = "success"
+
+                # Redirect back to admin
+                return _redirect_response("/admin")
+
+            except Exception as e:
+                admin_event.outcome = "error"
+                admin_event.error_type = type(e).__name__
+                admin_event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
+                return _json_error(str(e), status=500)
+            finally:
+                admin_event.wall_time_ms = timer.elapsed_ms
+                emit_event(admin_event)
 
     async def _update_feed(self, request, feed_id, admin):
         """Update a feed (enable/disable)."""
-        try:
-            feed_id = int(feed_id)
-            data_raw = await request.json()
+        # Initialize admin action event for observability
+        deployment = self._get_deployment_context()
+        admin_event = AdminActionEvent(
+            admin_username=admin.get("github_username", ""),
+            admin_id=admin.get("id", 0),
+            action="toggle_feed",
+            target_type="feed",
+            worker_version=deployment["worker_version"],
+            deployment_environment=deployment["deployment_environment"],
+        )
 
-            # Convert JsProxy to Python dict if needed
-            data = _to_py_safe(data_raw) or {}
+        with Timer() as timer:
+            try:
+                feed_id = int(feed_id)
+                admin_event.target_id = feed_id
+                data_raw = await request.json()
 
-            is_active = data.get("is_active", 1)
+                # Convert JsProxy to Python dict if needed
+                data = _to_py_safe(data_raw) or {}
 
-            await (
-                self.env.DB.prepare("""
-                UPDATE feeds SET
-                    is_active = ?,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            """)
-                .bind(is_active, feed_id)
-                .run()
-            )
+                is_active = data.get("is_active", 1)
 
-            # Audit log
-            await self._log_admin_action(
-                admin["id"], "update_feed", "feed", feed_id, {"is_active": is_active}
-            )
+                await (
+                    self.env.DB.prepare("""
+                    UPDATE feeds SET
+                        is_active = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """)
+                    .bind(is_active, feed_id)
+                    .run()
+                )
 
-            return json_response({"success": True})
+                # Audit log
+                await self._log_admin_action(
+                    admin["id"], "update_feed", "feed", feed_id, {"is_active": is_active}
+                )
 
-        except Exception as e:
-            return json_error(str(e), status=500)
+                admin_event.outcome = "success"
+                return _json_response({"success": True})
+
+            except Exception as e:
+                admin_event.outcome = "error"
+                admin_event.error_type = type(e).__name__
+                admin_event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
+                return _json_error(str(e), status=500)
+            finally:
+                admin_event.wall_time_ms = timer.elapsed_ms
+                emit_event(admin_event)
 
     async def _import_opml(self, request, admin):
         """Import feeds from uploaded OPML file. Admin only."""
-        form = await request.form_data()
-        # File uploads need direct access, not string conversion
-        opml_file = form.get("opml")
-
-        # Check for both Python None and JavaScript undefined
-        if not opml_file or _is_js_undefined(opml_file):
-            return json_error("No file uploaded")
-
-        # Handle both JsProxy File and test mock
-        if hasattr(opml_file, "text"):
-            result = opml_file.text()
-            # Await if it's a coroutine or JS Promise (JsProxy with 'then' method)
-            if asyncio.iscoroutine(result) or hasattr(result, "then"):
-                content = await result
-            else:
-                content = result
-        else:
-            # Already a string (test fallback)
-            content = str(opml_file)
-
-        # Parse OPML with XXE/Billion Laughs protection
-        # Security: forbid_dtd=True prevents DOCTYPE declarations and entity expansion
-        try:
-            parser = ET.XMLParser(forbid_dtd=True)
-            root = ET.fromstring(content, parser=parser)
-        except ET.ParseError as e:
-            # Don't expose detailed parse errors to users
-            log_op("opml_parse_error", error=str(e)[:200])
-            return json_error("Invalid OPML format")
-
-        imported = 0
-        skipped = 0
-        errors = []
-
-        for outline in root.iter("outline"):
-            xml_url = outline.get("xmlUrl")
-            if not xml_url:
-                continue
-
-            title = outline.get("title") or outline.get("text") or xml_url
-            html_url = outline.get("htmlUrl")
-
-            # Validate URL (SSRF protection)
-            if not self._is_safe_url(xml_url):
-                errors.append(f"Skipped unsafe URL: {xml_url}")
-                continue
-
-            try:
-                await (
-                    self.env.DB.prepare("""
-                    INSERT INTO feeds (url, title, site_url, is_active)
-                    VALUES (?, ?, ?, 1)
-                    ON CONFLICT(url) DO NOTHING
-                """)
-                    .bind(xml_url, title, html_url)
-                    .run()
-                )
-                imported += 1
-            except Exception as e:
-                skipped += 1
-                errors.append(f"Failed to import {xml_url}: {e}")
-
-        # Audit log
-        await self._log_admin_action(
-            admin["id"],
-            "import_opml",
-            "feeds",
-            None,
-            {"imported": imported, "skipped": skipped, "errors": errors[:10]},
+        # Initialize admin action event for observability
+        deployment = self._get_deployment_context()
+        admin_event = AdminActionEvent(
+            admin_username=admin.get("github_username", ""),
+            admin_id=admin.get("id", 0),
+            action="import_opml",
+            target_type="feeds",
+            worker_version=deployment["worker_version"],
+            deployment_environment=deployment["deployment_environment"],
         )
 
-        # Redirect back to admin
-        return redirect_response("/admin")
+        with Timer() as timer:
+            try:
+                form = await request.form_data()
+                # File uploads need direct access, not string conversion
+                opml_file = form.get("opml")
+
+                # Check for both Python None and JavaScript undefined
+                if not opml_file or _is_js_undefined(opml_file):
+                    admin_event.outcome = "error"
+                    admin_event.error_type = "ValidationError"
+                    admin_event.error_message = "No file uploaded"
+                    return _json_error("No file uploaded")
+
+                # Handle both JsProxy File and test mock
+                if hasattr(opml_file, "text"):
+                    result = opml_file.text()
+                    # Await if it's a coroutine or JS Promise (JsProxy with 'then' method)
+                    if asyncio.iscoroutine(result) or hasattr(result, "then"):
+                        content = await result
+                    else:
+                        content = result
+                else:
+                    # Already a string (test fallback)
+                    content = str(opml_file)
+
+                admin_event.import_file_size = len(content) if content else 0
+
+                # Parse OPML with XXE/Billion Laughs protection
+                # Security: forbid_dtd=True prevents DOCTYPE declarations and entity expansion
+                try:
+                    parser = ET.XMLParser(forbid_dtd=True)
+                    root = ET.fromstring(content, parser=parser)
+                except ET.ParseError as e:
+                    # Don't expose detailed parse errors to users
+                    _log_op("opml_parse_error", error=str(e)[:ERROR_MESSAGE_MAX_LENGTH])
+                    admin_event.outcome = "error"
+                    admin_event.error_type = "ParseError"
+                    admin_event.error_message = "Invalid OPML format"
+                    return _json_error("Invalid OPML format")
+
+                imported = 0
+                skipped = 0
+                feeds_parsed = 0
+                errors = []
+
+                for outline in root.iter("outline"):
+                    xml_url = outline.get("xmlUrl")
+                    if not xml_url:
+                        continue
+
+                    feeds_parsed += 1
+                    title = outline.get("title") or outline.get("text") or xml_url
+                    html_url = outline.get("htmlUrl")
+
+                    # Validate URL (SSRF protection)
+                    if not self._is_safe_url(xml_url):
+                        errors.append(f"Skipped unsafe URL: {xml_url}")
+                        skipped += 1
+                        continue
+
+                    try:
+                        await (
+                            self.env.DB.prepare("""
+                            INSERT INTO feeds (url, title, site_url, is_active)
+                            VALUES (?, ?, ?, 1)
+                            ON CONFLICT(url) DO NOTHING
+                        """)
+                            .bind(xml_url, title, html_url)
+                            .run()
+                        )
+                        imported += 1
+                    except Exception as e:
+                        skipped += 1
+                        errors.append(f"Failed to import {xml_url}: {e}")
+
+                # Populate OPML import metrics
+                admin_event.import_feeds_parsed = feeds_parsed
+                admin_event.import_feeds_added = imported
+                admin_event.import_feeds_skipped = skipped
+                admin_event.import_errors = len(errors)
+                admin_event.outcome = "success"
+
+                # Audit log
+                await self._log_admin_action(
+                    admin["id"],
+                    "import_opml",
+                    "feeds",
+                    None,
+                    {"imported": imported, "skipped": skipped, "errors": errors[:10]},
+                )
+
+                # Redirect back to admin
+                return _redirect_response("/admin")
+
+            except Exception as e:
+                admin_event.outcome = "error"
+                admin_event.error_type = type(e).__name__
+                admin_event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
+                return _json_error(str(e), status=500)
+            finally:
+                admin_event.wall_time_ms = timer.elapsed_ms
+                emit_event(admin_event)
 
     async def _trigger_regenerate(self, admin):
         """Force regeneration by clearing edge cache (not really possible, but log the action)."""
@@ -2595,70 +2879,103 @@ class Default(WorkerEntrypoint):
         # Queue all active feeds for immediate fetch
         await self._run_scheduler()
 
-        return redirect_response("/admin")
+        return _redirect_response("/admin")
 
     async def _view_dlq(self):
-        """View dead letter queue contents (failed feeds with 3+ consecutive failures)."""
-        result = await self.env.DB.prepare("""
+        """View dead letter queue contents (failed feeds with configurable threshold)."""
+        threshold = self._get_feed_failure_threshold()
+        result = await self.env.DB.prepare(f"""
             SELECT id, url, title, consecutive_failures, last_fetch_at, fetch_error as last_error
             FROM feeds
-            WHERE consecutive_failures >= 3
+            WHERE consecutive_failures >= {threshold}
             ORDER BY consecutive_failures DESC, last_fetch_at DESC
         """).all()
-        return json_response({"failed_feeds": _to_py_list(result.results)})
+        return _json_response({"failed_feeds": _to_py_list(result.results)})
 
     async def _retry_dlq_feed(self, feed_id, admin):
         """Retry a failed feed by resetting its failure count and re-queuing."""
-        try:
-            feed_id = int(feed_id)
+        # Initialize admin action event for observability
+        deployment = self._get_deployment_context()
+        admin_event = AdminActionEvent(
+            admin_username=admin.get("github_username", ""),
+            admin_id=admin.get("id", 0),
+            action="retry_dlq",
+            target_type="feed",
+            worker_version=deployment["worker_version"],
+            deployment_environment=deployment["deployment_environment"],
+        )
 
-            # Get feed info
-            feed_result = (
-                await self.env.DB.prepare("SELECT * FROM feeds WHERE id = ?").bind(feed_id).first()
-            )
+        with Timer() as timer:
+            try:
+                feed_id = int(feed_id)
+                admin_event.target_id = feed_id
+                admin_event.dlq_feed_id = feed_id
 
-            # Convert JsProxy to Python dict
-            feed = _to_py_safe(feed_result)
+                # Get feed info
+                feed_result = (
+                    await self.env.DB.prepare("SELECT * FROM feeds WHERE id = ?")
+                    .bind(feed_id)
+                    .first()
+                )
 
-            if not feed or not isinstance(feed, dict):
-                return json_error("Feed not found", status=404)
+                # Convert JsProxy to Python dict
+                feed = _to_py_safe(feed_result)
 
-            # Reset failure count
-            await (
-                self.env.DB.prepare("""
-                UPDATE feeds SET
-                    consecutive_failures = 0,
-                    is_active = 1,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            """)
-                .bind(feed_id)
-                .run()
-            )
+                if not feed or not isinstance(feed, dict):
+                    admin_event.outcome = "error"
+                    admin_event.error_type = "NotFound"
+                    admin_event.error_message = "Feed not found"
+                    return _json_error("Feed not found", status=404)
 
-            # Queue the feed for immediate fetch - feed is now a Python dict
-            message = {
-                "feed_id": feed_id,
-                "url": feed.get("url"),
-                "etag": feed.get("etag"),
-                "last_modified": feed.get("last_modified"),
-            }
-            await self.env.FEED_QUEUE.send(message)
+                # Capture original error for observability
+                admin_event.dlq_original_error = feed.get("fetch_error", "")[
+                    :ERROR_MESSAGE_MAX_LENGTH
+                ]
+                admin_event.dlq_action = "retry"
 
-            # Audit log
-            await self._log_admin_action(
-                admin["id"],
-                "retry_dlq",
-                "feed",
-                feed_id,
-                {"url": feed.get("url"), "previous_failures": feed.get("consecutive_failures")},
-            )
+                # Reset failure count
+                await (
+                    self.env.DB.prepare("""
+                    UPDATE feeds SET
+                        consecutive_failures = 0,
+                        is_active = 1,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """)
+                    .bind(feed_id)
+                    .run()
+                )
 
-            return redirect_response("/admin")
+                # Queue the feed for immediate fetch - feed is now a Python dict
+                message = {
+                    "feed_id": feed_id,
+                    "url": feed.get("url"),
+                    "etag": feed.get("etag"),
+                    "last_modified": feed.get("last_modified"),
+                }
+                await self.env.FEED_QUEUE.send(message)
 
-        except Exception as e:
-            log_op("dlq_retry_error", feed_id=feed_id, error=str(e))
-            return json_error(str(e), status=500)
+                # Audit log
+                await self._log_admin_action(
+                    admin["id"],
+                    "retry_dlq",
+                    "feed",
+                    feed_id,
+                    {"url": feed.get("url"), "previous_failures": feed.get("consecutive_failures")},
+                )
+
+                admin_event.outcome = "success"
+                return _redirect_response("/admin")
+
+            except Exception as e:
+                admin_event.outcome = "error"
+                admin_event.error_type = type(e).__name__
+                admin_event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
+                _log_op("dlq_retry_error", feed_id=feed_id, error=str(e))
+                return _json_error(str(e), status=500)
+            finally:
+                admin_event.wall_time_ms = timer.elapsed_ms
+                emit_event(admin_event)
 
     async def _view_audit_log(self):
         """View audit log."""
@@ -2669,7 +2986,7 @@ class Default(WorkerEntrypoint):
             ORDER BY al.created_at DESC
             LIMIT 100
         """).all()
-        return json_response({"audit_log": _to_py_list(result.results)})
+        return _json_response({"audit_log": _to_py_list(result.results)})
 
     async def _reindex_all_entries(self, admin):
         """Re-index all entries in Vectorize for search.
@@ -2677,55 +2994,85 @@ class Default(WorkerEntrypoint):
         This is needed when entries exist in D1 but were never indexed
         (e.g., added before Vectorize was configured, or indexing failed).
         """
-        # Get all entries with their content (include feed_id for observability)
-        result = await self.env.DB.prepare("""
-            SELECT id, feed_id, title, content FROM entries WHERE title IS NOT NULL
-        """).all()
+        # Initialize admin action event for observability
+        deployment = self._get_deployment_context()
+        admin_event = AdminActionEvent(
+            admin_username=admin.get("github_username", ""),
+            admin_id=admin.get("id", 0),
+            action="reindex",
+            target_type="search_index",
+            worker_version=deployment["worker_version"],
+            deployment_environment=deployment["deployment_environment"],
+        )
 
-        entries = _to_py_list(result.results)
-        indexed = 0
-        failed = 0
-
-        for entry in entries:
-            entry_id = entry.get("id")
-            feed_id = entry.get("feed_id", 0)
-            title = entry.get("title", "")
-            content = entry.get("content", "")
-
-            if not entry_id or not title:
-                continue
-
+        with Timer() as timer:
             try:
-                await self._index_entry_for_search(
-                    entry_id, title, content, feed_id=feed_id, trigger="reindex"
+                # Get all entries with their content (include feed_id for observability)
+                result = await self.env.DB.prepare("""
+                    SELECT id, feed_id, title, content FROM entries WHERE title IS NOT NULL
+                """).all()
+
+                entries = _to_py_list(result.results)
+                indexed = 0
+                failed = 0
+
+                admin_event.reindex_entries_total = len(entries)
+
+                for entry in entries:
+                    entry_id = entry.get("id")
+                    feed_id = entry.get("feed_id", 0)
+                    title = entry.get("title", "")
+                    content = entry.get("content", "")
+
+                    if not entry_id or not title:
+                        continue
+
+                    try:
+                        await self._index_entry_for_search(
+                            entry_id, title, content, feed_id=feed_id, trigger="reindex"
+                        )
+                        indexed += 1
+                    except Exception as e:
+                        failed += 1
+                        _log_op(
+                            "reindex_entry_failed",
+                            entry_id=entry_id,
+                            error_type=type(e).__name__,
+                            error=str(e)[:ERROR_MESSAGE_MAX_LENGTH],
+                        )
+
+                admin_event.reindex_entries_indexed = indexed
+                admin_event.reindex_entries_failed = failed
+
+                # Log admin action
+                await self._log_admin_action(
+                    admin["id"],
+                    "reindex",
+                    "search_index",
+                    0,
+                    {"indexed": indexed, "failed": failed, "total": len(entries)},
                 )
-                indexed += 1
+
+                admin_event.outcome = "success"
+
+                return _json_response(
+                    {
+                        "success": True,
+                        "indexed": indexed,
+                        "failed": failed,
+                        "total": len(entries),
+                    }
+                )
+
             except Exception as e:
-                failed += 1
-                log_op(
-                    "reindex_entry_failed",
-                    entry_id=entry_id,
-                    error_type=type(e).__name__,
-                    error=str(e)[:100],
-                )
-
-        # Log admin action
-        await self._log_admin_action(
-            admin["id"],
-            "reindex",
-            "search_index",
-            0,
-            {"indexed": indexed, "failed": failed, "total": len(entries)},
-        )
-
-        return json_response(
-            {
-                "success": True,
-                "indexed": indexed,
-                "failed": failed,
-                "total": len(entries),
-            }
-        )
+                admin_event.outcome = "error"
+                admin_event.error_type = type(e).__name__
+                admin_event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
+                return _json_error(str(e), status=500)
+            finally:
+                admin_event.reindex_total_ms = timer.elapsed_ms
+                admin_event.wall_time_ms = timer.elapsed_ms
+                emit_event(admin_event)
 
     async def _log_admin_action(self, admin_id, action, target_type, target_id, details):
         """Log an admin action to the audit log."""
@@ -2802,7 +3149,11 @@ class Default(WorkerEntrypoint):
 
             return payload
         except Exception as e:
-            log_op("session_verify_failed", error_type=type(e).__name__, error=str(e)[:100])
+            _log_op(
+                "session_verify_failed",
+                error_type=type(e).__name__,
+                error=str(e)[:ERROR_MESSAGE_MAX_LENGTH],
+            )
             return None
 
     def _redirect_to_github_oauth(self, request):
@@ -2843,7 +3194,7 @@ class Default(WorkerEntrypoint):
             headers={"Location": auth_url, "Set-Cookie": state_cookie},
         )
 
-    async def _handle_github_callback(self, request):
+    async def _handle_github_callback(self, request, event: RequestEvent | None = None):
         """Handle GitHub OAuth callback."""
         try:
             url_str = str(request.url)
@@ -2852,7 +3203,12 @@ class Default(WorkerEntrypoint):
             state = qs.get("state", [""])[0]
 
             if not code:
-                return Response("Missing authorization code", status=400)
+                if event:
+                    event.outcome = "error"
+                    event.oauth_success = False
+                    event.error_type = "ValidationError"
+                    event.error_message = "Missing authorization code"
+                return _json_error("Missing authorization code", status=400)
 
             # Verify state parameter matches cookie (CSRF protection)
             # Safely extract Cookie header (may be JsProxy in Pyodide)
@@ -2864,7 +3220,12 @@ class Default(WorkerEntrypoint):
                     break
 
             if not state or not expected_state or state != expected_state:
-                return Response("Invalid state parameter", status=400)
+                if event:
+                    event.outcome = "error"
+                    event.oauth_success = False
+                    event.error_type = "CSRFError"
+                    event.error_message = "Invalid state parameter"
+                return _json_error("Invalid state parameter", status=400)
 
             client_id = getattr(self.env, "GITHUB_CLIENT_ID", "")
             client_secret = getattr(self.env, "GITHUB_CLIENT_SECRET", "")
@@ -2882,16 +3243,34 @@ class Default(WorkerEntrypoint):
             )
 
             if token_response.status_code != 200:
-                log_op("github_token_exchange_failed", status_code=token_response.status_code)
-                return Response("Failed to exchange authorization code", status=502)
+                _log_op("github_token_exchange_failed", status_code=token_response.status_code)
+                if event:
+                    event.outcome = "error"
+                    event.oauth_success = False
+                    event.error_type = "TokenExchangeError"
+                    event.error_message = (
+                        f"GitHub token exchange failed: {token_response.status_code}"
+                    )
+                return _json_error("Failed to exchange authorization code", status=502)
 
             token_data = token_response.json()
             access_token = token_data.get("access_token")
 
             if not access_token:
                 error_desc = token_data.get("error_description", "Unknown error")
-                log_op("github_oauth_error", error=token_data.get("error"), description=error_desc)
-                return Response(f"GitHub OAuth failed: {error_desc}", status=400)
+                _log_op(
+                    "github_oauth_error",
+                    error=token_data.get("error"),
+                    description=error_desc,
+                )
+                if event:
+                    event.outcome = "error"
+                    event.oauth_success = False
+                    event.error_type = "OAuthError"
+                    event.error_message = f"GitHub OAuth failed: {error_desc}"[
+                        :ERROR_MESSAGE_MAX_LENGTH
+                    ]
+                return _json_error(f"GitHub OAuth failed: {error_desc}", status=400)
 
             # Fetch user info using centralized safe_http_fetch
             github_headers = {
@@ -2907,12 +3286,17 @@ class Default(WorkerEntrypoint):
             )
 
             if user_response.status_code != 200:
-                log_op(
+                _log_op(
                     "github_api_error",
                     status_code=user_response.status_code,
-                    response=user_response.text[:200],
+                    response=user_response.text[:ERROR_MESSAGE_MAX_LENGTH],
                 )
-                return Response(f"GitHub API error: {user_response.status_code}", status=502)
+                if event:
+                    event.outcome = "error"
+                    event.oauth_success = False
+                    event.error_type = "GitHubAPIError"
+                    event.error_message = f"GitHub API error: {user_response.status_code}"
+                return _json_error(f"GitHub API error: {user_response.status_code}", status=502)
 
             user_data = user_response.json()
             github_username = user_data.get("login")
@@ -2931,7 +3315,12 @@ class Default(WorkerEntrypoint):
             admin = _to_py_safe(admin_result)
 
             if not admin:
-                return Response("Unauthorized: Not an admin", status=403)
+                if event:
+                    event.outcome = "error"
+                    event.oauth_success = False
+                    event.error_type = "UnauthorizedError"
+                    event.error_message = f"User {github_username} is not an admin"
+                return _json_error("Unauthorized: Not an admin", status=403)
 
             # Update admin's github_id and last_login_at
             await (
@@ -2960,6 +3349,13 @@ class Default(WorkerEntrypoint):
                 f"session={session_cookie}; HttpOnly; Secure; "
                 f"SameSite=Lax; Path=/; Max-Age={SESSION_TTL_SECONDS}"
             )
+
+            # Populate OAuth success metrics on consolidated event
+            if event:
+                event.outcome = "success"
+                event.oauth_success = True
+                event.oauth_username = github_username
+
             return Response(
                 "",
                 status=302,
@@ -2971,13 +3367,18 @@ class Default(WorkerEntrypoint):
             )
 
         except Exception as e:
-            # Issue 4.5/6.5: Use log_op() for structured logging
-            log_op(
+            # Issue 4.5/6.5: Use _log_op() for structured logging
+            _log_op(
                 "oauth_error",
                 error_type=type(e).__name__,
-                error_message=str(e)[:200],
+                error_message=str(e)[:ERROR_MESSAGE_MAX_LENGTH],
             )
-            return Response("Authentication failed. Please try again.", status=500)
+            if event:
+                event.outcome = "error"
+                event.oauth_success = False
+                event.error_type = type(e).__name__
+                event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
+            return _json_error("Authentication failed. Please try again.", status=500)
 
     def _create_signed_cookie(self, payload):
         """Create an HMAC-signed cookie. Format: base64(json_payload).signature"""

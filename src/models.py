@@ -143,13 +143,19 @@ class FeedRow(TypedDict):
     site_url: NotRequired[str | None]
     is_active: int  # SQLite boolean
     consecutive_failures: int
-    last_etag: NotRequired[str | None]
-    last_modified_header: NotRequired[str | None]
+    etag: NotRequired[str | None]
+    last_modified: NotRequired[str | None]
     last_success_at: NotRequired[str | None]
     last_error_at: NotRequired[str | None]
     last_error_message: NotRequired[str | None]
     created_at: str
     updated_at: str
+    # Additional fields used in queries
+    author_name: NotRequired[str | None]
+    author_email: NotRequired[str | None]
+    last_fetch_at: NotRequired[str | None]
+    fetch_error: NotRequired[str | None]
+    fetch_error_count: NotRequired[int | None]
 
 
 class EntryRow(TypedDict):
@@ -165,6 +171,7 @@ class EntryRow(TypedDict):
     summary: NotRequired[str | None]
     published_at: str
     created_at: str
+    first_seen: NotRequired[str | None]  # Added by migration 003
     # Joined fields (when querying with feeds)
     feed_title: NotRequired[str]
     feed_site_url: NotRequired[str]
