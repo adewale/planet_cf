@@ -369,3 +369,115 @@ async def test_search_with_valid_query(mock_env_with_entries):
     assert response.status == 200
     # Should either show results or "No results found"
     assert "Search Results" in response.body
+
+
+# =============================================================================
+# Author Email Filtering Tests
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_homepage_hides_email_author(mock_env):
+    """Homepage should hide email addresses in author field and show feed title instead.
+
+    This tests the fix for Blogger feeds that expose email addresses like
+    'noreply@blogger.com' as the author. The template should display the
+    feed title when the author field contains an '@' symbol.
+    """
+    from src.main import PlanetCF
+    from tests.conftest import MockD1
+
+    # Create mock with entry that has email as author
+    mock_env.DB = MockD1(
+        {
+            "feeds": [
+                {
+                    "id": 1,
+                    "url": "https://example.blogspot.com/feed.xml",
+                    "title": "Example Blog",
+                    "is_active": 1,
+                    "site_url": "https://example.blogspot.com",
+                    "consecutive_failures": 0,
+                    "last_success_at": "2026-01-15T00:00:00Z",
+                },
+            ],
+            "entries": [
+                {
+                    "id": 1,
+                    "feed_id": 1,
+                    "guid": "entry-1",
+                    "url": "https://example.blogspot.com/post/1",
+                    "title": "Blog Post About Cloudflare",
+                    "author": "noreply@blogger.com",  # Email should be hidden
+                    "content": "<p>Content</p>",
+                    "published_at": "2026-01-15T12:00:00Z",
+                    "feed_title": "Example Blog",  # Should show this instead
+                    "feed_site_url": "https://example.blogspot.com",
+                },
+            ],
+        }
+    )
+
+    worker = PlanetCF()
+    worker.env = mock_env
+
+    request = MockRequest("https://planetcf.com/")
+    response = await worker.fetch(request)
+
+    assert response.status == 200
+    # Entry should be shown (verify by entry title)
+    assert "Blog Post About Cloudflare" in response.body, "Entry should be displayed"
+    # Email should NOT appear in output
+    assert "noreply@blogger.com" not in response.body, "Email address should be hidden"
+    # Feed title should appear as author
+    assert "Example Blog" in response.body, "Feed title should be shown instead of email"
+
+
+@pytest.mark.asyncio
+async def test_homepage_shows_normal_author(mock_env):
+    """Homepage should show author names that don't contain email addresses."""
+    from src.main import PlanetCF
+    from tests.conftest import MockD1
+
+    # Create mock with entry that has a normal author name
+    mock_env.DB = MockD1(
+        {
+            "feeds": [
+                {
+                    "id": 1,
+                    "url": "https://example.com/feed.xml",
+                    "title": "Example Blog",
+                    "is_active": 1,
+                    "site_url": "https://example.com",
+                    "consecutive_failures": 0,
+                    "last_success_at": "2026-01-15T00:00:00Z",
+                },
+            ],
+            "entries": [
+                {
+                    "id": 1,
+                    "feed_id": 1,
+                    "guid": "entry-1",
+                    "url": "https://example.com/post/1",
+                    "title": "Another Blog Post Title",
+                    "author": "John Doe",  # Normal name should be shown
+                    "content": "<p>Content</p>",
+                    "published_at": "2026-01-15T12:00:00Z",
+                    "feed_title": "Example Blog",
+                    "feed_site_url": "https://example.com",
+                },
+            ],
+        }
+    )
+
+    worker = PlanetCF()
+    worker.env = mock_env
+
+    request = MockRequest("https://planetcf.com/")
+    response = await worker.fetch(request)
+
+    assert response.status == 200
+    # Entry should be shown (verify by entry title)
+    assert "Another Blog Post Title" in response.body, "Entry should be displayed"
+    # Normal author name should appear
+    assert "John Doe" in response.body, "Normal author name should be shown"

@@ -85,14 +85,23 @@ class MockD1Statement:
         return self
 
     def _filter_results(self) -> list[dict]:
-        """Apply basic filtering based on SQL WHERE clause."""
+        """Apply basic filtering based on SQL WHERE clause.
+
+        Note: This only filters on is_active when querying tables that actually
+        have that field (feeds, admins). Entry queries that JOIN with feeds
+        should NOT be filtered here - entries don't have is_active.
+        """
         import re
 
         results = self._results
+        sql_lower = self._sql.lower()
 
-        # Check for is_active filtering (common pattern)
-        if "where" in self._sql.lower() and "is_active" in self._sql.lower():
-            match = re.search(r"is_active\s*=\s*(\d+)", self._sql.lower())
+        # Only filter on is_active for tables that have it (feeds, admins)
+        # Skip filtering for entry queries (they JOIN with feeds but entries
+        # themselves don't have is_active)
+        is_entry_query = "from entries" in sql_lower
+        if not is_entry_query and "where" in sql_lower and "is_active" in sql_lower:
+            match = re.search(r"is_active\s*=\s*(\d+)", sql_lower)
             if match:
                 is_active_val = int(match.group(1))
                 results = [r for r in results if r.get("is_active") == is_active_val]
