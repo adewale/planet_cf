@@ -3710,246 +3710,327 @@ Instead of scattered log statements, emit **one wide event per operation** conta
 
 #### Design Principles
 
-1. **One event per operation**: One log per feed fetch, one per HTML generation, one per page serve
+1. **One event per unit of work**: Not "one event per function call" but one event per logical operation
 2. **High dimensionality**: 30+ fields capturing all relevant context
 3. **High cardinality**: Include feed_id, user_id, request_id - values with millions of unique possibilities
 4. **Business context**: Not just "what happened" but "who was affected and why it matters"
 5. **Tail sampling**: Keep 100% of errors, sample successes
 
-### 12.3 Wide Event Schemas
+#### Event Consolidation: A Critical Lesson
 
-#### Feed Fetch Event
+> **Anti-pattern**: Emitting separate events for sub-operations within a single unit of work.
 
-Emitted once per feed fetch attempt (by Feed Fetcher Worker):
+We originally designed separate events for each operation: `PageServeEvent` for HTTP requests, `SearchEvent` for search operations, `GenerationEvent` for HTML generation, and `IndexingEvent` for each entry indexed. This seemed logical—each function had its own event.
+
+**The problem**: A single HTTP request to `/search` would emit TWO events with DIFFERENT `request_id` values:
+- `PageServeEvent(request_id: "abc")`
+- `SearchEvent(request_id: "xyz")` ← Unlinked!
+
+A single feed fetch processing 5 entries would emit SIX events:
+- `FeedFetchEvent(request_id: "abc")`
+- `IndexingEvent(request_id: "def")` × 5 ← All unlinked!
+
+**Why this breaks observability**:
+1. **Can't correlate**: "Show me all slow searches" requires joining two event types
+2. **Inflated event volume**: 5 entries = 6 events instead of 1
+3. **Lost causality**: Which indexing failures came from which feed fetch?
+4. **Queryability nightmare**: Simple questions require complex joins
+
+**The fix**: Consolidate into one wide event per unit of work, with sub-operation timing as **aggregated fields**:
 
 ```python
-def emit_feed_fetch_event(ctx, feed, response, entries_added, error=None):
-    """Emit canonical log line for a feed fetch operation."""
-    
-    event = {
-        # Identifiers (high cardinality)
-        "event_type": "feed_fetch",
-        "feed_id": feed["id"],
-        "feed_url": feed["url"],
-        "request_id": ctx.request_id,
-        "queue_message_id": ctx.message_id,
-        
-        # Timing
-        "timestamp": datetime.utcnow().isoformat(),
-        "wall_time_ms": ctx.wall_time_ms,
-        "cpu_time_ms": ctx.cpu_time_ms,
-        "http_latency_ms": ctx.http_latency_ms,
-        
-        # Feed metadata
-        "feed_title": feed.get("title"),
-        "feed_domain": urlparse(feed["url"]).netloc,
-        "feed_age_days": days_since(feed["created_at"]),
-        "feed_consecutive_failures": feed["consecutive_failures"],
-        
-        # HTTP details
-        "http_status": response.status_code if response else None,
-        "http_cached": response.status_code == 304 if response else False,
-        "http_redirected": bool(response.history) if response else False,
-        "response_size_bytes": len(response.content) if response else 0,
-        "etag_present": bool(response.headers.get("etag")) if response else False,
-        "last_modified_present": bool(response.headers.get("last-modified")) if response else False,
-        
-        # Parsing results
-        "entries_found": ctx.entries_found,
-        "entries_added": entries_added,
-        "parse_errors": ctx.parse_errors,
-        
-        # Outcome
-        "outcome": "success" if not error else "error",
-        "error_type": type(error).__name__ if error else None,
-        "error_message": str(error)[:500] if error else None,
-        "error_retriable": getattr(error, "retriable", True) if error else None,
-        
-        # Context
-        "worker_version": env.WORKER_VERSION,
-        "queue_attempt": ctx.attempt_number,
-        "scheduled_at": ctx.scheduled_at,
-    }
-    
-    # Emit as structured log (Workers Logs captures this)
-    print(json.dumps(event))
+# WRONG: Separate events
+FeedFetchEvent(...)  # Emitted
+IndexingEvent(...)   # Separate event, different request_id
+IndexingEvent(...)   # Another separate event
+IndexingEvent(...)   # And another
+
+# RIGHT: One consolidated event with aggregated timing
+FeedFetchEvent(
+    entries_found=5,
+    entries_added=3,
+    indexing_total_ms=1340,      # Sum of all indexing
+    indexing_embedding_ms=1140,  # Sum of embedding time
+    indexing_upsert_ms=195,      # Sum of upsert time
+    indexing_succeeded=3,
+    indexing_failed=0,
+)
 ```
 
-#### HTML Generation Event
+**Unit of Work Definitions**:
 
-Emitted once per HTML regeneration:
+| Unit of Work | Trigger | Event |
+|--------------|---------|-------|
+| HTTP request | Incoming fetch() | `RequestEvent` |
+| Queue message | Queue consumer | `FeedFetchEvent` |
+| Cron invocation | scheduled() | `SchedulerEvent` |
+| Admin operation | Admin action | `AdminActionEvent` |
+
+**Absorption Map**:
+
+| Was Separate Event | Now Absorbed Into | As Fields |
+|-------------------|-------------------|-----------|
+| `PageServeEvent` | `RequestEvent` | Base fields |
+| `SearchEvent` | `RequestEvent` | `search_*` fields (null for non-search) |
+| `GenerationEvent` | `RequestEvent` | `generation_*` fields (null for non-generation) |
+| `IndexingEvent` | `FeedFetchEvent` | `indexing_*` aggregate fields |
+| Retention cleanup | `SchedulerEvent` | `retention_*` fields |
+| OPML import | `AdminActionEvent` | `import_*` fields |
+| DLQ operations | `AdminActionEvent` | `dlq_*` fields |
+
+### 12.3 Wide Event Schemas (4 Consolidated Events)
+
+#### RequestEvent (HTTP Requests)
+
+One event per HTTP request. Absorbs search, generation, and OAuth-specific fields:
 
 ```python
-def emit_generation_event(ctx, feeds_count, entries_count, error=None):
-    """Emit canonical log line for HTML generation."""
-    
-    event = {
-        "event_type": "html_generation",
-        "request_id": ctx.request_id,
-        
-        # Timing
-        "timestamp": datetime.utcnow().isoformat(),
-        "wall_time_ms": ctx.wall_time_ms,
-        "cpu_time_ms": ctx.cpu_time_ms,
-        "d1_query_time_ms": ctx.d1_query_time_ms,
-        "template_render_time_ms": ctx.template_render_time_ms,
-        "kv_write_time_ms": ctx.kv_write_time_ms,
-        "r2_write_time_ms": ctx.r2_write_time_ms,
-        
-        # Content stats
-        "feeds_active": feeds_count,
-        "feeds_healthy": ctx.healthy_feeds_count,
-        "feeds_unhealthy": ctx.unhealthy_feeds_count,
-        "entries_total": entries_count,
-        "entries_by_date_count": len(ctx.entries_by_date),
-        "html_size_bytes": ctx.html_size_bytes,
-        "atom_size_bytes": ctx.atom_size_bytes,
-        "rss_size_bytes": ctx.rss_size_bytes,
-        
-        # Outcome
-        "outcome": "success" if not error else "error",
-        "error_type": type(error).__name__ if error else None,
-        "error_message": str(error)[:500] if error else None,
-        
-        # Trigger
-        "trigger": ctx.trigger,  # "cron" | "admin_manual" | "api"
-        "triggered_by": ctx.admin_username if ctx.trigger == "admin_manual" else None,
-    }
-    
-    print(json.dumps(event))
+@dataclass
+class RequestEvent:
+    """Canonical log line for HTTP requests. One event per fetch() invocation."""
+
+    # Identity
+    event_type: str = "request"
+    request_id: str = ""
+    timestamp: str = ""
+
+    # Request context
+    method: str = ""
+    path: str = ""
+    route: str = ""  # Pattern: "/", "/search", "/admin/feeds/:id"
+    user_agent: str = ""
+    referer: str = ""
+
+    # Response
+    status_code: int = 200
+    response_size_bytes: int = 0
+    wall_time_ms: float = 0
+    cache_status: str = ""  # "hit" | "miss" | "bypass"
+    content_type: str = ""  # "html" | "atom" | "rss" | "search" | "admin" | "static"
+
+    # === Search fields (null for non-search routes) ===
+    search_query: str | None = None
+    search_query_length: int | None = None
+    search_embedding_ms: float | None = None
+    search_vectorize_ms: float | None = None
+    search_d1_ms: float | None = None
+    search_results_total: int | None = None
+    search_semantic_matches: int | None = None
+    search_keyword_matches: int | None = None
+    search_exact_title_matches: int | None = None
+
+    # === Generation fields (null for non-generation routes) ===
+    generation_d1_ms: float | None = None
+    generation_render_ms: float | None = None
+    generation_entries_total: int | None = None
+    generation_feeds_healthy: int | None = None
+    generation_trigger: str | None = None  # "http" | "cron"
+
+    # === OAuth fields (null for non-OAuth routes) ===
+    oauth_stage: str | None = None  # "redirect" | "callback"
+    oauth_provider: str | None = None
+    oauth_success: bool | None = None
+    oauth_username: str | None = None
+
+    # Outcome
+    outcome: str = "success"
+    error_type: str | None = None
+    error_message: str | None = None
 ```
 
-#### Page Serve Event
-
-Emitted for each HTTP request:
-
+**Usage pattern**:
 ```python
-def emit_page_serve_event(request, response, ctx):
-    """Emit canonical log line for page serving."""
-    
-    event = {
-        "event_type": "page_serve",
-        "request_id": ctx.request_id,
-        
-        # Request
-        "method": request.method,
-        "path": request.url.pathname,
-        "user_agent": request.headers.get("user-agent", "")[:200],
-        "referer": request.headers.get("referer", "")[:200],
-        "country": request.cf.country if hasattr(request, "cf") else None,
-        "colo": request.cf.colo if hasattr(request, "cf") else None,
-        
-        # Response
-        "status_code": response.status,
-        "response_size_bytes": ctx.response_size_bytes,
-        "cache_status": ctx.cache_status,  # "hit" | "miss" | "bypass"
-        
-        # Timing
-        "wall_time_ms": ctx.wall_time_ms,
-        "kv_read_time_ms": ctx.kv_read_time_ms,
-        "r2_read_time_ms": ctx.r2_read_time_ms,
-        
-        # Content type
-        "content_type": ctx.content_type,  # "html" | "atom" | "rss" | "static"
-    }
+async def fetch(self, request):
+    event = RequestEvent(method=request.method, path=parsed.path)
 
-    print(json.dumps(event))
+    try:
+        with Timer() as total_timer:
+            if path == "/search":
+                response = await self._search_entries(request, event)  # Pass event
+            elif path == "/":
+                response = await self._serve_html(event)  # Pass event
+            # ... other routes ...
+    except Exception as e:
+        event.outcome = "error"
+        event.error_type = type(e).__name__
+    finally:
+        event.wall_time_ms = total_timer.elapsed_ms
+        event.status_code = response.status
+        emit_event(event)  # ONE event per request
 ```
 
-#### Search Event
+#### FeedFetchEvent (Queue Processing)
 
-Emitted once per search query:
+One event per queue message. Includes aggregated indexing stats:
 
 ```python
-def emit_search_event(ctx, query, results, error=None):
-    """Emit canonical log line for search operations."""
+@dataclass
+class FeedFetchEvent:
+    """Canonical log line for feed fetch. One event per queue message."""
 
-    event = {
-        # Identifiers (high cardinality)
-        "event_type": "search",
-        "request_id": ctx.request_id,
-        "query": query[:200],  # Truncate for storage
-        "query_length": len(query),
+    # Identity
+    event_type: str = "feed_fetch"
+    request_id: str = ""
+    queue_message_id: str = ""
+    timestamp: str = ""
 
-        # Timing breakdown
-        "timestamp": datetime.utcnow().isoformat(),
-        "wall_time_ms": ctx.wall_time_ms,
-        "embedding_time_ms": ctx.embedding_time_ms,
-        "vectorize_time_ms": ctx.vectorize_time_ms,
-        "d1_time_ms": ctx.d1_time_ms,
+    # Feed context
+    feed_id: int = 0
+    feed_url: str = ""
+    feed_domain: str = ""
+    feed_title: str | None = None
+    feed_consecutive_failures: int = 0
 
-        # Semantic search details
-        "semantic_matches_raw": ctx.semantic_matches_raw,
-        "semantic_matches_filtered": ctx.semantic_matches_filtered,
-        "semantic_top_score": ctx.semantic_top_score,
-        "score_threshold": ctx.score_threshold,
+    # HTTP fetch
+    http_latency_ms: float = 0
+    http_status: int | None = None
+    http_cached: bool = False
+    http_redirected: bool = False
+    response_size_bytes: int = 0
+    etag_present: bool = False
+    last_modified_present: bool = False
 
-        # Keyword search details
-        "keyword_matches": ctx.keyword_matches,
+    # Parsing
+    entries_found: int = 0
+    entries_added: int = 0
+    parse_errors: int = 0
 
-        # Combined results
-        "total_results": len(results),
-        "exact_title_matches": ctx.exact_title_matches,
-        "title_in_query_matches": ctx.title_in_query_matches,
-        "query_in_title_matches": ctx.query_in_title_matches,
-        "semantic_only_results": ctx.semantic_only_results,
-        "keyword_only_results": ctx.keyword_only_results,
+    # === Indexing aggregate (was separate IndexingEvent) ===
+    indexing_attempted: int = 0
+    indexing_succeeded: int = 0
+    indexing_failed: int = 0
+    indexing_total_ms: float = 0
+    indexing_embedding_ms: float = 0
+    indexing_upsert_ms: float = 0
+    indexing_text_truncated: int = 0  # Count of truncated entries
 
-        # User context
-        "user_agent": ctx.user_agent[:100],
-        "referer": ctx.referer[:100],
+    # Overall timing
+    wall_time_ms: float = 0
 
-        # Outcome
-        "outcome": "success" if not error else "error",
-        "error_type": type(error).__name__ if error else None,
-        "error_message": str(error)[:500] if error else None,
-    }
+    # Outcome
+    outcome: str = "success"
+    error_type: str | None = None
+    error_message: str | None = None
+    error_retriable: bool | None = None
 
-    print(json.dumps(event))
+    # Context
+    worker_version: str = "1.0.0"
+    queue_attempt: int = 1
 ```
 
-#### Indexing Event
+**Indexing aggregation pattern**:
+```python
+async def _process_single_feed(self, job, event: FeedFetchEvent):
+    # ... fetch and parse feed ...
 
-Emitted once per entry indexing operation:
+    for entry in parsed.entries:
+        event.indexing_attempted += 1
+        try:
+            with Timer() as idx_timer:
+                embedding_ms, upsert_ms, truncated = await self._index_entry(entry)
+
+            event.indexing_succeeded += 1
+            event.indexing_total_ms += idx_timer.elapsed_ms
+            event.indexing_embedding_ms += embedding_ms
+            event.indexing_upsert_ms += upsert_ms
+            if truncated:
+                event.indexing_text_truncated += 1
+        except Exception:
+            event.indexing_failed += 1
+
+    # ONE event emitted at end, with all indexing aggregated
+    emit_event(event)
+```
+
+#### SchedulerEvent (Cron Jobs)
+
+One event per scheduled() invocation. Includes retention cleanup:
 
 ```python
-def emit_indexing_event(ctx, entry_id, feed_id, error=None):
-    """Emit canonical log line for search indexing operations."""
+@dataclass
+class SchedulerEvent:
+    """Canonical log line for cron execution. One event per scheduled() call."""
 
-    event = {
-        # Identifiers (high cardinality)
-        "event_type": "indexing",
-        "request_id": ctx.request_id,
-        "entry_id": entry_id,
-        "feed_id": feed_id,
+    # Identity
+    event_type: str = "scheduler"
+    request_id: str = ""
+    timestamp: str = ""
 
-        # Timing breakdown
-        "timestamp": datetime.utcnow().isoformat(),
-        "wall_time_ms": ctx.wall_time_ms,
-        "embedding_time_ms": ctx.embedding_time_ms,
-        "upsert_time_ms": ctx.upsert_time_ms,
+    # === Scheduler phase ===
+    scheduler_d1_ms: float = 0
+    scheduler_queue_ms: float = 0
+    feeds_queried: int = 0
+    feeds_active: int = 0
+    feeds_enqueued: int = 0
 
-        # Content details
-        "title_length": ctx.title_length,
-        "content_length": ctx.content_length,
-        "text_truncated": ctx.text_truncated,
-        "combined_text_length": ctx.combined_text_length,
+    # === Retention phase (absorbed) ===
+    retention_d1_ms: float = 0
+    retention_vectorize_ms: float = 0
+    retention_entries_scanned: int = 0
+    retention_entries_deleted: int = 0
+    retention_vectors_deleted: int = 0
+    retention_errors: int = 0
+    retention_days: int = 0
+    retention_max_per_feed: int = 0
 
-        # Embedding details
-        "embedding_model": "@cf/baai/bge-base-en-v1.5",
-        "embedding_dimensions": 768,
-        "pooling_method": "cls",
+    # Overall
+    wall_time_ms: float = 0
 
-        # Outcome
-        "outcome": "success" if not error else "error",
-        "error_type": type(error).__name__ if error else None,
-        "error_message": str(error)[:500] if error else None,
+    # Outcome
+    outcome: str = "success"
+    error_type: str | None = None
+    error_message: str | None = None
+```
 
-        # Context
-        "trigger": ctx.trigger,  # "feed_fetch" | "reindex" | "manual"
-    }
+#### AdminActionEvent (Admin Operations)
 
-    print(json.dumps(event))
+One event per admin action. Includes OPML import, DLQ ops, reindex:
+
+```python
+@dataclass
+class AdminActionEvent:
+    """Canonical log line for admin operations. One event per action."""
+
+    # Identity
+    event_type: str = "admin_action"
+    request_id: str = ""
+    timestamp: str = ""
+
+    # Admin context
+    admin_username: str = ""
+    admin_id: int = 0
+    action: str = ""  # "add_feed" | "remove_feed" | "toggle_feed" |
+                      # "import_opml" | "retry_dlq" | "reindex"
+
+    # Target
+    target_type: str | None = None  # "feed" | "feeds" | "entry" | "search_index"
+    target_id: int | None = None
+
+    # === OPML import fields ===
+    import_file_size: int | None = None
+    import_feeds_parsed: int | None = None
+    import_feeds_added: int | None = None
+    import_feeds_skipped: int | None = None
+    import_errors: int | None = None
+
+    # === Reindex fields ===
+    reindex_entries_total: int | None = None
+    reindex_entries_indexed: int | None = None
+    reindex_entries_failed: int | None = None
+    reindex_embedding_ms: float | None = None
+
+    # === DLQ fields ===
+    dlq_feed_id: int | None = None
+    dlq_original_error: str | None = None
+    dlq_action: str | None = None  # "retry" | "discard"
+
+    # Timing
+    wall_time_ms: float = 0
+
+    # Outcome
+    outcome: str = "success"
+    error_type: str | None = None
+    error_message: str | None = None
 ```
 
 ### 12.4 Query Examples (Workers Observability Query Builder)
@@ -3958,9 +4039,9 @@ With wide events, use the [Workers Observability Query Builder](https://dash.clo
 
 **Feed health by domain:**
 ```
-event_type = "feed_fetch" 
-| GROUP BY feed_domain 
-| CALCULATE 
+event_type = "feed_fetch"
+| GROUP BY feed_domain
+| CALCULATE
     count() as total,
     countif(outcome = "error") as errors,
     avg(wall_time_ms) as avg_latency
@@ -3978,7 +4059,7 @@ event_type = "feed_fetch" AND outcome = "success"
 **Cache effectiveness:**
 ```
 event_type = "feed_fetch" AND outcome = "success"
-| CALCULATE 
+| CALCULATE
     countif(http_cached = true) as cached,
     countif(http_cached = false) as fetched,
     cached / (cached + fetched) * 100 as cache_hit_rate
@@ -3992,29 +4073,40 @@ event_type = "feed_fetch" AND outcome = "error"
 | ORDER BY occurrences DESC
 ```
 
+**Indexing performance (aggregated on FeedFetchEvent):**
+```
+event_type = "feed_fetch" AND indexing_attempted > 0
+| CALCULATE
+    avg(indexing_total_ms / indexing_attempted) as avg_per_entry_ms,
+    sum(indexing_succeeded) as total_indexed,
+    sum(indexing_failed) as total_failed,
+    avg(indexing_embedding_ms / indexing_attempted) as avg_embedding_ms
+```
+
 **Generation performance over time:**
 ```
-event_type = "html_generation"
+event_type = "request" AND route = "/"
 | TIMESERIES 1h
 | CALCULATE
-    avg(wall_time_ms) as avg_gen_time,
-    avg(entries_total) as avg_entries
+    avg(generation_d1_ms) as avg_d1_time,
+    avg(generation_render_ms) as avg_render_time,
+    avg(generation_entries_total) as avg_entries
 ```
 
 **Search latency breakdown:**
 ```
-event_type = "search"
+event_type = "request" AND route = "/search"
 | CALCULATE
     avg(wall_time_ms) as total_latency,
-    avg(embedding_time_ms) as embedding_latency,
-    avg(vectorize_time_ms) as vectorize_latency,
-    avg(d1_time_ms) as d1_latency
+    avg(search_embedding_ms) as embedding_latency,
+    avg(search_vectorize_ms) as vectorize_latency,
+    avg(search_d1_ms) as d1_latency
 ```
 
 **Zero-result searches (users not finding what they need):**
 ```
-event_type = "search" AND total_results = 0
-| GROUP BY query
+event_type = "request" AND route = "/search" AND search_results_total = 0
+| GROUP BY search_query
 | CALCULATE count() as occurrences
 | ORDER BY occurrences DESC
 | LIMIT 20
@@ -4022,39 +4114,57 @@ event_type = "search" AND total_results = 0
 
 **Search result distribution:**
 ```
-event_type = "search" AND outcome = "success"
+event_type = "request" AND route = "/search" AND outcome = "success"
 | CALCULATE
-    countif(total_results = 0) as zero_results,
-    countif(total_results > 0 AND total_results <= 5) as few_results,
-    countif(total_results > 5) as many_results,
-    avg(total_results) as avg_results
+    countif(search_results_total = 0) as zero_results,
+    countif(search_results_total > 0 AND search_results_total <= 5) as few_results,
+    countif(search_results_total > 5) as many_results,
+    avg(search_results_total) as avg_results
 ```
 
 **Semantic vs keyword effectiveness:**
 ```
-event_type = "search" AND outcome = "success"
+event_type = "request" AND route = "/search" AND outcome = "success"
 | CALCULATE
-    avg(semantic_matches_filtered) as avg_semantic,
-    avg(keyword_matches) as avg_keyword,
-    avg(exact_title_matches) as avg_exact_title
+    avg(search_semantic_matches) as avg_semantic,
+    avg(search_keyword_matches) as avg_keyword,
+    avg(search_exact_title_matches) as avg_exact_title
 ```
 
-**Indexing performance:**
+**Scheduler performance:**
 ```
-event_type = "indexing"
+event_type = "scheduler"
 | CALCULATE
-    avg(wall_time_ms) as avg_latency,
-    avg(embedding_time_ms) as avg_embedding,
-    avg(upsert_time_ms) as avg_upsert,
-    countif(outcome = "error") as errors
+    avg(wall_time_ms) as avg_total,
+    avg(scheduler_d1_ms) as avg_query,
+    avg(scheduler_queue_ms) as avg_enqueue,
+    avg(feeds_enqueued) as avg_feeds
 ```
 
-**Indexing failures by error type:**
+**Retention cleanup stats:**
 ```
-event_type = "indexing" AND outcome = "error"
-| GROUP BY error_type
-| CALCULATE count() as occurrences
-| ORDER BY occurrences DESC
+event_type = "scheduler"
+| CALCULATE
+    sum(retention_entries_deleted) as total_deleted,
+    sum(retention_vectors_deleted) as vectors_deleted,
+    sum(retention_errors) as cleanup_errors
+```
+
+**Admin actions audit:**
+```
+event_type = "admin_action"
+| GROUP BY admin_username, action
+| CALCULATE count() as actions
+| ORDER BY actions DESC
+```
+
+**OPML import success rate:**
+```
+event_type = "admin_action" AND action = "import_opml"
+| CALCULATE
+    sum(import_feeds_added) as total_imported,
+    sum(import_feeds_skipped) as total_skipped,
+    sum(import_errors) as total_errors
 ```
 
 ### 12.5 Tail Sampling Strategy
@@ -4065,32 +4175,40 @@ For high-traffic deployments, implement tail sampling to control costs while pre
 def should_sample(event: dict) -> bool:
     """
     Decide whether to emit this event.
-    
+
     Always keep:
     - Errors (100%)
     - Slow operations (above p95 threshold)
+    - Zero-result searches (important for understanding user needs)
     - Specific feeds being debugged
-    
+
     Sample:
     - Successful, fast operations (10%)
     """
-    
+    event_type = event.get("event_type", "")
+
     # Always keep errors
     if event.get("outcome") == "error":
         return True
-    
-    # Always keep slow operations
+
+    # Always keep slow operations (thresholds per event type)
     wall_time_ms = event.get("wall_time_ms", 0)
-    if event["event_type"] == "feed_fetch" and wall_time_ms > 10000:  # >10s
+    if event_type == "feed_fetch" and wall_time_ms > 10000:  # >10s
         return True
-    if event["event_type"] == "html_generation" and wall_time_ms > 30000:  # >30s
+    if event_type == "request" and wall_time_ms > 1000:  # >1s for HTTP
         return True
-    
+    if event_type == "scheduler" and wall_time_ms > 60000:  # >60s for cron
+        return True
+
+    # Always keep zero-result searches
+    if event_type == "request" and event.get("search_results_total") == 0:
+        return True
+
     # Always keep specific feeds (for debugging)
     debug_feed_ids = env.DEBUG_FEED_IDS.split(",") if env.DEBUG_FEED_IDS else []
-    if event.get("feed_id") in debug_feed_ids:
+    if str(event.get("feed_id")) in debug_feed_ids:
         return True
-    
+
     # Sample successful, fast operations at 10%
     return random.random() < 0.10
 
@@ -4109,14 +4227,14 @@ Configure a Workers Observability dashboard showing:
 |--------|-------|-----------------|
 | Feed success rate | `event_type="feed_fetch" \| countif(outcome="success") / count()` | < 95% |
 | Avg fetch latency | `event_type="feed_fetch" \| avg(wall_time_ms)` | > 10,000 ms |
-| Generation success | `event_type="html_generation" \| outcome="success" \| count()` | = 0 in 2 hours |
+| Indexing success | `event_type="feed_fetch" \| sum(indexing_succeeded) / sum(indexing_attempted)` | < 99% |
 | DLQ depth | Queue metrics (built-in) | > 0 |
 | Cache hit rate | `event_type="feed_fetch" \| countif(http_cached) / count()` | < 50% |
-| Page serve p95 | `event_type="page_serve" \| p95(wall_time_ms)` | > 500 ms |
-| Search success rate | `event_type="search" \| countif(outcome="success") / count()` | < 99% |
-| Search p95 latency | `event_type="search" \| p95(wall_time_ms)` | > 2,000 ms |
-| Zero-result rate | `event_type="search" \| countif(total_results=0) / count()` | > 50% |
-| Indexing success | `event_type="indexing" \| countif(outcome="success") / count()` | < 99% |
+| Request p95 | `event_type="request" \| p95(wall_time_ms)` | > 500 ms |
+| Search p95 latency | `event_type="request" AND route="/search" \| p95(wall_time_ms)` | > 2,000 ms |
+| Zero-result rate | `event_type="request" AND route="/search" \| countif(search_results_total=0) / count()` | > 50% |
+| Scheduler success | `event_type="scheduler" \| countif(outcome="success") / count()` | < 100% |
+| Admin action errors | `event_type="admin_action" AND outcome="error" \| count()` | > 0 |
 
 ### 12.7 Alerting
 
@@ -4204,58 +4322,81 @@ async def _index_entry_for_search(self, entry_id, title, content):
 
 ### 13.4 Hybrid Search Algorithm
 
-The search endpoint combines semantic and keyword search for comprehensive results:
+The search endpoint combines semantic and keyword search with a **keyword-first ranking strategy**. Keyword matches always rank above semantic matches, ensuring exact text matches are prioritized.
+
+#### Query Modes
+
+| Query Type | Example | Matching Behavior |
+|------------|---------|-------------------|
+| Phrase (quoted) | `"context switching"` | Exact phrase must appear |
+| Multi-word (unquoted) | `context switching` | All words must appear (any order) |
+| Single word | `context` | Word must appear |
+
+#### Ranking Tiers
+
+Results are ranked in strict tiers, with all entries in a higher tier appearing before any entry in a lower tier:
+
+| Tier | Type | Score | Description |
+|------|------|-------|-------------|
+| 1 | `exact_title` | 1.00 | Query matches title exactly (case-insensitive) |
+| 2 | `title_in_query` | 0.98 | Entry title appears within the query |
+| 3 | `query_in_title` | 0.95 | Query appears within the entry title |
+| 4 | `keyword_content` | 0.80 | Query found in content but not title |
+| 5 | `semantic` | 0.30-0.79 | Conceptually similar (via Vectorize) |
 
 ```python
 async def _search_entries(self, request):
-    """Hybrid search: combines semantic similarity with keyword matching."""
+    """Hybrid search with keyword-first ranking."""
 
-    # Get search configuration
-    top_k = self._get_search_top_k()  # Default: 50
-    score_threshold = self._get_search_score_threshold()  # Default: 0.3
+    # Detect phrase search (quoted query)
+    is_phrase_search = (query.startswith('"') and query.endswith('"')) or \
+                       (query.startswith("'") and query.endswith("'"))
+    clean_query = query.strip("\"'") if is_phrase_search else query
 
-    # 1. SEMANTIC SEARCH via Vectorize
+    # 1. SEMANTIC SEARCH via Vectorize (always runs)
     embedding_result = await self.env.AI.run(
         "@cf/baai/bge-base-en-v1.5",
-        {"text": [query], "pooling": "cls"}
+        {"text": [clean_query], "pooling": "cls"}
     )
     query_vector = embedding_result["data"][0]
-    results = await self.env.SEARCH_INDEX.query(query_vector, {
-        "topK": top_k,
+    semantic_results = await self.env.SEARCH_INDEX.query(query_vector, {
+        "topK": self._get_search_top_k(),
         "returnMetadata": True
     })
 
-    # Apply score threshold
-    semantic_matches = [
-        m for m in results.get("matches", [])
-        if m.get("score", 0) >= score_threshold
-    ]
+    # 2. KEYWORD SEARCH via D1 (always runs)
+    if is_phrase_search:
+        # Phrase matching: exact phrase must appear
+        escaped = clean_query.replace("%", "\\%").replace("_", "\\_")
+        like_pattern = f"%{escaped}%"
+        # Single LIKE pattern for phrase
+    else:
+        # Word matching: all words must appear (any order)
+        words = clean_query.split()
+        # Multiple LIKE conditions ANDed together
 
-    # 2. KEYWORD SEARCH via D1 (catches exact matches semantic might miss)
-    escaped_query = query.replace("%", "\\%").replace("_", "\\_")
-    like_pattern = f"%{escaped_query}%"
-    keyword_result = await self.env.DB.prepare("""
-        SELECT e.*, f.title as feed_title, f.site_url as feed_site_url
-        FROM entries e
-        JOIN feeds f ON e.feed_id = f.id
-        WHERE e.title LIKE ? ESCAPE '\\'
-           OR e.content LIKE ? ESCAPE '\\'
-        ORDER BY e.published_at DESC
-        LIMIT 50
-    """).bind(like_pattern, like_pattern).all()
+    keyword_result = await self.env.DB.prepare(sql).bind(*params).all()
 
-    # 3. COMBINE RESULTS: semantic first (by score), then keyword-only (by date)
-    # Deduplicate: entries found by both methods appear once with semantic score
+    # 3. COMBINE with keyword-first ranking
+    # - Keyword matches ranked by title relevance tier
+    # - Semantic-only matches ranked by cosine similarity
+    # - Deduplication: keyword match takes precedence
 ```
 
-### 13.5 Why Hybrid Search?
+### 13.5 Why Keyword-First Ranking?
 
-| Scenario | Semantic Only | Hybrid |
-|----------|---------------|--------|
-| Searching "context switching" | Finds articles about multitasking | Same results |
-| Searching exact term "context" | May miss articles with "context" in text | Finds all with keyword match |
-| New/unindexed entries | No results | Found via keyword fallback |
-| Misspelled queries | Semantic similarity still works | Keyword fails, semantic works |
+| Scenario | Semantic-First | Keyword-First |
+|----------|----------------|---------------|
+| Search "Workers" | Conceptually similar content first | Exact "Workers" matches first |
+| Search "KV bindings" | Related Cloudflare docs | Articles with "KV bindings" in title/content |
+| Search `"exact phrase"` | Phrase treated as keywords | Only results with exact phrase |
+| Misspelled "wrkers" | Semantic understands intent | Semantic fallback after no keyword hits |
+
+**Key Benefits:**
+- **Predictable results**: Users searching for "Workers" see articles with "Workers" first
+- **Phrase precision**: Quoted searches return only exact matches
+- **Semantic fallback**: Conceptually related content still appears (ranked lower)
+- **Title boosting**: Title matches ranked higher than content-only matches
 
 ### 13.6 Search UI
 
