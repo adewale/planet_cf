@@ -2097,7 +2097,12 @@ class Default(WorkerEntrypoint):
 
     async def _search_entries(self, request, event: RequestEvent | None = None):
         """
-        Hybrid search: combines semantic similarity with keyword matching.
+        Hybrid search: combines keyword matching with semantic similarity.
+
+        Ranking strategy:
+        - Keyword matches always rank above semantic matches
+        - Quoted queries use phrase matching (exact sequence required)
+        - Unquoted queries use substring matching
 
         Args:
             request: HTTP request object
@@ -2110,11 +2115,14 @@ class Default(WorkerEntrypoint):
             qs = parse_qs(url_str.split("?", 1)[1])
             query = qs.get("q", [""])[0]
 
-        # Normalize query: strip surrounding quotes (users often quote phrases)
+        # Detect if query was originally quoted (phrase search)
         query = query.strip()
-        if (query.startswith('"') and query.endswith('"')) or (
+        is_phrase_search = (query.startswith('"') and query.endswith('"')) or (
             query.startswith("'") and query.endswith("'")
-        ):
+        )
+
+        # Strip quotes for actual search, but remember the intent
+        if is_phrase_search:
             query = query[1:-1].strip()
 
         # Populate search query fields on consolidated event
@@ -2171,55 +2179,110 @@ class Default(WorkerEntrypoint):
         except Exception as e:
             _log_op("semantic_search_failed", error=str(e)[:ERROR_MESSAGE_MAX_LENGTH])
 
-        # 2. Keyword search via D1 (catches exact matches semantic might miss)
+        # 2. Keyword search via D1 (primary ranking signal)
         try:
             with Timer() as d1_timer:
                 # Escape special characters for LIKE pattern
                 escaped_query = query.replace("%", "\\%").replace("_", "\\_")
-                like_pattern = f"%{escaped_query}%"
 
-                keyword_result = (
-                    await self.env.DB.prepare(f"""
-                    SELECT e.id, e.feed_id, e.guid, e.url, e.title, e.author,
-                           e.content, e.summary, e.published_at, e.first_seen,
-                           f.title as feed_title, f.site_url as feed_site_url
-                    FROM entries e
-                    JOIN feeds f ON e.feed_id = f.id
-                    WHERE e.title LIKE ? ESCAPE '\\'
-                       OR e.content LIKE ? ESCAPE '\\'
-                    ORDER BY e.published_at DESC
-                    LIMIT {self._get_search_top_k()}
-                """)
-                    .bind(like_pattern, like_pattern)
-                    .all()
-                )
+                if is_phrase_search:
+                    # Phrase search: exact sequence required
+                    # LIKE '%error handling%' matches the phrase in order
+                    like_pattern = f"%{escaped_query}%"
+                    keyword_result = (
+                        await self.env.DB.prepare(f"""
+                        SELECT e.id, e.feed_id, e.guid, e.url, e.title, e.author,
+                               e.content, e.summary, e.published_at, e.first_seen,
+                               f.title as feed_title, f.site_url as feed_site_url
+                        FROM entries e
+                        JOIN feeds f ON e.feed_id = f.id
+                        WHERE e.title LIKE ? ESCAPE '\\'
+                           OR e.content LIKE ? ESCAPE '\\'
+                        ORDER BY e.published_at DESC
+                        LIMIT {self._get_search_top_k()}
+                    """)
+                        .bind(like_pattern, like_pattern)
+                        .all()
+                    )
+                else:
+                    # Word search: all words must appear (any order)
+                    # Split query into words and require all to match
+                    words = [w.strip() for w in query.split() if w.strip()]
+                    if len(words) <= 1:
+                        # Single word: simple LIKE
+                        like_pattern = f"%{escaped_query}%"
+                        keyword_result = (
+                            await self.env.DB.prepare(f"""
+                            SELECT e.id, e.feed_id, e.guid, e.url, e.title, e.author,
+                                   e.content, e.summary, e.published_at, e.first_seen,
+                                   f.title as feed_title, f.site_url as feed_site_url
+                            FROM entries e
+                            JOIN feeds f ON e.feed_id = f.id
+                            WHERE e.title LIKE ? ESCAPE '\\'
+                               OR e.content LIKE ? ESCAPE '\\'
+                            ORDER BY e.published_at DESC
+                            LIMIT {self._get_search_top_k()}
+                        """)
+                            .bind(like_pattern, like_pattern)
+                            .all()
+                        )
+                    else:
+                        # Multiple words: all must appear in title OR all in content
+                        # Build dynamic WHERE clause
+                        word_patterns = []
+                        bind_values = []
+                        for word in words:
+                            escaped_word = word.replace("%", "\\%").replace("_", "\\_")
+                            word_patterns.append(f"%{escaped_word}%")
+                            bind_values.append(f"%{escaped_word}%")
+
+                        # All words in title OR all words in content
+                        title_conditions = " AND ".join(
+                            ["e.title LIKE ? ESCAPE '\\\\'" for _ in words]
+                        )
+                        content_conditions = " AND ".join(
+                            ["e.content LIKE ? ESCAPE '\\\\'" for _ in words]
+                        )
+
+                        keyword_result = (
+                            await self.env.DB.prepare(f"""
+                            SELECT e.id, e.feed_id, e.guid, e.url, e.title, e.author,
+                                   e.content, e.summary, e.published_at, e.first_seen,
+                                   f.title as feed_title, f.site_url as feed_site_url
+                            FROM entries e
+                            JOIN feeds f ON e.feed_id = f.id
+                            WHERE ({title_conditions})
+                               OR ({content_conditions})
+                            ORDER BY e.published_at DESC
+                            LIMIT {self._get_search_top_k()}
+                        """)
+                            .bind(*bind_values, *bind_values)
+                            .all()
+                        )
+
                 keyword_entries = _to_py_list(keyword_result.results)
             if event:
                 event.search_d1_ms = d1_timer.elapsed_ms
         except Exception as e:
             _log_op("keyword_search_failed", error=str(e)[:ERROR_MESSAGE_MAX_LENGTH])
 
-        # 3. Combine results: semantic matches first, then keyword matches not in semantic
+        # 3. Combine results: keyword matches FIRST, then semantic matches
+        # This is the key ranking insight: exact text match is the strongest signal
+        keyword_ids = {entry.get("id") for entry in keyword_entries if entry.get("id")}
         semantic_ids = {int(m["id"]) for m in semantic_matches}
-        combined_ids = list(semantic_ids)
 
-        # Add keyword matches that aren't already in semantic results
-        for entry in keyword_entries:
-            entry_id = entry.get("id")
-            if entry_id and entry_id not in semantic_ids:
-                combined_ids.append(entry_id)
-
-        if not combined_ids:
+        # Check for empty results
+        if not keyword_ids and not semantic_ids:
             if event:
                 event.search_results_total = 0
             planet = self._get_planet_config()
             html = render_template(TEMPLATE_SEARCH, planet=planet, query=query, results=[])
             return _html_response(html, cache_max_age=0)
 
-        # 4. Fetch full entries for semantic matches (keyword entries already have data)
+        # 4. Build entry map for lookups
         entry_map = {}
 
-        # Add keyword entries to map
+        # Add keyword entries to map (already have full data)
         for entry in keyword_entries:
             entry_map[entry["id"]] = entry
 
@@ -2240,7 +2303,7 @@ class Default(WorkerEntrypoint):
             for entry in _to_py_list(db_entries.results):
                 entry_map[entry["id"]] = entry
 
-        # 5. Build sorted results with proper ranking
+        # 5. Build sorted results: KEYWORD FIRST, SEMANTIC SECOND
         sorted_results = []
         added_ids = set()
 
@@ -2251,30 +2314,43 @@ class Default(WorkerEntrypoint):
         exact_title_count = 0
         title_in_query_count = 0
         query_in_title_count = 0
+        keyword_content_count = 0
 
-        # First: Exact title matches get top priority
+        # FIRST TIER: Keyword matches with title relevance (best keyword matches)
         for entry in keyword_entries:
             entry_title = (entry.get("title") or "").lower().strip()
             if not entry_title:
                 continue
 
-            # Exact match
+            entry_id = entry["id"]
+            if entry_id in added_ids:
+                continue
+
+            # Exact title match (highest keyword signal)
             if query_lower == entry_title:
                 sorted_results.append({**entry, "score": 1.0, "match_type": "exact_title"})
-                added_ids.add(entry["id"])
+                added_ids.add(entry_id)
                 exact_title_count += 1
-            # Query contains title (user searched with extra words)
+            # Query contains entire title
             elif entry_title in query_lower:
                 sorted_results.append({**entry, "score": 0.98, "match_type": "title_in_query"})
-                added_ids.add(entry["id"])
+                added_ids.add(entry_id)
                 title_in_query_count += 1
-            # Title contains query (partial title match)
+            # Title contains entire query
             elif query_lower in entry_title:
                 sorted_results.append({**entry, "score": 0.95, "match_type": "query_in_title"})
-                added_ids.add(entry["id"])
+                added_ids.add(entry_id)
                 query_in_title_count += 1
 
-        # Second: Semantic matches sorted by score (excluding already added)
+        # SECOND TIER: Remaining keyword matches (content matches, partial title)
+        for entry in keyword_entries:
+            entry_id = entry["id"]
+            if entry_id not in added_ids:
+                sorted_results.append({**entry, "score": 0.80, "match_type": "keyword_content"})
+                added_ids.add(entry_id)
+                keyword_content_count += 1
+
+        # THIRD TIER: Semantic matches (conceptually similar, not exact text match)
         semantic_only_count = 0
         for match in sorted(semantic_matches, key=lambda m: m.get("score", 0), reverse=True):
             entry_id = int(match["id"])
@@ -2285,14 +2361,6 @@ class Default(WorkerEntrypoint):
                 )
                 added_ids.add(entry_id)
                 semantic_only_count += 1
-
-        # Third: Remaining keyword matches (not in semantic results, not exact title)
-        keyword_only_count = 0
-        for entry in keyword_entries:
-            if entry["id"] not in added_ids:
-                sorted_results.append({**entry, "score": 0, "match_type": "keyword"})
-                added_ids.add(entry["id"])
-                keyword_only_count += 1
 
         # Populate search metrics on consolidated event
         if event:
