@@ -166,6 +166,108 @@ class PageServeEvent:
             self.request_id = generate_request_id()
 
 
+@dataclass
+class SearchEvent:
+    """
+    Canonical log line for search operations.
+
+    Emitted once per search query with full timing breakdown and result metrics.
+    """
+
+    event_type: str = field(default="search", init=False)
+    request_id: str = ""
+    timestamp: str = ""
+
+    # Query details
+    query: str = ""
+    query_length: int = 0
+
+    # Timing breakdown (all in milliseconds)
+    wall_time_ms: float = 0
+    embedding_time_ms: float = 0
+    vectorize_time_ms: float = 0
+    d1_time_ms: float = 0
+
+    # Semantic search details
+    semantic_matches_raw: int = 0
+    semantic_matches_filtered: int = 0
+    semantic_top_score: float = 0
+    score_threshold: float = 0
+
+    # Keyword search details
+    keyword_matches: int = 0
+
+    # Combined results
+    total_results: int = 0
+    exact_title_matches: int = 0
+    title_in_query_matches: int = 0
+    query_in_title_matches: int = 0
+    semantic_only_results: int = 0
+    keyword_only_results: int = 0
+
+    # User context
+    user_agent: str = ""
+    referer: str = ""
+
+    # Outcome
+    outcome: str = "success"  # "success" | "error"
+    error_type: str | None = None
+    error_message: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.timestamp:
+            self.timestamp = datetime.utcnow().isoformat() + "Z"
+        if not self.request_id:
+            self.request_id = generate_request_id()
+
+
+@dataclass
+class IndexingEvent:
+    """
+    Canonical log line for search indexing operations.
+
+    Emitted once per entry indexing with timing and content details.
+    """
+
+    event_type: str = field(default="indexing", init=False)
+    request_id: str = ""
+    timestamp: str = ""
+
+    # Identifiers
+    entry_id: int = 0
+    feed_id: int = 0
+
+    # Timing breakdown (all in milliseconds)
+    wall_time_ms: float = 0
+    embedding_time_ms: float = 0
+    upsert_time_ms: float = 0
+
+    # Content details
+    title_length: int = 0
+    content_length: int = 0
+    combined_text_length: int = 0
+    text_truncated: bool = False
+
+    # Embedding details (constants for this model)
+    embedding_model: str = field(default="@cf/baai/bge-base-en-v1.5", init=False)
+    embedding_dimensions: int = field(default=768, init=False)
+    pooling_method: str = field(default="cls", init=False)
+
+    # Outcome
+    outcome: str = "success"  # "success" | "error"
+    error_type: str | None = None
+    error_message: str | None = None
+
+    # Context
+    trigger: str = "feed_fetch"  # "feed_fetch" | "reindex" | "manual"
+
+    def __post_init__(self) -> None:
+        if not self.timestamp:
+            self.timestamp = datetime.utcnow().isoformat() + "Z"
+        if not self.request_id:
+            self.request_id = generate_request_id()
+
+
 def should_sample(
     event: dict[str, Any],
     debug_feed_ids: list[str] | None = None,
@@ -204,6 +306,14 @@ def should_sample(
         return True
     if event_type == "page_serve" and wall_time_ms > 1000:  # >1s
         return True
+    if event_type == "search" and wall_time_ms > 2000:  # >2s
+        return True
+    if event_type == "indexing" and wall_time_ms > 5000:  # >5s
+        return True
+
+    # Always keep zero-result searches (important for understanding user needs)
+    if event_type == "search" and event.get("total_results", -1) == 0:
+        return True
 
     # Always keep specific feeds (for debugging)
     if debug_feed_ids and str(event.get("feed_id")) in debug_feed_ids:
@@ -214,7 +324,14 @@ def should_sample(
 
 
 def emit_event(
-    event: FeedFetchEvent | GenerationEvent | PageServeEvent | dict[str, Any],
+    event: (
+        FeedFetchEvent
+        | GenerationEvent
+        | PageServeEvent
+        | SearchEvent
+        | IndexingEvent
+        | dict[str, Any]
+    ),
     debug_feed_ids: list[str] | None = None,
     sample_rate: float = 0.10,
     force: bool = False,

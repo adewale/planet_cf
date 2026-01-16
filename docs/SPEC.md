@@ -3852,7 +3852,103 @@ def emit_page_serve_event(request, response, ctx):
         # Content type
         "content_type": ctx.content_type,  # "html" | "atom" | "rss" | "static"
     }
-    
+
+    print(json.dumps(event))
+```
+
+#### Search Event
+
+Emitted once per search query:
+
+```python
+def emit_search_event(ctx, query, results, error=None):
+    """Emit canonical log line for search operations."""
+
+    event = {
+        # Identifiers (high cardinality)
+        "event_type": "search",
+        "request_id": ctx.request_id,
+        "query": query[:200],  # Truncate for storage
+        "query_length": len(query),
+
+        # Timing breakdown
+        "timestamp": datetime.utcnow().isoformat(),
+        "wall_time_ms": ctx.wall_time_ms,
+        "embedding_time_ms": ctx.embedding_time_ms,
+        "vectorize_time_ms": ctx.vectorize_time_ms,
+        "d1_time_ms": ctx.d1_time_ms,
+
+        # Semantic search details
+        "semantic_matches_raw": ctx.semantic_matches_raw,
+        "semantic_matches_filtered": ctx.semantic_matches_filtered,
+        "semantic_top_score": ctx.semantic_top_score,
+        "score_threshold": ctx.score_threshold,
+
+        # Keyword search details
+        "keyword_matches": ctx.keyword_matches,
+
+        # Combined results
+        "total_results": len(results),
+        "exact_title_matches": ctx.exact_title_matches,
+        "title_in_query_matches": ctx.title_in_query_matches,
+        "query_in_title_matches": ctx.query_in_title_matches,
+        "semantic_only_results": ctx.semantic_only_results,
+        "keyword_only_results": ctx.keyword_only_results,
+
+        # User context
+        "user_agent": ctx.user_agent[:100],
+        "referer": ctx.referer[:100],
+
+        # Outcome
+        "outcome": "success" if not error else "error",
+        "error_type": type(error).__name__ if error else None,
+        "error_message": str(error)[:500] if error else None,
+    }
+
+    print(json.dumps(event))
+```
+
+#### Indexing Event
+
+Emitted once per entry indexing operation:
+
+```python
+def emit_indexing_event(ctx, entry_id, feed_id, error=None):
+    """Emit canonical log line for search indexing operations."""
+
+    event = {
+        # Identifiers (high cardinality)
+        "event_type": "indexing",
+        "request_id": ctx.request_id,
+        "entry_id": entry_id,
+        "feed_id": feed_id,
+
+        # Timing breakdown
+        "timestamp": datetime.utcnow().isoformat(),
+        "wall_time_ms": ctx.wall_time_ms,
+        "embedding_time_ms": ctx.embedding_time_ms,
+        "upsert_time_ms": ctx.upsert_time_ms,
+
+        # Content details
+        "title_length": ctx.title_length,
+        "content_length": ctx.content_length,
+        "text_truncated": ctx.text_truncated,
+        "combined_text_length": ctx.combined_text_length,
+
+        # Embedding details
+        "embedding_model": "@cf/baai/bge-base-en-v1.5",
+        "embedding_dimensions": 768,
+        "pooling_method": "cls",
+
+        # Outcome
+        "outcome": "success" if not error else "error",
+        "error_type": type(error).__name__ if error else None,
+        "error_message": str(error)[:500] if error else None,
+
+        # Context
+        "trigger": ctx.trigger,  # "feed_fetch" | "reindex" | "manual"
+    }
+
     print(json.dumps(event))
 ```
 
@@ -3900,9 +3996,65 @@ event_type = "feed_fetch" AND outcome = "error"
 ```
 event_type = "html_generation"
 | TIMESERIES 1h
-| CALCULATE 
+| CALCULATE
     avg(wall_time_ms) as avg_gen_time,
     avg(entries_total) as avg_entries
+```
+
+**Search latency breakdown:**
+```
+event_type = "search"
+| CALCULATE
+    avg(wall_time_ms) as total_latency,
+    avg(embedding_time_ms) as embedding_latency,
+    avg(vectorize_time_ms) as vectorize_latency,
+    avg(d1_time_ms) as d1_latency
+```
+
+**Zero-result searches (users not finding what they need):**
+```
+event_type = "search" AND total_results = 0
+| GROUP BY query
+| CALCULATE count() as occurrences
+| ORDER BY occurrences DESC
+| LIMIT 20
+```
+
+**Search result distribution:**
+```
+event_type = "search" AND outcome = "success"
+| CALCULATE
+    countif(total_results = 0) as zero_results,
+    countif(total_results > 0 AND total_results <= 5) as few_results,
+    countif(total_results > 5) as many_results,
+    avg(total_results) as avg_results
+```
+
+**Semantic vs keyword effectiveness:**
+```
+event_type = "search" AND outcome = "success"
+| CALCULATE
+    avg(semantic_matches_filtered) as avg_semantic,
+    avg(keyword_matches) as avg_keyword,
+    avg(exact_title_matches) as avg_exact_title
+```
+
+**Indexing performance:**
+```
+event_type = "indexing"
+| CALCULATE
+    avg(wall_time_ms) as avg_latency,
+    avg(embedding_time_ms) as avg_embedding,
+    avg(upsert_time_ms) as avg_upsert,
+    countif(outcome = "error") as errors
+```
+
+**Indexing failures by error type:**
+```
+event_type = "indexing" AND outcome = "error"
+| GROUP BY error_type
+| CALCULATE count() as occurrences
+| ORDER BY occurrences DESC
 ```
 
 ### 12.5 Tail Sampling Strategy
@@ -3961,6 +4113,10 @@ Configure a Workers Observability dashboard showing:
 | DLQ depth | Queue metrics (built-in) | > 0 |
 | Cache hit rate | `event_type="feed_fetch" \| countif(http_cached) / count()` | < 50% |
 | Page serve p95 | `event_type="page_serve" \| p95(wall_time_ms)` | > 500 ms |
+| Search success rate | `event_type="search" \| countif(outcome="success") / count()` | < 99% |
+| Search p95 latency | `event_type="search" \| p95(wall_time_ms)` | > 2,000 ms |
+| Zero-result rate | `event_type="search" \| countif(total_results=0) / count()` | > 50% |
+| Indexing success | `event_type="indexing" \| countif(outcome="success") / count()` | < 99% |
 
 ### 12.7 Alerting
 
