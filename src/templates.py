@@ -1,14 +1,16 @@
 # src/templates.py
 # AUTO-GENERATED - DO NOT EDIT DIRECTLY
 # Edit files in templates/ and run: python scripts/build_templates.py
-"""
-Template loading and rendering utilities for Planet CF.
+"""Template loading and rendering utilities for Planet CF.
 
 This module provides:
 - A shared Jinja2 Environment for rendering templates
 - Embedded templates for Workers environment compatibility
 - Helper functions for common rendering patterns
 """
+
+from collections.abc import Callable
+from typing import Any
 
 from jinja2 import BaseLoader, Environment, TemplateNotFound
 
@@ -17,68 +19,92 @@ from jinja2 import BaseLoader, Environment, TemplateNotFound
 # =============================================================================
 
 _EMBEDDED_TEMPLATES = {
-    "index.html": """<!DOCTYPE html>
+    "index.html": """<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ planet.name }}</title>
-    <link rel="stylesheet" href="/static/style.css">
-    <link rel="alternate" type="application/atom+xml" title="{{ planet.name }} Atom Feed" href="/feed.atom">
-    <link rel="alternate" type="application/rss+xml" title="{{ planet.name }} RSS Feed" href="/feed.rss">
-</head>
-<body>
-    <header>
-        <h1>{{ planet.name }}</h1>
-        <p>{{ planet.description }}</p>
-    </header>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>{{ planet.name }}</title>
+        <link rel="stylesheet" href="/static/style.css" />
+        <link
+            rel="alternate"
+            type="application/atom+xml"
+            title="{{ planet.name }} Atom Feed"
+            href="/feed.atom"
+        />
+        <link
+            rel="alternate"
+            type="application/rss+xml"
+            title="{{ planet.name }} RSS Feed"
+            href="/feed.rss"
+        />
+    </head>
+    <body>
+        <header>
+            <h1>{{ planet.name }}</h1>
+            <p>{{ planet.description }}</p>
+        </header>
 
-    <div class="container">
-        <main>
-            {% for date, day_entries in entries_by_date.items() %}
-            <section class="day">
-                <h2 class="date">{{ date }}</h2>
-                {% for entry in day_entries %}
-                <article>
-                    <h3><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
-                    <p class="meta">
-                        <span class="author">{{ entry.author if entry.author and '@' not in entry.author else entry.feed_title }}</span>
-                        {% if entry.published_at_display %}<span class="date-sep">·</span> <time datetime="{{ entry.published_at }}">{{ entry.published_at_display }}</time>{% endif %}
-                    </p>
-                    <div class="content">{{ entry.content | safe }}</div>
-                </article>
-                {% endfor %}
-            </section>
-            {% else %}
-            <p>No entries yet.</p>
-            {% endfor %}
-        </main>
-
-        <aside class="sidebar">
-            <form action="/search" method="GET" class="search-form">
-                <input type="search" name="q" placeholder="Search entries..." aria-label="Search entries">
-                <button type="submit">Search</button>
-            </form>
-
-            <h2>Subscriptions</h2>
-            <ul class="feeds">
-                {% for feed in feeds %}
-                <li class="{{ 'healthy' if feed.is_healthy else 'unhealthy' }}">
-                    {% if feed.site_url %}<a href="{{ feed.site_url }}">{{ feed.title or 'Untitled' }}</a>{% else %}{{ feed.title or 'Untitled' }}{% endif %}
-                </li>
+        <div class="container">
+            <main>
+                {% for date, day_entries in entries_by_date.items() %}
+                <section class="day">
+                    <h2 class="date">{{ date }}</h2>
+                    {% for entry in day_entries %}
+                    <article>
+                        <p class="meta">
+                            <span class="author">{{ entry.author if entry.author and '@' not in entry.author else entry.feed_title }}</span>
+                            {% if entry.published_at_display %}<span class="date-sep">·</span> <time datetime="{{ entry.published_at }}">{{ entry.published_at_display }}</time>{% endif %}
+                        </p>
+                        <div class="content">{{ entry.content | safe }}</div>
+                    </article>
+                    {% endfor %}
+                </section>
                 {% else %}
-                <li>No feeds configured</li>
+                <p>No entries yet.</p>
                 {% endfor %}
-            </ul>
-        </aside>
-    </div>
+            </main>
 
-    <footer>
-        <p><a href="/feed.atom">Atom</a> · <a href="/feed.rss">RSS</a> · <a href="/feeds.opml">OPML</a></p>
-        <p>Powered by Planet CF · <a href="/admin" style="color: #999; font-size: 0.8em;">Admin</a></p>
-        <p>Last updated: {{ generated_at }}</p>
-    </footer>
-</body>
+            <aside class="sidebar">
+                <form action="/search" method="GET" class="search-form">
+                    <input
+                        type="search"
+                        name="q"
+                        placeholder="Search entries..."
+                        aria-label="Search entries"
+                    />
+                    <button type="submit">Search</button>
+                </form>
+
+                <h2>Subscriptions</h2>
+                <ul class="feeds">
+                    {% for feed in feeds %}
+                    <li
+                        class="{{ 'healthy' if feed.is_healthy else 'unhealthy' }}"
+                    >
+                        {% if feed.site_url %}<a href="{{ feed.site_url }}"
+                            >{{ feed.title or 'Untitled' }}</a
+                        >{% else %}{{ feed.title or 'Untitled' }}{% endif %}
+                    </li>
+                    {% else %}
+                    <li>No feeds configured</li>
+                    {% endfor %}
+                </ul>
+            </aside>
+        </div>
+
+        <footer>
+            <p>
+                <a href="/feed.atom">Atom</a> · <a href="/feed.rss">RSS</a> ·
+                <a href="/feeds.opml">OPML</a>
+            </p>
+            <p>
+                Powered by Planet CF ·
+                <a href="/admin" style="color: #999; font-size: 0.8em">Admin</a>
+            </p>
+            <p>Last updated: {{ generated_at }}</p>
+        </footer>
+    </body>
 </html>
 """,
     "search.html": """<!DOCTYPE html>
@@ -593,7 +619,7 @@ article {
     background: var(--bg-primary);
     border: 1px solid var(--border-light);
     border-radius: 8px;
-    padding: 1.5rem;
+    padding: 1.25rem 1.5rem;
     margin-bottom: 1rem;
     box-shadow: var(--shadow-sm);
     transition: box-shadow 0.2s ease, border-color 0.2s ease;
@@ -631,18 +657,20 @@ article header {
 
 .meta {
     color: var(--text-muted);
-    font-size: 0.875rem;
-    margin-bottom: 1rem;
+    font-size: 0.8rem;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
 }
 
 .meta .author {
     color: var(--text-secondary);
-    font-weight: 500;
+    font-weight: 600;
 }
 
 .meta .date-sep {
-    color: var(--text-muted);
-    margin: 0 0.25rem;
+    color: var(--border-medium);
+    margin: 0 0.35rem;
 }
 
 .meta time {
@@ -748,9 +776,35 @@ article header {
     line-height: 1.3;
 }
 
-.content h1 { font-size: 1.5rem; }
-.content h2 { font-size: 1.3rem; }
-.content h3 { font-size: 1.15rem; }
+/* First h1 in content is the entry headline */
+.content > h1:first-child,
+.content > p:first-child + h1,
+.content > br:first-child + h1 {
+    font-size: 1.35rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.3;
+    margin: 0 0 0.75rem 0;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid var(--accent-subtle);
+    color: var(--text-primary);
+}
+
+/* Link styling for headline if wrapped in anchor */
+.content > h1:first-child a,
+.content > p:first-child + h1 a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.content > h1:first-child a:hover,
+.content > p:first-child + h1 a:hover {
+    color: var(--accent);
+}
+
+.content h1 { font-size: 1.3rem; }
+.content h2 { font-size: 1.15rem; }
+.content h3 { font-size: 1.05rem; }
 .content h4 { font-size: 1rem; }
 
 .content ul, .content ol {
@@ -1054,7 +1108,22 @@ function rebuildSearchIndex() {
 class EmbeddedLoader(BaseLoader):
     """Jinja2 loader that loads templates from embedded strings."""
 
-    def get_source(self, environment, template):
+    def get_source(
+        self, environment: Environment, template: str
+    ) -> tuple[str, str, Callable[[], bool]]:
+        """Load template source from embedded strings.
+
+        Args:
+            environment: The Jinja2 environment
+            template: Template name to load
+
+        Returns:
+            Tuple of (source, filename, uptodate_func)
+
+        Raises:
+            TemplateNotFound: If template doesn't exist
+
+        """
         if template in _EMBEDDED_TEMPLATES:
             source = _EMBEDDED_TEMPLATES[template]
             return source, template, lambda: True
@@ -1065,8 +1134,17 @@ class EmbeddedLoader(BaseLoader):
 _jinja_env = Environment(loader=EmbeddedLoader(), autoescape=True)
 
 
-def render_template(name: str, **context) -> str:
-    """Render a template with the given context."""
+def render_template(name: str, **context: Any) -> str:  # noqa: ANN401
+    """Render a template with the given context.
+
+    Args:
+        name: Template name to render
+        **context: Template context variables
+
+    Returns:
+        Rendered template string
+
+    """
     template = _jinja_env.get_template(name)
     return template.render(**context)
 

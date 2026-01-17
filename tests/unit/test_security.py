@@ -215,7 +215,7 @@ def is_safe_url(url: str) -> bool:
 
     This is a copy of the validation logic from main.py for testing.
     """
-    BLOCKED_METADATA_IPS = {
+    blocked_metadata_ips = {
         "169.254.169.254",
         "100.100.100.200",
         "192.0.0.192",
@@ -241,7 +241,7 @@ def is_safe_url(url: str) -> bool:
         return False
 
     # Block cloud metadata endpoints
-    if hostname in BLOCKED_METADATA_IPS:
+    if hostname in blocked_metadata_ips:
         return False
 
     # Block internal networks

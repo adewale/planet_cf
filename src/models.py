@@ -45,10 +45,12 @@ class FeedJob:
     last_modified: str | None = None
 
     def to_dict(self) -> dict:
+        """Convert to dictionary for serialization."""
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict) -> Self:
+        """Create a FeedJob from a dictionary."""
         return cls(
             feed_id=FeedId(data["feed_id"]),
             feed_url=data["feed_url"],
@@ -67,15 +69,18 @@ class Session:
     exp: int  # Unix timestamp
 
     def is_expired(self) -> bool:
+        """Check if the session has expired."""
         import time
 
         return self.exp < time.time()
 
     def to_json(self) -> str:
+        """Serialize session to JSON string."""
         return json.dumps(asdict(self))
 
     @classmethod
     def from_json(cls, data: str) -> Self:
+        """Deserialize session from JSON string."""
         return cls(**json.loads(data))
 
 
@@ -226,11 +231,11 @@ class FetchError(Enum):
     SERVER_ERROR = auto()
 
     def is_permanent(self) -> bool:
-        """Should we stop retrying?"""
+        """Return True if this error means we should stop retrying."""
         return self in (FetchError.INVALID_URL, FetchError.GONE, FetchError.NOT_FOUND)
 
     def is_transient(self) -> bool:
-        """Should we retry?"""
+        """Return True if this error means we should retry later."""
         return self in (
             FetchError.TIMEOUT,
             FetchError.CONNECTION_ERROR,
@@ -247,7 +252,9 @@ class FetchError(Enum):
 class ContentSanitizer(Protocol):
     """Protocol for HTML sanitization - enables testing with mocks."""
 
-    def clean(self, html: str) -> str: ...
+    def clean(self, html: str) -> str:
+        """Sanitize HTML content and return safe HTML."""
+        ...
 
 
 class BleachSanitizer:
@@ -295,9 +302,10 @@ class BleachSanitizer:
     }
     ALLOWED_PROTOCOLS = ["http", "https", "mailto"]
 
-    def _link_callback(self, attrs, new=False):
-        """
-        Callback to add security attributes to links.
+    def _link_callback(
+        self, attrs: dict[tuple[str | None, str], str], new: bool = False
+    ) -> dict[tuple[str | None, str], str]:
+        """Add security attributes to links.
 
         Adds rel="noopener noreferrer" and target="_blank" to external links
         to prevent window.opener attacks and referrer leakage.
@@ -315,9 +323,10 @@ class BleachSanitizer:
 
         return attrs
 
-    def _img_callback(self, attrs, new=False):
-        """
-        Callback to add performance and accessibility attributes to images.
+    def _img_callback(
+        self, attrs: dict[tuple[str | None, str], str], new: bool = False
+    ) -> dict[tuple[str | None, str], str]:
+        """Add performance and accessibility attributes to images.
 
         Adds loading="lazy" for performance and ensures alt attribute exists.
         """
@@ -332,6 +341,7 @@ class BleachSanitizer:
         return attrs
 
     def clean(self, html: str) -> str:
+        """Sanitize HTML content and return safe HTML."""
         import re
 
         import bleach
@@ -362,7 +372,7 @@ class BleachSanitizer:
         )
 
         # Add loading="lazy" to images and ensure alt exists
-        def add_img_attrs(match):
+        def add_img_attrs(match: re.Match[str]) -> str:
             tag = match.group(0)
             # Add loading="lazy" if not present
             if "loading=" not in tag:
@@ -381,4 +391,5 @@ class NoOpSanitizer:
     """Test sanitizer that passes through unchanged."""
 
     def clean(self, html: str) -> str:
+        """Return HTML unchanged (for testing)."""
         return html

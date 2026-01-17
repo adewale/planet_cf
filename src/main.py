@@ -1,6 +1,5 @@
 # src/main.py
-"""
-Planet CF - Feed Aggregator for Cloudflare Python Workers
+"""Planet CF - Feed Aggregator for Cloudflare Python Workers.
 
 Main Worker entrypoint handling all triggers:
 - scheduled(): Hourly cron to enqueue feed fetches
@@ -18,32 +17,12 @@ import re
 import secrets
 import time
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import feedparser
-import httpx
 from workers import Response, WorkerEntrypoint
-
-# Pyodide-specific imports (only available in Cloudflare Workers environment)
-try:
-    import js
-    from js import fetch as js_fetch
-    from pyodide.ffi import to_js
-
-    HAS_PYODIDE = True
-    # Create a proper JavaScript null value for D1 bindings
-    # Python None -> JS undefined, but D1 needs JS null for SQL NULL
-    # Note: js.eval() is disallowed in Workers, so use JSON.parse instead
-    JS_NULL = js.JSON.parse("null")
-except ImportError:
-    # Test environment - these will not be used
-    js = None
-    js_fetch = None
-    to_js = None
-    JS_NULL = None
-    HAS_PYODIDE = False
 
 from models import BleachSanitizer
 from observability import (
@@ -66,6 +45,36 @@ from templates import (
     TEMPLATE_SEARCH,
     render_template,
 )
+from wrappers import (
+    SafeEnv,
+    _extract_form_value,
+    _is_js_undefined,
+    _safe_str,
+    _to_py_list,
+    _to_py_safe,
+    safe_http_fetch,
+)
+
+# =============================================================================
+# Type Aliases for Cloudflare Workers Runtime
+# =============================================================================
+# These are JavaScript objects passed by the Workers runtime with no Python stubs.
+# Using explicit type aliases documents the intent and satisfies type checkers.
+
+#: Cloudflare Workers scheduled event (JavaScript object)
+type ScheduledEvent = Any
+#: Cloudflare Workers queue batch (JavaScript object)
+type QueueBatch = Any
+#: Cloudflare Workers environment bindings (JavaScript object)
+type WorkerEnv = Any
+#: Cloudflare Workers execution context (JavaScript object)
+type WorkerCtx = Any
+#: Cloudflare Workers HTTP request (JavaScript object)
+type WorkerRequest = Any
+#: feedparser's FeedParserDict (dynamic dictionary-like object)
+type FeedParserDict = Any
+#: Logging kwargs - intentionally accepts any JSON-serializable values
+type LogKwargs = Any
 
 # =============================================================================
 # Configuration
@@ -100,186 +109,6 @@ _sanitizer = BleachSanitizer()
 # Constants for content limits
 SUMMARY_MAX_LENGTH = 500
 
-
-# =============================================================================
-# Form Data Helper (handles JsProxy in production, dict in tests)
-# =============================================================================
-
-
-def _is_js_undefined(value) -> bool:
-    """Check if a value is JavaScript undefined (wrapped as JsProxy in Pyodide)."""
-    if value is None:
-        return False
-    if not HAS_PYODIDE:
-        return False
-    # In Pyodide, JavaScript undefined has typeof == "undefined"
-    try:
-        if hasattr(value, "typeof") and value.typeof == "undefined":
-            return True
-        # Also check for JsUndefined type from pyodide.ffi
-        type_name = type(value).__name__
-        if type_name in ("JsUndefined", "JsNull"):
-            return True
-    except (AttributeError, TypeError):
-        # Ignore type check errors
-        pass
-    return False
-
-
-def _safe_str(value) -> str | None:
-    """
-    Convert a value to Python string, handling JsProxy/undefined/null.
-
-    Returns None for JavaScript undefined/null or Python None.
-    Returns str for any other value.
-    """
-    if value is None:
-        return None
-    if _is_js_undefined(value):
-        return None
-    # Convert to Python if JsProxy
-    py_val = _to_py_primitive(value)
-    if py_val is None:
-        return None
-    return str(py_val) if py_val else None
-
-
-def _to_py_primitive(value) -> Any:
-    """
-    Force convert a value to a Python primitive type.
-
-    This is more aggressive than to_py() and handles cases where
-    JsProxy values are nested or not properly converted.
-    """
-    if value is None:
-        return None
-
-    # Check for undefined BEFORE any other checks
-    if _is_js_undefined(value):
-        return None
-
-    # If it's already a basic Python type, return it
-    if isinstance(value, int | float | str | bool):
-        return value
-
-    # Handle JsProxy with to_py() - try multiple approaches
-    if HAS_PYODIDE and hasattr(value, "to_py"):
-        try:
-            converted = value.to_py()
-            # to_py() might return a dict with JsProxy values, recurse
-            return _to_py_primitive(converted)
-        except (AttributeError, TypeError, ValueError):
-            # JsProxy conversion failed, try other approaches
-            pass
-
-    # For dicts, recursively convert all values
-    if isinstance(value, dict):
-        return {k: _to_py_primitive(v) for k, v in value.items()}
-
-    # For lists, recursively convert all items
-    if isinstance(value, list):
-        return [_to_py_primitive(item) for item in value]
-
-    # For tuples (including time.struct_time from feedparser), convert to list
-    # This ensures published_parsed can be indexed and converted to datetime
-    if isinstance(value, tuple):
-        return [_to_py_primitive(item) for item in value]
-
-    # Try to convert to string as last resort
-    try:
-        str_val = str(value)
-        # Check if it's a number string
-        if str_val.isdigit():
-            return int(str_val)
-        return str_val
-    except Exception:
-        return None
-
-
-def _to_py_safe(value) -> Any:
-    """
-    Safely convert a JsProxy value to Python, handling undefined.
-
-    Returns None for JavaScript undefined/null.
-    Returns Python primitive for JsProxy primitives.
-    Recursively converts dicts and lists.
-    Passes through Python values unchanged.
-    """
-    return _to_py_primitive(value)
-
-
-def _extract_form_value(form, key: str) -> str | None:
-    """
-    Extract a value from form data, handling both JsProxy (production) and dict (tests).
-
-    In Cloudflare Workers Python (Pyodide), form_data() returns a JavaScript FormData
-    object wrapped as JsProxy. The .get() method may return JavaScript undefined for
-    missing keys (NOT Python None).
-    """
-    try:
-        value = form.get(key)
-        # Check for None and JavaScript undefined
-        if value is None or _is_js_undefined(value):
-            return None
-        # In Pyodide, convert JsProxy to Python
-        py_value = _to_py_safe(value)
-        if py_value is None:
-            return None
-        # Handle case where value is already a string or has string conversion
-        return str(py_value) if py_value else None
-    except Exception:
-        return None
-
-
-def _to_py_list(js_array) -> list[dict]:
-    """
-    Convert D1 query results (JsProxy array) to Python list of dicts.
-
-    In Cloudflare Workers Python, D1 .results returns a JavaScript array of objects.
-    We need to convert each row to a Python dict for proper dict access.
-    """
-    if js_array is None:
-        return []
-
-    # In test environment, it's already a Python list
-    if isinstance(js_array, list):
-        return js_array
-
-    # In Pyodide, convert JsProxy array to Python list
-    if HAS_PYODIDE and hasattr(js_array, "to_py"):
-        return js_array.to_py()
-
-    # Try iteration as fallback
-    try:
-        return [dict(row) if hasattr(row, "items") else row.to_py() for row in js_array]
-    except Exception:
-        return list(js_array)
-
-
-def _to_d1_value(value) -> Any:
-    """
-    Convert a Python value to a D1-safe value.
-
-    This is the central conversion point for all D1 bind parameters.
-    Handles the Python-to-JavaScript boundary for database operations.
-
-    ALWAYS converts through _to_py_primitive() first to ensure no JsProxy
-    values slip through, then converts None to JS null for D1.
-
-    IMPORTANT: In Pyodide, Python None becomes JS undefined when passed
-    to JavaScript functions, but D1 requires JS null for SQL NULL values.
-    """
-    # Force convert to Python primitive (catches all JsProxy/undefined)
-    py_value = _to_py_primitive(value)
-
-    # Convert None to JS null (required by D1 in Pyodide)
-    # Python None -> JS undefined (wrong), JS_NULL -> JS null (correct)
-    if py_value is None and HAS_PYODIDE:
-        return JS_NULL
-
-    return py_value
-
-
 # Cloud metadata endpoints to block (SSRF protection)
 BLOCKED_METADATA_IPS = {
     "169.254.169.254",  # AWS/GCP/Azure metadata
@@ -289,264 +118,19 @@ BLOCKED_METADATA_IPS = {
 
 
 # =============================================================================
-# JavaScript/Python Boundary Layer
-# =============================================================================
-#
-# These wrapper classes provide a clean boundary between JavaScript (Pyodide/JsProxy)
-# and Python. All JavaScript bindings (D1, AI, Vectorize, Queue) are wrapped to
-# automatically convert JsProxy objects to native Python types.
-#
-# This ensures that application code NEVER sees JsProxy objects - they are
-# converted at the boundary layer before reaching business logic.
-# =============================================================================
-
-
-class SafeD1Statement:
-    """Wrapper for D1 prepared statement that auto-converts results to Python."""
-
-    def __init__(self, stmt):
-        self._stmt = stmt
-
-    def bind(self, *args):
-        """Bind parameters and return self for chaining.
-
-        All parameters are converted via _to_d1_value() which:
-        - Converts None to JS null (required by D1)
-        - Catches any leaked JsProxy/undefined (defensive)
-        """
-        converted = []
-        for arg in args:
-            converted.append(_to_d1_value(arg))
-        self._stmt = self._stmt.bind(*tuple(converted))
-        return self
-
-    async def first(self) -> dict | None:
-        """Execute and return first result as Python dict."""
-        result = await self._stmt.first()
-        return _to_py_safe(result)
-
-    async def all(self) -> Any:
-        """Execute and return all results with Python list of dicts.
-
-        Returns an object with .results (list[dict]) and .success (bool)
-        to match the D1 API that callers expect.
-        """
-        result = await self._stmt.all()
-
-        # Create result object with attributes (to match D1 API)
-        class D1Result:
-            def __init__(self, results: list, success: bool):
-                self.results = results
-                self.success = success
-
-        return D1Result(
-            results=_to_py_list(result.results) if result else [],
-            success=getattr(result, "success", True),
-        )
-
-    async def run(self) -> Any:
-        """Execute statement (for INSERT/UPDATE/DELETE)."""
-        return await self._stmt.run()
-
-
-class SafeD1:
-    """Wrapper for D1 database that auto-converts all results to Python."""
-
-    def __init__(self, db):
-        self._db = db
-
-    def prepare(self, sql: str) -> SafeD1Statement:
-        """Prepare a SQL statement with automatic result conversion."""
-        return SafeD1Statement(self._db.prepare(sql))
-
-
-class SafeAI:
-    """Wrapper for Workers AI that auto-converts results to Python."""
-
-    def __init__(self, ai):
-        self._ai = ai
-
-    async def run(self, model: str, inputs: dict) -> dict:
-        """Run AI model and return Python dict result."""
-        # Convert Python inputs dict to JavaScript for Workers AI
-        if HAS_PYODIDE and to_js is not None:
-            js_inputs = to_js(inputs, dict_converter=js.Object.fromEntries)
-            result = await self._ai.run(model, js_inputs)
-        else:
-            result = await self._ai.run(model, inputs)
-        return _to_py_safe(result)
-
-
-class SafeVectorize:
-    """Wrapper for Vectorize index that auto-converts results to Python."""
-
-    def __init__(self, index):
-        self._index = index
-
-    async def query(self, vector, options: dict) -> dict:
-        """Query the index and return Python dict with matches."""
-        # Convert Python vector and options to JavaScript for Vectorize
-        if HAS_PYODIDE and to_js is not None:
-            js_vector = to_js(vector)
-            js_options = to_js(options, dict_converter=js.Object.fromEntries)
-            result = await self._index.query(js_vector, js_options)
-        else:
-            result = await self._index.query(vector, options)
-        # Convert the result and its nested matches back to Python
-        py_result = _to_py_safe(result)
-        if py_result is None:
-            return {"matches": []}
-        return py_result
-
-    async def upsert(self, vectors):
-        """Upsert vectors into the index."""
-        # Convert Python list of dicts to JavaScript for Vectorize
-        # Without this, Pyodide passes a proxy that Vectorize may not understand
-        if HAS_PYODIDE and to_js is not None:
-            js_vectors = to_js(vectors, dict_converter=js.Object.fromEntries)
-            return await self._index.upsert(js_vectors)
-        return await self._index.upsert(vectors)
-
-    async def deleteByIds(self, ids: list[str]):
-        """Delete vectors by their IDs."""
-        return await self._index.deleteByIds(ids)
-
-
-class SafeQueue:
-    """Wrapper for Queue that ensures Python dicts are sent correctly."""
-
-    def __init__(self, queue):
-        self._queue = queue
-
-    async def send(self, message: dict):
-        """Send a message to the queue."""
-        return await self._queue.send(message)
-
-
-class HttpResponse:
-    """Normalized HTTP response for boundary layer."""
-
-    def __init__(self, status_code: int, text: str, headers: dict, final_url: str):
-        self.status_code = status_code
-        self.text = text
-        self.headers = headers  # Python dict
-        self.final_url = final_url
-
-    def json(self) -> dict:
-        """Parse response text as JSON."""
-        import json
-
-        return json.loads(self.text)
-
-
-async def safe_http_fetch(
-    url: str,
-    method: str = "GET",
-    headers: dict | None = None,
-    data: dict | None = None,
-    timeout_seconds: int = 30,
-) -> HttpResponse:
-    """
-    Boundary-layer HTTP fetch that works in both Pyodide and test environments.
-
-    Returns a normalized HttpResponse with all JavaScript values converted to Python.
-    This centralizes all js_fetch/httpx logic so business code doesn't need HAS_PYODIDE.
-
-    Args:
-        url: The URL to fetch
-        method: HTTP method (GET, POST, etc.)
-        headers: Request headers
-        data: Form data for POST requests (will be URL-encoded)
-        timeout_seconds: Request timeout in seconds
-    """
-    headers = headers or {}
-
-    if HAS_PYODIDE:
-        # Production: Use native Workers fetch
-        fetch_options_dict = {"method": method, "headers": headers, "redirect": "follow"}
-
-        # Handle form data for POST
-        if data and method.upper() == "POST":
-            # URL-encode form data
-            body = "&".join(f"{k}={v}" for k, v in data.items())
-            fetch_options_dict["body"] = body
-            if "content-type" not in {k.lower() for k in headers}:
-                fetch_options_dict["headers"] = {
-                    **headers,
-                    "Content-Type": "application/x-www-form-urlencoded",
-                }
-
-        fetch_options = to_js(fetch_options_dict, dict_converter=js.Object.fromEntries)
-        js_response = await js_fetch(url, fetch_options)
-
-        # Extract all values to Python before returning
-        status_code = int(js_response.status)
-        final_url = str(js_response.url) if js_response.url else url
-        text = await js_response.text()
-
-        # Convert headers to Python dict
-        response_headers = {}
-        headers_iter = js_response.headers.entries()
-        while True:
-            entry = headers_iter.next()
-            done = entry.done if hasattr(entry, "done") else getattr(entry, "done", True)
-            if done:
-                break
-            pair = entry.value if hasattr(entry, "value") else entry
-            key = str(pair[0]).lower()
-            value = str(pair[1])
-            response_headers[key] = value
-
-        return HttpResponse(status_code, text, response_headers, final_url)
-    else:
-        # Test environment: Use httpx
-        async with httpx.AsyncClient(follow_redirects=True, timeout=timeout_seconds) as client:
-            response = await client.request(method, url, headers=headers, data=data)
-            return HttpResponse(
-                status_code=response.status_code,
-                text=response.text,
-                headers=dict(response.headers),
-                final_url=str(response.url),
-            )
-
-
-class SafeEnv:
-    """
-    Wrapper for Worker environment bindings with automatic JsProxy conversion.
-
-    This is the primary boundary layer between JavaScript and Python.
-    All bindings are wrapped to ensure Python code never sees JsProxy objects.
-    """
-
-    def __init__(self, env):
-        self._env = env
-        # Wrap each binding with its safe wrapper
-        self.DB = SafeD1(env.DB)
-        self.AI = SafeAI(env.AI)
-        self.SEARCH_INDEX = SafeVectorize(env.SEARCH_INDEX)
-        self.FEED_QUEUE = SafeQueue(env.FEED_QUEUE)
-        self.DEAD_LETTER_QUEUE = SafeQueue(env.DEAD_LETTER_QUEUE)
-
-    def __getattr__(self, name: str):
-        """Pass through other environment variables (strings, etc.)."""
-        return getattr(self._env, name)
-
-
-# =============================================================================
 # Structured Logging Helper
 # =============================================================================
 
 
-def _log_op(event_type: str, **kwargs) -> None:
-    """
-    Log an operational event as structured JSON.
+def _log_op(event_type: str, **kwargs: LogKwargs) -> None:
+    """Log an operational event as structured JSON.
 
     Unlike wide events (FeedFetchEvent, etc.), these are simpler operational
     logs for debugging and monitoring internal operations.
     """
     event = {
         "event_type": event_type,
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         **kwargs,
     }
     print(json.dumps(event))
@@ -626,19 +210,19 @@ def _feed_response(content: str, content_type: str, cache_max_age: int = 3600) -
 
 
 class Default(WorkerEntrypoint):
-    """
-    Main Worker entrypoint handling all triggers:
+    """Main Worker entrypoint handling all triggers.
+
+    Handlers:
     - scheduled(): Hourly cron to enqueue feed fetches
     - queue(): Queue consumer for feed fetching
     - fetch(): HTTP request handling (generates content on-demand)
     """
 
-    _cached_safe_env = None  # Cached wrapped environment
+    _cached_safe_env: SafeEnv | None = None  # Cached wrapped environment
 
     @property
-    def env(self):
-        """
-        Override env access to return a SafeEnv-wrapped version.
+    def env(self) -> SafeEnv:
+        """Override env access to return a SafeEnv-wrapped version.
 
         This ensures all D1/AI/Vectorize/Queue access goes through our
         boundary layer wrappers that handle JsProxy conversion.
@@ -650,14 +234,13 @@ class Default(WorkerEntrypoint):
         return self._cached_safe_env
 
     @env.setter
-    def env(self, value):
+    def env(self, value: WorkerEnv) -> None:
         """Store raw env from runtime, will be wrapped on access."""
         object.__setattr__(self, "_env_from_runtime", value)
         object.__setattr__(self, "_cached_safe_env", None)  # Clear cache
 
     def _get_deployment_context(self) -> dict:
-        """
-        Get deployment context from environment for observability.
+        """Get deployment context from environment for observability.
 
         Returns dict with:
         - worker_version: Deployment version (e.g., "1.2.3" or commit hash)
@@ -682,9 +265,9 @@ class Default(WorkerEntrypoint):
     # Cron Handler - Scheduler
     # =========================================================================
 
-    async def scheduled(self, event, env, ctx):
-        """
-        Hourly cron trigger - enqueue feeds for fetching.
+    async def scheduled(self, event: ScheduledEvent, env: WorkerEnv, ctx: WorkerCtx) -> None:
+        """Hourly cron trigger - enqueue feeds for fetching.
+
         Content (HTML/RSS/Atom) is generated on-demand by fetch(), not pre-generated.
 
         Note: env and ctx are passed by the runtime but we use self.env and self.ctx
@@ -692,9 +275,8 @@ class Default(WorkerEntrypoint):
         """
         return await self._run_scheduler()
 
-    async def _run_scheduler(self):
-        """
-        Hourly scheduler - enqueue each active feed as a separate message.
+    async def _run_scheduler(self) -> None:
+        """Hourly scheduler - enqueue each active feed as a separate message.
 
         Each feed gets its own queue message to ensure:
         - Isolated retries (only failed feed is retried)
@@ -736,7 +318,7 @@ class Default(WorkerEntrypoint):
                             "url": feed["url"],
                             "etag": feed.get("etag"),
                             "last_modified": feed.get("last_modified"),
-                            "scheduled_at": datetime.utcnow().isoformat(),
+                            "scheduled_at": datetime.now(UTC).isoformat(),
                             # Cross-boundary correlation: link scheduler -> feed fetch
                             "correlation_id": sched_event.correlation_id,
                         }
@@ -776,16 +358,14 @@ class Default(WorkerEntrypoint):
     # Queue Handler - Feed Fetcher
     # =========================================================================
 
-    async def queue(self, batch, env, ctx):
-        """
-        Process a batch of feed messages from the queue.
+    async def queue(self, batch: QueueBatch, env: WorkerEnv, ctx: WorkerCtx) -> None:
+        """Process a batch of feed messages from the queue.
 
         Each message contains exactly ONE feed to fetch.
         This ensures isolated retries and timeouts per feed.
 
         Note: Workers Python runtime passes (batch, env, ctx) but we use self.env from __init__.
         """
-
         _log_op("queue_batch_received", batch_size=len(batch.messages))
 
         for message in batch.messages:
@@ -856,16 +436,15 @@ class Default(WorkerEntrypoint):
     async def _process_single_feed(
         self, job: dict, event: FeedFetchEvent | None = None
     ) -> dict[str, Any]:
-        """
-        Fetch, parse, and store a single feed.
+        """Fetch, parse, and store a single feed.
 
         This function should complete within FEED_TIMEOUT_SECONDS.
 
         Args:
             job: Feed job dict with feed_id, url, etag, last_modified
             event: Optional FeedFetchEvent to populate with details
-        """
 
+        """
         feed_id = job["feed_id"]
         url = job["url"]
         etag = job.get("etag")
@@ -992,8 +571,7 @@ class Default(WorkerEntrypoint):
         return {"status": "ok", "entries_added": entries_added, "entries_found": entries_found}
 
     def _normalize_urls(self, content: str, base_url: str) -> str:
-        """
-        Convert relative URLs in content to absolute URLs.
+        """Convert relative URLs in content to absolute URLs.
 
         Handles href and src attributes with relative paths like:
         - /images/foo.png -> https://example.com/images/foo.png
@@ -1004,7 +582,7 @@ class Default(WorkerEntrypoint):
         base_origin = f"{parsed_base.scheme}://{parsed_base.netloc}"
         base_path = parsed_base.path.rsplit("/", 1)[0] if "/" in parsed_base.path else ""
 
-        def _resolve_url(match):
+        def _resolve_url(match: re.Match[str]) -> str:
             attr = match.group(1)  # href or src
             quote = match.group(2)  # ' or "
             url = match.group(3)  # the URL value
@@ -1028,8 +606,7 @@ class Default(WorkerEntrypoint):
         return re.sub(pattern, _resolve_url, content, flags=re.I)
 
     async def _fetch_full_content(self, url: str) -> str | None:
-        """
-        Fetch full article content from a URL when feed only provides summary.
+        """Fetch full article content from a URL when feed only provides summary.
 
         Uses regex-based extraction for Pyodide compatibility (no BeautifulSoup).
         Returns None if extraction fails, so caller can fall back to summary.
@@ -1090,9 +667,8 @@ class Default(WorkerEntrypoint):
             _log_op("content_fetch_error", url=url, error=str(e)[:ERROR_MESSAGE_MAX_LENGTH])
             return None
 
-    async def _upsert_entry(self, feed_id, entry):
+    async def _upsert_entry(self, feed_id: int, entry: dict[str, Any]) -> dict[str, Any]:
         """Insert or update a single entry with sanitized content."""
-
         # Generate stable GUID - must be non-empty
         guid = entry.get("id") or entry.get("link") or entry.get("title")
         # Ensure GUID is valid (not empty, whitespace-only, or None)
@@ -1216,10 +792,9 @@ class Default(WorkerEntrypoint):
         return {"entry_id": entry_id, "indexing_stats": indexing_stats}
 
     async def _index_entry_for_search(
-        self, entry_id, title, content, feed_id=0, trigger="feed_fetch"
-    ) -> dict:
-        """
-        Generate embedding and store in Vectorize for semantic search.
+        self, entry_id: int, title: str, content: str, feed_id: int = 0, trigger: str = "feed_fetch"
+    ) -> dict[str, Any]:
+        """Generate embedding and store in Vectorize for semantic search.
 
         Args:
             entry_id: Database ID of the entry
@@ -1240,6 +815,7 @@ class Default(WorkerEntrypoint):
 
         Note: Per wide event consolidation, indexing stats are aggregated on the
         parent event (FeedFetchEvent or AdminActionEvent), not emitted separately.
+
         """
         stats = {
             "success": False,
@@ -1305,9 +881,8 @@ class Default(WorkerEntrypoint):
         """Sanitize HTML to prevent XSS attacks (CVE-2009-2937 mitigation)."""
         return _sanitizer.clean(html_content)
 
-    def _is_safe_url(self, url):
+    def _is_safe_url(self, url: str) -> bool:
         """SSRF protection - reject internal/private URLs."""
-
         try:
             parsed = urlparse(url)
         except Exception as e:
@@ -1355,7 +930,9 @@ class Default(WorkerEntrypoint):
         ]
         return not any(hostname == h or hostname.endswith("." + h) for h in metadata_hosts)
 
-    async def _update_feed_success(self, feed_id, etag, last_modified):
+    async def _update_feed_success(
+        self, feed_id: int, etag: str | None, last_modified: str | None
+    ) -> None:
         """Mark feed fetch as successful."""
         await (
             self.env.DB.prepare("""
@@ -1373,7 +950,7 @@ class Default(WorkerEntrypoint):
             .run()
         )
 
-    async def _record_feed_error(self, feed_id, error_message):
+    async def _record_feed_error(self, feed_id: int, error_message: str) -> None:
         """Record a feed fetch error and auto-deactivate after too many failures."""
         # Issue 9.4: Auto-deactivate feeds after configurable consecutive failures
         threshold = self._get_feed_auto_deactivate_threshold()
@@ -1402,7 +979,7 @@ class Default(WorkerEntrypoint):
                 reason="Too many consecutive failures",
             )
 
-    async def _update_feed_url(self, feed_id, new_url):
+    async def _update_feed_url(self, feed_id: int, new_url: str) -> None:
         """Update feed URL after permanent redirect."""
         await (
             self.env.DB.prepare("""
@@ -1415,9 +992,8 @@ class Default(WorkerEntrypoint):
             .run()
         )
 
-    async def _set_feed_retry_after(self, feed_id, retry_after: str):
-        """
-        Store Retry-After time for a feed (good netizen behavior).
+    async def _set_feed_retry_after(self, feed_id: int, retry_after: str) -> None:
+        """Store Retry-After time for a feed (good netizen behavior).
 
         The retry_after value can be:
         - A number of seconds (e.g., "3600")
@@ -1426,7 +1002,8 @@ class Default(WorkerEntrypoint):
         # Parse retry_after - could be seconds or HTTP date
         try:
             seconds = int(retry_after)
-            retry_until = (datetime.utcnow() + timedelta(seconds=seconds)).isoformat() + "Z"
+            future = datetime.now(UTC) + timedelta(seconds=seconds)
+            retry_until = future.isoformat().replace("+00:00", "Z")
         except ValueError:
             # Assume it's an HTTP date, store as-is for simplicity
             retry_until = retry_after
@@ -1442,7 +1019,9 @@ class Default(WorkerEntrypoint):
             .run()
         )
 
-    async def _update_feed_metadata(self, feed_id, feed_info, etag, last_modified):
+    async def _update_feed_metadata(
+        self, feed_id: int, feed_info: FeedParserDict, etag: str | None, last_modified: str | None
+    ) -> None:
         """Update feed title and other metadata from feed content."""
         # Convert feedparser's FeedParserDict to plain Python dict (boundary-safe)
         safe_info = dict(_to_py_safe(feed_info)) if feed_info else {}
@@ -1488,9 +1067,10 @@ class Default(WorkerEntrypoint):
     # HTTP Handler
     # =========================================================================
 
-    async def fetch(self, request, env=None, ctx=None):
+    async def fetch(
+        self, request: WorkerRequest, env: WorkerEnv = None, ctx: WorkerCtx = None
+    ) -> Response:
         """Handle HTTP requests."""
-
         # Initialize page serve event
         url = request.url
         path = (
@@ -1618,9 +1198,8 @@ class Default(WorkerEntrypoint):
 
         return response
 
-    async def _serve_html(self, event: RequestEvent | None = None):
-        """
-        Generate and serve the HTML page on-demand.
+    async def _serve_html(self, event: RequestEvent | None = None) -> Response:
+        """Generate and serve the HTML page on-demand.
 
         No KV caching - edge cache handles repeat requests:
         - First request: D1 query + Jinja2 render (~300-500ms)
@@ -1638,15 +1217,16 @@ class Default(WorkerEntrypoint):
         trigger: str = "http",
         triggered_by: str | None = None,
         event: RequestEvent | None = None,
-    ):
-        """
-        Generate the aggregated HTML page on-demand.
+    ) -> str:
+        """Generate the aggregated HTML page on-demand.
+
         Called by fetch() for / requests. Edge cache handles caching.
 
         Args:
             trigger: What triggered generation ("http", "cron", "admin_manual")
             triggered_by: Admin username if manually triggered
             event: RequestEvent to populate with generation metrics (optional)
+
         """
         # Get planet config from environment
         planet = self._get_planet_config()
@@ -1740,7 +1320,7 @@ class Default(WorkerEntrypoint):
 
         # Sort date groups by date (most recent first)
         # Extract YYYY-MM-DD from entries to sort properly
-        def get_sort_date(date_label_and_entries):
+        def get_sort_date(date_label_and_entries: tuple[str, list[dict[str, Any]]]) -> str:
             entries_list = date_label_and_entries[1]
             if entries_list:
                 return entries_list[0].get("published_at") or ""
@@ -1758,7 +1338,7 @@ class Default(WorkerEntrypoint):
                 planet=planet,
                 entries_by_date=entries_by_date,
                 feeds=feeds,
-                generated_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
+                generated_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
             )
 
         # Populate remaining generation metrics
@@ -1780,6 +1360,7 @@ class Default(WorkerEntrypoint):
             - entries_deleted: int
             - vectors_deleted: int
             - errors: int
+
         """
         retention_days = self._get_retention_days()
         max_per_feed = self._get_max_entries_per_feed()
@@ -1872,7 +1453,7 @@ class Default(WorkerEntrypoint):
             return ""
         try:
             dt = datetime.fromisoformat(iso_string.replace("Z", "+00:00"))
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             # If same year, show "Mon Day" (e.g., "Jun 15")
             if dt.year == now.year:
                 return dt.strftime("%b %d")
@@ -1887,7 +1468,7 @@ class Default(WorkerEntrypoint):
             return "never"
         try:
             dt = datetime.fromisoformat(iso_string.replace("Z", "+00:00"))
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             delta = now - dt.replace(tzinfo=None)
 
             if delta.days > 30:
@@ -1904,8 +1485,7 @@ class Default(WorkerEntrypoint):
             return "unknown"
 
     def _format_date_label(self, date_str: str) -> str:
-        """
-        Convert YYYY-MM-DD to absolute date like 'August 25, 2025'.
+        """Convert YYYY-MM-DD to absolute date like 'August 25, 2025'.
 
         Always shows the actual date rather than relative labels like 'Today'.
         This is clearer when there are gaps between posts.
@@ -1917,23 +1497,22 @@ class Default(WorkerEntrypoint):
         except (ValueError, AttributeError):
             return date_str
 
-    async def _serve_atom(self):
+    async def _serve_atom(self) -> Response:
         """Generate and serve Atom feed on-demand."""
         entries = await self._get_recent_entries(50)
         planet = self._get_planet_config()
         atom = self._generate_atom_feed(planet, entries)
         return _feed_response(atom, "application/atom+xml")
 
-    async def _serve_rss(self):
+    async def _serve_rss(self) -> Response:
         """Generate and serve RSS feed on-demand."""
         entries = await self._get_recent_entries(50)
         planet = self._get_planet_config()
         rss = self._generate_rss_feed(planet, entries)
         return _feed_response(rss, "application/rss+xml")
 
-    async def _get_recent_entries(self, limit):
+    async def _get_recent_entries(self, limit: int) -> list[dict[str, Any]]:
         """Query recent entries for feeds."""
-
         result = (
             await self.env.DB.prepare("""
             SELECT e.*, f.title as feed_title, f.site_url as feed_site_url
@@ -2014,7 +1593,7 @@ class Default(WorkerEntrypoint):
         except (ValueError, TypeError):
             return DEFAULT_FEED_FAILURE_THRESHOLD
 
-    def _generate_atom_feed(self, planet, entries):
+    def _generate_atom_feed(self, planet: dict[str, str], entries: list[dict[str, Any]]) -> str:
         """Generate Atom 1.0 feed XML using template."""
         # Prepare entries with defaults for template
         template_entries = [
@@ -2032,10 +1611,10 @@ class Default(WorkerEntrypoint):
             TEMPLATE_FEED_ATOM,
             planet=planet,
             entries=template_entries,
-            updated_at=f"{datetime.utcnow().isoformat()}Z",
+            updated_at=f"{datetime.now(UTC).isoformat()}Z",
         )
 
-    def _generate_rss_feed(self, planet, entries):
+    def _generate_rss_feed(self, planet: dict[str, str], entries: list[dict[str, Any]]) -> str:
         """Generate RSS 2.0 feed XML using template."""
         # Prepare entries with CDATA-safe content
         template_entries = [
@@ -2054,10 +1633,10 @@ class Default(WorkerEntrypoint):
             TEMPLATE_FEED_RSS,
             planet=planet,
             entries=template_entries,
-            last_build_date=datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000"),
+            last_build_date=datetime.now(UTC).strftime("%a, %d %b %Y %H:%M:%S +0000"),
         )
 
-    async def _export_opml(self):
+    async def _export_opml(self) -> Response:
         """Export all active feeds as OPML using template."""
         feeds_result = await self.env.DB.prepare("""
             SELECT url, title, site_url
@@ -2084,7 +1663,7 @@ class Default(WorkerEntrypoint):
             planet=planet,
             feeds=template_feeds,
             owner_name=owner_name,
-            date_created=datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000"),
+            date_created=datetime.now(UTC).strftime("%a, %d %b %Y %H:%M:%S +0000"),
         )
 
         return Response(
@@ -2095,9 +1674,10 @@ class Default(WorkerEntrypoint):
             },
         )
 
-    async def _search_entries(self, request, event: RequestEvent | None = None):
-        """
-        Hybrid search: combines keyword matching with semantic similarity.
+    async def _search_entries(
+        self, request: WorkerRequest, event: RequestEvent | None = None
+    ) -> Response:
+        """Hybrid search: combines keyword matching with semantic similarity.
 
         Ranking strategy:
         - Keyword matches always rank above semantic matches
@@ -2107,6 +1687,7 @@ class Default(WorkerEntrypoint):
         Args:
             request: HTTP request object
             event: RequestEvent to populate with search metrics (optional)
+
         """
         # Parse query string
         url_str = str(request.url)
@@ -2376,7 +1957,7 @@ class Default(WorkerEntrypoint):
         html = render_template(TEMPLATE_SEARCH, planet=planet, query=query, results=sorted_results)
         return _html_response(html, cache_max_age=0)
 
-    async def _serve_static(self, path):
+    async def _serve_static(self, path: str) -> Response:
         """Serve static files."""
         # In production, static files would be served via assets binding
         # For now, serve CSS and JS inline
@@ -2412,9 +1993,10 @@ class Default(WorkerEntrypoint):
     # Admin Routes
     # =========================================================================
 
-    async def _handle_admin(self, request, path, event: RequestEvent | None = None):
+    async def _handle_admin(
+        self, request: WorkerRequest, path: str, event: RequestEvent | None = None
+    ) -> Response:
         """Handle admin routes with GitHub OAuth."""
-
         # Verify signed session cookie (stateless, no KV)
         session = self._verify_signed_cookie(request)
         if not session:
@@ -2496,13 +2078,13 @@ class Default(WorkerEntrypoint):
 
         return _json_error("Not Found", status=404)
 
-    def _serve_admin_login(self):
+    def _serve_admin_login(self) -> Response:
         """Serve the admin login page."""
         planet = self._get_planet_config()
         html = render_template(TEMPLATE_ADMIN_LOGIN, planet=planet)
         return _html_response(html, cache_max_age=0)
 
-    async def _serve_admin_dashboard(self, admin):
+    async def _serve_admin_dashboard(self, admin: dict[str, Any]) -> Response:
         """Serve the admin dashboard."""
         feeds_result = await self.env.DB.prepare("""
             SELECT * FROM feeds ORDER BY title
@@ -2517,7 +2099,7 @@ class Default(WorkerEntrypoint):
         )
         return _html_response(html, cache_max_age=0)
 
-    async def _list_feeds(self):
+    async def _list_feeds(self) -> Response:
         """List all feeds as JSON."""
         result = await self.env.DB.prepare("""
             SELECT * FROM feeds ORDER BY title
@@ -2525,8 +2107,7 @@ class Default(WorkerEntrypoint):
         return _json_response({"feeds": _to_py_list(result.results)})
 
     async def _validate_feed_url(self, url: str) -> dict:
-        """
-        Validate a feed URL by fetching and parsing it.
+        """Validate a feed URL by fetching and parsing it.
 
         Returns dict with:
         - valid: bool
@@ -2602,9 +2183,8 @@ class Default(WorkerEntrypoint):
                 return {"valid": False, "error": "Timeout fetching feed (10s)"}
             return {"valid": False, "error": error_msg}
 
-    async def _add_feed(self, request, admin):
-        """
-        Add a new feed with validation.
+    async def _add_feed(self, request: WorkerRequest, admin: dict[str, Any]) -> Response:
+        """Add a new feed with validation.
 
         Flow:
         1. Validate URL (SSRF protection)
@@ -2711,7 +2291,7 @@ class Default(WorkerEntrypoint):
                 admin_event.wall_time_ms = timer.elapsed_ms
                 emit_event(admin_event)
 
-    async def _remove_feed(self, feed_id, admin):
+    async def _remove_feed(self, feed_id: str, admin: dict[str, Any]) -> Response:
         """Remove a feed."""
         # Initialize admin action event for observability
         deployment = self._get_deployment_context()
@@ -2771,7 +2351,9 @@ class Default(WorkerEntrypoint):
                 admin_event.wall_time_ms = timer.elapsed_ms
                 emit_event(admin_event)
 
-    async def _update_feed(self, request, feed_id, admin):
+    async def _update_feed(
+        self, request: WorkerRequest, feed_id: str, admin: dict[str, Any]
+    ) -> Response:
         """Update a feed (enable/disable)."""
         # Initialize admin action event for observability
         deployment = self._get_deployment_context()
@@ -2823,7 +2405,7 @@ class Default(WorkerEntrypoint):
                 admin_event.wall_time_ms = timer.elapsed_ms
                 emit_event(admin_event)
 
-    async def _import_opml(self, request, admin):
+    async def _import_opml(self, request: WorkerRequest, admin: dict[str, Any]) -> Response:
         """Import feeds from uploaded OPML file. Admin only."""
         # Initialize admin action event for observability
         deployment = self._get_deployment_context()
@@ -2939,7 +2521,7 @@ class Default(WorkerEntrypoint):
                 admin_event.wall_time_ms = timer.elapsed_ms
                 emit_event(admin_event)
 
-    async def _trigger_regenerate(self, admin):
+    async def _trigger_regenerate(self, admin: dict[str, Any]) -> Response:
         """Force regeneration by clearing edge cache (not really possible, but log the action)."""
         # In practice, edge cache expires on its own. This is more of a manual trigger to re-fetch.
         await self._log_admin_action(admin["id"], "manual_refresh", None, None, {})
@@ -2949,7 +2531,7 @@ class Default(WorkerEntrypoint):
 
         return _redirect_response("/admin")
 
-    async def _view_dlq(self):
+    async def _view_dlq(self) -> Response:
         """View dead letter queue contents (failed feeds with configurable threshold)."""
         threshold = self._get_feed_failure_threshold()
         result = await self.env.DB.prepare(f"""
@@ -2960,7 +2542,7 @@ class Default(WorkerEntrypoint):
         """).all()
         return _json_response({"failed_feeds": _to_py_list(result.results)})
 
-    async def _retry_dlq_feed(self, feed_id, admin):
+    async def _retry_dlq_feed(self, feed_id: str, admin: dict[str, Any]) -> Response:
         """Retry a failed feed by resetting its failure count and re-queuing."""
         # Initialize admin action event for observability
         deployment = self._get_deployment_context()
@@ -3045,7 +2627,7 @@ class Default(WorkerEntrypoint):
                 admin_event.wall_time_ms = timer.elapsed_ms
                 emit_event(admin_event)
 
-    async def _view_audit_log(self):
+    async def _view_audit_log(self) -> Response:
         """View audit log."""
         result = await self.env.DB.prepare("""
             SELECT al.*, a.github_username, a.display_name
@@ -3056,7 +2638,7 @@ class Default(WorkerEntrypoint):
         """).all()
         return _json_response({"audit_log": _to_py_list(result.results)})
 
-    async def _reindex_all_entries(self, admin):
+    async def _reindex_all_entries(self, admin: dict[str, Any]) -> Response:
         """Re-index all entries in Vectorize for search.
 
         This is needed when entries exist in D1 but were never indexed
@@ -3142,14 +2724,21 @@ class Default(WorkerEntrypoint):
                 admin_event.wall_time_ms = timer.elapsed_ms
                 emit_event(admin_event)
 
-    async def _log_admin_action(self, admin_id, action, target_type, target_id, details):
+    async def _log_admin_action(
+        self,
+        admin_id: int | None,
+        action: str | None,
+        target_type: str | None,
+        target_id: int | None,
+        details: dict[str, Any] | None,
+    ) -> None:
         """Log an admin action to the audit log."""
-        # CRITICAL: First convert all inputs through _to_py_primitive to handle JsProxy
+        # CRITICAL: First convert all inputs through _to_py_safe to handle JsProxy
         # Python None can become JavaScript undefined, which D1 rejects
-        admin_id_py = _to_py_primitive(admin_id)
-        action_py = _to_py_primitive(action)
-        target_type_py = _to_py_primitive(target_type)
-        target_id_py = _to_py_primitive(target_id)
+        admin_id_py = _to_py_safe(admin_id)
+        action_py = _to_py_safe(action)
+        target_type_py = _to_py_safe(target_type)
+        target_id_py = _to_py_safe(target_id)
 
         # Convert to safe types with fallbacks
         safe_admin_id = int(admin_id_py) if admin_id_py is not None else 0
@@ -3162,7 +2751,7 @@ class Default(WorkerEntrypoint):
         safe_details = {}
         if details:
             for k, v in details.items():
-                v_py = _to_py_primitive(v)
+                v_py = _to_py_safe(v)
                 if v_py is not None:
                     safe_details[k] = v_py
 
@@ -3180,12 +2769,11 @@ class Default(WorkerEntrypoint):
     # OAuth & Session Management
     # =========================================================================
 
-    def _verify_signed_cookie(self, request):
-        """
-        Verify the signed session cookie (stateless, no KV).
+    def _verify_signed_cookie(self, request: WorkerRequest) -> dict[str, Any] | None:
+        """Verify the signed session cookie (stateless, no KV).
+
         Cookie format: base64(json_payload).signature
         """
-
         # Safely extract Cookie header (may be JsProxy in Pyodide)
         cookies = _safe_str(request.headers.get("Cookie")) or ""
         session_cookie = None
@@ -3224,9 +2812,8 @@ class Default(WorkerEntrypoint):
             )
             return None
 
-    def _redirect_to_github_oauth(self, request):
+    def _redirect_to_github_oauth(self, request: WorkerRequest) -> Response:
         """Redirect to GitHub OAuth authorization."""
-
         state = secrets.token_urlsafe(32)
         client_id = getattr(self.env, "GITHUB_CLIENT_ID", "")
 
@@ -3262,7 +2849,9 @@ class Default(WorkerEntrypoint):
             headers={"Location": auth_url, "Set-Cookie": state_cookie},
         )
 
-    async def _handle_github_callback(self, request, event: RequestEvent | None = None):
+    async def _handle_github_callback(
+        self, request: WorkerRequest, event: RequestEvent | None = None
+    ) -> Response:
         """Handle GitHub OAuth callback."""
         try:
             url_str = str(request.url)
@@ -3448,9 +3037,11 @@ class Default(WorkerEntrypoint):
                 event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
             return _json_error("Authentication failed. Please try again.", status=500)
 
-    def _create_signed_cookie(self, payload):
-        """Create an HMAC-signed cookie. Format: base64(json_payload).signature"""
+    def _create_signed_cookie(self, payload: dict[str, Any]) -> str:
+        """Create an HMAC-signed cookie.
 
+        Format: base64(json_payload).signature
+        """
         payload_json = json.dumps(payload)
         payload_b64 = base64.urlsafe_b64encode(payload_json.encode()).decode()
 
@@ -3460,9 +3051,8 @@ class Default(WorkerEntrypoint):
 
         return f"{payload_b64}.{signature}"
 
-    def _logout(self, request):
+    def _logout(self, request: WorkerRequest) -> Response:
         """Log out by clearing the session cookie (stateless - nothing to delete)."""
-
         return Response(
             "",
             status=302,
