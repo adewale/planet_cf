@@ -1469,8 +1469,11 @@ class Default(WorkerEntrypoint):
             return "never"
         try:
             dt = datetime.fromisoformat(iso_string.replace("Z", "+00:00"))
+            # Ensure dt is timezone-aware (database may store naive datetimes)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
             now = datetime.now(timezone.utc)
-            delta = now - dt.replace(tzinfo=None)
+            delta = now - dt
 
             if delta.days > 30:
                 return f"{delta.days // 30} months ago"
