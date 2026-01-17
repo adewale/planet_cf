@@ -2,6 +2,7 @@
 """Unit tests for helper functions in main.py."""
 
 import json
+from datetime import UTC, datetime
 
 from src.main import (
     ERROR_MESSAGE_MAX_LENGTH,
@@ -10,6 +11,7 @@ from src.main import (
     _json_error,
     _json_response,
     _log_op,
+    _parse_iso_datetime,
     _redirect_response,
 )
 from src.wrappers import (
@@ -314,3 +316,85 @@ class TestErrorMessageMaxLength:
         long_message = "x" * 500
         truncated = long_message[:ERROR_MESSAGE_MAX_LENGTH]
         assert len(truncated) == 200
+
+
+# =============================================================================
+# Datetime Parsing Tests
+# =============================================================================
+
+
+class TestParseIsoDatetime:
+    """Tests for _parse_iso_datetime function."""
+
+    def test_parses_z_suffix(self):
+        """Parses ISO datetime with Z suffix."""
+        result = _parse_iso_datetime("2026-01-17T12:30:00Z")
+        assert result is not None
+        assert result.year == 2026
+        assert result.month == 1
+        assert result.day == 17
+        assert result.hour == 12
+        assert result.minute == 30
+        assert result.tzinfo is not None
+
+    def test_parses_offset_suffix(self):
+        """Parses ISO datetime with +00:00 offset."""
+        result = _parse_iso_datetime("2026-01-17T12:30:00+00:00")
+        assert result is not None
+        assert result.tzinfo is not None
+
+    def test_parses_naive_datetime_assumes_utc(self):
+        """Parses naive datetime (no timezone) and assumes UTC."""
+        result = _parse_iso_datetime("2026-01-17T12:30:00")
+        assert result is not None
+        assert result.tzinfo == UTC
+
+    def test_returns_none_for_none_input(self):
+        """Returns None for None input."""
+        assert _parse_iso_datetime(None) is None
+
+    def test_returns_none_for_empty_string(self):
+        """Returns None for empty string."""
+        assert _parse_iso_datetime("") is None
+
+    def test_returns_none_for_invalid_format(self):
+        """Returns None for invalid datetime format."""
+        assert _parse_iso_datetime("not-a-date") is None
+        assert _parse_iso_datetime("2026/01/17") is None
+
+    def test_result_is_timezone_aware(self):
+        """Result is always timezone-aware for valid input."""
+        # Z suffix
+        result1 = _parse_iso_datetime("2026-01-17T12:30:00Z")
+        assert result1 is not None
+        assert result1.tzinfo is not None
+
+        # Offset suffix
+        result2 = _parse_iso_datetime("2026-01-17T12:30:00+00:00")
+        assert result2 is not None
+        assert result2.tzinfo is not None
+
+        # Naive (should be converted to UTC)
+        result3 = _parse_iso_datetime("2026-01-17T12:30:00")
+        assert result3 is not None
+        assert result3.tzinfo is not None
+
+    def test_can_subtract_from_now(self):
+        """Result can be subtracted from datetime.now(timezone.utc) without error.
+
+        This is the bug that was fixed - naive datetimes from the database
+        caused TypeError when subtracting from timezone-aware now.
+        """
+        # Naive datetime (the problematic case)
+        result = _parse_iso_datetime("2026-01-17T12:30:00")
+        assert result is not None
+        now = datetime.now(UTC)
+        # This should not raise TypeError
+        delta = now - result
+        assert delta is not None
+
+    def test_parses_microseconds(self):
+        """Parses ISO datetime with microseconds."""
+        result = _parse_iso_datetime("2026-01-17T12:30:00.123456Z")
+        assert result is not None
+        assert result.microsecond == 123456

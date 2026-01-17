@@ -206,6 +206,38 @@ def _feed_response(content: str, content_type: str, cache_max_age: int = 3600) -
 
 
 # =============================================================================
+# Datetime Helpers
+# =============================================================================
+
+
+def _parse_iso_datetime(iso_string: str | None) -> datetime | None:
+    """Parse an ISO datetime string to a timezone-aware datetime.
+
+    Handles various ISO formats:
+    - With Z suffix: "2026-01-17T12:00:00Z"
+    - With offset: "2026-01-17T12:00:00+00:00"
+    - Naive (no timezone): "2026-01-17T12:00:00" (assumes UTC)
+
+    Args:
+        iso_string: ISO format datetime string, or None
+
+    Returns:
+        Timezone-aware datetime in UTC, or None if input is empty/invalid
+    """
+    if not iso_string:
+        return None
+    try:
+        # Replace Z suffix with +00:00 for fromisoformat compatibility
+        dt = datetime.fromisoformat(iso_string.replace("Z", "+00:00"))
+        # Ensure timezone-aware (database may store naive datetimes)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (ValueError, AttributeError):
+        return None
+
+
+# =============================================================================
 # Main Worker Class
 # =============================================================================
 
@@ -1440,53 +1472,41 @@ class Default(WorkerEntrypoint):
 
     def _format_datetime(self, iso_string: str | None) -> str:
         """Format ISO datetime string for display."""
-        if not iso_string:
-            return ""
-        try:
-            dt = datetime.fromisoformat(iso_string.replace("Z", "+00:00"))
-            return dt.strftime("%B %d, %Y at %I:%M %p")
-        except (ValueError, AttributeError):
-            return iso_string
+        dt = _parse_iso_datetime(iso_string)
+        if dt is None:
+            return iso_string or ""
+        return dt.strftime("%B %d, %Y at %I:%M %p")
 
     def _format_pub_date(self, iso_string: str | None) -> str:
         """Format publication date concisely (e.g., 'Jun 2013' or 'Jan 15')."""
-        if not iso_string:
+        dt = _parse_iso_datetime(iso_string)
+        if dt is None:
             return ""
-        try:
-            dt = datetime.fromisoformat(iso_string.replace("Z", "+00:00"))
-            now = datetime.now(timezone.utc)
-            # If same year, show "Mon Day" (e.g., "Jun 15")
-            if dt.year == now.year:
-                return dt.strftime("%b %d")
-            # Otherwise show "Mon Year" (e.g., "Jun 2013")
-            return dt.strftime("%b %Y")
-        except (ValueError, AttributeError):
-            return ""
+        now = datetime.now(timezone.utc)
+        # If same year, show "Mon Day" (e.g., "Jun 15")
+        if dt.year == now.year:
+            return dt.strftime("%b %d")
+        # Otherwise show "Mon Year" (e.g., "Jun 2013")
+        return dt.strftime("%b %Y")
 
     def _relative_time(self, iso_string: str | None) -> str:
         """Convert ISO datetime to relative time (e.g., '2 hours ago')."""
-        if not iso_string:
-            return "never"
-        try:
-            dt = datetime.fromisoformat(iso_string.replace("Z", "+00:00"))
-            # Ensure dt is timezone-aware (database may store naive datetimes)
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            now = datetime.now(timezone.utc)
-            delta = now - dt
+        dt = _parse_iso_datetime(iso_string)
+        if dt is None:
+            return "never" if not iso_string else "unknown"
+        now = datetime.now(timezone.utc)
+        delta = now - dt
 
-            if delta.days > 30:
-                return f"{delta.days // 30} months ago"
-            elif delta.days > 0:
-                return f"{delta.days} days ago"
-            elif delta.seconds > 3600:
-                return f"{delta.seconds // 3600} hours ago"
-            elif delta.seconds > 60:
-                return f"{delta.seconds // 60} minutes ago"
-            else:
-                return "just now"
-        except (ValueError, AttributeError):
-            return "unknown"
+        if delta.days > 30:
+            return f"{delta.days // 30} months ago"
+        elif delta.days > 0:
+            return f"{delta.days} days ago"
+        elif delta.seconds > 3600:
+            return f"{delta.seconds // 3600} hours ago"
+        elif delta.seconds > 60:
+            return f"{delta.seconds // 60} minutes ago"
+        else:
+            return "just now"
 
     def _format_date_label(self, date_str: str) -> str:
         """Convert YYYY-MM-DD to absolute date like 'August 25, 2025'.
