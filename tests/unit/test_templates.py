@@ -34,7 +34,7 @@ class TestRenderTemplate:
             generated_at="2026-01-01T00:00:00Z",
         )
         assert "Test Planet" in html
-        assert "<!DOCTYPE html>" in html
+        assert "<!doctype html>" in html.lower()
 
     def test_renders_search_template(self):
         """Search template renders without error."""

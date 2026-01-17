@@ -5,18 +5,19 @@ import json
 
 from src.main import (
     ERROR_MESSAGE_MAX_LENGTH,
-    _extract_form_value,
     _feed_response,
     _html_response,
-    _is_js_undefined,
     _json_error,
     _json_response,
     _log_op,
     _redirect_response,
+)
+from src.wrappers import (
+    _extract_form_value,
+    _is_js_undefined,
     _safe_str,
     _to_d1_value,
     _to_py_list,
-    _to_py_primitive,
     _to_py_safe,
 )
 
@@ -69,45 +70,35 @@ class TestSafeStr:
         assert _safe_str("") is None
 
 
-class TestToPyPrimitive:
-    """Tests for _to_py_primitive function."""
+class TestToPySafe:
+    """Tests for _to_py_safe function."""
 
     def test_returns_none_for_none(self):
         """None returns None."""
-        assert _to_py_primitive(None) is None
+        assert _to_py_safe(None) is None
 
     def test_passes_through_basic_types(self):
         """Basic Python types are passed through."""
-        assert _to_py_primitive(42) == 42
-        assert _to_py_primitive(3.14) == 3.14
-        assert _to_py_primitive("hello") == "hello"
-        assert _to_py_primitive(True) is True
-        assert _to_py_primitive(False) is False
+        assert _to_py_safe(42) == 42
+        assert _to_py_safe(3.14) == 3.14
+        assert _to_py_safe("hello") == "hello"
+        assert _to_py_safe(True) is True
+        assert _to_py_safe(False) is False
 
     def test_converts_dict_recursively(self):
         """Dicts are converted recursively."""
-        result = _to_py_primitive({"key": "value", "nested": {"a": 1}})
+        result = _to_py_safe({"key": "value", "nested": {"a": 1}})
         assert result == {"key": "value", "nested": {"a": 1}}
 
     def test_converts_list_recursively(self):
         """Lists are converted recursively."""
-        result = _to_py_primitive([1, "two", {"three": 3}])
+        result = _to_py_safe([1, "two", {"three": 3}])
         assert result == [1, "two", {"three": 3}]
 
     def test_converts_tuple_to_list(self):
         """Tuples are converted to lists."""
-        result = _to_py_primitive((1, 2, 3))
+        result = _to_py_safe((1, 2, 3))
         assert result == [1, 2, 3]
-
-
-class TestToPySafe:
-    """Tests for _to_py_safe function."""
-
-    def test_delegates_to_to_py_primitive(self):
-        """_to_py_safe delegates to _to_py_primitive."""
-        assert _to_py_safe(None) is None
-        assert _to_py_safe(42) == 42
-        assert _to_py_safe({"key": "value"}) == {"key": "value"}
 
 
 class TestToPyList:

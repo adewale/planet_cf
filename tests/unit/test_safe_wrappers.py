@@ -3,7 +3,7 @@
 
 import pytest
 
-from src.main import (
+from src.wrappers import (
     SafeAI,
     SafeD1,
     SafeD1Statement,

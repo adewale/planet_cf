@@ -17,8 +17,8 @@ import re
 import secrets
 import time
 import xml.etree.ElementTree as ET
-from datetime import UTC, datetime, timedelta
-from typing import Any
+from datetime import datetime, timedelta, timezone
+from typing import Any, TypeAlias
 from urllib.parse import parse_qs, urlparse
 
 import feedparser
@@ -60,21 +60,22 @@ from wrappers import (
 # =============================================================================
 # These are JavaScript objects passed by the Workers runtime with no Python stubs.
 # Using explicit type aliases documents the intent and satisfies type checkers.
+# Note: Using TypeAlias syntax (not PEP 695 `type` keyword) for Pyodide compatibility.
 
 #: Cloudflare Workers scheduled event (JavaScript object)
-type ScheduledEvent = Any
+ScheduledEvent: TypeAlias = Any
 #: Cloudflare Workers queue batch (JavaScript object)
-type QueueBatch = Any
+QueueBatch: TypeAlias = Any
 #: Cloudflare Workers environment bindings (JavaScript object)
-type WorkerEnv = Any
+WorkerEnv: TypeAlias = Any
 #: Cloudflare Workers execution context (JavaScript object)
-type WorkerCtx = Any
+WorkerCtx: TypeAlias = Any
 #: Cloudflare Workers HTTP request (JavaScript object)
-type WorkerRequest = Any
+WorkerRequest: TypeAlias = Any
 #: feedparser's FeedParserDict (dynamic dictionary-like object)
-type FeedParserDict = Any
+FeedParserDict: TypeAlias = Any
 #: Logging kwargs - intentionally accepts any JSON-serializable values
-type LogKwargs = Any
+LogKwargs: TypeAlias = Any
 
 # =============================================================================
 # Configuration
@@ -130,7 +131,7 @@ def _log_op(event_type: str, **kwargs: LogKwargs) -> None:
     """
     event = {
         "event_type": event_type,
-        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         **kwargs,
     }
     print(json.dumps(event))
@@ -318,7 +319,7 @@ class Default(WorkerEntrypoint):
                             "url": feed["url"],
                             "etag": feed.get("etag"),
                             "last_modified": feed.get("last_modified"),
-                            "scheduled_at": datetime.now(UTC).isoformat(),
+                            "scheduled_at": datetime.now(timezone.utc).isoformat(),
                             # Cross-boundary correlation: link scheduler -> feed fetch
                             "correlation_id": sched_event.correlation_id,
                         }
@@ -1002,7 +1003,7 @@ class Default(WorkerEntrypoint):
         # Parse retry_after - could be seconds or HTTP date
         try:
             seconds = int(retry_after)
-            future = datetime.now(UTC) + timedelta(seconds=seconds)
+            future = datetime.now(timezone.utc) + timedelta(seconds=seconds)
             retry_until = future.isoformat().replace("+00:00", "Z")
         except ValueError:
             # Assume it's an HTTP date, store as-is for simplicity
@@ -1338,7 +1339,7 @@ class Default(WorkerEntrypoint):
                 planet=planet,
                 entries_by_date=entries_by_date,
                 feeds=feeds,
-                generated_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
+                generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
             )
 
         # Populate remaining generation metrics
@@ -1453,7 +1454,7 @@ class Default(WorkerEntrypoint):
             return ""
         try:
             dt = datetime.fromisoformat(iso_string.replace("Z", "+00:00"))
-            now = datetime.now(UTC)
+            now = datetime.now(timezone.utc)
             # If same year, show "Mon Day" (e.g., "Jun 15")
             if dt.year == now.year:
                 return dt.strftime("%b %d")
@@ -1468,7 +1469,7 @@ class Default(WorkerEntrypoint):
             return "never"
         try:
             dt = datetime.fromisoformat(iso_string.replace("Z", "+00:00"))
-            now = datetime.now(UTC)
+            now = datetime.now(timezone.utc)
             delta = now - dt.replace(tzinfo=None)
 
             if delta.days > 30:
@@ -1611,7 +1612,7 @@ class Default(WorkerEntrypoint):
             TEMPLATE_FEED_ATOM,
             planet=planet,
             entries=template_entries,
-            updated_at=f"{datetime.now(UTC).isoformat()}Z",
+            updated_at=f"{datetime.now(timezone.utc).isoformat()}Z",
         )
 
     def _generate_rss_feed(self, planet: dict[str, str], entries: list[dict[str, Any]]) -> str:
@@ -1633,7 +1634,7 @@ class Default(WorkerEntrypoint):
             TEMPLATE_FEED_RSS,
             planet=planet,
             entries=template_entries,
-            last_build_date=datetime.now(UTC).strftime("%a, %d %b %Y %H:%M:%S +0000"),
+            last_build_date=datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000"),
         )
 
     async def _export_opml(self) -> Response:
@@ -1663,7 +1664,7 @@ class Default(WorkerEntrypoint):
             planet=planet,
             feeds=template_feeds,
             owner_name=owner_name,
-            date_created=datetime.now(UTC).strftime("%a, %d %b %Y %H:%M:%S +0000"),
+            date_created=datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000"),
         )
 
         return Response(

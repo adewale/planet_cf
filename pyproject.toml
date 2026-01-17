@@ -92,10 +92,15 @@ ignore = [
     "E402",  # Allow imports after sys.path manipulation in conftest
 ]
 "src/templates.py" = ["E501"]  # Embedded HTML templates have long lines
-"src/observability.py" = ["S311"]  # random.random() is fine for sampling (not security)
+"src/observability.py" = [
+    "S311",  # random.random() is fine for sampling (not security)
+    "UP017",  # Can't use datetime.UTC - Pyodide uses Python 3.11
+]
 "src/main.py" = [
     "S608",  # SQL uses bind() parameters, not string formatting
     "S314",  # XML parsing for admin OPML import (authenticated only)
+    "UP040",  # Can't use PEP 695 `type` keyword - Pyodide uses Python 3.11
+    "UP017",  # Can't use datetime.UTC - Pyodide uses Python 3.11
 ]
 "src/wrappers.py" = [
     "ANN401",  # JS/Python boundary layer - Any is intentional for JsProxy types
