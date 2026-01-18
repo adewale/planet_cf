@@ -466,6 +466,319 @@ class SafeEnv:
 
 
 # =============================================================================
+# D1 Row Factory Functions
+# =============================================================================
+
+
+def feed_row_from_js(row: Any) -> dict[str, Any]:
+    """Convert a single D1 feed row (JsProxy) to Python dict.
+
+    Ensures all values are proper Python types, not JsProxy objects.
+    """
+    if row is None:
+        return {}
+    py_row = _to_py_safe(row)
+    if not py_row:
+        return {}
+    return {
+        "id": int(py_row.get("id", 0)),
+        "url": _safe_str(py_row.get("url")) or "",
+        "title": _safe_str(py_row.get("title")),
+        "site_url": _safe_str(py_row.get("site_url")),
+        "is_active": int(py_row.get("is_active", 0)),
+        "consecutive_failures": int(py_row.get("consecutive_failures", 0)),
+        "etag": _safe_str(py_row.get("etag")),
+        "last_modified": _safe_str(py_row.get("last_modified")),
+        "last_success_at": _safe_str(py_row.get("last_success_at")),
+        "last_error_at": _safe_str(py_row.get("last_error_at")),
+        "last_error_message": _safe_str(py_row.get("last_error_message")),
+        "created_at": _safe_str(py_row.get("created_at")) or "",
+        "updated_at": _safe_str(py_row.get("updated_at")) or "",
+        # Optional fields from joins
+        "author_name": _safe_str(py_row.get("author_name")),
+        "author_email": _safe_str(py_row.get("author_email")),
+        "last_fetch_at": _safe_str(py_row.get("last_fetch_at")),
+        "fetch_error": _safe_str(py_row.get("fetch_error")),
+        "fetch_error_count": py_row.get("fetch_error_count"),
+    }
+
+
+def feed_rows_from_d1(results: Any) -> list[dict[str, Any]]:
+    """Convert D1 query results to list of feed row dicts.
+
+    Args:
+        results: D1 result.results (JsProxy array or Python list)
+
+    Returns:
+        List of feed row dicts with all values converted to Python types.
+    """
+    raw_list = _to_py_list(results)
+    return [feed_row_from_js(row) for row in raw_list]
+
+
+def entry_row_from_js(row: Any) -> dict[str, Any]:
+    """Convert a single D1 entry row (JsProxy) to Python dict.
+
+    Ensures all values are proper Python types, not JsProxy objects.
+    """
+    if row is None:
+        return {}
+    py_row = _to_py_safe(row)
+    if not py_row:
+        return {}
+    return {
+        "id": int(py_row.get("id", 0)),
+        "feed_id": int(py_row.get("feed_id", 0)),
+        "guid": _safe_str(py_row.get("guid")) or "",
+        "url": _safe_str(py_row.get("url")) or "",
+        "title": _safe_str(py_row.get("title")) or "",
+        "author": _safe_str(py_row.get("author")),
+        "content": _safe_str(py_row.get("content")) or "",
+        "summary": _safe_str(py_row.get("summary")),
+        "published_at": _safe_str(py_row.get("published_at")) or "",
+        "created_at": _safe_str(py_row.get("created_at")) or "",
+        "first_seen": _safe_str(py_row.get("first_seen")),
+        # Joined fields
+        "feed_title": _safe_str(py_row.get("feed_title")),
+        "feed_site_url": _safe_str(py_row.get("feed_site_url")),
+    }
+
+
+def entry_rows_from_d1(results: Any) -> list[dict[str, Any]]:
+    """Convert D1 query results to list of entry row dicts.
+
+    Args:
+        results: D1 result.results (JsProxy array or Python list)
+
+    Returns:
+        List of entry row dicts with all values converted to Python types.
+    """
+    raw_list = _to_py_list(results)
+    return [entry_row_from_js(row) for row in raw_list]
+
+
+def admin_row_from_js(row: Any) -> dict[str, Any] | None:
+    """Convert a single D1 admin row (JsProxy) to Python dict.
+
+    Returns None if row is None or empty.
+    """
+    if row is None:
+        return None
+    py_row = _to_py_safe(row)
+    if not py_row:
+        return None
+    return {
+        "id": int(py_row.get("id", 0)),
+        "github_username": _safe_str(py_row.get("github_username")) or "",
+        "github_id": py_row.get("github_id"),
+        "display_name": _safe_str(py_row.get("display_name")) or "",
+        "is_active": int(py_row.get("is_active", 0)),
+        "last_login_at": _safe_str(py_row.get("last_login_at")),
+        "created_at": _safe_str(py_row.get("created_at")) or "",
+    }
+
+
+def audit_row_from_js(row: Any) -> dict[str, Any]:
+    """Convert a single D1 audit log row (JsProxy) to Python dict."""
+    if row is None:
+        return {}
+    py_row = _to_py_safe(row)
+    if not py_row:
+        return {}
+    return {
+        "id": int(py_row.get("id", 0)),
+        "admin_id": int(py_row.get("admin_id", 0)),
+        "action": _safe_str(py_row.get("action")) or "",
+        "target_type": _safe_str(py_row.get("target_type")),
+        "target_id": py_row.get("target_id"),
+        "details": _safe_str(py_row.get("details")),
+        "created_at": _safe_str(py_row.get("created_at")) or "",
+        # Joined fields
+        "admin_username": _safe_str(py_row.get("admin_username")),
+    }
+
+
+def audit_rows_from_d1(results: Any) -> list[dict[str, Any]]:
+    """Convert D1 query results to list of audit log row dicts."""
+    raw_list = _to_py_list(results)
+    return [audit_row_from_js(row) for row in raw_list]
+
+
+# =============================================================================
+# Helper Classes for Request/Form Data
+# =============================================================================
+
+
+class SafeHeaders:
+    """Safe wrapper for extracting HTTP headers from request objects.
+
+    Handles JsProxy conversion internally so callers get clean Python strings.
+    """
+
+    def __init__(self, request: Any) -> None:
+        """Initialize with a request object (JsProxy or mock)."""
+        self._request = request
+
+    @property
+    def user_agent(self) -> str:
+        """Get User-Agent header."""
+        return _safe_str(self._request.headers.get("user-agent")) or ""
+
+    @property
+    def referer(self) -> str:
+        """Get Referer header."""
+        return _safe_str(self._request.headers.get("referer")) or ""
+
+    @property
+    def cookie(self) -> str:
+        """Get Cookie header."""
+        return _safe_str(self._request.headers.get("Cookie")) or ""
+
+    @property
+    def content_type(self) -> str:
+        """Get Content-Type header."""
+        return _safe_str(self._request.headers.get("content-type")) or ""
+
+    @property
+    def accept(self) -> str:
+        """Get Accept header."""
+        return _safe_str(self._request.headers.get("accept")) or ""
+
+    def get(self, name: str, default: str = "") -> str:
+        """Get any header by name."""
+        return _safe_str(self._request.headers.get(name)) or default
+
+
+class SafeFormData:
+    """Safe wrapper for form data extraction.
+
+    Handles JsProxy conversion internally so callers get clean Python strings.
+    """
+
+    def __init__(self, form: Any) -> None:
+        """Initialize with form data (JsProxy FormData or dict)."""
+        self._form = form
+
+    def get(self, key: str) -> str | None:
+        """Get a form value by key, returns None if missing."""
+        return _extract_form_value(self._form, key)
+
+    def get_str(self, key: str, default: str = "") -> str:
+        """Get a form value by key, returns default if missing."""
+        return _extract_form_value(self._form, key) or default
+
+    def get_int(self, key: str, default: int = 0) -> int:
+        """Get a form value as int, returns default if missing or invalid."""
+        val = _extract_form_value(self._form, key)
+        if val is None:
+            return default
+        try:
+            return int(val)
+        except (ValueError, TypeError):
+            return default
+
+
+class SafeFeedInfo:
+    """Safe wrapper for feedparser feed info.
+
+    Handles JsProxy conversion for feed metadata from feedparser.
+    """
+
+    def __init__(self, feed_info: Any) -> None:
+        """Initialize with feedparser's feed dict (may be JsProxy)."""
+        self._info = dict(_to_py_safe(feed_info)) if feed_info else {}
+
+    @property
+    def title(self) -> str | None:
+        """Get feed title."""
+        return _safe_str(self._info.get("title"))
+
+    @property
+    def link(self) -> str | None:
+        """Get feed link/site URL."""
+        return _safe_str(self._info.get("link"))
+
+    @property
+    def author(self) -> str | None:
+        """Get feed author (tries author_detail.name, then author)."""
+        author_detail = self._info.get("author_detail")
+        if author_detail and isinstance(author_detail, dict):
+            name = _safe_str(author_detail.get("name"))
+            if name:
+                return name
+        return _safe_str(self._info.get("author"))
+
+    @property
+    def author_email(self) -> str | None:
+        """Get feed author email from author_detail."""
+        author_detail = self._info.get("author_detail")
+        if author_detail and isinstance(author_detail, dict):
+            return _safe_str(author_detail.get("email"))
+        return None
+
+    def get(self, key: str) -> Any:
+        """Get any feed info value."""
+        return _to_py_safe(self._info.get(key))
+
+
+# =============================================================================
+# Entry Binding Helper
+# =============================================================================
+
+
+def entry_bind_values(
+    feed_id: int,
+    guid: Any,
+    url: Any,
+    title: Any,
+    author: Any,
+    content: Any,
+    summary: Any,
+    published_at: Any,
+) -> tuple:
+    """Create a tuple of D1-safe values for entry INSERT/UPDATE.
+
+    Converts all values through _safe_str to ensure clean Python strings.
+    Returns tuple ready for .bind(*entry_bind_values(...)).
+    """
+    return (
+        feed_id,
+        _safe_str(guid),
+        _safe_str(url),
+        _safe_str(title),
+        _safe_str(author),
+        _safe_str(content),
+        _safe_str(summary),
+        _safe_str(published_at),
+    )
+
+
+def feed_bind_values(
+    title: Any,
+    site_url: Any,
+    author_name: Any,
+    author_email: Any,
+    etag: Any,
+    last_modified: Any,
+    feed_id: int,
+) -> tuple:
+    """Create a tuple of D1-safe values for feed metadata UPDATE.
+
+    Converts all values through _safe_str to ensure clean Python strings.
+    Returns tuple ready for .bind(*feed_bind_values(...)).
+    """
+    return (
+        _safe_str(title),
+        _safe_str(site_url),
+        _safe_str(author_name),
+        _safe_str(author_email),
+        _safe_str(etag),
+        _safe_str(last_modified),
+        feed_id,
+    )
+
+
+# =============================================================================
 # Public API
 # =============================================================================
 
@@ -482,6 +795,21 @@ __all__ = [
     "_extract_form_value",
     "_to_py_list",
     "_to_d1_value",
+    # D1 row factories
+    "feed_row_from_js",
+    "feed_rows_from_d1",
+    "entry_row_from_js",
+    "entry_rows_from_d1",
+    "admin_row_from_js",
+    "audit_row_from_js",
+    "audit_rows_from_d1",
+    # Helper classes
+    "SafeHeaders",
+    "SafeFormData",
+    "SafeFeedInfo",
+    # Binding helpers
+    "entry_bind_values",
+    "feed_bind_values",
     # Wrapper classes
     "SafeD1Statement",
     "SafeD1",

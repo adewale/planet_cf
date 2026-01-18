@@ -47,11 +47,20 @@ from templates import (
 )
 from wrappers import (
     SafeEnv,
-    _extract_form_value,
+    SafeFeedInfo,
+    SafeFormData,
+    SafeHeaders,
     _is_js_undefined,
     _safe_str,
     _to_py_list,
     _to_py_safe,
+    admin_row_from_js,
+    audit_rows_from_d1,
+    entry_bind_values,
+    entry_rows_from_d1,
+    feed_bind_values,
+    feed_row_from_js,
+    feed_rows_from_d1,
     safe_http_fetch,
 )
 
@@ -336,7 +345,7 @@ class Default(WorkerEntrypoint):
                     """).all()
 
                 sched_event.scheduler_d1_ms = d1_timer.elapsed_ms
-                feeds = _to_py_list(result.results)
+                feeds = feed_rows_from_d1(result.results)
                 sched_event.feeds_queried = len(feeds)
                 sched_event.feeds_active = len(feeds)
 
@@ -779,14 +788,16 @@ class Default(WorkerEntrypoint):
             RETURNING id
         """)
             .bind(
-                feed_id,
-                _safe_str(guid),
-                _safe_str(entry.get("link")),
-                _safe_str(title),
-                _safe_str(entry.get("author")),
-                _safe_str(sanitized_content),
-                _safe_str(summary),
-                _safe_str(published_at),
+                *entry_bind_values(
+                    feed_id,
+                    guid,
+                    entry.get("link"),
+                    title,
+                    entry.get("author"),
+                    sanitized_content,
+                    summary,
+                    published_at,
+                )
             )
             .first()
         )
@@ -1056,21 +1067,8 @@ class Default(WorkerEntrypoint):
         self, feed_id: int, feed_info: FeedParserDict, etag: str | None, last_modified: str | None
     ) -> None:
         """Update feed title and other metadata from feed content."""
-        # Convert feedparser's FeedParserDict to plain Python dict (boundary-safe)
-        safe_info = dict(_to_py_safe(feed_info)) if feed_info else {}
-
-        title = _safe_str(safe_info.get("title"))
-        site_url = _safe_str(safe_info.get("link"))
-
-        # Issue 1.1: Extract author info from feed
-        author_name = None
-        author_email = None
-        author_detail = safe_info.get("author_detail")
-        if author_detail and isinstance(author_detail, dict):
-            author_name = _safe_str(author_detail.get("name"))
-            author_email = _safe_str(author_detail.get("email"))
-        elif safe_info.get("author"):
-            author_name = _safe_str(safe_info.get("author"))
+        # Use SafeFeedInfo wrapper for clean JS→Python boundary handling
+        info = SafeFeedInfo(feed_info)
 
         await (
             self.env.DB.prepare("""
@@ -1085,13 +1083,15 @@ class Default(WorkerEntrypoint):
             WHERE id = ?
         """)
             .bind(
-                title,
-                site_url,
-                author_name,
-                author_email,
-                _safe_str(etag),
-                _safe_str(last_modified),
-                feed_id,
+                *feed_bind_values(
+                    info.title,
+                    info.link,
+                    info.author,
+                    info.author_email,
+                    etag,
+                    last_modified,
+                    feed_id,
+                )
             )
             .run()
         )
@@ -1114,9 +1114,10 @@ class Default(WorkerEntrypoint):
         if not path.startswith("/"):
             path = "/" + path
 
-        # Safely extract request headers (may be JsProxy in Pyodide)
-        user_agent = _safe_str(request.headers.get("user-agent")) or ""
-        referer = _safe_str(request.headers.get("referer")) or ""
+        # Safely extract request headers using boundary layer helper
+        headers = SafeHeaders(request)
+        user_agent = headers.user_agent
+        referer = headers.referer
 
         # Get deployment context for observability
         deployment = self._get_deployment_context()
@@ -1320,9 +1321,9 @@ class Default(WorkerEntrypoint):
             event.generation_d1_ms = d1_timer.elapsed_ms
             event.generation_trigger = trigger
 
-        # Convert JsProxy results to Python lists for dict access
-        entries = _to_py_list(entries_result.results)
-        feeds = _to_py_list(feeds_result.results)
+        # Convert D1 results to typed Python dicts
+        entries = entry_rows_from_d1(entries_result.results)
+        feeds = feed_rows_from_d1(feeds_result.results)
 
         # Group entries by published_at (actual publication date from feed)
         # Fall back to first_seen only if published_at is missing
@@ -1431,7 +1432,7 @@ class Default(WorkerEntrypoint):
                 SELECT id FROM entries_to_delete
             """).all()
 
-        deleted_ids = [row["id"] for row in _to_py_list(to_delete.results)]
+        deleted_ids = [row["id"] for row in entry_rows_from_d1(to_delete.results)]
         stats["entries_scanned"] = len(deleted_ids)
         stats["d1_ms"] = d1_timer.elapsed_ms
 
@@ -1550,7 +1551,7 @@ class Default(WorkerEntrypoint):
             .all()
         )
 
-        return _to_py_list(result.results)
+        return entry_rows_from_d1(result.results)
 
     def _get_planet_config(self) -> dict[str, str]:
         """Get planet configuration from environment."""
@@ -1676,7 +1677,7 @@ class Default(WorkerEntrypoint):
                 "url": f["url"],
                 "site_url": f["site_url"] or "",
             }
-            for f in _to_py_list(feeds_result.results)
+            for f in feed_rows_from_d1(feeds_result.results)
         ]
 
         planet = self._get_planet_config()
@@ -1865,7 +1866,7 @@ class Default(WorkerEntrypoint):
                             .all()
                         )
 
-                keyword_entries = _to_py_list(keyword_result.results)
+                keyword_entries = entry_rows_from_d1(keyword_result.results)
             if event:
                 event.search_d1_ms = d1_timer.elapsed_ms
         except Exception as e:
@@ -1905,7 +1906,7 @@ class Default(WorkerEntrypoint):
                 .bind(*semantic_only_ids)
                 .all()
             )
-            for entry in _to_py_list(db_entries.results):
+            for entry in entry_rows_from_d1(db_entries.results):
                 entry_map[entry["id"]] = entry
 
         # 5. Build sorted results: KEYWORD FIRST, SEMANTIC SECOND
@@ -2036,15 +2037,11 @@ class Default(WorkerEntrypoint):
             .first()
         )
 
-        # Convert JsProxy to Python dict
-        admin = _to_py_safe(admin_result)
+        # Convert D1 row to typed Python dict
+        admin = admin_row_from_js(admin_result)
 
         if not admin:
             return _json_error("Unauthorized: Not an admin", status=403)
-
-        # Ensure admin_id is a Python int (D1 requires Python primitives)
-        if "id" in admin:
-            admin["id"] = int(admin["id"]) if admin["id"] is not None else None
 
         # Route admin requests
         method = request.method
@@ -2068,8 +2065,8 @@ class Default(WorkerEntrypoint):
 
         if path.startswith("/admin/feeds/") and method == "POST":
             # Handle form override for DELETE
-            form = await request.form_data()
-            if _extract_form_value(form, "_method") == "DELETE":
+            form = SafeFormData(await request.form_data())
+            if form.get("_method") == "DELETE":
                 feed_id = path.split("/")[-1]
                 return await self._remove_feed(feed_id, admin)
             return _json_error("Method not allowed", status=405)
@@ -2119,7 +2116,7 @@ class Default(WorkerEntrypoint):
             TEMPLATE_ADMIN_DASHBOARD,
             planet=planet,
             admin=admin,
-            feeds=_to_py_list(feeds_result.results),
+            feeds=feed_rows_from_d1(feeds_result.results),
         )
         return _html_response(html, cache_max_age=0)
 
@@ -2128,7 +2125,7 @@ class Default(WorkerEntrypoint):
         result = await self.env.DB.prepare("""
             SELECT * FROM feeds ORDER BY title
         """).all()
-        return _json_response({"feeds": _to_py_list(result.results)})
+        return _json_response({"feeds": feed_rows_from_d1(result.results)})
 
     async def _validate_feed_url(self, url: str) -> dict:
         """Validate a feed URL by fetching and parsing it.
@@ -2230,9 +2227,9 @@ class Default(WorkerEntrypoint):
 
         with Timer() as timer:
             try:
-                form = await request.form_data()
-                url = _extract_form_value(form, "url")
-                title = _extract_form_value(form, "title")
+                form = SafeFormData(await request.form_data())
+                url = form.get("url")
+                title = form.get("title")
 
                 if not url:
                     admin_event.outcome = "error"
@@ -2340,10 +2337,10 @@ class Default(WorkerEntrypoint):
                     .first()
                 )
 
-                # Convert JsProxy to Python dict
-                feed = _to_py_safe(feed_result)
+                # Convert D1 row to typed Python dict
+                feed = feed_row_from_js(feed_result)
 
-                if not feed or not isinstance(feed, dict):
+                if not feed:
                     admin_event.outcome = "error"
                     admin_event.error_type = "NotFound"
                     admin_event.error_message = "Feed not found"
@@ -2564,7 +2561,7 @@ class Default(WorkerEntrypoint):
             WHERE consecutive_failures >= {threshold}
             ORDER BY consecutive_failures DESC, last_fetch_at DESC
         """).all()
-        return _json_response({"failed_feeds": _to_py_list(result.results)})
+        return _json_response({"failed_feeds": feed_rows_from_d1(result.results)})
 
     async def _retry_dlq_feed(self, feed_id: str, admin: dict[str, Any]) -> Response:
         """Retry a failed feed by resetting its failure count and re-queuing."""
@@ -2592,10 +2589,10 @@ class Default(WorkerEntrypoint):
                     .first()
                 )
 
-                # Convert JsProxy to Python dict
-                feed = _to_py_safe(feed_result)
+                # Convert D1 row to typed Python dict
+                feed = feed_row_from_js(feed_result)
 
-                if not feed or not isinstance(feed, dict):
+                if not feed:
                     admin_event.outcome = "error"
                     admin_event.error_type = "NotFound"
                     admin_event.error_message = "Feed not found"
@@ -2660,7 +2657,7 @@ class Default(WorkerEntrypoint):
             ORDER BY al.created_at DESC
             LIMIT 100
         """).all()
-        return _json_response({"audit_log": _to_py_list(result.results)})
+        return _json_response({"audit_log": audit_rows_from_d1(result.results)})
 
     async def _reindex_all_entries(self, admin: dict[str, Any]) -> Response:
         """Re-index all entries in Vectorize for search.
@@ -2686,7 +2683,7 @@ class Default(WorkerEntrypoint):
                     SELECT id, feed_id, title, content FROM entries WHERE title IS NOT NULL
                 """).all()
 
-                entries = _to_py_list(result.results)
+                entries = entry_rows_from_d1(result.results)
                 indexed = 0
                 failed = 0
 
@@ -2798,8 +2795,7 @@ class Default(WorkerEntrypoint):
 
         Cookie format: base64(json_payload).signature
         """
-        # Safely extract Cookie header (may be JsProxy in Pyodide)
-        cookies = _safe_str(request.headers.get("Cookie")) or ""
+        cookies = SafeHeaders(request).cookie
         session_cookie = None
         for cookie in cookies.split(";"):
             if cookie.strip().startswith("session="):
@@ -2892,8 +2888,7 @@ class Default(WorkerEntrypoint):
                 return _json_error("Missing authorization code", status=400)
 
             # Verify state parameter matches cookie (CSRF protection)
-            # Safely extract Cookie header (may be JsProxy in Pyodide)
-            cookies = _safe_str(request.headers.get("Cookie")) or ""
+            cookies = SafeHeaders(request).cookie
             expected_state = None
             for cookie in cookies.split(";"):
                 if cookie.strip().startswith("oauth_state="):
@@ -2992,8 +2987,8 @@ class Default(WorkerEntrypoint):
                 .first()
             )
 
-            # Convert JsProxy to Python dict using centralized helper
-            admin = _to_py_safe(admin_result)
+            # Convert D1 row to typed Python dict
+            admin = admin_row_from_js(admin_result)
 
             if not admin:
                 if event:
