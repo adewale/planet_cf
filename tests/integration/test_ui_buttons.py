@@ -19,6 +19,8 @@ import time
 import httpx
 import pytest
 
+from tests.integration.conftest import requires_wrangler
+
 # Configuration
 BASE_URL = "http://localhost:8787"
 SESSION_SECRET = "test-secret-for-local-development-32chars"
@@ -36,6 +38,7 @@ def create_test_session(username: str = "testadmin") -> str:
     return f"{payload}.{signature}"
 
 
+@requires_wrangler
 class TestPublicUI:
     """Tests for public-facing UI buttons and links."""
 
@@ -91,6 +94,7 @@ class TestPublicUI:
             assert "<opml" in response.text
 
 
+@requires_wrangler
 class TestAdminAuth:
     """Tests for admin authentication buttons."""
 
@@ -140,6 +144,7 @@ class TestAdminAuth:
             assert "session=" in cookies.lower() or "max-age=0" in cookies.lower()
 
 
+@requires_wrangler
 class TestFeedManagement:
     """Tests for feed management buttons."""
 
@@ -308,6 +313,7 @@ class TestFeedManagement:
                 assert toggle_response.status_code == 200
 
 
+@requires_wrangler
 class TestImportOPML:
     """Tests for OPML import functionality."""
 
@@ -349,6 +355,7 @@ class TestImportOPML:
             assert response.status_code in [400, 500]
 
 
+@requires_wrangler
 class TestRefreshFeeds:
     """Tests for feed refresh functionality."""
 
@@ -369,6 +376,7 @@ class TestRefreshFeeds:
             assert response.status_code in [302, 200]
 
 
+@requires_wrangler
 class TestDLQ:
     """Tests for Dead Letter Queue functionality."""
 
@@ -402,6 +410,7 @@ class TestDLQ:
             assert response.status_code in [302, 404, 500]
 
 
+@requires_wrangler
 class TestAuditLog:
     """Tests for audit log functionality."""
 
@@ -423,6 +432,7 @@ class TestAuditLog:
             assert isinstance(data["audit_log"], list)
 
 
+@requires_wrangler
 class TestFeedList:
     """Tests for feed list API."""
 

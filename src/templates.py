@@ -1,16 +1,14 @@
 # src/templates.py
 # AUTO-GENERATED - DO NOT EDIT DIRECTLY
 # Edit files in templates/ and run: python scripts/build_templates.py
-"""Template loading and rendering utilities for Planet CF.
+"""
+Template loading and rendering utilities for Planet CF.
 
 This module provides:
 - A shared Jinja2 Environment for rendering templates
 - Embedded templates for Workers environment compatibility
 - Helper functions for common rendering patterns
 """
-
-from collections.abc import Callable
-from typing import Any
 
 from jinja2 import BaseLoader, Environment, TemplateNotFound
 
@@ -19,92 +17,68 @@ from jinja2 import BaseLoader, Environment, TemplateNotFound
 # =============================================================================
 
 _EMBEDDED_TEMPLATES = {
-    "index.html": """<!doctype html>
+    "index.html": """<!DOCTYPE html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>{{ planet.name }}</title>
-        <link rel="stylesheet" href="/static/style.css" />
-        <link
-            rel="alternate"
-            type="application/atom+xml"
-            title="{{ planet.name }} Atom Feed"
-            href="/feed.atom"
-        />
-        <link
-            rel="alternate"
-            type="application/rss+xml"
-            title="{{ planet.name }} RSS Feed"
-            href="/feed.rss"
-        />
-    </head>
-    <body>
-        <header>
-            <h1>{{ planet.name }}</h1>
-            <p>{{ planet.description }}</p>
-        </header>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ planet.name }}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="alternate" type="application/atom+xml" title="{{ planet.name }} Atom Feed" href="/feed.atom">
+    <link rel="alternate" type="application/rss+xml" title="{{ planet.name }} RSS Feed" href="/feed.rss">
+</head>
+<body>
+    <header>
+        <h1>{{ planet.name }}</h1>
+        <p>{{ planet.description }}</p>
+    </header>
 
-        <div class="container">
-            <main>
-                {% for date, day_entries in entries_by_date.items() %}
-                <section class="day">
-                    <h2 class="date">{{ date }}</h2>
-                    {% for entry in day_entries %}
-                    <article>
-                        <p class="meta">
-                            <span class="author">{{ entry.author if entry.author and '@' not in entry.author else entry.feed_title }}</span>
-                            {% if entry.published_at_display %}<span class="date-sep">·</span> <time datetime="{{ entry.published_at }}">{{ entry.published_at_display }}</time>{% endif %}
-                        </p>
-                        <div class="content">{{ entry.content | safe }}</div>
-                    </article>
-                    {% endfor %}
-                </section>
-                {% else %}
-                <p>No entries yet.</p>
+    <div class="container">
+        <main>
+            {% for date, day_entries in entries_by_date.items() %}
+            <section class="day">
+                <h2 class="date">{{ date }}</h2>
+                {% for entry in day_entries %}
+                <article>
+                    <h3><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
+                    <p class="meta">
+                        <span class="author">{{ entry.author if entry.author and '@' not in entry.author else entry.feed_title }}</span>
+                        {% if entry.published_at_display %}<span class="date-sep">·</span> <time datetime="{{ entry.published_at }}">{{ entry.published_at_display }}</time>{% endif %}
+                    </p>
+                    <div class="content">{{ entry.content | safe }}</div>
+                </article>
                 {% endfor %}
-            </main>
+            </section>
+            {% else %}
+            <p>No entries yet.</p>
+            {% endfor %}
+        </main>
 
-            <aside class="sidebar">
-                <form action="/search" method="GET" class="search-form">
-                    <input
-                        type="search"
-                        name="q"
-                        placeholder="Search entries..."
-                        aria-label="Search entries"
-                    />
-                    <button type="submit">Search</button>
-                </form>
+        <aside class="sidebar">
+            <form action="/search" method="GET" class="search-form">
+                <input type="search" name="q" placeholder="Search entries..." aria-label="Search entries">
+                <button type="submit">Search</button>
+            </form>
 
-                <h2>Subscriptions</h2>
-                <ul class="feeds">
-                    {% for feed in feeds %}
-                    <li
-                        class="{{ 'healthy' if feed.is_healthy else 'unhealthy' }}"
-                    >
-                        {% if feed.site_url %}<a href="{{ feed.site_url }}"
-                            >{{ feed.title or 'Untitled' }}</a
-                        >{% else %}{{ feed.title or 'Untitled' }}{% endif %}
-                    </li>
-                    {% else %}
-                    <li>No feeds configured</li>
-                    {% endfor %}
-                </ul>
-            </aside>
-        </div>
+            <h2>Subscriptions</h2>
+            <ul class="feeds">
+                {% for feed in feeds %}
+                <li class="{{ 'healthy' if feed.is_healthy else 'unhealthy' }}">
+                    {% if feed.site_url %}<a href="{{ feed.site_url }}">{{ feed.title or 'Untitled' }}</a>{% else %}{{ feed.title or 'Untitled' }}{% endif %}
+                </li>
+                {% else %}
+                <li>No feeds configured</li>
+                {% endfor %}
+            </ul>
+        </aside>
+    </div>
 
-        <footer>
-            <p>
-                <a href="/feed.atom">Atom</a> · <a href="/feed.rss">RSS</a> ·
-                <a href="/feeds.opml">OPML</a>
-            </p>
-            <p>
-                Powered by Planet CF ·
-                <a href="/admin" style="color: #999; font-size: 0.8em">Admin</a>
-            </p>
-            <p>Last updated: {{ generated_at }}</p>
-        </footer>
-    </body>
+    <footer>
+        <p><a href="/feed.atom">Atom</a> · <a href="/feed.rss">RSS</a> · <a href="/feeds.opml">OPML</a></p>
+        <p>Powered by Planet CF · <a href="/admin" style="color: #999; font-size: 0.8em;">Admin</a></p>
+        <p>Last updated: {{ generated_at }}</p>
+    </footer>
+</body>
 </html>
 """,
     "search.html": """<!DOCTYPE html>
@@ -636,7 +610,7 @@ article {
     background: var(--bg-primary);
     border: 1px solid var(--border-light);
     border-radius: 8px;
-    padding: 1.25rem 1.5rem;
+    padding: 1.5rem;
     margin-bottom: 1rem;
     box-shadow: var(--shadow-sm);
     transition: box-shadow 0.2s ease, border-color 0.2s ease;
@@ -674,20 +648,18 @@ article header {
 
 .meta {
     color: var(--text-muted);
-    font-size: 0.8rem;
-    margin-bottom: 0.5rem;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
+    font-size: 0.875rem;
+    margin-bottom: 1rem;
 }
 
 .meta .author {
     color: var(--text-secondary);
-    font-weight: 600;
+    font-weight: 500;
 }
 
 .meta .date-sep {
-    color: var(--border-medium);
-    margin: 0 0.35rem;
+    color: var(--text-muted);
+    margin: 0 0.25rem;
 }
 
 .meta time {
@@ -793,35 +765,9 @@ article header {
     line-height: 1.3;
 }
 
-/* First h1 in content is the entry headline */
-.content > h1:first-child,
-.content > p:first-child + h1,
-.content > br:first-child + h1 {
-    font-size: 1.35rem;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    line-height: 1.3;
-    margin: 0 0 0.75rem 0;
-    padding-bottom: 0.75rem;
-    border-bottom: 2px solid var(--accent-subtle);
-    color: var(--text-primary);
-}
-
-/* Link styling for headline if wrapped in anchor */
-.content > h1:first-child a,
-.content > p:first-child + h1 a {
-    color: inherit;
-    text-decoration: none;
-}
-
-.content > h1:first-child a:hover,
-.content > p:first-child + h1 a:hover {
-    color: var(--accent);
-}
-
-.content h1 { font-size: 1.3rem; }
-.content h2 { font-size: 1.15rem; }
-.content h3 { font-size: 1.05rem; }
+.content h1 { font-size: 1.5rem; }
+.content h2 { font-size: 1.3rem; }
+.content h3 { font-size: 1.15rem; }
 .content h4 { font-size: 1rem; }
 
 .content ul, .content ol {
@@ -1044,76 +990,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-// Feed title editing - event delegation
-document.addEventListener('click', function(e) {
-    // Click on title text to enter edit mode
-    if (e.target.classList.contains('feed-title-text')) {
-        var titleDiv = e.target.closest('.feed-title');
-        titleDiv.classList.add('editing');
-        var input = titleDiv.querySelector('.feed-title-input');
-        input.focus();
-        input.select();
-    }
-    // Save button
-    if (e.target.classList.contains('save-title-btn')) {
-        var titleDiv = e.target.closest('.feed-title');
-        saveFeedTitle(titleDiv);
-    }
-    // Cancel button
-    if (e.target.classList.contains('cancel-title-btn')) {
-        var titleDiv = e.target.closest('.feed-title');
-        cancelEditTitle(titleDiv);
-    }
-});
-
-document.addEventListener('keydown', function(e) {
-    if (e.target.classList.contains('feed-title-input')) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            var titleDiv = e.target.closest('.feed-title');
-            saveFeedTitle(titleDiv);
-        } else if (e.key === 'Escape') {
-            var titleDiv = e.target.closest('.feed-title');
-            cancelEditTitle(titleDiv);
-        }
-    }
-});
-
-function saveFeedTitle(titleDiv) {
-    var feedId = titleDiv.dataset.feedId;
-    var input = titleDiv.querySelector('.feed-title-input');
-    var textSpan = titleDiv.querySelector('.feed-title-text');
-    var newTitle = input.value.trim();
-
-    fetch('/admin/feeds/' + feedId, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newTitle })
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-        if (data.success) {
-            textSpan.textContent = newTitle || 'Untitled';
-        }
-    });
-
-    titleDiv.classList.remove('editing');
-}
-
-function cancelEditTitle(titleDiv) {
-    var textSpan = titleDiv.querySelector('.feed-title-text');
-    var input = titleDiv.querySelector('.feed-title-input');
-    // Reset input to current displayed value
-    input.value = textSpan.textContent === 'Untitled' ? '' : textSpan.textContent;
-    titleDiv.classList.remove('editing');
-}
-
-function escapeHtml(text) {
-    var div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
 function loadDLQ() {
     fetch('/admin/dlq')
         .then(function(r) { return r.json(); })
@@ -1125,8 +1001,8 @@ function loadDLQ() {
             }
             list.innerHTML = data.feeds.map(function(f) {
                 return '<div class="dlq-item">' +
-                    '<strong>' + escapeHtml(f.title || 'Untitled') + '</strong><br>' +
-                    '<small>' + escapeHtml(f.url) + '</small><br>' +
+                    '<strong>' + (f.title || 'Untitled') + '</strong><br>' +
+                    '<small>' + f.url + '</small><br>' +
                     '<small>Failures: ' + f.consecutive_failures + '</small>' +
                     '<form action="/admin/feeds/' + f.id + '/retry" method="POST" style="margin-top:0.5rem">' +
                     '<button type="submit" class="btn btn-sm btn-warning">Retry</button></form>' +
@@ -1146,9 +1022,9 @@ function loadAuditLog() {
             }
             list.innerHTML = data.entries.map(function(e) {
                 return '<div class="audit-item">' +
-                    '<span class="audit-action">' + escapeHtml(e.action) + '</span> ' +
-                    '<span class="audit-time">' + new Date(e.created_at).toLocaleString() + '</span>' +
-                    '<div class="audit-details">' + escapeHtml(e.details || '') + '</div>' +
+                    '<span class="audit-action">' + e.action + '</span> ' +
+                    '<span class="audit-time">' + e.created_at + '</span>' +
+                    (e.details ? '<div class="audit-details">' + e.details + '</div>' : '') +
                     '</div>';
             }).join('');
         });
@@ -1195,22 +1071,7 @@ function rebuildSearchIndex() {
 class EmbeddedLoader(BaseLoader):
     """Jinja2 loader that loads templates from embedded strings."""
 
-    def get_source(
-        self, environment: Environment, template: str
-    ) -> tuple[str, str, Callable[[], bool]]:
-        """Load template source from embedded strings.
-
-        Args:
-            environment: The Jinja2 environment
-            template: Template name to load
-
-        Returns:
-            Tuple of (source, filename, uptodate_func)
-
-        Raises:
-            TemplateNotFound: If template doesn't exist
-
-        """
+    def get_source(self, environment, template):
         if template in _EMBEDDED_TEMPLATES:
             source = _EMBEDDED_TEMPLATES[template]
             return source, template, lambda: True
@@ -1221,17 +1082,8 @@ class EmbeddedLoader(BaseLoader):
 _jinja_env = Environment(loader=EmbeddedLoader(), autoescape=True)
 
 
-def render_template(name: str, **context: Any) -> str:  # noqa: ANN401
-    """Render a template with the given context.
-
-    Args:
-        name: Template name to render
-        **context: Template context variables
-
-    Returns:
-        Rendered template string
-
-    """
+def render_template(name: str, **context) -> str:
+    """Render a template with the given context."""
     template = _jinja_env.get_template(name)
     return template.render(**context)
 

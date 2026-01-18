@@ -197,6 +197,8 @@ def mock_env_with_fixtures(fixtures):
     env.PLANET_OWNER_EMAIL = "test@example.com"
     env.SEARCH_SCORE_THRESHOLD = None
     env.SEARCH_TOP_K = None
+    env.DEPLOYMENT_VERSION = "test"
+    env.DEPLOYMENT_ENVIRONMENT = "test"
     return env
 
 

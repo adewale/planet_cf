@@ -23,6 +23,8 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 import httpx
 import pytest
 
+from tests.integration.conftest import requires_wrangler
+
 # Configuration
 BASE_URL = "http://localhost:8787"
 SESSION_SECRET = "test-secret-for-local-development-32chars"
@@ -78,6 +80,7 @@ class RSSHandler(SimpleHTTPRequestHandler):
         pass
 
 
+@requires_wrangler
 class TestE2EFeedToHomepage:
     """
     End-to-end test verifying the complete feed-to-homepage flow.
@@ -194,6 +197,7 @@ class TestE2EFeedToHomepage:
                     break
 
 
+@requires_wrangler
 class TestHomepageRendering:
     """
     Test homepage rendering with existing entries.
@@ -254,6 +258,7 @@ class TestHomepageRendering:
             assert "<channel>" in response.text
 
 
+@requires_wrangler
 class TestFeedProcessingFlow:
     """
     Test the complete feed processing flow.
