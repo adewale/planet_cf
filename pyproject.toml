@@ -60,7 +60,7 @@ packages = ["src"]
 # Astral Toolchain Configuration
 # =============================================================================
 
-[tool.ty]
+[tool.ty.environment]
 python-version = "3.12"
 
 [tool.ruff]
