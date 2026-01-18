@@ -182,8 +182,12 @@ _EMBEDDED_TEMPLATES = {
         .feed-title-text:hover { text-decoration: underline; text-decoration-style: dotted; }
         .feed-title-input { font-weight: bold; font-size: 0.9rem; padding: 0.125rem 0.25rem; border: 1px solid var(--accent); border-radius: 3px; width: 200px; }
         .feed-title-input:focus { outline: none; box-shadow: 0 0 0 2px rgba(0, 113, 227, 0.2); }
-        .edit-btn { background: none; border: none; cursor: pointer; padding: 0.125rem; font-size: 0.75rem; color: var(--text-muted); }
-        .edit-btn:hover { color: var(--accent); }
+        .feed-title-actions { display: none; gap: 0.25rem; }
+        .feed-title-actions button { padding: 0.125rem 0.5rem; font-size: 0.75rem; }
+        .feed-title.editing .feed-title-text { display: none; }
+        .feed-title.editing .feed-title-input { display: inline-block; }
+        .feed-title.editing .feed-title-actions { display: flex; }
+        .feed-title .feed-title-input { display: none; }
         .feed-url { color: var(--text-muted); font-size: 0.8rem; word-break: break-all; }
         .feed-status { font-size: 0.75rem; margin-top: 0.25rem; }
         .feed-status.healthy { color: var(--success); }
@@ -255,9 +259,13 @@ _EMBEDDED_TEMPLATES = {
                 {% for feed in feeds %}
                 <li class="feed-item" data-feed-id="{{ feed.id }}">
                     <div class="feed-info">
-                        <div class="feed-title">
-                            <span class="feed-title-text" onclick="editFeedTitle(this)" data-feed-id="{{ feed.id }}">{{ feed.title or 'Untitled' }}</span>
-                            <button class="edit-btn" onclick="editFeedTitle(this.previousElementSibling)" title="Edit title">✎</button>
+                        <div class="feed-title" data-feed-id="{{ feed.id }}">
+                            <span class="feed-title-text">{{ feed.title or 'Untitled' }}</span>
+                            <input type="text" class="feed-title-input" value="{{ feed.title or '' }}" placeholder="Enter feed title">
+                            <div class="feed-title-actions">
+                                <button type="button" class="btn btn-success btn-sm save-title-btn">Save</button>
+                                <button type="button" class="btn btn-sm cancel-title-btn">Cancel</button>
+                            </div>
                         </div>
                         <div class="feed-url">{{ feed.url }}</div>
                         <div class="feed-status {% if not feed.is_active %}disabled{% elif feed.consecutive_failures >= 3 %}failing{% else %}healthy{% endif %}">
@@ -1036,57 +1044,68 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-function editFeedTitle(element) {
-    var feedId = element.dataset.feedId;
-    var currentTitle = element.textContent;
-    var titleDiv = element.parentElement;
-    var editBtn = titleDiv.querySelector('.edit-btn');
-
-    // Create input field
-    var input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'feed-title-input';
-    input.value = currentTitle === 'Untitled' ? '' : currentTitle;
-    input.placeholder = 'Enter feed title';
-
-    // Hide the text and edit button
-    element.style.display = 'none';
-    if (editBtn) editBtn.style.display = 'none';
-    titleDiv.insertBefore(input, element);
-    input.focus();
-    input.select();
-
-    function saveTitle() {
-        var newTitle = input.value.trim() || 'Untitled';
-        fetch('/admin/feeds/' + feedId, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: input.value.trim() })
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            if (data.success) {
-                element.textContent = newTitle;
-            }
-        });
-
-        // Restore UI
-        input.remove();
-        element.style.display = '';
-        if (editBtn) editBtn.style.display = '';
+// Feed title editing - event delegation
+document.addEventListener('click', function(e) {
+    // Click on title text to enter edit mode
+    if (e.target.classList.contains('feed-title-text')) {
+        var titleDiv = e.target.closest('.feed-title');
+        titleDiv.classList.add('editing');
+        var input = titleDiv.querySelector('.feed-title-input');
+        input.focus();
+        input.select();
     }
+    // Save button
+    if (e.target.classList.contains('save-title-btn')) {
+        var titleDiv = e.target.closest('.feed-title');
+        saveFeedTitle(titleDiv);
+    }
+    // Cancel button
+    if (e.target.classList.contains('cancel-title-btn')) {
+        var titleDiv = e.target.closest('.feed-title');
+        cancelEditTitle(titleDiv);
+    }
+});
 
-    input.addEventListener('blur', saveTitle);
-    input.addEventListener('keydown', function(e) {
+document.addEventListener('keydown', function(e) {
+    if (e.target.classList.contains('feed-title-input')) {
         if (e.key === 'Enter') {
             e.preventDefault();
-            input.blur();
+            var titleDiv = e.target.closest('.feed-title');
+            saveFeedTitle(titleDiv);
         } else if (e.key === 'Escape') {
-            input.remove();
-            element.style.display = '';
-            if (editBtn) editBtn.style.display = '';
+            var titleDiv = e.target.closest('.feed-title');
+            cancelEditTitle(titleDiv);
+        }
+    }
+});
+
+function saveFeedTitle(titleDiv) {
+    var feedId = titleDiv.dataset.feedId;
+    var input = titleDiv.querySelector('.feed-title-input');
+    var textSpan = titleDiv.querySelector('.feed-title-text');
+    var newTitle = input.value.trim();
+
+    fetch('/admin/feeds/' + feedId, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTitle })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            textSpan.textContent = newTitle || 'Untitled';
         }
     });
+
+    titleDiv.classList.remove('editing');
+}
+
+function cancelEditTitle(titleDiv) {
+    var textSpan = titleDiv.querySelector('.feed-title-text');
+    var input = titleDiv.querySelector('.feed-title-input');
+    // Reset input to current displayed value
+    input.value = textSpan.textContent === 'Untitled' ? '' : textSpan.textContent;
+    titleDiv.classList.remove('editing');
 }
 
 function loadDLQ() {

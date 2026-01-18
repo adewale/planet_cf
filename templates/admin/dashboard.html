@@ -28,8 +28,12 @@
         .feed-title-text:hover { text-decoration: underline; text-decoration-style: dotted; }
         .feed-title-input { font-weight: bold; font-size: 0.9rem; padding: 0.125rem 0.25rem; border: 1px solid var(--accent); border-radius: 3px; width: 200px; }
         .feed-title-input:focus { outline: none; box-shadow: 0 0 0 2px rgba(0, 113, 227, 0.2); }
-        .edit-btn { background: none; border: none; cursor: pointer; padding: 0.125rem; font-size: 0.75rem; color: var(--text-muted); }
-        .edit-btn:hover { color: var(--accent); }
+        .feed-title-actions { display: none; gap: 0.25rem; }
+        .feed-title-actions button { padding: 0.125rem 0.5rem; font-size: 0.75rem; }
+        .feed-title.editing .feed-title-text { display: none; }
+        .feed-title.editing .feed-title-input { display: inline-block; }
+        .feed-title.editing .feed-title-actions { display: flex; }
+        .feed-title .feed-title-input { display: none; }
         .feed-url { color: var(--text-muted); font-size: 0.8rem; word-break: break-all; }
         .feed-status { font-size: 0.75rem; margin-top: 0.25rem; }
         .feed-status.healthy { color: var(--success); }
@@ -101,9 +105,13 @@
                 {% for feed in feeds %}
                 <li class="feed-item" data-feed-id="{{ feed.id }}">
                     <div class="feed-info">
-                        <div class="feed-title">
-                            <span class="feed-title-text" onclick="editFeedTitle(this)" data-feed-id="{{ feed.id }}">{{ feed.title or 'Untitled' }}</span>
-                            <button class="edit-btn" onclick="editFeedTitle(this.previousElementSibling)" title="Edit title">✎</button>
+                        <div class="feed-title" data-feed-id="{{ feed.id }}">
+                            <span class="feed-title-text">{{ feed.title or 'Untitled' }}</span>
+                            <input type="text" class="feed-title-input" value="{{ feed.title or '' }}" placeholder="Enter feed title">
+                            <div class="feed-title-actions">
+                                <button type="button" class="btn btn-success btn-sm save-title-btn">Save</button>
+                                <button type="button" class="btn btn-sm cancel-title-btn">Cancel</button>
+                            </div>
                         </div>
                         <div class="feed-url">{{ feed.url }}</div>
                         <div class="feed-status {% if not feed.is_active %}disabled{% elif feed.consecutive_failures >= 3 %}failing{% else %}healthy{% endif %}">
