@@ -8,9 +8,21 @@ from src.wrappers import (
     SafeD1,
     SafeD1Statement,
     SafeEnv,
+    SafeFeedInfo,
+    SafeFormData,
+    SafeHeaders,
     SafeQueue,
     SafeVectorize,
     _to_d1_value,
+    admin_row_from_js,
+    audit_row_from_js,
+    audit_rows_from_d1,
+    entry_bind_values,
+    entry_row_from_js,
+    entry_rows_from_d1,
+    feed_bind_values,
+    feed_row_from_js,
+    feed_rows_from_d1,
 )
 
 # =============================================================================
@@ -305,3 +317,543 @@ class TestToD1Value:
         value = {"outer": {"inner": "value"}}
         result = _to_d1_value(value)
         assert result == {"outer": {"inner": "value"}}
+
+
+# =============================================================================
+# Row Factory Tests - Feed
+# =============================================================================
+
+
+class TestFeedRowFromJs:
+    """Tests for feed_row_from_js conversion function."""
+
+    def test_converts_complete_row(self):
+        """Converts a complete feed row with all fields."""
+        row = {
+            "id": 42,
+            "url": "https://example.com/feed.xml",
+            "title": "Example Feed",
+            "site_url": "https://example.com",
+            "is_active": 1,
+            "consecutive_failures": 0,
+            "etag": '"abc123"',
+            "last_modified": "Wed, 01 Jan 2025 00:00:00 GMT",
+            "last_success_at": "2025-01-17T12:00:00Z",
+            "last_error_at": None,
+            "last_error_message": None,
+            "created_at": "2025-01-01T00:00:00Z",
+            "updated_at": "2025-01-17T12:00:00Z",
+            "author_name": "John Doe",
+            "author_email": "john@example.com",
+        }
+        result = feed_row_from_js(row)
+        assert result["id"] == 42
+        assert result["url"] == "https://example.com/feed.xml"
+        assert result["title"] == "Example Feed"
+        assert result["site_url"] == "https://example.com"
+        assert result["is_active"] == 1
+        assert result["consecutive_failures"] == 0
+        assert result["etag"] == '"abc123"'
+        assert result["author_name"] == "John Doe"
+        assert result["author_email"] == "john@example.com"
+
+    def test_returns_empty_dict_for_none(self):
+        """Returns empty dict for None input."""
+        assert feed_row_from_js(None) == {}
+
+    def test_returns_empty_dict_for_empty_row(self):
+        """Returns empty dict for empty input."""
+        assert feed_row_from_js({}) == {}
+
+    def test_handles_missing_optional_fields(self):
+        """Handles rows with missing optional fields."""
+        row = {"id": 1, "url": "https://example.com/feed.xml"}
+        result = feed_row_from_js(row)
+        assert result["id"] == 1
+        assert result["url"] == "https://example.com/feed.xml"
+        assert result["title"] is None
+        assert result["author_name"] is None
+
+    def test_converts_id_to_int(self):
+        """Converts id to int even if stored as string."""
+        row = {"id": "123", "url": "https://example.com/feed.xml"}
+        result = feed_row_from_js(row)
+        assert result["id"] == 123
+        assert isinstance(result["id"], int)
+
+    def test_handles_none_values_in_row(self):
+        """Handles None values within the row dict."""
+        row = {
+            "id": 1,
+            "url": "https://example.com/feed.xml",
+            "title": None,
+            "etag": None,
+        }
+        result = feed_row_from_js(row)
+        assert result["title"] is None
+        assert result["etag"] is None
+
+
+class TestFeedRowsFromD1:
+    """Tests for feed_rows_from_d1 conversion function."""
+
+    def test_converts_list_of_rows(self):
+        """Converts a list of feed rows."""
+        results = [
+            {"id": 1, "url": "https://a.com/feed.xml", "title": "Feed A"},
+            {"id": 2, "url": "https://b.com/feed.xml", "title": "Feed B"},
+        ]
+        rows = feed_rows_from_d1(results)
+        assert len(rows) == 2
+        assert rows[0]["id"] == 1
+        assert rows[0]["title"] == "Feed A"
+        assert rows[1]["id"] == 2
+        assert rows[1]["title"] == "Feed B"
+
+    def test_returns_empty_list_for_none(self):
+        """Returns empty list for None input."""
+        assert feed_rows_from_d1(None) == []
+
+    def test_returns_empty_list_for_empty_list(self):
+        """Returns empty list for empty input."""
+        assert feed_rows_from_d1([]) == []
+
+
+# =============================================================================
+# Row Factory Tests - Entry
+# =============================================================================
+
+
+class TestEntryRowFromJs:
+    """Tests for entry_row_from_js conversion function."""
+
+    def test_converts_complete_row(self):
+        """Converts a complete entry row with all fields."""
+        row = {
+            "id": 100,
+            "feed_id": 42,
+            "guid": "unique-guid-123",
+            "url": "https://example.com/post/1",
+            "title": "Example Post",
+            "author": "Jane Doe",
+            "content": "<p>Post content here</p>",
+            "summary": "A brief summary",
+            "published_at": "2025-01-17T10:00:00Z",
+            "created_at": "2025-01-17T10:05:00Z",
+            "first_seen": "2025-01-17T10:05:00Z",
+            "feed_title": "Example Feed",
+            "feed_site_url": "https://example.com",
+        }
+        result = entry_row_from_js(row)
+        assert result["id"] == 100
+        assert result["feed_id"] == 42
+        assert result["guid"] == "unique-guid-123"
+        assert result["url"] == "https://example.com/post/1"
+        assert result["title"] == "Example Post"
+        assert result["author"] == "Jane Doe"
+        assert result["content"] == "<p>Post content here</p>"
+        assert result["summary"] == "A brief summary"
+        assert result["feed_title"] == "Example Feed"
+
+    def test_returns_empty_dict_for_none(self):
+        """Returns empty dict for None input."""
+        assert entry_row_from_js(None) == {}
+
+    def test_handles_missing_optional_fields(self):
+        """Handles rows with missing optional fields."""
+        row = {"id": 1, "feed_id": 1, "guid": "guid", "url": "https://x.com", "title": "Title"}
+        result = entry_row_from_js(row)
+        assert result["author"] is None
+        assert result["summary"] is None
+        assert result["feed_title"] is None
+
+
+class TestEntryRowsFromD1:
+    """Tests for entry_rows_from_d1 conversion function."""
+
+    def test_converts_list_of_rows(self):
+        """Converts a list of entry rows."""
+        results = [
+            {"id": 1, "feed_id": 1, "guid": "a", "url": "https://a.com", "title": "A"},
+            {"id": 2, "feed_id": 1, "guid": "b", "url": "https://b.com", "title": "B"},
+        ]
+        rows = entry_rows_from_d1(results)
+        assert len(rows) == 2
+        assert rows[0]["guid"] == "a"
+        assert rows[1]["guid"] == "b"
+
+    def test_returns_empty_list_for_none(self):
+        """Returns empty list for None input."""
+        assert entry_rows_from_d1(None) == []
+
+
+# =============================================================================
+# Row Factory Tests - Admin
+# =============================================================================
+
+
+class TestAdminRowFromJs:
+    """Tests for admin_row_from_js conversion function."""
+
+    def test_converts_complete_row(self):
+        """Converts a complete admin row."""
+        row = {
+            "id": 1,
+            "github_username": "testuser",
+            "github_id": 12345,
+            "display_name": "Test User",
+            "is_active": 1,
+            "last_login_at": "2025-01-17T12:00:00Z",
+            "created_at": "2025-01-01T00:00:00Z",
+        }
+        result = admin_row_from_js(row)
+        assert result["id"] == 1
+        assert result["github_username"] == "testuser"
+        assert result["github_id"] == 12345
+        assert result["display_name"] == "Test User"
+        assert result["is_active"] == 1
+
+    def test_returns_none_for_none_input(self):
+        """Returns None for None input (unlike other row factories)."""
+        assert admin_row_from_js(None) is None
+
+    def test_returns_none_for_empty_row(self):
+        """Returns None for empty row."""
+        assert admin_row_from_js({}) is None
+
+
+# =============================================================================
+# Row Factory Tests - Audit
+# =============================================================================
+
+
+class TestAuditRowFromJs:
+    """Tests for audit_row_from_js conversion function."""
+
+    def test_converts_complete_row(self):
+        """Converts a complete audit log row."""
+        row = {
+            "id": 500,
+            "admin_id": 1,
+            "action": "add_feed",
+            "target_type": "feed",
+            "target_id": 42,
+            "details": '{"url": "https://example.com"}',
+            "created_at": "2025-01-17T12:00:00Z",
+            "admin_username": "testuser",
+        }
+        result = audit_row_from_js(row)
+        assert result["id"] == 500
+        assert result["admin_id"] == 1
+        assert result["action"] == "add_feed"
+        assert result["target_type"] == "feed"
+        assert result["target_id"] == 42
+        assert result["admin_username"] == "testuser"
+
+    def test_returns_empty_dict_for_none(self):
+        """Returns empty dict for None input."""
+        assert audit_row_from_js(None) == {}
+
+
+class TestAuditRowsFromD1:
+    """Tests for audit_rows_from_d1 conversion function."""
+
+    def test_converts_list_of_rows(self):
+        """Converts a list of audit rows."""
+        results = [
+            {"id": 1, "admin_id": 1, "action": "add_feed"},
+            {"id": 2, "admin_id": 1, "action": "remove_feed"},
+        ]
+        rows = audit_rows_from_d1(results)
+        assert len(rows) == 2
+        assert rows[0]["action"] == "add_feed"
+        assert rows[1]["action"] == "remove_feed"
+
+    def test_returns_empty_list_for_none(self):
+        """Returns empty list for None input."""
+        assert audit_rows_from_d1(None) == []
+
+
+# =============================================================================
+# SafeHeaders Tests
+# =============================================================================
+
+
+class MockRequest:
+    """Mock request object for testing SafeHeaders."""
+
+    def __init__(self, headers: dict):
+        self.headers = headers
+
+
+class TestSafeHeaders:
+    """Tests for SafeHeaders helper class."""
+
+    def test_gets_user_agent(self):
+        """Gets User-Agent header."""
+        request = MockRequest({"user-agent": "Mozilla/5.0"})
+        headers = SafeHeaders(request)
+        assert headers.user_agent == "Mozilla/5.0"
+
+    def test_gets_referer(self):
+        """Gets Referer header."""
+        request = MockRequest({"referer": "https://example.com"})
+        headers = SafeHeaders(request)
+        assert headers.referer == "https://example.com"
+
+    def test_gets_cookie(self):
+        """Gets Cookie header."""
+        request = MockRequest({"Cookie": "session=abc123"})
+        headers = SafeHeaders(request)
+        assert headers.cookie == "session=abc123"
+
+    def test_gets_content_type(self):
+        """Gets Content-Type header."""
+        request = MockRequest({"content-type": "application/json"})
+        headers = SafeHeaders(request)
+        assert headers.content_type == "application/json"
+
+    def test_gets_accept(self):
+        """Gets Accept header."""
+        request = MockRequest({"accept": "text/html"})
+        headers = SafeHeaders(request)
+        assert headers.accept == "text/html"
+
+    def test_get_arbitrary_header(self):
+        """Gets arbitrary header by name."""
+        request = MockRequest({"X-Custom-Header": "custom-value"})
+        headers = SafeHeaders(request)
+        assert headers.get("X-Custom-Header") == "custom-value"
+
+    def test_returns_empty_string_for_missing_header(self):
+        """Returns empty string for missing headers."""
+        request = MockRequest({})
+        headers = SafeHeaders(request)
+        assert headers.user_agent == ""
+        assert headers.cookie == ""
+        assert headers.get("X-Missing") == ""
+
+    def test_get_with_default(self):
+        """Get method uses default for missing headers."""
+        request = MockRequest({})
+        headers = SafeHeaders(request)
+        assert headers.get("X-Missing", "fallback") == "fallback"
+
+
+# =============================================================================
+# SafeFormData Tests
+# =============================================================================
+
+
+class MockFormDataDict:
+    """Mock form data that behaves like a dict."""
+
+    def __init__(self, data: dict):
+        self._data = data
+
+    def get(self, key):
+        return self._data.get(key)
+
+
+class TestSafeFormData:
+    """Tests for SafeFormData helper class."""
+
+    def test_get_returns_value(self):
+        """get() returns form value."""
+        form = SafeFormData(MockFormDataDict({"name": "test"}))
+        assert form.get("name") == "test"
+
+    def test_get_returns_none_for_missing(self):
+        """get() returns None for missing key."""
+        form = SafeFormData(MockFormDataDict({}))
+        assert form.get("missing") is None
+
+    def test_get_str_returns_value(self):
+        """get_str() returns form value."""
+        form = SafeFormData(MockFormDataDict({"name": "test"}))
+        assert form.get_str("name") == "test"
+
+    def test_get_str_returns_default_for_missing(self):
+        """get_str() returns default for missing key."""
+        form = SafeFormData(MockFormDataDict({}))
+        assert form.get_str("missing", "default") == "default"
+
+    def test_get_str_returns_default_for_empty(self):
+        """get_str() returns default for empty value."""
+        form = SafeFormData(MockFormDataDict({"empty": ""}))
+        assert form.get_str("empty", "default") == "default"
+
+    def test_get_int_returns_integer(self):
+        """get_int() returns integer value."""
+        form = SafeFormData(MockFormDataDict({"count": "42"}))
+        assert form.get_int("count") == 42
+
+    def test_get_int_returns_default_for_missing(self):
+        """get_int() returns default for missing key."""
+        form = SafeFormData(MockFormDataDict({}))
+        assert form.get_int("missing", 10) == 10
+
+    def test_get_int_returns_default_for_invalid(self):
+        """get_int() returns default for non-numeric value."""
+        form = SafeFormData(MockFormDataDict({"bad": "not-a-number"}))
+        assert form.get_int("bad", 0) == 0
+
+
+# =============================================================================
+# SafeFeedInfo Tests
+# =============================================================================
+
+
+class TestSafeFeedInfo:
+    """Tests for SafeFeedInfo helper class."""
+
+    def test_gets_title(self):
+        """Gets feed title."""
+        info = SafeFeedInfo({"title": "My Blog"})
+        assert info.title == "My Blog"
+
+    def test_gets_link(self):
+        """Gets feed link."""
+        info = SafeFeedInfo({"link": "https://example.com"})
+        assert info.link == "https://example.com"
+
+    def test_gets_author_from_author_detail(self):
+        """Gets author from author_detail.name."""
+        info = SafeFeedInfo(
+            {
+                "author_detail": {"name": "John Doe", "email": "john@example.com"},
+                "author": "Fallback Author",
+            }
+        )
+        assert info.author == "John Doe"
+
+    def test_gets_author_fallback(self):
+        """Falls back to author field if author_detail missing."""
+        info = SafeFeedInfo({"author": "Simple Author"})
+        assert info.author == "Simple Author"
+
+    def test_gets_author_email(self):
+        """Gets author email from author_detail."""
+        info = SafeFeedInfo({"author_detail": {"name": "John", "email": "john@example.com"}})
+        assert info.author_email == "john@example.com"
+
+    def test_returns_none_for_missing_author_email(self):
+        """Returns None when author_detail has no email."""
+        info = SafeFeedInfo({"author_detail": {"name": "John"}})
+        assert info.author_email is None
+
+    def test_returns_none_for_no_author_detail(self):
+        """Returns None when no author_detail exists."""
+        info = SafeFeedInfo({})
+        assert info.author_email is None
+
+    def test_handles_none_input(self):
+        """Handles None input gracefully."""
+        info = SafeFeedInfo(None)
+        assert info.title is None
+        assert info.link is None
+        assert info.author is None
+
+    def test_get_arbitrary_field(self):
+        """get() retrieves arbitrary fields."""
+        info = SafeFeedInfo({"subtitle": "A blog about things"})
+        assert info.get("subtitle") == "A blog about things"
+
+    def test_get_missing_field_returns_none(self):
+        """get() returns None for missing fields."""
+        info = SafeFeedInfo({})
+        assert info.get("nonexistent") is None
+
+
+# =============================================================================
+# Bind Helper Tests
+# =============================================================================
+
+
+class TestEntryBindValues:
+    """Tests for entry_bind_values helper function."""
+
+    def test_returns_tuple_of_correct_length(self):
+        """Returns tuple with 8 elements."""
+        result = entry_bind_values(
+            feed_id=1,
+            guid="guid-123",
+            url="https://example.com/post",
+            title="Post Title",
+            author="Author Name",
+            content="<p>Content</p>",
+            summary="Summary text",
+            published_at="2025-01-17T12:00:00Z",
+        )
+        assert isinstance(result, tuple)
+        assert len(result) == 8
+
+    def test_preserves_feed_id_as_int(self):
+        """feed_id is preserved as integer."""
+        result = entry_bind_values(42, "g", "u", "t", "a", "c", "s", "p")
+        assert result[0] == 42
+        assert isinstance(result[0], int)
+
+    def test_converts_strings(self):
+        """String values are converted through _safe_str."""
+        result = entry_bind_values(1, "guid", "url", "title", "author", "content", "summary", "pub")
+        assert result[1] == "guid"
+        assert result[2] == "url"
+        assert result[3] == "title"
+        assert result[4] == "author"
+        assert result[5] == "content"
+        assert result[6] == "summary"
+        assert result[7] == "pub"
+
+    def test_handles_none_values(self):
+        """None values are passed through."""
+        result = entry_bind_values(1, None, None, None, None, None, None, None)
+        assert result[1] is None
+        assert result[2] is None
+
+    def test_converts_empty_string_to_none(self):
+        """Empty strings are converted to None by _safe_str."""
+        result = entry_bind_values(1, "", "", "", "", "", "", "")
+        assert result[1] is None  # _safe_str returns None for empty string
+
+
+class TestFeedBindValues:
+    """Tests for feed_bind_values helper function."""
+
+    def test_returns_tuple_of_correct_length(self):
+        """Returns tuple with 7 elements."""
+        result = feed_bind_values(
+            title="Feed Title",
+            site_url="https://example.com",
+            author_name="Author",
+            author_email="author@example.com",
+            etag='"abc123"',
+            last_modified="Wed, 01 Jan 2025 00:00:00 GMT",
+            feed_id=42,
+        )
+        assert isinstance(result, tuple)
+        assert len(result) == 7
+
+    def test_feed_id_is_last_element(self):
+        """feed_id is the last element (for WHERE clause)."""
+        result = feed_bind_values("t", "s", "a", "e", "et", "lm", 99)
+        assert result[-1] == 99
+        assert isinstance(result[-1], int)
+
+    def test_converts_all_string_fields(self):
+        """All string fields are converted through _safe_str."""
+        result = feed_bind_values(
+            "Title", "https://site.com", "Author", "email@x.com", "etag", "lastmod", 1
+        )
+        assert result[0] == "Title"
+        assert result[1] == "https://site.com"
+        assert result[2] == "Author"
+        assert result[3] == "email@x.com"
+        assert result[4] == "etag"
+        assert result[5] == "lastmod"
+
+    def test_handles_none_values(self):
+        """None values are passed through."""
+        result = feed_bind_values(None, None, None, None, None, None, 1)
+        assert result[0] is None
+        assert result[1] is None
