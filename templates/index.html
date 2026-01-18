@@ -60,7 +60,7 @@
 
     <footer>
         <p><a href="/feed.atom">Atom</a> · <a href="/feed.rss">RSS</a> · <a href="/feeds.opml">OPML</a></p>
-        <p>Powered by Planet CF · <a href="/admin" style="color: #999; font-size: 0.8em;">Admin</a> · <span class="hint">Press <kbd>?</kbd> for shortcuts</span></p>
+        <p>{{ footer_text }}{% if show_admin_link %} · <a href="/admin" style="color: #999; font-size: 0.8em;">Admin</a>{% endif %} · <span class="hint">Press <kbd>?</kbd> for shortcuts</span></p>
         <p>Last updated: {{ generated_at }}</p>
     </footer>
 
