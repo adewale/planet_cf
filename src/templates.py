@@ -1108,6 +1108,12 @@ function cancelEditTitle(titleDiv) {
     titleDiv.classList.remove('editing');
 }
 
+function escapeHtml(text) {
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 function loadDLQ() {
     fetch('/admin/dlq')
         .then(function(r) { return r.json(); })
@@ -1119,8 +1125,8 @@ function loadDLQ() {
             }
             list.innerHTML = data.feeds.map(function(f) {
                 return '<div class="dlq-item">' +
-                    '<strong>' + (f.title || 'Untitled') + '</strong><br>' +
-                    '<small>' + f.url + '</small><br>' +
+                    '<strong>' + escapeHtml(f.title || 'Untitled') + '</strong><br>' +
+                    '<small>' + escapeHtml(f.url) + '</small><br>' +
                     '<small>Failures: ' + f.consecutive_failures + '</small>' +
                     '<form action="/admin/feeds/' + f.id + '/retry" method="POST" style="margin-top:0.5rem">' +
                     '<button type="submit" class="btn btn-sm btn-warning">Retry</button></form>' +
@@ -1140,9 +1146,9 @@ function loadAuditLog() {
             }
             list.innerHTML = data.entries.map(function(e) {
                 return '<div class="audit-item">' +
-                    '<span class="audit-action">' + e.action + '</span> ' +
-                    '<span class="audit-time">' + e.created_at + '</span>' +
-                    (e.details ? '<div class="audit-details">' + e.details + '</div>' : '') +
+                    '<span class="audit-action">' + escapeHtml(e.action) + '</span> ' +
+                    '<span class="audit-time">' + new Date(e.created_at).toLocaleString() + '</span>' +
+                    '<div class="audit-details">' + escapeHtml(e.details || '') + '</div>' +
                     '</div>';
             }).join('');
         });
