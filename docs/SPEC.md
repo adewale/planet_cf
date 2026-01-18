@@ -1846,6 +1846,12 @@ class PlanetCF(WorkerEntrypoint):
             feed_id = path.split("/")[-1]
             return await self._update_feed(request, feed_id, admin)
 
+        if path.startswith("/admin/feeds/") and path.endswith("/toggle") and request.method == "POST":
+            # Toggle feed active status
+            parts = path.split("/")
+            feed_id = parts[3]
+            return await self._update_feed(request, feed_id, admin)
+
         if path == "/admin/import-opml" and request.method == "POST":
             return await self._import_opml(request, admin)
 
@@ -2098,7 +2104,8 @@ ON CONFLICT(github_username) DO NOTHING;
 | GET | `/admin/feeds` | List all feeds (JSON) |
 | POST | `/admin/feeds` | Add new feed |
 | DELETE | `/admin/feeds/:id` | Remove feed |
-| PUT | `/admin/feeds/:id` | Update feed (enable/disable) |
+| PUT | `/admin/feeds/:id` | Update feed (title, enable/disable) |
+| POST | `/admin/feeds/:id/toggle` | Toggle feed active status |
 | POST | `/admin/import-opml` | Import feeds from OPML file |
 | POST | `/admin/regenerate` | Force HTML regeneration |
 | GET | `/admin/dlq` | View dead letter queue |
@@ -2107,7 +2114,7 @@ ON CONFLICT(github_username) DO NOTHING;
 
 ### 7.4 Admin Dashboard Features
 
-- **Feed Management**: Add, remove, enable/disable feeds
+- **Feed Management**: Add, remove, enable/disable feeds, edit titles
 - **OPML Import**: Bulk import feeds from OPML files
 - **Health Overview**: See feed fetch status, error counts
 - **Dead Letter Queue**: View and retry persistently failing feeds

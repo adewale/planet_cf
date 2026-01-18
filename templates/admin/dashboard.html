@@ -23,7 +23,13 @@
         .feed-list { list-style: none; padding: 0; margin: 0; }
         .feed-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: var(--bg-primary); border: 1px solid var(--border-light); margin-bottom: 0.5rem; border-radius: 4px; }
         .feed-info { flex: 1; }
-        .feed-title { font-weight: bold; font-size: 0.9rem; }
+        .feed-title { font-weight: bold; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; }
+        .feed-title-text { cursor: pointer; }
+        .feed-title-text:hover { text-decoration: underline; text-decoration-style: dotted; }
+        .feed-title-input { font-weight: bold; font-size: 0.9rem; padding: 0.125rem 0.25rem; border: 1px solid var(--accent); border-radius: 3px; width: 200px; }
+        .feed-title-input:focus { outline: none; box-shadow: 0 0 0 2px rgba(0, 113, 227, 0.2); }
+        .edit-btn { background: none; border: none; cursor: pointer; padding: 0.125rem; font-size: 0.75rem; color: var(--text-muted); }
+        .edit-btn:hover { color: var(--accent); }
         .feed-url { color: var(--text-muted); font-size: 0.8rem; word-break: break-all; }
         .feed-status { font-size: 0.75rem; margin-top: 0.25rem; }
         .feed-status.healthy { color: var(--success); }
@@ -93,9 +99,12 @@
             {% if feeds %}
             <ul class="feed-list">
                 {% for feed in feeds %}
-                <li class="feed-item">
+                <li class="feed-item" data-feed-id="{{ feed.id }}">
                     <div class="feed-info">
-                        <div class="feed-title">{{ feed.title or 'Untitled' }}</div>
+                        <div class="feed-title">
+                            <span class="feed-title-text" onclick="editFeedTitle(this)" data-feed-id="{{ feed.id }}">{{ feed.title or 'Untitled' }}</span>
+                            <button class="edit-btn" onclick="editFeedTitle(this.previousElementSibling)" title="Edit title">✎</button>
+                        </div>
                         <div class="feed-url">{{ feed.url }}</div>
                         <div class="feed-status {% if not feed.is_active %}disabled{% elif feed.consecutive_failures >= 3 %}failing{% else %}healthy{% endif %}">
                             {% if not feed.is_active %}

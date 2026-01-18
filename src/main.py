@@ -2063,6 +2063,14 @@ class Default(WorkerEntrypoint):
             feed_id = path.split("/")[-1]
             return await self._update_feed(request, feed_id, admin)
 
+        if path.startswith("/admin/feeds/") and path.endswith("/toggle") and method == "POST":
+            # Toggle feed active status
+            parts = path.split("/")
+            if len(parts) >= 4:
+                feed_id = parts[3]
+                return await self._update_feed(request, feed_id, admin)
+            return _json_error("Invalid path", status=400)
+
         if path.startswith("/admin/feeds/") and method == "POST":
             # Handle form override for DELETE
             form = SafeFormData(await request.form_data())
@@ -2375,13 +2383,13 @@ class Default(WorkerEntrypoint):
     async def _update_feed(
         self, request: WorkerRequest, feed_id: str, admin: dict[str, Any]
     ) -> Response:
-        """Update a feed (enable/disable)."""
+        """Update a feed (enable/disable, edit title)."""
         # Initialize admin action event for observability
         deployment = self._get_deployment_context()
         admin_event = AdminActionEvent(
             admin_username=admin.get("github_username", ""),
             admin_id=admin.get("id", 0),
-            action="toggle_feed",
+            action="update_feed",
             target_type="feed",
             worker_version=deployment["worker_version"],
             deployment_environment=deployment["deployment_environment"],
@@ -2389,29 +2397,43 @@ class Default(WorkerEntrypoint):
 
         with Timer() as timer:
             try:
-                feed_id = int(feed_id)
-                admin_event.target_id = feed_id
+                feed_id_int = int(feed_id)
+                admin_event.target_id = feed_id_int
                 data_raw = await request.json()
 
                 # Convert JsProxy to Python dict if needed
                 data = _to_py_safe(data_raw) or {}
 
-                is_active = data.get("is_active", 1)
+                # Build dynamic update based on provided fields
+                updates = []
+                params = []
+                audit_details = {}
 
-                await (
-                    self.env.DB.prepare("""
-                    UPDATE feeds SET
-                        is_active = ?,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                """)
-                    .bind(is_active, feed_id)
-                    .run()
-                )
+                if "is_active" in data:
+                    is_active = 1 if data["is_active"] else 0
+                    updates.append("is_active = ?")
+                    params.append(is_active)
+                    audit_details["is_active"] = is_active
+
+                if "title" in data:
+                    title = _safe_str(data["title"])
+                    updates.append("title = ?")
+                    params.append(title)
+                    audit_details["title"] = title
+
+                if not updates:
+                    return _json_error("No valid fields to update", status=400)
+
+                # Always update the timestamp
+                updates.append("updated_at = CURRENT_TIMESTAMP")
+                params.append(feed_id_int)
+
+                sql = f"UPDATE feeds SET {', '.join(updates)} WHERE id = ?"
+                await self.env.DB.prepare(sql).bind(*params).run()
 
                 # Audit log
                 await self._log_admin_action(
-                    admin["id"], "update_feed", "feed", feed_id, {"is_active": is_active}
+                    admin["id"], "update_feed", "feed", feed_id_int, audit_details
                 )
 
                 admin_event.outcome = "success"
