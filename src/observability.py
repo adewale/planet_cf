@@ -22,7 +22,7 @@ import secrets
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlparse
 
 
@@ -395,7 +395,7 @@ def emit_event(
         True if event was emitted, False if dropped by sampling
 
     """
-    event_dict = event if isinstance(event, dict) else asdict(event)
+    event_dict = cast(dict[str, Any], event if isinstance(event, dict) else asdict(event))
 
     if force or should_sample(event_dict, debug_feed_ids, sample_rate):
         print(json.dumps(event_dict))

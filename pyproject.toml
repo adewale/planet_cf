@@ -62,6 +62,19 @@ packages = ["src"]
 
 [tool.ty.environment]
 python-version = "3.12"
+extra-paths = ["stubs"]
+
+[tool.ty.rules]
+# Ignore unresolved imports for Cloudflare/Pyodide runtime modules
+# These are only available at runtime in the Workers environment
+unresolved-import = "ignore"
+# Cloudflare Workers has different method signatures than our stubs
+invalid-method-override = "ignore"
+# Pyodide FFI interop has dynamic types
+call-non-callable = "ignore"
+possibly-missing-attribute = "ignore"
+# ty's stdlib stubs don't include Python 3.12+ features like XMLParser(forbid_dtd=)
+unknown-argument = "ignore"
 
 [tool.ruff]
 line-length = 100

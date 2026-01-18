@@ -271,9 +271,11 @@ class Default(WorkerEntrypoint):
         """
         # Get the actual env from the parent class
         raw_env = super().__getattribute__("_env_from_runtime")
-        if self._cached_safe_env is None:
-            object.__setattr__(self, "_cached_safe_env", SafeEnv(raw_env))
-        return self._cached_safe_env
+        cached = self._cached_safe_env
+        if cached is None:
+            cached = SafeEnv(raw_env)
+            object.__setattr__(self, "_cached_safe_env", cached)
+        return cached
 
     @env.setter
     def env(self, value: WorkerEnv) -> None:
@@ -315,9 +317,9 @@ class Default(WorkerEntrypoint):
         Note: env and ctx are passed by the runtime but we use self.env and self.ctx
         which are set up during worker initialization.
         """
-        return await self._run_scheduler()
+        await self._run_scheduler()
 
-    async def _run_scheduler(self) -> None:
+    async def _run_scheduler(self) -> dict[str, int]:
         """Hourly scheduler - enqueue each active feed as a separate message.
 
         Each feed gets its own queue message to ensure:
@@ -2335,13 +2337,13 @@ class Default(WorkerEntrypoint):
 
         with Timer() as timer:
             try:
-                feed_id = int(feed_id)
-                admin_event.target_id = feed_id
+                feed_id_int = int(feed_id)
+                admin_event.target_id = feed_id_int
 
                 # Get feed info for audit log
                 feed_result = (
                     await self.env.DB.prepare("SELECT * FROM feeds WHERE id = ?")
-                    .bind(feed_id)
+                    .bind(feed_id_int)
                     .first()
                 )
 
@@ -2355,14 +2357,14 @@ class Default(WorkerEntrypoint):
                     return _json_error("Feed not found", status=404)
 
                 # Delete feed (entries will cascade)
-                await self.env.DB.prepare("DELETE FROM feeds WHERE id = ?").bind(feed_id).run()
+                await self.env.DB.prepare("DELETE FROM feeds WHERE id = ?").bind(feed_id_int).run()
 
                 # Audit log - feed is now a Python dict
                 await self._log_admin_action(
                     admin["id"],
                     "remove_feed",
                     "feed",
-                    feed_id,
+                    feed_id_int,
                     {"url": feed.get("url"), "title": feed.get("title")},
                 )
 
@@ -2600,14 +2602,14 @@ class Default(WorkerEntrypoint):
 
         with Timer() as timer:
             try:
-                feed_id = int(feed_id)
-                admin_event.target_id = feed_id
-                admin_event.dlq_feed_id = feed_id
+                feed_id_int = int(feed_id)
+                admin_event.target_id = feed_id_int
+                admin_event.dlq_feed_id = feed_id_int
 
                 # Get feed info
                 feed_result = (
                     await self.env.DB.prepare("SELECT * FROM feeds WHERE id = ?")
-                    .bind(feed_id)
+                    .bind(feed_id_int)
                     .first()
                 )
 
@@ -2635,13 +2637,13 @@ class Default(WorkerEntrypoint):
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                 """)
-                    .bind(feed_id)
+                    .bind(feed_id_int)
                     .run()
                 )
 
                 # Queue the feed for immediate fetch - feed is now a Python dict
                 message = {
-                    "feed_id": feed_id,
+                    "feed_id": feed_id_int,
                     "url": feed.get("url"),
                     "etag": feed.get("etag"),
                     "last_modified": feed.get("last_modified"),
@@ -2653,7 +2655,7 @@ class Default(WorkerEntrypoint):
                     admin["id"],
                     "retry_dlq",
                     "feed",
-                    feed_id,
+                    feed_id_int,
                     {"url": feed.get("url"), "previous_failures": feed.get("consecutive_failures")},
                 )
 

@@ -102,10 +102,14 @@ class ParsedEntry:
         # GUID: try id, then link, then generate from title
         guid = entry.get("id") or entry.get("link") or hash(entry.get("title", ""))
 
-        # URL: prefer link, fall back to id if it's a URL
-        url = entry.get("link") or (
-            entry.get("id") if entry.get("id", "").startswith("http") else feed_link
-        )
+        # URL: prefer link, fall back to id if it's a URL, then feed_link
+        entry_id = entry.get("id", "")
+        if entry.get("link"):
+            url = entry["link"]
+        elif entry_id.startswith("http"):
+            url = entry_id
+        else:
+            url = feed_link
 
         # Content: try content[0].value, then summary, then description
         content = ""
