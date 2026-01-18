@@ -1604,7 +1604,6 @@ class Default(WorkerEntrypoint):
             entry["display_author"] = _get_display_author(
                 entry.get("author"), entry.get("feed_title")
             )
-
             entries_by_date[date_label].append(entry)
 
         # Sort entries within each day by published_at (newest first)
