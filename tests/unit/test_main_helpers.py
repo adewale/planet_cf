@@ -398,3 +398,145 @@ class TestParseIsoDatetime:
         result = _parse_iso_datetime("2026-01-17T12:30:00.123456Z")
         assert result is not None
         assert result.microsecond == 123456
+
+
+# =============================================================================
+# Content Normalization Tests
+# =============================================================================
+
+
+class TestNormalizeEntryContent:
+    """Tests for _normalize_entry_content function.
+
+    Based on actual duplicate title patterns found in Planet CF feeds:
+    - Jilles Soeters: metadata before h1 (date / read time)
+    - Boris Tane: whitespace-padded h1, metadata after
+    - Sunil Pai: h1 directly at start
+    """
+
+    def test_strips_h1_with_whitespace_padding(self):
+        """Strips h1 with whitespace padding inside tags (Boris Tane pattern)."""
+        from src.main import _normalize_entry_content
+
+        content = "  <h1> What even are Cloudflare Durable Objects? </h1> \n\nNov 4, 2025"
+        title = "What even are Cloudflare Durable Objects?"
+        result = _normalize_entry_content(content, title)
+        assert "<h1>" not in result
+        assert "Nov 4, 2025" in result
+
+    def test_strips_h1_with_metadata_before(self):
+        """Strips h1 when metadata (date/read time) appears before it (Jilles pattern)."""
+        from src.main import _normalize_entry_content
+
+        content = "January 15, 2026  / 9 min read   \n\n <h1> Open Graph Images in Astro: Build-Time vs Runtime </h1>   \n<p>Content here</p>"
+        title = "Open Graph Images in Astro: Build-Time vs Runtime"
+        result = _normalize_entry_content(content, title)
+        assert "<h1>" not in result
+        assert "January 15, 2026" not in result
+        assert "<p>Content here</p>" in result
+
+    def test_strips_h1_with_metadata_after(self):
+        """Strips h1 when metadata appears after it (Boris pattern)."""
+        from src.main import _normalize_entry_content
+
+        content = "  <h1> Unlimited On-Demand Graph Databases with Cloudflare Durable Objects </h1> \n\nOct 27, 2025  \n\n<p>Content</p>"
+        title = "Unlimited On-Demand Graph Databases with Cloudflare Durable Objects"
+        result = _normalize_entry_content(content, title)
+        assert "<h1>" not in result
+        assert "Oct 27, 2025" in result
+        assert "<p>Content</p>" in result
+
+    def test_strips_h1_directly_at_start(self):
+        """Strips h1 when it appears directly at content start (Sunil pattern)."""
+        from src.main import _normalize_entry_content
+
+        content = (
+            "<h1>where good ideas come from (for coding agents)</h1> 3 January 2026  <p>Content</p>"
+        )
+        title = "where good ideas come from (for coding agents)"
+        result = _normalize_entry_content(content, title)
+        assert "<h1>" not in result
+        assert "3 January 2026" in result
+        assert "<p>Content</p>" in result
+
+    def test_case_insensitive_matching(self):
+        """Matches title case-insensitively."""
+        from src.main import _normalize_entry_content
+
+        content = "<h1>THE CONTEXT IS THE WORK</h1><p>Content</p>"
+        title = "the context is the work"
+        result = _normalize_entry_content(content, title)
+        assert "<h1>" not in result
+        assert "<p>Content</p>" in result
+
+    def test_preserves_h1_when_title_doesnt_match(self):
+        """Preserves h1 when title doesn't match heading text."""
+        from src.main import _normalize_entry_content
+
+        content = "<h1>Introduction</h1><p>Content</p>"
+        title = "My Blog Post Title"
+        result = _normalize_entry_content(content, title)
+        assert "<h1>Introduction</h1>" in result
+        assert "<p>Content</p>" in result
+
+    def test_preserves_h1_in_middle_of_content(self):
+        """Preserves h1 that appears in middle of content, not at start."""
+        from src.main import _normalize_entry_content
+
+        content = "<p>Intro paragraph</p><h1>My Title</h1><p>More content</p>"
+        title = "My Title"
+        result = _normalize_entry_content(content, title)
+        assert "<h1>My Title</h1>" in result
+        assert result == content
+
+    def test_strips_h2_matching_title(self):
+        """Strips h2 when it matches title."""
+        from src.main import _normalize_entry_content
+
+        content = "<h2>My Post Title</h2><p>Content here</p>"
+        title = "My Post Title"
+        result = _normalize_entry_content(content, title)
+        assert "<h2>" not in result
+        assert "<p>Content here</p>" in result
+
+    def test_handles_empty_content(self):
+        """Returns empty content unchanged."""
+        from src.main import _normalize_entry_content
+
+        result = _normalize_entry_content("", "Some Title")
+        assert result == ""
+
+    def test_handles_empty_title(self):
+        """Returns content unchanged when title is empty."""
+        from src.main import _normalize_entry_content
+
+        content = "<h1>Heading</h1><p>Content</p>"
+        result = _normalize_entry_content(content, "")
+        assert result == content
+
+    def test_handles_none_title(self):
+        """Returns content unchanged when title is None."""
+        from src.main import _normalize_entry_content
+
+        content = "<h1>Heading</h1><p>Content</p>"
+        result = _normalize_entry_content(content, None)
+        assert result == content
+
+    def test_strips_h1_with_link_wrapper(self):
+        """Strips h1 containing a link-wrapped title."""
+        from src.main import _normalize_entry_content
+
+        content = '<h1><a href="https://example.com/post">My Post Title</a></h1><p>Content</p>'
+        title = "My Post Title"
+        result = _normalize_entry_content(content, title)
+        assert "<h1>" not in result
+        assert "<p>Content</p>" in result
+
+    def test_preserves_content_without_headings(self):
+        """Preserves content that has no h1/h2 headings."""
+        from src.main import _normalize_entry_content
+
+        content = "<p>Just a paragraph</p><p>Another paragraph</p>"
+        title = "Some Title"
+        result = _normalize_entry_content(content, title)
+        assert result == content

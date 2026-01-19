@@ -147,6 +147,64 @@ def _log_op(event_type: str, **kwargs: LogKwargs) -> None:
 
 
 # =============================================================================
+# Content Normalization
+# =============================================================================
+
+
+def _normalize_entry_content(content: str, title: str | None) -> str:
+    """Normalize entry content for display by removing duplicate title headings.
+
+    Many feeds include the post title as an <h1> or <h2> at the start of the
+    content body. Since our template already displays the title, this creates
+    visual duplication. This function strips the leading heading if it matches
+    the entry title.
+
+    Handles common patterns:
+    - <h1>Title</h1> at start
+    - Metadata (date/read time) before the <h1>
+    - Whitespace padding inside heading tags
+    - Link-wrapped headings: <h1><a href="#">Title</a></h1>
+
+    Args:
+        content: HTML content that may contain a duplicate title heading
+        title: The entry title to match against
+
+    Returns:
+        Content with the duplicate title heading removed if found
+    """
+    if not content or not title:
+        return content
+
+    # Normalize title for comparison (strip whitespace, lowercase)
+    title_normalized = title.strip().lower()
+
+    # Pattern to match optional metadata, then <h1> or <h2> with the title
+    # Group 1: Optional metadata (date, read time, etc.) before the heading
+    # Group 2: The heading tag (h1 or h2)
+    # Group 3: Optional link opening tag
+    # Group 4: The heading text
+    # Group 5: Optional link closing tag
+    pattern = (
+        r"^(\s*(?:[A-Za-z]+\s+\d{1,2},?\s+\d{4}\s*)?(?:/\s*\d+\s*min\s*read\s*)?\s*)"  # metadata
+        r"<(h[12])(?:\s[^>]*)?>\s*"  # opening h1/h2
+        r"(?:(<a[^>]*>)\s*)?"  # optional link open
+        r"([^<]+?)"  # heading text
+        r"\s*(?:(</a>)\s*)?"  # optional link close
+        r"</\2>"  # closing h1/h2
+    )
+
+    match = re.match(pattern, content, re.IGNORECASE)
+
+    if match:
+        heading_text = match.group(4).strip().lower()
+        if heading_text == title_normalized:
+            # Strip the metadata and heading, keep remaining content
+            return content[match.end() :].lstrip()
+
+    return content
+
+
+# =============================================================================
 # Response Helpers
 # =============================================================================
 
@@ -1346,6 +1404,12 @@ class Default(WorkerEntrypoint):
                 entry["published_at_display"] = self._format_pub_date(group_date)
             else:
                 entry["published_at_display"] = ""
+
+            # Normalize content: strip duplicate title heading if present
+            entry["content"] = _normalize_entry_content(
+                entry.get("content", ""), entry.get("title")
+            )
+
             entries_by_date[date_label].append(entry)
 
         # Sort entries within each day by published_at (newest first)
