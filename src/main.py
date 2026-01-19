@@ -213,15 +213,16 @@ def _html_response(content: str, cache_max_age: int = 3600) -> Response:
     """Create an HTML response with caching and security headers."""
     # Content Security Policy - defense in depth against XSS
     # - default-src 'self': Only allow same-origin resources by default
-    # - script-src 'self': Only allow same-origin scripts (blocks inline)
+    # - script-src 'self' + hash: Same-origin scripts + specific inline script for keyboard nav
     # - style-src 'self' 'unsafe-inline': Allow inline styles (needed for templates)
     # - img-src https: data:: HTTPS images + data URIs (for inline images)
     # - frame-ancestors 'none': Prevent clickjacking (cannot be framed)
     # - base-uri 'self': Prevent base tag injection attacks
     # - form-action 'self': Forms can only submit to same origin
+    # Note: The hash allows our keyboard navigation script in index.html
     csp = (
         "default-src 'self'; "
-        "script-src 'self'; "
+        "script-src 'self' 'sha256-Uut85sNJuDIU4Bjg+siOWXrJjsOfOznnIQpyjaSdDhY='; "
         "style-src 'self' 'unsafe-inline'; "
         "img-src https: data:; "
         "frame-ancestors 'none'; "
