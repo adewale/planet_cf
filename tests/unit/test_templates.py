@@ -125,7 +125,9 @@ class TestTemplateXSSPrevention:
             feeds=[],
             generated_at="2026-01-01T00:00:00Z",
         )
-        assert "<script>" not in html
+        # Check that the XSS payload is escaped (not that there are no script tags,
+        # since we have a legitimate inline script for keyboard navigation)
+        assert "<script>alert" not in html
         assert "&lt;script&gt;" in html
 
     def test_escapes_html_in_search_query(self):

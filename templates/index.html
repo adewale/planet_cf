@@ -59,5 +59,70 @@
         <p>Powered by Planet CF · <a href="/admin" style="color: #999; font-size: 0.8em;">Admin</a></p>
         <p>Last updated: {{ generated_at }}</p>
     </footer>
+
+    <!-- Keyboard shortcuts help panel -->
+    <div class="shortcuts-backdrop hidden" id="shortcuts-backdrop"></div>
+    <div class="shortcuts-panel hidden" id="shortcuts-panel">
+        <h3>Keyboard Shortcuts</h3>
+        <dl>
+            <dt><kbd>j</kbd> / <kbd>↓</kbd></dt>
+            <dd>Next entry</dd>
+            <dt><kbd>k</kbd> / <kbd>↑</kbd></dt>
+            <dd>Previous entry</dd>
+            <dt><kbd>?</kbd></dt>
+            <dd>Toggle this help</dd>
+            <dt><kbd>Esc</kbd></dt>
+            <dd>Close help</dd>
+        </dl>
+    </div>
+
+    <script>
+    (function() {
+        const articles = document.querySelectorAll('article');
+        const panel = document.getElementById('shortcuts-panel');
+        const backdrop = document.getElementById('shortcuts-backdrop');
+        let current = -1;
+
+        function select(index) {
+            if (articles[current]) articles[current].classList.remove('selected');
+            current = Math.max(0, Math.min(index, articles.length - 1));
+            articles[current].classList.add('selected');
+            articles[current].scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }
+
+        function toggleHelp() {
+            panel.classList.toggle('hidden');
+            backdrop.classList.toggle('hidden');
+        }
+
+        function closeHelp() {
+            panel.classList.add('hidden');
+            backdrop.classList.add('hidden');
+        }
+
+        backdrop.addEventListener('click', closeHelp);
+
+        document.addEventListener('keydown', function(e) {
+            // Ignore if typing in input/textarea
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+            if (e.key === 'j' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                select(current + 1);
+            }
+            if (e.key === 'k' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                select(current - 1);
+            }
+            if (e.key === '?') {
+                e.preventDefault();
+                toggleHelp();
+            }
+            if (e.key === 'Escape') {
+                closeHelp();
+            }
+        });
+    })();
+    </script>
 </body>
 </html>

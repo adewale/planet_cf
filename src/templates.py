@@ -78,6 +78,71 @@ _EMBEDDED_TEMPLATES = {
         <p>Powered by Planet CF · <a href="/admin" style="color: #999; font-size: 0.8em;">Admin</a></p>
         <p>Last updated: {{ generated_at }}</p>
     </footer>
+
+    <!-- Keyboard shortcuts help panel -->
+    <div class="shortcuts-backdrop hidden" id="shortcuts-backdrop"></div>
+    <div class="shortcuts-panel hidden" id="shortcuts-panel">
+        <h3>Keyboard Shortcuts</h3>
+        <dl>
+            <dt><kbd>j</kbd> / <kbd>↓</kbd></dt>
+            <dd>Next entry</dd>
+            <dt><kbd>k</kbd> / <kbd>↑</kbd></dt>
+            <dd>Previous entry</dd>
+            <dt><kbd>?</kbd></dt>
+            <dd>Toggle this help</dd>
+            <dt><kbd>Esc</kbd></dt>
+            <dd>Close help</dd>
+        </dl>
+    </div>
+
+    <script>
+    (function() {
+        const articles = document.querySelectorAll('article');
+        const panel = document.getElementById('shortcuts-panel');
+        const backdrop = document.getElementById('shortcuts-backdrop');
+        let current = -1;
+
+        function select(index) {
+            if (articles[current]) articles[current].classList.remove('selected');
+            current = Math.max(0, Math.min(index, articles.length - 1));
+            articles[current].classList.add('selected');
+            articles[current].scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }
+
+        function toggleHelp() {
+            panel.classList.toggle('hidden');
+            backdrop.classList.toggle('hidden');
+        }
+
+        function closeHelp() {
+            panel.classList.add('hidden');
+            backdrop.classList.add('hidden');
+        }
+
+        backdrop.addEventListener('click', closeHelp);
+
+        document.addEventListener('keydown', function(e) {
+            // Ignore if typing in input/textarea
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+            if (e.key === 'j' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                select(current + 1);
+            }
+            if (e.key === 'k' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                select(current - 1);
+            }
+            if (e.key === '?') {
+                e.preventDefault();
+                toggleHelp();
+            }
+            if (e.key === 'Escape') {
+                closeHelp();
+            }
+        });
+    })();
+    </script>
 </body>
 </html>
 """,
@@ -928,6 +993,71 @@ button {
 button:hover {
     background: var(--accent);
     color: white;
+}
+
+/* Keyboard navigation */
+article.selected {
+    outline: 2px solid var(--accent);
+    outline-offset: 4px;
+}
+
+.shortcuts-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+}
+
+.shortcuts-panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--bg-primary);
+    border: 1px solid var(--border-medium);
+    border-radius: 10px;
+    padding: 1.5rem 2rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    min-width: 280px;
+}
+
+.shortcuts-panel h3 {
+    margin: 0 0 1rem 0;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.shortcuts-panel dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.5rem 1rem;
+    margin: 0;
+}
+
+.shortcuts-panel dt {
+    text-align: right;
+}
+
+.shortcuts-panel dd {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.shortcuts-panel kbd {
+    display: inline-block;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-light);
+    border-radius: 4px;
+    padding: 0.15rem 0.5rem;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.8rem;
+    color: var(--text-primary);
+}
+
+.hidden {
+    display: none !important;
 }
 
 /* Responsive */
