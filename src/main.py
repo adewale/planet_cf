@@ -146,40 +146,6 @@ def _log_op(event_type: str, **kwargs: LogKwargs) -> None:
     print(json.dumps(event))
 
 
-def _strip_duplicate_title(content: str, title: str | None) -> str:
-    """Remove duplicate title heading from content for display.
-
-    Many feeds include the post title as an <h1> or <h2> at the start of the
-    content body. Since our template already displays the title, this creates
-    duplication. This function strips the leading heading if it matches the title.
-
-    Args:
-        content: HTML content that may contain a duplicate title heading
-        title: The entry title to match against
-
-    Returns:
-        Content with the leading title heading removed if it matched
-    """
-    if not content or not title:
-        return content
-
-    # Normalize title for comparison
-    title_normalized = title.strip().lower()
-
-    # Pattern to match leading <h1> or <h2> with optional link wrapper
-    # Handles: <h1>Title</h1>, <h1> Title </h1>, <h1><a href="#">Title</a></h1>
-    pattern = r"^\s*<(h[12])(?:\s[^>]*)?>(?:\s*<a[^>]*>)?\s*([^<]+?)\s*(?:</a>\s*)?</\1>"
-    match = re.match(pattern, content, re.IGNORECASE)
-
-    if match:
-        heading_text = match.group(2).strip().lower()
-        if heading_text == title_normalized:
-            # Strip the matched heading
-            return content[match.end() :].lstrip()
-
-    return content
-
-
 # =============================================================================
 # Response Helpers
 # =============================================================================
@@ -1380,10 +1346,6 @@ class Default(WorkerEntrypoint):
                 entry["published_at_display"] = self._format_pub_date(group_date)
             else:
                 entry["published_at_display"] = ""
-
-            # Strip duplicate title from content (many feeds include title as <h1> in body)
-            entry["content"] = _strip_duplicate_title(entry.get("content", ""), entry.get("title"))
-
             entries_by_date[date_label].append(entry)
 
         # Sort entries within each day by published_at (newest first)
