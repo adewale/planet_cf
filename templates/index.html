@@ -65,9 +65,9 @@
     <div class="shortcuts-panel hidden" id="shortcuts-panel">
         <h3>Keyboard Shortcuts</h3>
         <dl>
-            <dt><kbd>j</kbd> / <kbd>↓</kbd></dt>
+            <dt><kbd>j</kbd></dt>
             <dd>Next entry</dd>
-            <dt><kbd>k</kbd> / <kbd>↑</kbd></dt>
+            <dt><kbd>k</kbd></dt>
             <dd>Previous entry</dd>
             <dt><kbd>?</kbd></dt>
             <dd>Toggle this help</dd>
@@ -106,11 +106,11 @@
             // Ignore if typing in input/textarea
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
-            if (e.key === 'j' || e.key === 'ArrowDown') {
+            if (e.key === 'j') {
                 e.preventDefault();
                 select(current + 1);
             }
-            if (e.key === 'k' || e.key === 'ArrowUp') {
+            if (e.key === 'k') {
                 e.preventDefault();
                 select(current - 1);
             }
