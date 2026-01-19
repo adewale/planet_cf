@@ -146,40 +146,6 @@ def _log_op(event_type: str, **kwargs: LogKwargs) -> None:
     print(json.dumps(event))
 
 
-def _strip_duplicate_title(content: str, title: str | None) -> str:
-    """Remove duplicate title heading from content.
-
-    Many feeds include the post title as an <h1> or <h2> at the start of the
-    content body. Since our template already displays the title, this creates
-    duplication. This function strips the leading heading if it matches the title.
-
-    Args:
-        content: HTML content that may contain a duplicate title heading
-        title: The entry title to match against
-
-    Returns:
-        Content with the leading title heading removed if it matched
-    """
-    if not content or not title:
-        return content
-
-    # Normalize title for comparison
-    title_normalized = title.strip().lower()
-
-    # Pattern to match leading <h1> or <h2> with optional link wrapper
-    # Handles: <h1>Title</h1>, <h1> Title </h1>, <h1><a href="#">Title</a></h1>
-    pattern = r"^\s*<(h[12])(?:\s[^>]*)?>(?:\s*<a[^>]*>)?\s*([^<]+?)\s*(?:</a>\s*)?</\1>"
-    match = re.match(pattern, content, re.IGNORECASE)
-
-    if match:
-        heading_text = match.group(2).strip().lower()
-        if heading_text == title_normalized:
-            # Strip the matched heading
-            return content[match.end() :].lstrip()
-
-    return content
-
-
 # =============================================================================
 # Response Helpers
 # =============================================================================
@@ -786,10 +752,6 @@ class Default(WorkerEntrypoint):
         # Sanitize HTML (XSS prevention)
         sanitized_content = self._sanitize_html(content)
 
-        # Strip duplicate title from content (many feeds include title as <h1> in body)
-        title = entry.get("title", "")
-        sanitized_content = _strip_duplicate_title(sanitized_content, title)
-
         # Parse published date - use None if missing (don't fake current time)
         # This ensures retention policy can correctly identify old entries
         # Note: After JsProxy conversion, entry is a plain dict, so use .get() not hasattr()
@@ -801,6 +763,8 @@ class Default(WorkerEntrypoint):
         elif upd_parsed and isinstance(upd_parsed, list | tuple) and len(upd_parsed) >= 6:
             published_at = datetime(*upd_parsed[:6]).isoformat()
         # If no date available, leave as None (will use CURRENT_TIMESTAMP in DB)
+
+        title = entry.get("title", "")
 
         # Truncate summary with indicator
         raw_summary = entry.get("summary") or ""
