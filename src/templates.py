@@ -106,7 +106,7 @@ _EMBEDDED_TEMPLATES = {
             if (articles[current]) articles[current].classList.remove('selected');
             current = Math.max(0, Math.min(index, articles.length - 1));
             articles[current].classList.add('selected');
-            articles[current].scrollIntoView({ block: 'center', behavior: 'smooth' });
+            articles[current].scrollIntoView({ block: 'start', behavior: 'smooth' });
         }
 
         function toggleHelp() {
@@ -679,6 +679,7 @@ article {
     margin-bottom: 1rem;
     box-shadow: var(--shadow-sm);
     transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    scroll-margin-top: 1rem;
 }
 
 article:hover {

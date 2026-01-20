@@ -87,7 +87,7 @@
             if (articles[current]) articles[current].classList.remove('selected');
             current = Math.max(0, Math.min(index, articles.length - 1));
             articles[current].classList.add('selected');
-            articles[current].scrollIntoView({ block: 'center', behavior: 'smooth' });
+            articles[current].scrollIntoView({ block: 'start', behavior: 'smooth' });
         }
 
         function toggleHelp() {
