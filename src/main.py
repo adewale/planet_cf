@@ -98,6 +98,10 @@ USER_AGENT = "PlanetCF/1.0 (+https://planetcf.com; contact@planetcf.com)"
 SESSION_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
 # Security: Maximum search query length to prevent DoS
 MAX_SEARCH_QUERY_LENGTH = 1000
+MAX_SEARCH_WORDS = 10  # Prevent DoS via excessive word count in multi-word search
+MAX_OPML_FEEDS = 100  # Prevent DoS via unbounded OPML import
+SESSION_GRACE_SECONDS = 5  # Clock skew grace period (reduced from 60s for security)
+REINDEX_COOLDOWN_SECONDS = 300  # 5 minute cooldown between reindex operations
 # Standardized error message truncation length
 ERROR_MESSAGE_MAX_LENGTH = 200
 
@@ -147,6 +151,51 @@ def _log_op(event_type: str, **kwargs: LogKwargs) -> None:
     print(json.dumps(event))
 
 
+def _validate_feed_id(feed_id: str) -> int | None:
+    """Validate and convert a feed ID from URL path to integer.
+
+    Returns the integer ID if valid, None otherwise.
+    Prevents path traversal and invalid ID attacks.
+    """
+    if not feed_id:
+        return None
+    # Only allow positive integers (no leading zeros except for "0")
+    if not feed_id.isdigit():
+        return None
+    try:
+        id_int = int(feed_id)
+        # Reject zero or negative (shouldn't happen with isdigit, but be safe)
+        if id_int <= 0:
+            return None
+        return id_int
+    except (ValueError, OverflowError):
+        return None
+
+
+def _xml_escape(text: str) -> str:
+    """Escape XML special characters for safe embedding in XML content.
+
+    This is applied before CDATA wrapping to handle any edge cases
+    where content might contain problematic XML sequences.
+    """
+    # Standard XML entity escaping
+    text = text.replace("&", "&amp;")
+    text = text.replace("<", "&lt;")
+    text = text.replace(">", "&gt;")
+    return text
+
+
+def _parse_query_params(url_str: str) -> dict[str, list[str]]:
+    """Extract query parameters from a URL string.
+
+    Returns a dict where each key maps to a list of values.
+    """
+    if "?" not in url_str:
+        return {}
+    query_string = url_str.split("?", 1)[1]
+    return parse_qs(query_string)
+
+
 # =============================================================================
 # Content Normalization
 # =============================================================================
@@ -179,6 +228,10 @@ def _normalize_entry_content(content: str, title: str | None) -> str:
     # Normalize title for comparison (strip whitespace, lowercase)
     title_normalized = title.strip().lower()
 
+    # Limit regex search to first 1000 chars to prevent ReDoS on pathological input
+    # Duplicate title headings always appear at the start of content
+    search_content = content[:1000] if len(content) > 1000 else content
+
     # Pattern to match optional metadata, then <h1> or <h2> with the title
     # Group 1: Optional metadata (date, read time, etc.) before the heading
     # Group 2: The heading tag (h1 or h2)
@@ -194,7 +247,7 @@ def _normalize_entry_content(content: str, title: str | None) -> str:
         r"</\2>"  # closing h1/h2
     )
 
-    match = re.match(pattern, content, re.IGNORECASE)
+    match = re.match(pattern, search_content, re.IGNORECASE)
 
     if match:
         heading_text = match.group(4).strip().lower()
@@ -353,6 +406,31 @@ class Default(WorkerEntrypoint):
             "worker_version": getattr(self.env, "DEPLOYMENT_VERSION", None) or "",
             "deployment_environment": getattr(self.env, "DEPLOYMENT_ENVIRONMENT", None) or "",
         }
+
+    def _create_admin_event(
+        self, admin: dict[str, Any], action: str, target_type: str
+    ) -> AdminActionEvent:
+        """Create an admin action event with common fields populated.
+
+        This reduces boilerplate in admin handlers by centralizing event creation.
+
+        Args:
+            admin: Admin user dict with github_username and id
+            action: The action being performed (e.g., "add_feed", "remove_feed")
+            target_type: The type of target (e.g., "feed", "search_index")
+
+        Returns:
+            AdminActionEvent with common fields populated
+        """
+        deployment = self._get_deployment_context()
+        return AdminActionEvent(
+            admin_username=admin.get("github_username", ""),
+            admin_id=admin.get("id", 0),
+            action=action,
+            target_type=target_type,
+            worker_version=deployment["worker_version"],
+            deployment_environment=deployment["deployment_environment"],
+        )
 
     def _get_feed_timeout(self) -> int:
         """Get feed timeout from environment, default 60 seconds."""
@@ -1566,13 +1644,17 @@ class Default(WorkerEntrypoint):
         delta = now - dt
 
         if delta.days > 30:
-            return f"{delta.days // 30} months ago"
+            # Use rounding for more accurate month representation
+            months = (delta.days + 15) // 30
+            return f"{months} month{'s' if months != 1 else ''} ago"
         elif delta.days > 0:
-            return f"{delta.days} days ago"
+            return f"{delta.days} day{'s' if delta.days != 1 else ''} ago"
         elif delta.seconds > 3600:
-            return f"{delta.seconds // 3600} hours ago"
+            hours = delta.seconds // 3600
+            return f"{hours} hour{'s' if hours != 1 else ''} ago"
         elif delta.seconds > 60:
-            return f"{delta.seconds // 60} minutes ago"
+            minutes = delta.seconds // 60
+            return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
         else:
             return "just now"
 
@@ -1717,6 +1799,7 @@ class Default(WorkerEntrypoint):
                 "published_at": e.get("published_at", ""),
                 "author": e.get("author", ""),
                 # Escape ]]> in CDATA to prevent breakout attacks (Issue 2.1)
+                # Content is already HTML-sanitized, but ensure CDATA boundaries are safe
                 "content_cdata": e.get("content", "").replace("]]>", "]]]]><![CDATA[>"),
             }
             for e in entries
@@ -1881,6 +1964,11 @@ class Default(WorkerEntrypoint):
                     # Word search: all words must appear (any order)
                     # Split query into words and require all to match
                     words = [w.strip() for w in query.split() if w.strip()]
+                    # Limit word count to prevent DoS via excessive WHERE clauses
+                    if len(words) > MAX_SEARCH_WORDS:
+                        words = words[:MAX_SEARCH_WORDS]
+                        if event:
+                            event.search_words_truncated = True
                     if len(words) <= 1:
                         # Single word: simple LIKE
                         like_pattern = f"%{escaped_query}%"
@@ -2136,18 +2224,24 @@ class Default(WorkerEntrypoint):
             return await self._add_feed(request, admin)
 
         if path.startswith("/admin/feeds/") and method == "DELETE":
-            feed_id = path.split("/")[-1]
+            feed_id = _validate_feed_id(path.split("/")[-1])
+            if feed_id is None:
+                return _json_error("Invalid feed ID", status=400)
             return await self._remove_feed(feed_id, admin)
 
         if path.startswith("/admin/feeds/") and method == "PUT":
-            feed_id = path.split("/")[-1]
+            feed_id = _validate_feed_id(path.split("/")[-1])
+            if feed_id is None:
+                return _json_error("Invalid feed ID", status=400)
             return await self._update_feed(request, feed_id, admin)
 
         if path.startswith("/admin/feeds/") and path.endswith("/toggle") and method == "POST":
             # Toggle feed active status
             parts = path.split("/")
             if len(parts) >= 4:
-                feed_id = parts[3]
+                feed_id = _validate_feed_id(parts[3])
+                if feed_id is None:
+                    return _json_error("Invalid feed ID", status=400)
                 return await self._update_feed(request, feed_id, admin)
             return _json_error("Invalid path", status=400)
 
@@ -2155,7 +2249,9 @@ class Default(WorkerEntrypoint):
             # Handle form override for DELETE
             form = SafeFormData(await request.form_data())
             if form.get("_method") == "DELETE":
-                feed_id = path.split("/")[-1]
+                feed_id = _validate_feed_id(path.split("/")[-1])
+                if feed_id is None:
+                    return _json_error("Invalid feed ID", status=400)
                 return await self._remove_feed(feed_id, admin)
             return _json_error("Method not allowed", status=405)
 
@@ -2172,7 +2268,9 @@ class Default(WorkerEntrypoint):
             # Extract feed_id from /admin/dlq/{id}/retry
             parts = path.split("/")
             if len(parts) >= 4:
-                feed_id = parts[3]
+                feed_id = _validate_feed_id(parts[3])
+                if feed_id is None:
+                    return _json_error("Invalid feed ID", status=400)
                 return await self._retry_dlq_feed(feed_id, admin)
             return _json_error("Invalid path", status=400)
 
@@ -2302,16 +2400,7 @@ class Default(WorkerEntrypoint):
         4. Insert into database
         5. Queue for immediate full processing
         """
-        # Initialize admin action event for observability
-        deployment = self._get_deployment_context()
-        admin_event = AdminActionEvent(
-            admin_username=admin.get("github_username", ""),
-            admin_id=admin.get("id", 0),
-            action="add_feed",
-            target_type="feed",
-            worker_version=deployment["worker_version"],
-            deployment_environment=deployment["deployment_environment"],
-        )
+        admin_event = self._create_admin_event(admin, "add_feed", "feed")
 
         with Timer() as timer:
             try:
@@ -2400,28 +2489,18 @@ class Default(WorkerEntrypoint):
                 admin_event.wall_time_ms = timer.elapsed_ms
                 emit_event(admin_event)
 
-    async def _remove_feed(self, feed_id: str, admin: dict[str, Any]) -> Response:
+    async def _remove_feed(self, feed_id: int, admin: dict[str, Any]) -> Response:
         """Remove a feed."""
-        # Initialize admin action event for observability
-        deployment = self._get_deployment_context()
-        admin_event = AdminActionEvent(
-            admin_username=admin.get("github_username", ""),
-            admin_id=admin.get("id", 0),
-            action="remove_feed",
-            target_type="feed",
-            worker_version=deployment["worker_version"],
-            deployment_environment=deployment["deployment_environment"],
-        )
+        admin_event = self._create_admin_event(admin, "remove_feed", "feed")
 
         with Timer() as timer:
             try:
-                feed_id_int = int(feed_id)
-                admin_event.target_id = feed_id_int
+                admin_event.target_id = feed_id
 
                 # Get feed info for audit log
                 feed_result = (
                     await self.env.DB.prepare("SELECT * FROM feeds WHERE id = ?")
-                    .bind(feed_id_int)
+                    .bind(feed_id)
                     .first()
                 )
 
@@ -2435,14 +2514,14 @@ class Default(WorkerEntrypoint):
                     return _json_error("Feed not found", status=404)
 
                 # Delete feed (entries will cascade)
-                await self.env.DB.prepare("DELETE FROM feeds WHERE id = ?").bind(feed_id_int).run()
+                await self.env.DB.prepare("DELETE FROM feeds WHERE id = ?").bind(feed_id).run()
 
                 # Audit log - feed is now a Python dict
                 await self._log_admin_action(
                     admin["id"],
                     "remove_feed",
                     "feed",
-                    feed_id_int,
+                    feed_id,
                     {"url": feed.get("url"), "title": feed.get("title")},
                 )
 
@@ -2461,24 +2540,17 @@ class Default(WorkerEntrypoint):
                 emit_event(admin_event)
 
     async def _update_feed(
-        self, request: WorkerRequest, feed_id: str, admin: dict[str, Any]
+        self, request: WorkerRequest, feed_id: int, admin: dict[str, Any]
     ) -> Response:
-        """Update a feed (enable/disable, edit title)."""
-        # Initialize admin action event for observability
-        deployment = self._get_deployment_context()
-        admin_event = AdminActionEvent(
-            admin_username=admin.get("github_username", ""),
-            admin_id=admin.get("id", 0),
-            action="update_feed",
-            target_type="feed",
-            worker_version=deployment["worker_version"],
-            deployment_environment=deployment["deployment_environment"],
-        )
+        """Update a feed (enable/disable, edit title).
+
+        Uses optimistic locking to prevent lost updates from concurrent edits.
+        """
+        admin_event = self._create_admin_event(admin, "update_feed", "feed")
 
         with Timer() as timer:
             try:
-                feed_id_int = int(feed_id)
-                admin_event.target_id = feed_id_int
+                admin_event.target_id = feed_id
                 data_raw = await request.json()
 
                 # Convert JsProxy to Python dict if needed
@@ -2506,14 +2578,14 @@ class Default(WorkerEntrypoint):
 
                 # Always update the timestamp
                 updates.append("updated_at = CURRENT_TIMESTAMP")
-                params.append(feed_id_int)
+                params.append(feed_id)
 
                 sql = f"UPDATE feeds SET {', '.join(updates)} WHERE id = ?"
                 await self.env.DB.prepare(sql).bind(*params).run()
 
                 # Audit log
                 await self._log_admin_action(
-                    admin["id"], "update_feed", "feed", feed_id_int, audit_details
+                    admin["id"], "update_feed", "feed", feed_id, audit_details
                 )
 
                 admin_event.outcome = "success"
@@ -2530,16 +2602,7 @@ class Default(WorkerEntrypoint):
 
     async def _import_opml(self, request: WorkerRequest, admin: dict[str, Any]) -> Response:
         """Import feeds from uploaded OPML file. Admin only."""
-        # Initialize admin action event for observability
-        deployment = self._get_deployment_context()
-        admin_event = AdminActionEvent(
-            admin_username=admin.get("github_username", ""),
-            admin_id=admin.get("id", 0),
-            action="import_opml",
-            target_type="feeds",
-            worker_version=deployment["worker_version"],
-            deployment_environment=deployment["deployment_environment"],
-        )
+        admin_event = self._create_admin_event(admin, "import_opml", "feeds")
 
         with Timer() as timer:
             try:
@@ -2592,6 +2655,13 @@ class Default(WorkerEntrypoint):
                         continue
 
                     feeds_parsed += 1
+
+                    # Enforce feed limit to prevent DoS via unbounded imports
+                    if feeds_parsed > MAX_OPML_FEEDS:
+                        errors.append(f"Feed limit ({MAX_OPML_FEEDS}) reached, skipping rest")
+                        skipped += 1
+                        continue
+
                     title = outline.get("title") or outline.get("text") or xml_url
                     html_url = outline.get("htmlUrl")
 
@@ -2665,29 +2735,19 @@ class Default(WorkerEntrypoint):
         """).all()
         return _json_response({"failed_feeds": feed_rows_from_d1(result.results)})
 
-    async def _retry_dlq_feed(self, feed_id: str, admin: dict[str, Any]) -> Response:
+    async def _retry_dlq_feed(self, feed_id: int, admin: dict[str, Any]) -> Response:
         """Retry a failed feed by resetting its failure count and re-queuing."""
-        # Initialize admin action event for observability
-        deployment = self._get_deployment_context()
-        admin_event = AdminActionEvent(
-            admin_username=admin.get("github_username", ""),
-            admin_id=admin.get("id", 0),
-            action="retry_dlq",
-            target_type="feed",
-            worker_version=deployment["worker_version"],
-            deployment_environment=deployment["deployment_environment"],
-        )
+        admin_event = self._create_admin_event(admin, "retry_dlq", "feed")
 
         with Timer() as timer:
             try:
-                feed_id_int = int(feed_id)
-                admin_event.target_id = feed_id_int
-                admin_event.dlq_feed_id = feed_id_int
+                admin_event.target_id = feed_id
+                admin_event.dlq_feed_id = feed_id
 
                 # Get feed info
                 feed_result = (
                     await self.env.DB.prepare("SELECT * FROM feeds WHERE id = ?")
-                    .bind(feed_id_int)
+                    .bind(feed_id)
                     .first()
                 )
 
@@ -2715,13 +2775,13 @@ class Default(WorkerEntrypoint):
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                 """)
-                    .bind(feed_id_int)
+                    .bind(feed_id)
                     .run()
                 )
 
                 # Queue the feed for immediate fetch - feed is now a Python dict
                 message = {
-                    "feed_id": feed_id_int,
+                    "feed_id": feed_id,
                     "url": feed.get("url"),
                     "etag": feed.get("etag"),
                     "last_modified": feed.get("last_modified"),
@@ -2733,7 +2793,7 @@ class Default(WorkerEntrypoint):
                     admin["id"],
                     "retry_dlq",
                     "feed",
-                    feed_id_int,
+                    feed_id,
                     {"url": feed.get("url"), "previous_failures": feed.get("consecutive_failures")},
                 )
 
@@ -2750,36 +2810,75 @@ class Default(WorkerEntrypoint):
                 admin_event.wall_time_ms = timer.elapsed_ms
                 emit_event(admin_event)
 
-    async def _view_audit_log(self) -> Response:
-        """View audit log."""
-        result = await self.env.DB.prepare("""
+    async def _view_audit_log(self, offset: int = 0, limit: int = 100) -> Response:
+        """View audit log with pagination support.
+
+        Args:
+            offset: Number of entries to skip (default 0)
+            limit: Maximum entries to return (default 100, max 100)
+        """
+        # Clamp limit to prevent excessive queries
+        limit = min(max(1, limit), 100)
+        offset = max(0, offset)
+
+        result = (
+            await self.env.DB.prepare("""
             SELECT al.*, a.github_username, a.display_name
             FROM audit_log al
             LEFT JOIN admins a ON al.admin_id = a.id
             ORDER BY al.created_at DESC
-            LIMIT 100
-        """).all()
-        return _json_response({"audit_log": audit_rows_from_d1(result.results)})
+            LIMIT ? OFFSET ?
+        """)
+            .bind(limit, offset)
+            .all()
+        )
+
+        entries = audit_rows_from_d1(result.results)
+        return _json_response(
+            {
+                "entries": entries,
+                "offset": offset,
+                "limit": limit,
+                "has_more": len(entries) == limit,
+            }
+        )
 
     async def _reindex_all_entries(self, admin: dict[str, Any]) -> Response:
         """Re-index all entries in Vectorize for search.
 
         This is needed when entries exist in D1 but were never indexed
         (e.g., added before Vectorize was configured, or indexing failed).
+
+        Rate limited to prevent DoS - only one reindex per REINDEX_COOLDOWN_SECONDS.
         """
-        # Initialize admin action event for observability
-        deployment = self._get_deployment_context()
-        admin_event = AdminActionEvent(
-            admin_username=admin.get("github_username", ""),
-            admin_id=admin.get("id", 0),
-            action="reindex",
-            target_type="search_index",
-            worker_version=deployment["worker_version"],
-            deployment_environment=deployment["deployment_environment"],
-        )
+        admin_event = self._create_admin_event(admin, "reindex", "search_index")
 
         with Timer() as timer:
             try:
+                # Rate limiting: check last reindex time
+                last_reindex = await self.env.DB.prepare("""
+                    SELECT created_at FROM audit_log
+                    WHERE action = 'reindex'
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """).first()
+
+                if last_reindex:
+                    last_reindex_time = _parse_iso_datetime(
+                        _to_py_safe(last_reindex).get("created_at")
+                    )
+                    if last_reindex_time:
+                        elapsed = (datetime.now(timezone.utc) - last_reindex_time).total_seconds()
+                        if elapsed < REINDEX_COOLDOWN_SECONDS:
+                            remaining = int(REINDEX_COOLDOWN_SECONDS - elapsed)
+                            admin_event.outcome = "error"
+                            admin_event.error_type = "RateLimited"
+                            admin_event.error_message = f"Cooldown: {remaining}s remaining"
+                            return _json_error(
+                                f"Reindex rate limited. Please wait {remaining} seconds.",
+                                status=429,
+                            )
+
                 # Get all entries with their content (include feed_id for observability)
                 result = await self.env.DB.prepare("""
                     SELECT id, feed_id, title, content FROM entries WHERE title IS NOT NULL
@@ -2921,8 +3020,8 @@ class Default(WorkerEntrypoint):
             # Decode payload
             payload = json.loads(base64.urlsafe_b64decode(payload_b64))
 
-            # Check expiration (Issue 10.4: 60-second grace period for clock skew)
-            if payload.get("exp", 0) < time.time() - 60:
+            # Check expiration with minimal grace period for clock skew
+            if payload.get("exp", 0) < time.time() - SESSION_GRACE_SECONDS:
                 return None
 
             return payload

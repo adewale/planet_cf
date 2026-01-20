@@ -23,7 +23,7 @@
                 <article>
                     <h3><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
                     <p class="meta">
-                        <span class="author">{{ entry.author if entry.author and '@' not in entry.author else entry.feed_title }}</span>
+                        <span class="author">{{ entry.author if entry.author and '@' not in entry.author else (entry.feed_title or 'Unknown') }}</span>
                         {% if entry.published_at_display %}<span class="date-sep">·</span> <time datetime="{{ entry.published_at }}">{{ entry.published_at_display }}</time>{% endif %}
                     </p>
                     <div class="content">{{ entry.content | safe }}</div>
@@ -56,14 +56,14 @@
 
     <footer>
         <p><a href="/feed.atom">Atom</a> · <a href="/feed.rss">RSS</a> · <a href="/feeds.opml">OPML</a></p>
-        <p>Powered by Planet CF · <a href="/admin" style="color: #999; font-size: 0.8em;">Admin</a></p>
+        <p>Powered by Planet CF · <a href="/admin" style="color: #999; font-size: 0.8em;">Admin</a> · <span class="hint">Press <kbd>?</kbd> for shortcuts</span></p>
         <p>Last updated: {{ generated_at }}</p>
     </footer>
 
     <!-- Keyboard shortcuts help panel -->
     <div class="shortcuts-backdrop hidden" id="shortcuts-backdrop"></div>
-    <div class="shortcuts-panel hidden" id="shortcuts-panel">
-        <h3>Keyboard Shortcuts</h3>
+    <div class="shortcuts-panel hidden" id="shortcuts-panel" role="dialog" aria-labelledby="shortcuts-title" aria-modal="true">
+        <h3 id="shortcuts-title">Keyboard Shortcuts</h3>
         <dl>
             <dt><kbd>j</kbd></dt>
             <dd>Next entry</dd>
@@ -74,6 +74,7 @@
             <dt><kbd>Esc</kbd></dt>
             <dd>Close help</dd>
         </dl>
+        <button type="button" class="close-btn" id="close-shortcuts">Close</button>
     </div>
 
     <script src="/static/keyboard-nav.js"></script>

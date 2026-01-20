@@ -42,7 +42,7 @@ _EMBEDDED_TEMPLATES = {
                 <article>
                     <h3><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
                     <p class="meta">
-                        <span class="author">{{ entry.author if entry.author and '@' not in entry.author else entry.feed_title }}</span>
+                        <span class="author">{{ entry.author if entry.author and '@' not in entry.author else (entry.feed_title or 'Unknown') }}</span>
                         {% if entry.published_at_display %}<span class="date-sep">·</span> <time datetime="{{ entry.published_at }}">{{ entry.published_at_display }}</time>{% endif %}
                     </p>
                     <div class="content">{{ entry.content | safe }}</div>
@@ -75,14 +75,14 @@ _EMBEDDED_TEMPLATES = {
 
     <footer>
         <p><a href="/feed.atom">Atom</a> · <a href="/feed.rss">RSS</a> · <a href="/feeds.opml">OPML</a></p>
-        <p>Powered by Planet CF · <a href="/admin" style="color: #999; font-size: 0.8em;">Admin</a></p>
+        <p>Powered by Planet CF · <a href="/admin" style="color: #999; font-size: 0.8em;">Admin</a> · <span class="hint">Press <kbd>?</kbd> for shortcuts</span></p>
         <p>Last updated: {{ generated_at }}</p>
     </footer>
 
     <!-- Keyboard shortcuts help panel -->
     <div class="shortcuts-backdrop hidden" id="shortcuts-backdrop"></div>
-    <div class="shortcuts-panel hidden" id="shortcuts-panel">
-        <h3>Keyboard Shortcuts</h3>
+    <div class="shortcuts-panel hidden" id="shortcuts-panel" role="dialog" aria-labelledby="shortcuts-title" aria-modal="true">
+        <h3 id="shortcuts-title">Keyboard Shortcuts</h3>
         <dl>
             <dt><kbd>j</kbd></dt>
             <dd>Next entry</dd>
@@ -93,6 +93,7 @@ _EMBEDDED_TEMPLATES = {
             <dt><kbd>Esc</kbd></dt>
             <dd>Close help</dd>
         </dl>
+        <button type="button" class="close-btn" id="close-shortcuts">Close</button>
     </div>
 
     <script src="/static/keyboard-nav.js"></script>
@@ -884,6 +885,21 @@ footer a {
 
 footer a:hover { color: var(--accent-dark); }
 
+footer .hint {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+footer .hint kbd {
+    display: inline-block;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: 3px;
+    padding: 0.1rem 0.35rem;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.75rem;
+}
+
 /* Search results */
 .search-results { list-style: none; }
 
@@ -1026,6 +1042,28 @@ article.selected {
     color: var(--text-primary);
 }
 
+.shortcuts-panel .close-btn {
+    margin-top: 1rem;
+    width: 100%;
+    padding: 0.5rem;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-light);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    transition: background 0.15s ease;
+}
+
+.shortcuts-panel .close-btn:hover {
+    background: var(--bg-secondary);
+}
+
+.shortcuts-panel .close-btn:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
 .hidden {
     display: none !important;
 }
@@ -1060,7 +1098,9 @@ KEYBOARD_NAV_JS = """// Keyboard navigation for browsing entries
     const articles = document.querySelectorAll('article');
     const panel = document.getElementById('shortcuts-panel');
     const backdrop = document.getElementById('shortcuts-backdrop');
+    const closeBtn = document.getElementById('close-shortcuts');
     let current = -1;
+    let previousFocus = null;
 
     function select(index) {
         // Guard: no articles to navigate
@@ -1079,10 +1119,13 @@ KEYBOARD_NAV_JS = """// Keyboard navigation for browsing entries
         articles[current].scrollIntoView({ block: 'start', behavior: 'smooth' });
     }
 
-    function toggleHelp() {
+    function openHelp() {
         if (panel && backdrop) {
-            panel.classList.toggle('hidden');
-            backdrop.classList.toggle('hidden');
+            previousFocus = document.activeElement;
+            panel.classList.remove('hidden');
+            backdrop.classList.remove('hidden');
+            // Focus the close button for accessibility
+            if (closeBtn) closeBtn.focus();
         }
     }
 
@@ -1090,16 +1133,59 @@ KEYBOARD_NAV_JS = """// Keyboard navigation for browsing entries
         if (panel && backdrop) {
             panel.classList.add('hidden');
             backdrop.classList.add('hidden');
+            // Restore focus
+            if (previousFocus && previousFocus.focus) {
+                previousFocus.focus();
+            }
+            previousFocus = null;
         }
+    }
+
+    function toggleHelp() {
+        if (panel && !panel.classList.contains('hidden')) {
+            closeHelp();
+        } else {
+            openHelp();
+        }
+    }
+
+    function isHelpOpen() {
+        return panel && !panel.classList.contains('hidden');
     }
 
     if (backdrop) {
         backdrop.addEventListener('click', closeHelp);
     }
 
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closeHelp);
+    }
+
+    // Focus trap: keep focus within modal when open
+    if (panel) {
+        panel.addEventListener('keydown', function(e) {
+            if (e.key === 'Tab') {
+                // Only element to focus is the close button
+                if (closeBtn) {
+                    e.preventDefault();
+                    closeBtn.focus();
+                }
+            }
+        });
+    }
+
     document.addEventListener('keydown', function(e) {
-        // Ignore if typing in input/textarea
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        // Ignore if typing in input/textarea (unless in modal)
+        if (!isHelpOpen() && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+
+        // When modal is open, only handle Escape and ?
+        if (isHelpOpen()) {
+            if (e.key === 'Escape' || e.key === '?') {
+                e.preventDefault();
+                closeHelp();
+            }
+            return;
+        }
 
         if (e.key === 'j') {
             e.preventDefault();
@@ -1117,10 +1203,7 @@ KEYBOARD_NAV_JS = """// Keyboard navigation for browsing entries
         }
         if (e.key === '?') {
             e.preventDefault();
-            toggleHelp();
-        }
-        if (e.key === 'Escape') {
-            closeHelp();
+            openHelp();
         }
     });
 })();
