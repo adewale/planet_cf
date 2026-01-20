@@ -222,7 +222,7 @@ def _html_response(content: str, cache_max_age: int = 3600) -> Response:
     # Note: The hash allows our keyboard navigation script in index.html
     csp = (
         "default-src 'self'; "
-        "script-src 'self' 'sha256-Uut85sNJuDIU4Bjg+siOWXrJjsOfOznnIQpyjaSdDhY='; "
+        "script-src 'self' 'sha256-Rcpi5/y+cMYL6eSKZnsAiwJuQDG95EHE8TvJyM5KD9s='; "
         "style-src 'self' 'unsafe-inline'; "
         "img-src https: data:; "
         "frame-ancestors 'none'; "
