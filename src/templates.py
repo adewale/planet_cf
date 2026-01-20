@@ -949,6 +949,22 @@ button:hover {
     color: white;
 }
 
+/* Button variants */
+.btn {
+    padding: 0.625rem 1.25rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.95rem;
+    border: none;
+    transition: opacity 0.15s ease;
+}
+.btn:hover { opacity: 0.9; }
+.btn-sm { padding: 0.375rem 0.75rem; font-size: 0.8rem; }
+.btn-success { background: var(--success); color: white; }
+.btn-danger { background: var(--error); color: white; }
+.btn-warning { background: #f59e0b; color: white; }
+
 /* Keyboard navigation */
 article.selected {
     outline: 2px solid var(--accent);
@@ -1047,23 +1063,39 @@ KEYBOARD_NAV_JS = """// Keyboard navigation for browsing entries
     let current = -1;
 
     function select(index) {
-        if (articles[current]) articles[current].classList.remove('selected');
+        // Guard: no articles to navigate
+        if (articles.length === 0) return;
+
+        // Remove selection from current article
+        if (current >= 0 && articles[current]) {
+            articles[current].classList.remove('selected');
+        }
+
+        // Clamp index to valid range
         current = Math.max(0, Math.min(index, articles.length - 1));
+
+        // Select and scroll to new article
         articles[current].classList.add('selected');
         articles[current].scrollIntoView({ block: 'start', behavior: 'smooth' });
     }
 
     function toggleHelp() {
-        panel.classList.toggle('hidden');
-        backdrop.classList.toggle('hidden');
+        if (panel && backdrop) {
+            panel.classList.toggle('hidden');
+            backdrop.classList.toggle('hidden');
+        }
     }
 
     function closeHelp() {
-        panel.classList.add('hidden');
-        backdrop.classList.add('hidden');
+        if (panel && backdrop) {
+            panel.classList.add('hidden');
+            backdrop.classList.add('hidden');
+        }
     }
 
-    backdrop.addEventListener('click', closeHelp);
+    if (backdrop) {
+        backdrop.addEventListener('click', closeHelp);
+    }
 
     document.addEventListener('keydown', function(e) {
         // Ignore if typing in input/textarea
@@ -1075,7 +1107,13 @@ KEYBOARD_NAV_JS = """// Keyboard navigation for browsing entries
         }
         if (e.key === 'k') {
             e.preventDefault();
-            select(current - 1);
+            // Don't go before first article
+            if (current > 0) {
+                select(current - 1);
+            } else if (current === -1) {
+                // First keypress with k: select last article
+                select(articles.length - 1);
+            }
         }
         if (e.key === '?') {
             e.preventDefault();
@@ -1095,6 +1133,14 @@ KEYBOARD_NAV_JS = """// Keyboard navigation for browsing entries
 
 ADMIN_JS = """
 // Admin dashboard functionality
+
+// XSS protection helper
+function escapeHtml(text) {
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     // Tab switching
     document.querySelectorAll('.tab').forEach(function(tab) {
@@ -1121,6 +1167,68 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
     });
+
+    // Feed title editing
+    document.querySelectorAll('.feed-title-text').forEach(function(titleText) {
+        titleText.addEventListener('click', function() {
+            var container = this.closest('.feed-title');
+            container.classList.add('editing');
+            var input = container.querySelector('.feed-title-input');
+            input.focus();
+            input.select();
+        });
+    });
+
+    document.querySelectorAll('.save-title-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var container = this.closest('.feed-title');
+            var feedId = container.dataset.feedId;
+            var input = container.querySelector('.feed-title-input');
+            var titleText = container.querySelector('.feed-title-text');
+            var newTitle = input.value.trim();
+
+            fetch('/admin/feeds/' + feedId, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: newTitle })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    titleText.textContent = newTitle || 'Untitled';
+                    container.classList.remove('editing');
+                } else {
+                    alert('Failed to update title');
+                }
+            })
+            .catch(function() {
+                alert('Failed to update title');
+            });
+        });
+    });
+
+    document.querySelectorAll('.cancel-title-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var container = this.closest('.feed-title');
+            var input = container.querySelector('.feed-title-input');
+            var titleText = container.querySelector('.feed-title-text');
+            input.value = titleText.textContent === 'Untitled' ? '' : titleText.textContent;
+            container.classList.remove('editing');
+        });
+    });
+
+    // Handle Enter/Escape in title input
+    document.querySelectorAll('.feed-title-input').forEach(function(input) {
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                this.closest('.feed-title').querySelector('.save-title-btn').click();
+            }
+            if (e.key === 'Escape') {
+                this.closest('.feed-title').querySelector('.cancel-title-btn').click();
+            }
+        });
+    });
 });
 
 function loadDLQ() {
@@ -1134,10 +1242,10 @@ function loadDLQ() {
             }
             list.innerHTML = data.feeds.map(function(f) {
                 return '<div class="dlq-item">' +
-                    '<strong>' + (f.title || 'Untitled') + '</strong><br>' +
-                    '<small>' + f.url + '</small><br>' +
+                    '<strong>' + escapeHtml(f.title || 'Untitled') + '</strong><br>' +
+                    '<small>' + escapeHtml(f.url) + '</small><br>' +
                     '<small>Failures: ' + f.consecutive_failures + '</small>' +
-                    '<form action="/admin/feeds/' + f.id + '/retry" method="POST" style="margin-top:0.5rem">' +
+                    '<form action="/admin/dlq/' + f.id + '/retry" method="POST" style="margin-top:0.5rem">' +
                     '<button type="submit" class="btn btn-sm btn-warning">Retry</button></form>' +
                     '</div>';
             }).join('');
@@ -1155,9 +1263,9 @@ function loadAuditLog() {
             }
             list.innerHTML = data.entries.map(function(e) {
                 return '<div class="audit-item">' +
-                    '<span class="audit-action">' + e.action + '</span> ' +
-                    '<span class="audit-time">' + e.created_at + '</span>' +
-                    (e.details ? '<div class="audit-details">' + e.details + '</div>' : '') +
+                    '<span class="audit-action">' + escapeHtml(e.action) + '</span> ' +
+                    '<span class="audit-time">' + escapeHtml(e.created_at) + '</span>' +
+                    (e.details ? '<div class="audit-details">' + escapeHtml(e.details) + '</div>' : '') +
                     '</div>';
             }).join('');
         });

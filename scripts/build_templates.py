@@ -108,6 +108,14 @@ KEYBOARD_NAV_JS = """'''
 
 ADMIN_JS = """
 // Admin dashboard functionality
+
+// XSS protection helper
+function escapeHtml(text) {
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     // Tab switching
     document.querySelectorAll('.tab').forEach(function(tab) {
@@ -134,6 +142,68 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
     });
+
+    // Feed title editing
+    document.querySelectorAll('.feed-title-text').forEach(function(titleText) {
+        titleText.addEventListener('click', function() {
+            var container = this.closest('.feed-title');
+            container.classList.add('editing');
+            var input = container.querySelector('.feed-title-input');
+            input.focus();
+            input.select();
+        });
+    });
+
+    document.querySelectorAll('.save-title-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var container = this.closest('.feed-title');
+            var feedId = container.dataset.feedId;
+            var input = container.querySelector('.feed-title-input');
+            var titleText = container.querySelector('.feed-title-text');
+            var newTitle = input.value.trim();
+
+            fetch('/admin/feeds/' + feedId, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: newTitle })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    titleText.textContent = newTitle || 'Untitled';
+                    container.classList.remove('editing');
+                } else {
+                    alert('Failed to update title');
+                }
+            })
+            .catch(function() {
+                alert('Failed to update title');
+            });
+        });
+    });
+
+    document.querySelectorAll('.cancel-title-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var container = this.closest('.feed-title');
+            var input = container.querySelector('.feed-title-input');
+            var titleText = container.querySelector('.feed-title-text');
+            input.value = titleText.textContent === 'Untitled' ? '' : titleText.textContent;
+            container.classList.remove('editing');
+        });
+    });
+
+    // Handle Enter/Escape in title input
+    document.querySelectorAll('.feed-title-input').forEach(function(input) {
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                this.closest('.feed-title').querySelector('.save-title-btn').click();
+            }
+            if (e.key === 'Escape') {
+                this.closest('.feed-title').querySelector('.cancel-title-btn').click();
+            }
+        });
+    });
 });
 
 function loadDLQ() {
@@ -147,10 +217,10 @@ function loadDLQ() {
             }
             list.innerHTML = data.feeds.map(function(f) {
                 return '<div class="dlq-item">' +
-                    '<strong>' + (f.title || 'Untitled') + '</strong><br>' +
-                    '<small>' + f.url + '</small><br>' +
+                    '<strong>' + escapeHtml(f.title || 'Untitled') + '</strong><br>' +
+                    '<small>' + escapeHtml(f.url) + '</small><br>' +
                     '<small>Failures: ' + f.consecutive_failures + '</small>' +
-                    '<form action="/admin/feeds/' + f.id + '/retry" method="POST" style="margin-top:0.5rem">' +
+                    '<form action="/admin/dlq/' + f.id + '/retry" method="POST" style="margin-top:0.5rem">' +
                     '<button type="submit" class="btn btn-sm btn-warning">Retry</button></form>' +
                     '</div>';
             }).join('');
@@ -168,9 +238,9 @@ function loadAuditLog() {
             }
             list.innerHTML = data.entries.map(function(e) {
                 return '<div class="audit-item">' +
-                    '<span class="audit-action">' + e.action + '</span> ' +
-                    '<span class="audit-time">' + e.created_at + '</span>' +
-                    (e.details ? '<div class="audit-details">' + e.details + '</div>' : '') +
+                    '<span class="audit-action">' + escapeHtml(e.action) + '</span> ' +
+                    '<span class="audit-time">' + escapeHtml(e.created_at) + '</span>' +
+                    (e.details ? '<div class="audit-details">' + escapeHtml(e.details) + '</div>' : '') +
                     '</div>';
             }).join('');
         });
