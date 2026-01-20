@@ -30,6 +30,7 @@ TEMPLATE_FILES = [
 ]
 
 CSS_FILE = "style.css"
+KEYBOARD_NAV_JS_FILE = "keyboard-nav.js"
 
 
 def read_template(name: str) -> str:
@@ -56,6 +57,9 @@ def build_templates():
 
     # Read CSS
     css_content = read_template(CSS_FILE)
+
+    # Read keyboard navigation JS
+    keyboard_nav_js = read_template(KEYBOARD_NAV_JS_FILE)
 
     # Generate Python code
     output = '''# src/templates.py
@@ -88,6 +92,10 @@ _EMBEDDED_TEMPLATES = {
 
 STATIC_CSS = """'''
     output += escape_for_python(css_content)
+    output += '''"""
+
+KEYBOARD_NAV_JS = """'''
+    output += escape_for_python(keyboard_nav_js)
     output += '''"""
 
 '''

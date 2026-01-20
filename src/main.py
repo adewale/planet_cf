@@ -35,6 +35,7 @@ from observability import (
 )
 from templates import (
     ADMIN_JS,
+    KEYBOARD_NAV_JS,
     STATIC_CSS,
     TEMPLATE_ADMIN_DASHBOARD,
     TEMPLATE_ADMIN_LOGIN,
@@ -213,16 +214,15 @@ def _html_response(content: str, cache_max_age: int = 3600) -> Response:
     """Create an HTML response with caching and security headers."""
     # Content Security Policy - defense in depth against XSS
     # - default-src 'self': Only allow same-origin resources by default
-    # - script-src 'self' + hash: Same-origin scripts + specific inline script for keyboard nav
+    # - script-src 'self': Only allow same-origin scripts (external JS files)
     # - style-src 'self' 'unsafe-inline': Allow inline styles (needed for templates)
     # - img-src https: data:: HTTPS images + data URIs (for inline images)
     # - frame-ancestors 'none': Prevent clickjacking (cannot be framed)
     # - base-uri 'self': Prevent base tag injection attacks
     # - form-action 'self': Forms can only submit to same origin
-    # Note: The hash allows our keyboard navigation script in index.html
     csp = (
         "default-src 'self'; "
-        "script-src 'self' 'sha256-Rcpi5/y+cMYL6eSKZnsAiwJuQDG95EHE8TvJyM5KD9s='; "
+        "script-src 'self'; "
         "style-src 'self' 'unsafe-inline'; "
         "img-src https: data:; "
         "frame-ancestors 'none'; "
@@ -2071,6 +2071,15 @@ class Default(WorkerEntrypoint):
                     "Cache-Control": "public, max-age=86400",
                 },
             )
+        if path == "/static/keyboard-nav.js":
+            js = self._get_keyboard_nav_js()
+            return Response(
+                js,
+                headers={
+                    "Content-Type": "application/javascript",
+                    "Cache-Control": "public, max-age=86400",
+                },
+            )
         return _json_error("Not Found", status=404)
 
     def _get_default_css(self) -> str:
@@ -2080,6 +2089,10 @@ class Default(WorkerEntrypoint):
     def _get_admin_js(self) -> str:
         """Return admin dashboard JavaScript from templates module."""
         return ADMIN_JS
+
+    def _get_keyboard_nav_js(self) -> str:
+        """Return keyboard navigation JavaScript from templates module."""
+        return KEYBOARD_NAV_JS
 
     # =========================================================================
     # Admin Routes
