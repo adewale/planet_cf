@@ -7,6 +7,7 @@ from src.templates import (
     ADMIN_JS,
     STATIC_CSS,
     TEMPLATE_ADMIN_DASHBOARD,
+    TEMPLATE_ADMIN_ERROR,
     TEMPLATE_ADMIN_LOGIN,
     TEMPLATE_FEED_ATOM,
     TEMPLATE_FEED_RSS,
@@ -68,6 +69,32 @@ class TestRenderTemplate:
         )
         assert "Test Planet" in html
         assert "login" in html.lower()
+
+    def test_renders_admin_error(self):
+        """Admin error template renders with error message."""
+        html = render_template(
+            TEMPLATE_ADMIN_ERROR,
+            planet={"name": "Test Planet"},
+            title="Test Error Title",
+            message="This is a test error message.",
+            back_url="/admin",
+        )
+        assert "Test Planet" in html
+        assert "Test Error Title" in html
+        assert "This is a test error message." in html
+        assert "/admin" in html
+        assert "<!doctype html>" in html.lower()
+
+    def test_renders_admin_error_without_title(self):
+        """Admin error template renders default title when not provided."""
+        html = render_template(
+            TEMPLATE_ADMIN_ERROR,
+            planet={"name": "Test Planet"},
+            message="Error occurred.",
+            back_url="/admin",
+        )
+        assert "Something went wrong" in html
+        assert "Error occurred." in html
 
     def test_renders_atom_feed(self):
         """Atom feed template renders valid XML."""

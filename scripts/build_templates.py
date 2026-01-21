@@ -23,6 +23,7 @@ TEMPLATE_FILES = [
     "index.html",
     "search.html",
     "admin/dashboard.html",
+    "admin/error.html",
     "admin/login.html",
     "feed.atom.xml",
     "feed.rss.xml",
@@ -163,7 +164,7 @@ document.addEventListener('DOMContentLoaded', function() {
             var newTitle = input.value.trim();
 
             fetch('/admin/feeds/' + feedId, {
-                method: 'POST',
+                method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ title: newTitle })
             })
@@ -307,6 +308,7 @@ def render_template(name: str, **context) -> str:
 TEMPLATE_INDEX = "index.html"
 TEMPLATE_SEARCH = "search.html"
 TEMPLATE_ADMIN_DASHBOARD = "admin/dashboard.html"
+TEMPLATE_ADMIN_ERROR = "admin/error.html"
 TEMPLATE_ADMIN_LOGIN = "admin/login.html"
 TEMPLATE_FEED_ATOM = "feed.atom.xml"
 TEMPLATE_FEED_RSS = "feed.rss.xml"

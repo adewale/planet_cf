@@ -116,6 +116,11 @@ _EMBEDDED_TEMPLATES = {
 
     <div class="container">
         <main class="search-page">
+            {% if error %}
+            <div class="search-error">
+                <p>{{ error }}</p>
+            </div>
+            {% else %}
             <h2>Results for "{{ query }}"</h2>
             {% if results %}
             <ul class="search-results">
@@ -128,6 +133,7 @@ _EMBEDDED_TEMPLATES = {
             </ul>
             {% else %}
             <p>No results found for "{{ query }}"</p>
+            {% endif %}
             {% endif %}
         </main>
 
@@ -324,6 +330,90 @@ _EMBEDDED_TEMPLATES = {
     </div><!-- .admin-content -->
 
     <script src="/static/admin.js"></script>
+</body>
+</html>
+""",
+    "admin/error.html": """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error - {{ planet.name }} Admin</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .error-card {
+            background: white;
+            padding: 3rem;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+        }
+        .icon { font-size: 3rem; margin-bottom: 1rem; }
+        h1 { color: #333; margin-bottom: 0.5rem; font-size: 1.5rem; }
+        .error-message {
+            color: #666;
+            margin-bottom: 2rem;
+            line-height: 1.5;
+        }
+        .actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.875rem 1.5rem;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 1rem;
+            transition: background 0.2s, transform 0.1s;
+        }
+        .btn:hover { transform: translateY(-1px); }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .btn-primary:hover { background: #5a6fd6; }
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+        .btn-secondary:hover { background: #e0e0e0; }
+        .footer { margin-top: 2rem; color: #999; font-size: 0.875rem; }
+        .footer a { color: #667eea; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="error-card">
+        <div class="icon">&#9888;</div>
+        <h1>{{ title or 'Something went wrong' }}</h1>
+        <p class="error-message">{{ message }}</p>
+
+        <div class="actions">
+            {% if back_url %}
+            <a href="{{ back_url }}" class="btn btn-primary">&#8592; Go Back</a>
+            {% endif %}
+            <a href="/admin" class="btn btn-secondary">Admin Dashboard</a>
+        </div>
+
+        <p class="footer">
+            <a href="/">&#8592; Back to {{ planet.name }}</a>
+        </p>
+    </div>
 </body>
 </html>
 """,
@@ -900,6 +990,20 @@ footer .hint kbd {
     font-size: 0.75rem;
 }
 
+/* Search errors */
+.search-error {
+    background: var(--accent-light);
+    border: 1px solid var(--accent-subtle);
+    border-radius: 8px;
+    padding: 1rem 1.5rem;
+    margin-bottom: 1.5rem;
+    color: var(--text-secondary);
+}
+
+.search-error p {
+    margin: 0;
+}
+
 /* Search results */
 .search-results { list-style: none; }
 
@@ -1271,7 +1375,7 @@ document.addEventListener('DOMContentLoaded', function() {
             var newTitle = input.value.trim();
 
             fetch('/admin/feeds/' + feedId, {
-                method: 'POST',
+                method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ title: newTitle })
             })
@@ -1416,6 +1520,7 @@ def render_template(name: str, **context) -> str:
 TEMPLATE_INDEX = "index.html"
 TEMPLATE_SEARCH = "search.html"
 TEMPLATE_ADMIN_DASHBOARD = "admin/dashboard.html"
+TEMPLATE_ADMIN_ERROR = "admin/error.html"
 TEMPLATE_ADMIN_LOGIN = "admin/login.html"
 TEMPLATE_FEED_ATOM = "feed.atom.xml"
 TEMPLATE_FEED_RSS = "feed.rss.xml"

@@ -445,6 +445,20 @@ footer .hint kbd {
     font-size: 0.75rem;
 }
 
+/* Search errors */
+.search-error {
+    background: var(--accent-light);
+    border: 1px solid var(--accent-subtle);
+    border-radius: 8px;
+    padding: 1rem 1.5rem;
+    margin-bottom: 1.5rem;
+    color: var(--text-secondary);
+}
+
+.search-error p {
+    margin: 0;
+}
+
 /* Search results */
 .search-results { list-style: none; }
 

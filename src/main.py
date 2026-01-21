@@ -38,6 +38,7 @@ from templates import (
     KEYBOARD_NAV_JS,
     STATIC_CSS,
     TEMPLATE_ADMIN_DASHBOARD,
+    TEMPLATE_ADMIN_ERROR,
     TEMPLATE_ADMIN_LOGIN,
     TEMPLATE_FEED_ATOM,
     TEMPLATE_FEED_RSS,
@@ -1711,6 +1712,29 @@ class Default(WorkerEntrypoint):
             "link": getattr(self.env, "PLANET_URL", None) or "https://planetcf.com",
         }
 
+    def _admin_error_response(
+        self,
+        message: str,
+        title: str | None = None,
+        status: int = 400,
+        back_url: str | None = "/admin",
+    ) -> Response:
+        """Return an HTML error page for admin/auth errors.
+
+        For browser-initiated requests (form submissions, OAuth callbacks),
+        users expect HTML responses, not JSON. This provides a user-friendly
+        error page instead of raw JSON.
+        """
+        planet = self._get_planet_config()
+        html = render_template(
+            TEMPLATE_ADMIN_ERROR,
+            planet=planet,
+            title=title,
+            message=message,
+            back_url=back_url,
+        )
+        return _html_response(html, cache_max_age=0)
+
     def _get_retention_days(self) -> int:
         """Get retention days from environment, default 90."""
         try:
@@ -1891,13 +1915,31 @@ class Default(WorkerEntrypoint):
                 event.outcome = "error"
                 event.error_type = "ValidationError"
                 event.error_message = "Query too short"
-            return _json_error("Query too short")
+            # Return HTML error page for browser UX, not JSON
+            planet = self._get_planet_config()
+            html = render_template(
+                TEMPLATE_SEARCH,
+                planet=planet,
+                query=query,
+                results=[],
+                error="Please enter at least 2 characters to search.",
+            )
+            return _html_response(html, cache_max_age=0)
         if len(query) > MAX_SEARCH_QUERY_LENGTH:
             if event:
                 event.outcome = "error"
                 event.error_type = "ValidationError"
                 event.error_message = "Query too long"
-            return _json_error("Query too long (max 1000 characters)")
+            # Return HTML error page for browser UX, not JSON
+            planet = self._get_planet_config()
+            html = render_template(
+                TEMPLATE_SEARCH,
+                planet=planet,
+                query=query[:50] + "...",
+                results=[],
+                error="Search query is too long. Please use fewer than 1000 characters.",
+            )
+            return _html_response(html, cache_max_age=0)
 
         # Get search configuration
         top_k = self._get_search_top_k()
@@ -2412,14 +2454,19 @@ class Default(WorkerEntrypoint):
                     admin_event.outcome = "error"
                     admin_event.error_type = "ValidationError"
                     admin_event.error_message = "URL is required"
-                    return _json_error("URL is required")
+                    return self._admin_error_response(
+                        "Please provide a feed URL.", title="URL Required"
+                    )
 
                 # Validate URL (SSRF protection)
                 if not self._is_safe_url(url):
                     admin_event.outcome = "error"
                     admin_event.error_type = "ValidationError"
                     admin_event.error_message = "Invalid or unsafe URL"
-                    return _json_error("Invalid or unsafe URL")
+                    return self._admin_error_response(
+                        "The URL provided is invalid or points to an unsafe location.",
+                        title="Invalid URL",
+                    )
 
                 # Validate the feed by fetching and parsing it
                 validation = await self._validate_feed_url(url)
@@ -2428,7 +2475,10 @@ class Default(WorkerEntrypoint):
                     admin_event.outcome = "error"
                     admin_event.error_type = "ValidationError"
                     admin_event.error_message = validation["error"][:ERROR_MESSAGE_MAX_LENGTH]
-                    return _json_error(f"Feed validation failed: {validation['error']}")
+                    return self._admin_error_response(
+                        f"Could not validate feed: {validation['error']}",
+                        title="Feed Validation Failed",
+                    )
 
                 # Use extracted title if admin didn't provide one
                 if not title:
@@ -2484,7 +2534,11 @@ class Default(WorkerEntrypoint):
                 admin_event.outcome = "error"
                 admin_event.error_type = type(e).__name__
                 admin_event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
-                return _json_error(str(e), status=500)
+                return self._admin_error_response(
+                    "An unexpected error occurred while adding the feed. Please try again.",
+                    title="Error Adding Feed",
+                    status=500,
+                )
             finally:
                 admin_event.wall_time_ms = timer.elapsed_ms
                 emit_event(admin_event)
@@ -2511,7 +2565,11 @@ class Default(WorkerEntrypoint):
                     admin_event.outcome = "error"
                     admin_event.error_type = "NotFound"
                     admin_event.error_message = "Feed not found"
-                    return _json_error("Feed not found", status=404)
+                    return self._admin_error_response(
+                        "The feed you're trying to delete could not be found.",
+                        title="Feed Not Found",
+                        status=404,
+                    )
 
                 # Delete feed (entries will cascade)
                 await self.env.DB.prepare("DELETE FROM feeds WHERE id = ?").bind(feed_id).run()
@@ -2534,7 +2592,11 @@ class Default(WorkerEntrypoint):
                 admin_event.outcome = "error"
                 admin_event.error_type = type(e).__name__
                 admin_event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
-                return _json_error(str(e), status=500)
+                return self._admin_error_response(
+                    "An unexpected error occurred while deleting the feed. Please try again.",
+                    title="Error Deleting Feed",
+                    status=500,
+                )
             finally:
                 admin_event.wall_time_ms = timer.elapsed_ms
                 emit_event(admin_event)
@@ -2615,7 +2677,10 @@ class Default(WorkerEntrypoint):
                     admin_event.outcome = "error"
                     admin_event.error_type = "ValidationError"
                     admin_event.error_message = "No file uploaded"
-                    return _json_error("No file uploaded")
+                    return self._admin_error_response(
+                        "Please select an OPML file to upload.",
+                        title="No File Selected",
+                    )
 
                 # Handle both JsProxy File and test mock
                 if hasattr(opml_file, "text"):
@@ -2642,7 +2707,10 @@ class Default(WorkerEntrypoint):
                     admin_event.outcome = "error"
                     admin_event.error_type = "ParseError"
                     admin_event.error_message = "Invalid OPML format"
-                    return _json_error("Invalid OPML format")
+                    return self._admin_error_response(
+                        "The uploaded file is not a valid OPML file. Please check the file format.",
+                        title="Invalid OPML Format",
+                    )
 
                 imported = 0
                 skipped = 0
@@ -2709,7 +2777,11 @@ class Default(WorkerEntrypoint):
                 admin_event.outcome = "error"
                 admin_event.error_type = type(e).__name__
                 admin_event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
-                return _json_error(str(e), status=500)
+                return self._admin_error_response(
+                    "An unexpected error occurred while importing the OPML file. Please try again.",
+                    title="Import Error",
+                    status=500,
+                )
             finally:
                 admin_event.wall_time_ms = timer.elapsed_ms
                 emit_event(admin_event)
@@ -2758,7 +2830,11 @@ class Default(WorkerEntrypoint):
                     admin_event.outcome = "error"
                     admin_event.error_type = "NotFound"
                     admin_event.error_message = "Feed not found"
-                    return _json_error("Feed not found", status=404)
+                    return self._admin_error_response(
+                        "The feed you're trying to retry could not be found.",
+                        title="Feed Not Found",
+                        status=404,
+                    )
 
                 # Capture original error for observability
                 admin_event.dlq_original_error = feed.get("fetch_error", "")[
@@ -2805,7 +2881,11 @@ class Default(WorkerEntrypoint):
                 admin_event.error_type = type(e).__name__
                 admin_event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
                 _log_op("dlq_retry_error", feed_id=feed_id, error=str(e))
-                return _json_error(str(e), status=500)
+                return self._admin_error_response(
+                    "An unexpected error occurred while retrying the feed. Please try again.",
+                    title="Retry Error",
+                    status=500,
+                )
             finally:
                 admin_event.wall_time_ms = timer.elapsed_ms
                 emit_event(admin_event)
@@ -3086,7 +3166,11 @@ class Default(WorkerEntrypoint):
                     event.oauth_success = False
                     event.error_type = "ValidationError"
                     event.error_message = "Missing authorization code"
-                return _json_error("Missing authorization code", status=400)
+                return self._admin_error_response(
+                    "GitHub did not provide an authorization code. Please try signing in again.",
+                    title="Authentication Failed",
+                    status=400,
+                )
 
             # Verify state parameter matches cookie (CSRF protection)
             cookies = SafeHeaders(request).cookie
@@ -3102,7 +3186,11 @@ class Default(WorkerEntrypoint):
                     event.oauth_success = False
                     event.error_type = "CSRFError"
                     event.error_message = "Invalid state parameter"
-                return _json_error("Invalid state parameter", status=400)
+                return self._admin_error_response(
+                    "Security verification failed. Please try signing in again.",
+                    title="Authentication Failed",
+                    status=400,
+                )
 
             client_id = getattr(self.env, "GITHUB_CLIENT_ID", "")
             client_secret = getattr(self.env, "GITHUB_CLIENT_SECRET", "")
@@ -3128,7 +3216,11 @@ class Default(WorkerEntrypoint):
                     event.error_message = (
                         f"GitHub token exchange failed: {token_response.status_code}"
                     )
-                return _json_error("Failed to exchange authorization code", status=502)
+                return self._admin_error_response(
+                    "Could not complete authentication with GitHub. Please try again.",
+                    title="Authentication Failed",
+                    status=502,
+                )
 
             token_data = token_response.json()
             access_token = token_data.get("access_token")
@@ -3147,7 +3239,11 @@ class Default(WorkerEntrypoint):
                     event.error_message = f"GitHub OAuth failed: {error_desc}"[
                         :ERROR_MESSAGE_MAX_LENGTH
                     ]
-                return _json_error(f"GitHub OAuth failed: {error_desc}", status=400)
+                return self._admin_error_response(
+                    "GitHub authentication was not completed. Please try signing in again.",
+                    title="Authentication Failed",
+                    status=400,
+                )
 
             # Fetch user info using centralized safe_http_fetch
             github_headers = {
@@ -3173,7 +3269,11 @@ class Default(WorkerEntrypoint):
                     event.oauth_success = False
                     event.error_type = "GitHubAPIError"
                     event.error_message = f"GitHub API error: {user_response.status_code}"
-                return _json_error(f"GitHub API error: {user_response.status_code}", status=502)
+                return self._admin_error_response(
+                    "Could not retrieve your GitHub profile. Please try again.",
+                    title="Authentication Failed",
+                    status=502,
+                )
 
             user_data = user_response.json()
             github_username = user_data.get("login")
@@ -3197,7 +3297,12 @@ class Default(WorkerEntrypoint):
                     event.oauth_success = False
                     event.error_type = "UnauthorizedError"
                     event.error_message = f"User {github_username} is not an admin"
-                return _json_error("Unauthorized: Not an admin", status=403)
+                return self._admin_error_response(
+                    "Your GitHub account is not authorized to access the admin area.",
+                    title="Access Denied",
+                    status=403,
+                    back_url="/",
+                )
 
             # Update admin's github_id and last_login_at
             await (
@@ -3255,7 +3360,11 @@ class Default(WorkerEntrypoint):
                 event.oauth_success = False
                 event.error_type = type(e).__name__
                 event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
-            return _json_error("Authentication failed. Please try again.", status=500)
+            return self._admin_error_response(
+                "An unexpected error occurred during authentication. Please try again.",
+                title="Authentication Failed",
+                status=500,
+            )
 
     def _create_signed_cookie(self, payload: dict[str, Any]) -> str:
         """Create an HMAC-signed cookie.
