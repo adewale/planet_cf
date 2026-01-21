@@ -500,6 +500,19 @@ class TestEventEdgeCases:
         assert event.search_query is None
         assert event.search_results_total is None
 
+    def test_request_event_generates_correlation_id(self):
+        """RequestEvent auto-generates correlation_id."""
+        event = RequestEvent(method="GET", path="/")
+        assert event.correlation_id != ""
+        assert len(event.correlation_id) == 16
+        # Should be valid hex
+        int(event.correlation_id, 16)
+
+    def test_request_event_preserves_custom_correlation_id(self):
+        """RequestEvent preserves custom correlation_id if provided."""
+        event = RequestEvent(method="GET", path="/", correlation_id="custom1234567890ab")
+        assert event.correlation_id == "custom1234567890ab"
+
     def test_scheduler_event_generates_correlation_id(self):
         """SchedulerEvent auto-generates correlation_id."""
         event = SchedulerEvent()

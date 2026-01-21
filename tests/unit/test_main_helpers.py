@@ -373,7 +373,7 @@ class TestLogError:
     """Tests for _log_error helper function."""
 
     def test_logs_error_type_and_message(self, caplog):
-        """Logs error type and truncated message via logging module."""
+        """Logs error type and truncated message via logging module at ERROR level."""
         import logging
 
         logger = logging.getLogger("src.main")
@@ -385,6 +385,8 @@ class TestLogError:
                 _log_error("test_event", error, extra_field="extra_value")
 
             assert len(caplog.records) == 1
+            # Verify it logs at ERROR level (not INFO)
+            assert caplog.records[0].levelno == logging.ERROR
             output = json.loads(caplog.records[0].message)
 
             assert output["event_type"] == "test_event"

@@ -62,6 +62,7 @@ class RequestEvent:
     # Identity
     event_type: str = field(default="request", init=False)
     request_id: str = ""
+    correlation_id: str = ""  # For tracing request chains (e.g., from scheduler)
     timestamp: str = ""
 
     # Request context
@@ -115,11 +116,13 @@ class RequestEvent:
     deployment_environment: str = ""  # Set from DEPLOYMENT_ENVIRONMENT env var
 
     def __post_init__(self) -> None:
-        """Initialize timestamp and request_id if not provided."""
+        """Initialize timestamp, request_id, and correlation_id if not provided."""
         if not self.timestamp:
             self.timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         if not self.request_id:
             self.request_id = generate_request_id()
+        if not self.correlation_id:
+            self.correlation_id = generate_request_id()
 
 
 # =============================================================================

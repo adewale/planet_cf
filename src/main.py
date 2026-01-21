@@ -199,15 +199,17 @@ def _truncate_error(error: str | Exception, max_length: int = ERROR_MESSAGE_MAX_
 def _log_error(event_type: str, exception: Exception, **kwargs: LogKwargs) -> None:
     """Log an error event with standardized exception formatting.
 
-    Convenience wrapper around _log_op for error logging that handles
-    exception type and message extraction consistently.
+    Uses logger.error() level for error events, making them easily
+    distinguishable from info-level operational logs.
     """
-    _log_op(
-        event_type,
-        error_type=type(exception).__name__,
-        error=_truncate_error(exception),
+    event = {
+        "event_type": event_type,
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "error_type": type(exception).__name__,
+        "error": _truncate_error(exception),
         **kwargs,
-    )
+    }
+    _logger.error(json.dumps(event))
 
 
 def _get_display_author(author: str | None, feed_title: str | None) -> str:
@@ -477,11 +479,20 @@ class Default(WorkerEntrypoint):
         """Get deployment context from environment for observability.
 
         Returns dict with:
-        - worker_version: Deployment version (e.g., "1.2.3" or commit hash)
+        - worker_version: Version ID from VERSION_METADATA binding (auto-set by Cloudflare)
         - deployment_environment: Environment name (e.g., "production", "staging")
         """
+        # Get version from VERSION_METADATA binding if available
+        version_metadata = getattr(self.env, "VERSION_METADATA", None)
+        if version_metadata:
+            # VERSION_METADATA has .id (version ID) and .tag (optional tag)
+            worker_version = getattr(version_metadata, "id", None) or ""
+        else:
+            # Fallback to env var if binding not available
+            worker_version = getattr(self.env, "DEPLOYMENT_VERSION", None) or ""
+
         return {
-            "worker_version": getattr(self.env, "DEPLOYMENT_VERSION", None) or "",
+            "worker_version": worker_version,
             "deployment_environment": getattr(self.env, "DEPLOYMENT_ENVIRONMENT", None) or "",
         }
 

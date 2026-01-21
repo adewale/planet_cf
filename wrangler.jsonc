@@ -22,7 +22,10 @@
     "RETENTION_DAYS": "90",
     "RETENTION_MAX_ENTRIES_PER_FEED": "100",
     "FEED_TIMEOUT_SECONDS": "60",
-    "HTTP_TIMEOUT_SECONDS": "30"
+    "HTTP_TIMEOUT_SECONDS": "30",
+    // Observability context
+    "DEPLOYMENT_ENVIRONMENT": "production"
+    // DEPLOYMENT_VERSION is set dynamically via VERSION_METADATA binding below
     // Search configuration (optional - uses defaults if not set):
     // "EMBEDDING_MAX_CHARS": "2000",       // Max chars to embed per entry
     // "SEARCH_SCORE_THRESHOLD": "0.3",     // Min cosine similarity (0.0-1.0)
@@ -70,6 +73,11 @@
   // Workers AI (for generating embeddings)
   "ai": {
     "binding": "AI"
+  },
+
+  // Version metadata (for observability)
+  "version_metadata": {
+    "binding": "VERSION_METADATA"
   },
 
   // Queues: Scheduler -> Fetcher
