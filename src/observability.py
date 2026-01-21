@@ -68,6 +68,7 @@ class RequestEvent:
     # === Search fields (null for non-search routes) ===
     search_query: str | None = None
     search_query_length: int | None = None
+    search_words_truncated: bool | None = None  # True if query exceeded MAX_SEARCH_WORDS
     search_embedding_ms: float | None = None
     search_vectorize_ms: float | None = None
     search_d1_ms: float | None = None

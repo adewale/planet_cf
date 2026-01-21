@@ -42,7 +42,7 @@ _EMBEDDED_TEMPLATES = {
                 <article>
                     <h3><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
                     <p class="meta">
-                        <span class="author">{{ entry.author if entry.author and '@' not in entry.author else (entry.feed_title or 'Unknown') }}</span>
+                        <span class="author">{{ entry.display_author }}</span>
                         {% if entry.published_at_display %}<span class="date-sep">·</span> <time datetime="{{ entry.published_at }}">{{ entry.published_at_display }}</time>{% endif %}
                     </p>
                     <div class="content">{{ entry.content | safe }}</div>
@@ -122,12 +122,15 @@ _EMBEDDED_TEMPLATES = {
             </div>
             {% else %}
             <h2>Results for "{{ query }}"</h2>
+            {% if words_truncated %}
+            <p class="search-notice">Note: Your search was limited to the first {{ max_search_words }} words.</p>
+            {% endif %}
             {% if results %}
             <ul class="search-results">
                 {% for entry in results %}
                 <li>
                     <h3><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
-                    <p class="meta">{{ entry.author if entry.author and '@' not in entry.author else entry.feed_title }}</p>
+                    <p class="meta">{{ entry.display_author }}</p>
                 </li>
                 {% endfor %}
             </ul>
@@ -1002,6 +1005,16 @@ footer .hint kbd {
 
 .search-error p {
     margin: 0;
+}
+
+.search-notice {
+    background: #f0f7ff;
+    border: 1px solid #c9e0ff;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
 }
 
 /* Search results */

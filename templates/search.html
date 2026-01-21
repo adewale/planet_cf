@@ -20,12 +20,15 @@
             </div>
             {% else %}
             <h2>Results for "{{ query }}"</h2>
+            {% if words_truncated %}
+            <p class="search-notice">Note: Your search was limited to the first {{ max_search_words }} words.</p>
+            {% endif %}
             {% if results %}
             <ul class="search-results">
                 {% for entry in results %}
                 <li>
                     <h3><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
-                    <p class="meta">{{ entry.author if entry.author and '@' not in entry.author else entry.feed_title }}</p>
+                    <p class="meta">{{ entry.display_author }}</p>
                 </li>
                 {% endfor %}
             </ul>

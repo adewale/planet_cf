@@ -88,6 +88,25 @@ FeedParserDict: TypeAlias = Any
 #: Logging kwargs - intentionally accepts any JSON-serializable values
 LogKwargs: TypeAlias = Any
 
+
+# =============================================================================
+# Custom Exceptions
+# =============================================================================
+
+
+class RateLimitError(Exception):
+    """Raised when a feed returns 429/503 with Retry-After.
+
+    This is a transient condition, not a feed failure. The feed should be
+    retried later without incrementing consecutive_failures.
+    """
+
+    def __init__(self, message: str, retry_after: str | None = None):
+        """Initialize rate limit error with optional retry-after value."""
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
 # =============================================================================
 # Configuration
 # =============================================================================
@@ -150,6 +169,51 @@ def _log_op(event_type: str, **kwargs: LogKwargs) -> None:
         **kwargs,
     }
     print(json.dumps(event))
+
+
+def _truncate_error(error: str | Exception, max_length: int = ERROR_MESSAGE_MAX_LENGTH) -> str:
+    """Truncate error message with indicator if needed.
+
+    Unlike plain slicing, this adds an ellipsis indicator when truncation occurs,
+    making it clear to readers that the message was cut off.
+    """
+    error_str = str(error)
+    if len(error_str) <= max_length:
+        return error_str
+    return error_str[: max_length - 3] + "..."
+
+
+def _log_error(event_type: str, exception: Exception, **kwargs: LogKwargs) -> None:
+    """Log an error event with standardized exception formatting.
+
+    Convenience wrapper around _log_op for error logging that handles
+    exception type and message extraction consistently.
+    """
+    _log_op(
+        event_type,
+        error_type=type(exception).__name__,
+        error=_truncate_error(exception),
+        **kwargs,
+    )
+
+
+def _get_display_author(author: str | None, feed_title: str | None) -> str:
+    """Compute display author for an entry, filtering out email addresses.
+
+    If author is empty or contains '@' (likely an email), use feed_title instead.
+    This provides a safe, centralized check that handles the email filtering logic
+    in Python rather than in templates.
+
+    Args:
+        author: Entry author from feed (may be email, empty, or None)
+        feed_title: Feed title to use as fallback
+
+    Returns:
+        Safe display string for author attribution
+    """
+    if author and "@" not in author:
+        return author
+    return feed_title or "Unknown"
 
 
 def _validate_feed_id(feed_id: str) -> int | None:
@@ -528,7 +592,7 @@ class Default(WorkerEntrypoint):
             except Exception as e:
                 sched_event.outcome = "error"
                 sched_event.error_type = type(e).__name__
-                sched_event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
+                sched_event.error_message = _truncate_error(e)
                 raise
 
         sched_event.wall_time_ms = total_timer.elapsed_ms
@@ -603,11 +667,22 @@ class Default(WorkerEntrypoint):
                     await self._record_feed_error(feed_id, "Timeout")
                     message.retry()
 
+                except RateLimitError as e:
+                    # Rate limiting is not a failure - don't increment consecutive_failures
+                    # The retry-after time was already stored in _process_single_feed
+                    event.wall_time_ms = timer.elapsed_ms
+                    event.outcome = "rate_limited"
+                    event.error_type = "RateLimitError"
+                    event.error_message = _truncate_error(e)
+                    event.error_retriable = True
+                    # Don't call _record_feed_error - feed is not failing
+                    message.retry()
+
                 except Exception as e:
                     event.wall_time_ms = timer.elapsed_ms
                     event.outcome = "error"
                     event.error_type = type(e).__name__
-                    event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
+                    event.error_message = _truncate_error(e)
                     event.error_retriable = not isinstance(e, ValueError)
                     await self._record_feed_error(feed_id, str(e))
                     message.retry()
@@ -671,13 +746,14 @@ class Default(WorkerEntrypoint):
             raise ValueError(f"Redirect target failed SSRF validation: {final_url}")
 
         # Handle 429/503 with Retry-After (good netizen behavior)
+        # Use RateLimitError to avoid incrementing consecutive_failures
         if status_code in (429, 503):
             retry_after = response_headers.get("retry-after")
             error_msg = f"Rate limited (HTTP {status_code})"
             if retry_after:
                 error_msg += f", retry after {retry_after}"
                 await self._set_feed_retry_after(feed_id, retry_after)
-            raise ValueError(error_msg)
+            raise RateLimitError(error_msg, retry_after)
 
         # Handle 304 Not Modified - feed hasn't changed
         if status_code == 304:
@@ -846,7 +922,7 @@ class Default(WorkerEntrypoint):
             return None
 
         except Exception as e:
-            _log_op("content_fetch_error", url=url, error=str(e)[:ERROR_MESSAGE_MAX_LENGTH])
+            _log_op("content_fetch_error", url=url, error=_truncate_error(e))
             return None
 
     async def _upsert_entry(self, feed_id: int, entry: dict[str, Any]) -> dict[str, Any]:
@@ -960,7 +1036,7 @@ class Default(WorkerEntrypoint):
                     "search_index_skipped",
                     entry_id=entry_id,
                     error_type=type(e).__name__,
-                    error=str(e)[:ERROR_MESSAGE_MAX_LENGTH],
+                    error=_truncate_error(e),
                 )
                 # Create failed stats for aggregation
                 indexing_stats = {
@@ -970,7 +1046,7 @@ class Default(WorkerEntrypoint):
                     "total_ms": 0,
                     "text_truncated": False,
                     "error_type": type(e).__name__,
-                    "error_message": str(e)[:ERROR_MESSAGE_MAX_LENGTH],
+                    "error_message": _truncate_error(e),
                 }
 
         return {"entry_id": entry_id, "indexing_stats": indexing_stats}
@@ -1055,7 +1131,7 @@ class Default(WorkerEntrypoint):
 
             except Exception as e:
                 stats["error_type"] = type(e).__name__
-                stats["error_message"] = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
+                stats["error_message"] = _truncate_error(e)
                 raise
 
         stats["total_ms"] = wall_timer.elapsed_ms
@@ -1070,7 +1146,7 @@ class Default(WorkerEntrypoint):
         try:
             parsed = urlparse(url)
         except Exception as e:
-            _log_op("url_parse_error", url=url, error_type=type(e).__name__, error=str(e))
+            _log_error("url_parse_error", e, url=url)
             return False
 
         # Only allow http/https
@@ -1138,19 +1214,21 @@ class Default(WorkerEntrypoint):
         """Record a feed fetch error and auto-deactivate after too many failures."""
         # Issue 9.4: Auto-deactivate feeds after configurable consecutive failures
         threshold = self._get_feed_auto_deactivate_threshold()
+        # Note: Check consecutive_failures + 1 (the NEW value after increment) against threshold
+        # to avoid race condition where the CASE sees the old value before increment
         result_raw = await (
-            self.env.DB.prepare(f"""
+            self.env.DB.prepare("""
             UPDATE feeds SET
                 last_fetch_at = CURRENT_TIMESTAMP,
                 fetch_error = ?,
                 fetch_error_count = fetch_error_count + 1,
                 consecutive_failures = consecutive_failures + 1,
-                is_active = CASE WHEN consecutive_failures >= {threshold} THEN 0 ELSE is_active END,
+                is_active = CASE WHEN consecutive_failures + 1 >= ? THEN 0 ELSE is_active END,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             RETURNING consecutive_failures, is_active
         """)
-            .bind(error_message[:500], feed_id)
+            .bind(error_message[:500], threshold, feed_id)
             .first()
         )
         # Convert JsProxy to Python dict
@@ -1347,7 +1425,7 @@ class Default(WorkerEntrypoint):
                     "request_error",
                     path=path,
                     error_type=type(e).__name__,
-                    error=str(e)[:ERROR_MESSAGE_MAX_LENGTH],
+                    error=_truncate_error(e),
                 )
                 event.wall_time_ms = timer.elapsed_ms
                 event.status_code = 500
@@ -1414,11 +1492,17 @@ class Default(WorkerEntrypoint):
         retention_days = self._get_retention_days()
         max_per_feed = self._get_max_entries_per_feed()
 
+        # Calculate cutoff date in Python for parameterized query
+        cutoff_date = (datetime.now(timezone.utc) - timedelta(days=retention_days)).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+
         with Timer() as d1_timer:
             # Query entries, grouping by published_at (actual publication date)
             # Fall back to first_seen only when published_at is missing
-            entries_result = await self.env.DB.prepare(
-                f"""
+            entries_result = await (
+                self.env.DB.prepare(
+                    """
                 WITH ranked AS (
                     SELECT
                         e.*,
@@ -1435,16 +1519,18 @@ class Default(WorkerEntrypoint):
                         ) as rn_total
                     FROM entries e
                     JOIN feeds f ON e.feed_id = f.id
-                    WHERE COALESCE(e.published_at, e.first_seen)
-                        >= datetime('now', '-{retention_days} days')
+                    WHERE COALESCE(e.published_at, e.first_seen) >= ?
                     AND f.is_active = 1
                 )
                 SELECT * FROM ranked
-                WHERE rn_per_day <= 5 AND rn_total <= {max_per_feed}
+                WHERE rn_per_day <= 5 AND rn_total <= ?
                 ORDER BY COALESCE(published_at, first_seen) DESC
                 LIMIT 500
                 """
-            ).all()
+                )
+                .bind(cutoff_date, max_per_feed)
+                .all()
+            )
 
             # Get feeds for sidebar
             feeds_result = await self.env.DB.prepare("""
@@ -1488,6 +1574,11 @@ class Default(WorkerEntrypoint):
             # Normalize content: strip duplicate title heading if present
             entry["content"] = _normalize_entry_content(
                 entry.get("content", ""), entry.get("title")
+            )
+
+            # Compute display author (filters email addresses in Python, not templates)
+            entry["display_author"] = _get_display_author(
+                entry.get("author"), entry.get("feed_title")
             )
 
             entries_by_date[date_label].append(entry)
@@ -1554,9 +1645,15 @@ class Default(WorkerEntrypoint):
             "errors": 0,
         }
 
+        # Calculate cutoff date in Python for parameterized query
+        cutoff_date = (datetime.now(timezone.utc) - timedelta(days=retention_days)).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+
         with Timer() as d1_timer:
             # Get IDs of entries to delete
-            to_delete = await self.env.DB.prepare(f"""
+            to_delete = await (
+                self.env.DB.prepare("""
                 WITH ranked_entries AS (
                     SELECT
                         id,
@@ -1571,12 +1668,14 @@ class Default(WorkerEntrypoint):
                 ),
                 entries_to_delete AS (
                     SELECT id FROM ranked_entries
-                    WHERE rn > {max_per_feed}
-                       OR COALESCE(published_at, first_seen) <
-                          datetime('now', '-{retention_days} days')
+                    WHERE rn > ?
+                       OR COALESCE(published_at, first_seen) < ?
                 )
                 SELECT id FROM entries_to_delete
-            """).all()
+            """)
+                .bind(max_per_feed, cutoff_date)
+                .all()
+            )
 
         deleted_ids = [row["id"] for row in entry_rows_from_d1(to_delete.results)]
         stats["entries_scanned"] = len(deleted_ids)
@@ -1593,7 +1692,7 @@ class Default(WorkerEntrypoint):
                     _log_op(
                         "vectorize_delete_error",
                         error_type=type(e).__name__,
-                        error_message=str(e)[:ERROR_MESSAGE_MAX_LENGTH],
+                        error_message=_truncate_error(e),
                         ids_count=len(deleted_ids),
                     )
                     # Continue with D1 deletion even if vector cleanup fails
@@ -1740,7 +1839,13 @@ class Default(WorkerEntrypoint):
         try:
             days = getattr(self.env, "RETENTION_DAYS", None)
             return int(days) if days else DEFAULT_RETENTION_DAYS
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
+            _log_op(
+                "config_validation_error",
+                config_key="RETENTION_DAYS",
+                error=str(e),
+                using_default=DEFAULT_RETENTION_DAYS,
+            )
             return DEFAULT_RETENTION_DAYS
 
     def _get_max_entries_per_feed(self) -> int:
@@ -1748,7 +1853,13 @@ class Default(WorkerEntrypoint):
         try:
             max_entries = getattr(self.env, "RETENTION_MAX_ENTRIES_PER_FEED", None)
             return int(max_entries) if max_entries else DEFAULT_MAX_ENTRIES_PER_FEED
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
+            _log_op(
+                "config_validation_error",
+                config_key="RETENTION_MAX_ENTRIES_PER_FEED",
+                error=str(e),
+                using_default=DEFAULT_MAX_ENTRIES_PER_FEED,
+            )
             return DEFAULT_MAX_ENTRIES_PER_FEED
 
     def _get_embedding_max_chars(self) -> int:
@@ -1756,7 +1867,13 @@ class Default(WorkerEntrypoint):
         try:
             max_chars = getattr(self.env, "EMBEDDING_MAX_CHARS", None)
             return int(max_chars) if max_chars else DEFAULT_EMBEDDING_MAX_CHARS
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
+            _log_op(
+                "config_validation_error",
+                config_key="EMBEDDING_MAX_CHARS",
+                error=str(e),
+                using_default=DEFAULT_EMBEDDING_MAX_CHARS,
+            )
             return DEFAULT_EMBEDDING_MAX_CHARS
 
     def _get_search_score_threshold(self) -> float:
@@ -1764,7 +1881,13 @@ class Default(WorkerEntrypoint):
         try:
             threshold = getattr(self.env, "SEARCH_SCORE_THRESHOLD", None)
             return float(threshold) if threshold else DEFAULT_SEARCH_SCORE_THRESHOLD
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
+            _log_op(
+                "config_validation_error",
+                config_key="SEARCH_SCORE_THRESHOLD",
+                error=str(e),
+                using_default=DEFAULT_SEARCH_SCORE_THRESHOLD,
+            )
             return DEFAULT_SEARCH_SCORE_THRESHOLD
 
     def _get_search_top_k(self) -> int:
@@ -1772,7 +1895,13 @@ class Default(WorkerEntrypoint):
         try:
             top_k = getattr(self.env, "SEARCH_TOP_K", None)
             return int(top_k) if top_k else DEFAULT_SEARCH_TOP_K
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
+            _log_op(
+                "config_validation_error",
+                config_key="SEARCH_TOP_K",
+                error=str(e),
+                using_default=DEFAULT_SEARCH_TOP_K,
+            )
             return DEFAULT_SEARCH_TOP_K
 
     def _get_feed_auto_deactivate_threshold(self) -> int:
@@ -1780,7 +1909,13 @@ class Default(WorkerEntrypoint):
         try:
             threshold = getattr(self.env, "FEED_AUTO_DEACTIVATE_THRESHOLD", None)
             return int(threshold) if threshold else DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
+            _log_op(
+                "config_validation_error",
+                config_key="FEED_AUTO_DEACTIVATE_THRESHOLD",
+                error=str(e),
+                using_default=DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD,
+            )
             return DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD
 
     def _get_feed_failure_threshold(self) -> int:
@@ -1788,7 +1923,13 @@ class Default(WorkerEntrypoint):
         try:
             threshold = getattr(self.env, "FEED_FAILURE_THRESHOLD", None)
             return int(threshold) if threshold else DEFAULT_FEED_FAILURE_THRESHOLD
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
+            _log_op(
+                "config_validation_error",
+                config_key="FEED_FAILURE_THRESHOLD",
+                error=str(e),
+                using_default=DEFAULT_FEED_FAILURE_THRESHOLD,
+            )
             return DEFAULT_FEED_FAILURE_THRESHOLD
 
     def _generate_atom_feed(self, planet: dict[str, str], entries: list[dict[str, Any]]) -> str:
@@ -1945,6 +2086,9 @@ class Default(WorkerEntrypoint):
         top_k = self._get_search_top_k()
         score_threshold = self._get_search_score_threshold()
 
+        # Track if query was truncated for user feedback
+        words_truncated = False
+
         # Run semantic search and keyword search
         semantic_matches = []
         semantic_matches_raw = []
@@ -1975,10 +2119,11 @@ class Default(WorkerEntrypoint):
                     m for m in semantic_matches_raw if m.get("score", 0) >= score_threshold
                 ]
         except Exception as e:
-            _log_op("semantic_search_failed", error=str(e)[:ERROR_MESSAGE_MAX_LENGTH])
+            _log_op("semantic_search_failed", error=_truncate_error(e))
 
         # 2. Keyword search via D1 (primary ranking signal)
         try:
+            search_limit = self._get_search_top_k()
             with Timer() as d1_timer:
                 # Escape special characters for LIKE pattern
                 escaped_query = query.replace("%", "\\%").replace("_", "\\_")
@@ -1988,7 +2133,7 @@ class Default(WorkerEntrypoint):
                     # LIKE '%error handling%' matches the phrase in order
                     like_pattern = f"%{escaped_query}%"
                     keyword_result = (
-                        await self.env.DB.prepare(f"""
+                        await self.env.DB.prepare("""
                         SELECT e.id, e.feed_id, e.guid, e.url, e.title, e.author,
                                e.content, e.summary, e.published_at, e.first_seen,
                                f.title as feed_title, f.site_url as feed_site_url
@@ -1997,9 +2142,9 @@ class Default(WorkerEntrypoint):
                         WHERE e.title LIKE ? ESCAPE '\\'
                            OR e.content LIKE ? ESCAPE '\\'
                         ORDER BY e.published_at DESC
-                        LIMIT {self._get_search_top_k()}
+                        LIMIT ?
                     """)
-                        .bind(like_pattern, like_pattern)
+                        .bind(like_pattern, like_pattern, search_limit)
                         .all()
                     )
                 else:
@@ -2009,13 +2154,14 @@ class Default(WorkerEntrypoint):
                     # Limit word count to prevent DoS via excessive WHERE clauses
                     if len(words) > MAX_SEARCH_WORDS:
                         words = words[:MAX_SEARCH_WORDS]
+                        words_truncated = True
                         if event:
                             event.search_words_truncated = True
                     if len(words) <= 1:
                         # Single word: simple LIKE
                         like_pattern = f"%{escaped_query}%"
                         keyword_result = (
-                            await self.env.DB.prepare(f"""
+                            await self.env.DB.prepare("""
                             SELECT e.id, e.feed_id, e.guid, e.url, e.title, e.author,
                                    e.content, e.summary, e.published_at, e.first_seen,
                                    f.title as feed_title, f.site_url as feed_site_url
@@ -2024,14 +2170,14 @@ class Default(WorkerEntrypoint):
                             WHERE e.title LIKE ? ESCAPE '\\'
                                OR e.content LIKE ? ESCAPE '\\'
                             ORDER BY e.published_at DESC
-                            LIMIT {self._get_search_top_k()}
+                            LIMIT ?
                         """)
-                            .bind(like_pattern, like_pattern)
+                            .bind(like_pattern, like_pattern, search_limit)
                             .all()
                         )
                     else:
                         # Multiple words: all must appear in title OR all in content
-                        # Build dynamic WHERE clause
+                        # Build dynamic WHERE clause (f-string needed for dynamic conditions)
                         word_patterns = []
                         bind_values = []
                         for word in words:
@@ -2041,10 +2187,10 @@ class Default(WorkerEntrypoint):
 
                         # All words in title OR all words in content
                         title_conditions = " AND ".join(
-                            ["e.title LIKE ? ESCAPE '\\\\'" for _ in words]
+                            ["e.title LIKE ? ESCAPE '\\'" for _ in words]
                         )
                         content_conditions = " AND ".join(
-                            ["e.content LIKE ? ESCAPE '\\\\'" for _ in words]
+                            ["e.content LIKE ? ESCAPE '\\'" for _ in words]
                         )
 
                         keyword_result = (
@@ -2057,9 +2203,9 @@ class Default(WorkerEntrypoint):
                             WHERE ({title_conditions})
                                OR ({content_conditions})
                             ORDER BY e.published_at DESC
-                            LIMIT {self._get_search_top_k()}
+                            LIMIT ?
                         """)
-                            .bind(*bind_values, *bind_values)
+                            .bind(*bind_values, *bind_values, search_limit)
                             .all()
                         )
 
@@ -2067,7 +2213,7 @@ class Default(WorkerEntrypoint):
             if event:
                 event.search_d1_ms = d1_timer.elapsed_ms
         except Exception as e:
-            _log_op("keyword_search_failed", error=str(e)[:ERROR_MESSAGE_MAX_LENGTH])
+            _log_op("keyword_search_failed", error=_truncate_error(e))
 
         # 3. Combine results: keyword matches FIRST, then semantic matches
         # This is the key ranking insight: exact text match is the strongest signal
@@ -2174,9 +2320,22 @@ class Default(WorkerEntrypoint):
             event.search_title_in_query_matches = title_in_query_count
             event.search_query_in_title_matches = query_in_title_count
 
+        # Add display_author to each result (filters email addresses in Python)
+        for result in sorted_results:
+            result["display_author"] = _get_display_author(
+                result.get("author"), result.get("feed_title")
+            )
+
         # Return HTML search results page
         planet = self._get_planet_config()
-        html = render_template(TEMPLATE_SEARCH, planet=planet, query=query, results=sorted_results)
+        html = render_template(
+            TEMPLATE_SEARCH,
+            planet=planet,
+            query=query,
+            results=sorted_results,
+            words_truncated=words_truncated,
+            max_search_words=MAX_SEARCH_WORDS,
+        )
         return _html_response(html, cache_max_age=0)
 
     async def _serve_static(self, path: str) -> Response:
@@ -2395,9 +2554,7 @@ class Default(WorkerEntrypoint):
                     "feed_validation_parse_error",
                     url=url,
                     error_type=type(bozo_exc).__name__ if bozo_exc else "Unknown",
-                    error_detail=str(bozo_exc)[:ERROR_MESSAGE_MAX_LENGTH]
-                    if bozo_exc
-                    else "Invalid format",
+                    error_detail=_truncate_error(bozo_exc) if bozo_exc else "Invalid format",
                 )
                 return {
                     "valid": False,
@@ -2427,7 +2584,7 @@ class Default(WorkerEntrypoint):
             }
 
         except Exception as e:
-            error_msg = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
+            error_msg = _truncate_error(e)
             if "timeout" in error_msg.lower():
                 return {"valid": False, "error": "Timeout fetching feed (10s)"}
             return {"valid": False, "error": error_msg}
@@ -2474,7 +2631,7 @@ class Default(WorkerEntrypoint):
                 if not validation["valid"]:
                     admin_event.outcome = "error"
                     admin_event.error_type = "ValidationError"
-                    admin_event.error_message = validation["error"][:ERROR_MESSAGE_MAX_LENGTH]
+                    admin_event.error_message = _truncate_error(validation["error"])
                     return self._admin_error_response(
                         f"Could not validate feed: {validation['error']}",
                         title="Feed Validation Failed",
@@ -2533,7 +2690,7 @@ class Default(WorkerEntrypoint):
             except Exception as e:
                 admin_event.outcome = "error"
                 admin_event.error_type = type(e).__name__
-                admin_event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
+                admin_event.error_message = _truncate_error(e)
                 return self._admin_error_response(
                     "An unexpected error occurred while adding the feed. Please try again.",
                     title="Error Adding Feed",
@@ -2591,7 +2748,7 @@ class Default(WorkerEntrypoint):
             except Exception as e:
                 admin_event.outcome = "error"
                 admin_event.error_type = type(e).__name__
-                admin_event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
+                admin_event.error_message = _truncate_error(e)
                 return self._admin_error_response(
                     "An unexpected error occurred while deleting the feed. Please try again.",
                     title="Error Deleting Feed",
@@ -2656,7 +2813,7 @@ class Default(WorkerEntrypoint):
             except Exception as e:
                 admin_event.outcome = "error"
                 admin_event.error_type = type(e).__name__
-                admin_event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
+                admin_event.error_message = _truncate_error(e)
                 return _json_error(str(e), status=500)
             finally:
                 admin_event.wall_time_ms = timer.elapsed_ms
@@ -2703,7 +2860,7 @@ class Default(WorkerEntrypoint):
                     root = ET.fromstring(content, parser=parser)
                 except ET.ParseError as e:
                     # Don't expose detailed parse errors to users
-                    _log_op("opml_parse_error", error=str(e)[:ERROR_MESSAGE_MAX_LENGTH])
+                    _log_op("opml_parse_error", error=_truncate_error(e))
                     admin_event.outcome = "error"
                     admin_event.error_type = "ParseError"
                     admin_event.error_message = "Invalid OPML format"
@@ -2776,7 +2933,7 @@ class Default(WorkerEntrypoint):
             except Exception as e:
                 admin_event.outcome = "error"
                 admin_event.error_type = type(e).__name__
-                admin_event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
+                admin_event.error_message = _truncate_error(e)
                 return self._admin_error_response(
                     "An unexpected error occurred while importing the OPML file. Please try again.",
                     title="Import Error",
@@ -2799,12 +2956,16 @@ class Default(WorkerEntrypoint):
     async def _view_dlq(self) -> Response:
         """View dead letter queue contents (failed feeds with configurable threshold)."""
         threshold = self._get_feed_failure_threshold()
-        result = await self.env.DB.prepare(f"""
+        result = await (
+            self.env.DB.prepare("""
             SELECT id, url, title, consecutive_failures, last_fetch_at, fetch_error as last_error
             FROM feeds
-            WHERE consecutive_failures >= {threshold}
+            WHERE consecutive_failures >= ?
             ORDER BY consecutive_failures DESC, last_fetch_at DESC
-        """).all()
+        """)
+            .bind(threshold)
+            .all()
+        )
         return _json_response({"failed_feeds": feed_rows_from_d1(result.results)})
 
     async def _retry_dlq_feed(self, feed_id: int, admin: dict[str, Any]) -> Response:
@@ -2879,7 +3040,7 @@ class Default(WorkerEntrypoint):
             except Exception as e:
                 admin_event.outcome = "error"
                 admin_event.error_type = type(e).__name__
-                admin_event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
+                admin_event.error_message = _truncate_error(e)
                 _log_op("dlq_retry_error", feed_id=feed_id, error=str(e))
                 return self._admin_error_response(
                     "An unexpected error occurred while retrying the feed. Please try again.",
@@ -2990,7 +3151,7 @@ class Default(WorkerEntrypoint):
                             "reindex_entry_failed",
                             entry_id=entry_id,
                             error_type=type(e).__name__,
-                            error=str(e)[:ERROR_MESSAGE_MAX_LENGTH],
+                            error=_truncate_error(e),
                         )
 
                 admin_event.reindex_entries_indexed = indexed
@@ -3019,7 +3180,7 @@ class Default(WorkerEntrypoint):
             except Exception as e:
                 admin_event.outcome = "error"
                 admin_event.error_type = type(e).__name__
-                admin_event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
+                admin_event.error_message = _truncate_error(e)
                 return _json_error(str(e), status=500)
             finally:
                 admin_event.reindex_total_ms = timer.elapsed_ms
@@ -3109,7 +3270,7 @@ class Default(WorkerEntrypoint):
             _log_op(
                 "session_verify_failed",
                 error_type=type(e).__name__,
-                error=str(e)[:ERROR_MESSAGE_MAX_LENGTH],
+                error=_truncate_error(e),
             )
             return None
 
@@ -3262,7 +3423,7 @@ class Default(WorkerEntrypoint):
                 _log_op(
                     "github_api_error",
                     status_code=user_response.status_code,
-                    response=user_response.text[:ERROR_MESSAGE_MAX_LENGTH],
+                    response=_truncate_error(user_response.text),
                 )
                 if event:
                     event.outcome = "error"
@@ -3353,13 +3514,13 @@ class Default(WorkerEntrypoint):
             _log_op(
                 "oauth_error",
                 error_type=type(e).__name__,
-                error_message=str(e)[:ERROR_MESSAGE_MAX_LENGTH],
+                error_message=_truncate_error(e),
             )
             if event:
                 event.outcome = "error"
                 event.oauth_success = False
                 event.error_type = type(e).__name__
-                event.error_message = str(e)[:ERROR_MESSAGE_MAX_LENGTH]
+                event.error_message = _truncate_error(e)
             return self._admin_error_response(
                 "An unexpected error occurred during authentication. Please try again.",
                 title="Authentication Failed",

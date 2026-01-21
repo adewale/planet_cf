@@ -23,7 +23,7 @@
                 <article>
                     <h3><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
                     <p class="meta">
-                        <span class="author">{{ entry.author if entry.author and '@' not in entry.author else (entry.feed_title or 'Unknown') }}</span>
+                        <span class="author">{{ entry.display_author }}</span>
                         {% if entry.published_at_display %}<span class="date-sep">·</span> <time datetime="{{ entry.published_at }}">{{ entry.published_at_display }}</time>{% endif %}
                     </p>
                     <div class="content">{{ entry.content | safe }}</div>

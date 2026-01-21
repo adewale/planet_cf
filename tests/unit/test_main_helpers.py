@@ -6,13 +6,17 @@ from datetime import UTC, datetime
 
 from src.main import (
     ERROR_MESSAGE_MAX_LENGTH,
+    RateLimitError,
     _feed_response,
+    _get_display_author,
     _html_response,
     _json_error,
     _json_response,
+    _log_error,
     _log_op,
     _parse_iso_datetime,
     _redirect_response,
+    _truncate_error,
 )
 from src.wrappers import (
     _extract_form_value,
@@ -316,6 +320,118 @@ class TestErrorMessageMaxLength:
         long_message = "x" * 500
         truncated = long_message[:ERROR_MESSAGE_MAX_LENGTH]
         assert len(truncated) == 200
+
+
+class TestTruncateError:
+    """Tests for _truncate_error helper function."""
+
+    def test_short_message_unchanged(self):
+        """Messages under limit are returned unchanged."""
+        msg = "Short error"
+        assert _truncate_error(msg) == msg
+
+    def test_exact_limit_unchanged(self):
+        """Messages at exactly the limit are returned unchanged."""
+        msg = "x" * ERROR_MESSAGE_MAX_LENGTH
+        assert _truncate_error(msg) == msg
+        assert len(_truncate_error(msg)) == ERROR_MESSAGE_MAX_LENGTH
+
+    def test_long_message_truncated_with_ellipsis(self):
+        """Messages over limit are truncated with ellipsis indicator."""
+        msg = "x" * 500
+        result = _truncate_error(msg)
+        assert len(result) == ERROR_MESSAGE_MAX_LENGTH
+        assert result.endswith("...")
+
+    def test_works_with_exception(self):
+        """Can truncate exception objects."""
+        error = ValueError("x" * 500)
+        result = _truncate_error(error)
+        assert len(result) == ERROR_MESSAGE_MAX_LENGTH
+        assert result.endswith("...")
+
+
+class TestLogError:
+    """Tests for _log_error helper function."""
+
+    def test_logs_error_type_and_message(self, capsys):
+        """Logs error type and truncated message."""
+        error = ValueError("Test error message")
+        _log_error("test_event", error, extra_field="extra_value")
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out.strip())
+
+        assert output["event_type"] == "test_event"
+        assert output["error_type"] == "ValueError"
+        assert output["error"] == "Test error message"
+        assert output["extra_field"] == "extra_value"
+
+
+class TestRateLimitError:
+    """Tests for RateLimitError exception class."""
+
+    def test_basic_creation(self):
+        """Can create with just a message."""
+        error = RateLimitError("Rate limited")
+        assert str(error) == "Rate limited"
+        assert error.retry_after is None
+
+    def test_with_retry_after(self):
+        """Can create with retry_after value."""
+        error = RateLimitError("Rate limited", retry_after="3600")
+        assert str(error) == "Rate limited"
+        assert error.retry_after == "3600"
+
+    def test_is_exception(self):
+        """Is a proper Exception subclass."""
+        error = RateLimitError("Rate limited")
+        assert isinstance(error, Exception)
+
+        # Can be raised and caught
+        try:
+            raise error
+        except RateLimitError as e:
+            assert str(e) == "Rate limited"
+
+
+class TestGetDisplayAuthor:
+    """Tests for _get_display_author function."""
+
+    def test_returns_author_when_valid(self):
+        """Returns author when it's non-empty and doesn't contain @."""
+        result = _get_display_author("John Doe", "Blog Title")
+        assert result == "John Doe"
+
+    def test_filters_email_address(self):
+        """Filters author that looks like an email address."""
+        result = _get_display_author("john@example.com", "Blog Title")
+        assert result == "Blog Title"
+
+    def test_returns_feed_title_when_author_none(self):
+        """Returns feed title when author is None."""
+        result = _get_display_author(None, "Blog Title")
+        assert result == "Blog Title"
+
+    def test_returns_feed_title_when_author_empty(self):
+        """Returns feed title when author is empty string."""
+        result = _get_display_author("", "Blog Title")
+        assert result == "Blog Title"
+
+    def test_returns_unknown_when_both_missing(self):
+        """Returns 'Unknown' when both author and feed_title are missing."""
+        result = _get_display_author(None, None)
+        assert result == "Unknown"
+
+    def test_returns_unknown_when_email_and_no_feed_title(self):
+        """Returns 'Unknown' when author is email and feed_title is None."""
+        result = _get_display_author("user@domain.com", None)
+        assert result == "Unknown"
+
+    def test_allows_at_sign_in_name(self):
+        """Filters names containing @ (they look like emails)."""
+        result = _get_display_author("John @home", "Blog Title")
+        assert result == "Blog Title"
 
 
 # =============================================================================
