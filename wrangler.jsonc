@@ -39,7 +39,11 @@
   // Workers Observability
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 1.0
+    "head_sampling_rate": 1.0,
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    }
   },
 
   // D1 Database
