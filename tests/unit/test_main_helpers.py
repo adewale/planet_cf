@@ -286,21 +286,39 @@ class TestExtractFormValue:
 class TestLogOp:
     """Tests for _log_op function."""
 
-    def test_prints_json(self, capsys):
-        """Logs JSON to stdout."""
-        _log_op("test_event", key="value", number=42)
-        captured = capsys.readouterr()
-        output = json.loads(captured.out.strip())
-        assert output["event_type"] == "test_event"
-        assert output["key"] == "value"
-        assert output["number"] == 42
+    def test_prints_json(self, caplog):
+        """Logs JSON to stderr via logging module."""
+        import logging
 
-    def test_includes_timestamp(self, capsys):
+        logger = logging.getLogger("src.main")
+        old_propagate = logger.propagate
+        logger.propagate = True
+        try:
+            with caplog.at_level("INFO", logger="src.main"):
+                _log_op("test_event", key="value", number=42)
+            assert len(caplog.records) == 1
+            output = json.loads(caplog.records[0].message)
+            assert output["event_type"] == "test_event"
+            assert output["key"] == "value"
+            assert output["number"] == 42
+        finally:
+            logger.propagate = old_propagate
+
+    def test_includes_timestamp(self, caplog):
         """Log includes timestamp."""
-        _log_op("test_event")
-        captured = capsys.readouterr()
-        output = json.loads(captured.out.strip())
-        assert "timestamp" in output
+        import logging
+
+        logger = logging.getLogger("src.main")
+        old_propagate = logger.propagate
+        logger.propagate = True
+        try:
+            with caplog.at_level("INFO", logger="src.main"):
+                _log_op("test_event")
+            assert len(caplog.records) == 1
+            output = json.loads(caplog.records[0].message)
+            assert "timestamp" in output
+        finally:
+            logger.propagate = old_propagate
 
 
 # =============================================================================
@@ -354,18 +372,27 @@ class TestTruncateError:
 class TestLogError:
     """Tests for _log_error helper function."""
 
-    def test_logs_error_type_and_message(self, capsys):
-        """Logs error type and truncated message."""
-        error = ValueError("Test error message")
-        _log_error("test_event", error, extra_field="extra_value")
+    def test_logs_error_type_and_message(self, caplog):
+        """Logs error type and truncated message via logging module."""
+        import logging
 
-        captured = capsys.readouterr()
-        output = json.loads(captured.out.strip())
+        logger = logging.getLogger("src.main")
+        old_propagate = logger.propagate
+        logger.propagate = True
+        try:
+            error = ValueError("Test error message")
+            with caplog.at_level("INFO", logger="src.main"):
+                _log_error("test_event", error, extra_field="extra_value")
 
-        assert output["event_type"] == "test_event"
-        assert output["error_type"] == "ValueError"
-        assert output["error"] == "Test error message"
-        assert output["extra_field"] == "extra_value"
+            assert len(caplog.records) == 1
+            output = json.loads(caplog.records[0].message)
+
+            assert output["event_type"] == "test_event"
+            assert output["error_type"] == "ValueError"
+            assert output["error"] == "Test error message"
+            assert output["extra_field"] == "extra_value"
+        finally:
+            logger.propagate = old_propagate
 
 
 class TestRateLimitError:

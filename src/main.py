@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import ipaddress
 import json
+import logging
 import re
 import secrets
 import time
@@ -156,6 +157,18 @@ BLOCKED_METADATA_IPS = {
 # Structured Logging Helper
 # =============================================================================
 
+# Configure module logger for structured operational logs
+# Using INFO level for events, which Cloudflare Workers captures from stdout/stderr
+_logger = logging.getLogger(__name__)
+if not _logger.handlers:
+    _handler = logging.StreamHandler()
+    # Output raw JSON without additional formatting (event already has timestamp)
+    _handler.setFormatter(logging.Formatter("%(message)s"))
+    _logger.addHandler(_handler)
+    _logger.setLevel(logging.INFO)
+    # Prevent propagation to root logger to avoid duplicate output
+    _logger.propagate = False
+
 
 def _log_op(event_type: str, **kwargs: LogKwargs) -> None:
     """Log an operational event as structured JSON.
@@ -168,7 +181,7 @@ def _log_op(event_type: str, **kwargs: LogKwargs) -> None:
         "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         **kwargs,
     }
-    print(json.dumps(event))
+    _logger.info(json.dumps(event))
 
 
 def _truncate_error(error: str | Exception, max_length: int = ERROR_MESSAGE_MAX_LENGTH) -> str:

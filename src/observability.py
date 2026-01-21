@@ -17,6 +17,7 @@ Usage:
 """
 
 import json
+import logging
 import random
 import secrets
 import time
@@ -24,6 +25,18 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, cast
 from urllib.parse import urlparse
+
+# Configure module logger for structured event output
+# Using INFO level for events, which Cloudflare Workers captures from stdout/stderr
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    # Output raw JSON without additional formatting (event already has timestamp)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    # Prevent propagation to root logger to avoid duplicate output
+    logger.propagate = False
 
 
 def generate_request_id() -> str:
@@ -386,6 +399,9 @@ def emit_event(
 ) -> bool:
     """Emit an event with optional tail sampling.
 
+    Uses Python's standard logging module for output, which integrates better
+    with Cloudflare Workers' log capture than raw print() statements.
+
     Args:
         event: The event to emit (dataclass or dict)
         debug_feed_ids: List of feed IDs to always keep
@@ -399,7 +415,7 @@ def emit_event(
     event_dict = cast(dict[str, Any], event if isinstance(event, dict) else asdict(event))
 
     if force or should_sample(event_dict, debug_feed_ids, sample_rate):
-        print(json.dumps(event_dict))
+        logger.info(json.dumps(event_dict))
         return True
     return False
 

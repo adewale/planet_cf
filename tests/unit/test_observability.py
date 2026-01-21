@@ -343,38 +343,62 @@ class TestShouldSample:
 
 
 class TestEmitEvent:
-    def test_emits_dataclass_event(self, capsys):
-        event = FeedFetchEvent(feed_id=1, feed_url="https://example.com/feed")
+    def _enable_propagation(self):
+        """Helper to enable logging propagation for tests."""
+        import logging
 
-        emitted = emit_event(event, force=True)
+        logger = logging.getLogger("src.observability")
+        old_propagate = logger.propagate
+        logger.propagate = True
+        return logger, old_propagate
 
-        assert emitted is True
-        captured = capsys.readouterr()
-        output = json.loads(captured.out.strip())
-        assert output["event_type"] == "feed_fetch"
-        assert output["feed_id"] == 1
+    def test_emits_dataclass_event(self, caplog):
+        logger, old_propagate = self._enable_propagation()
+        try:
+            event = FeedFetchEvent(feed_id=1, feed_url="https://example.com/feed")
 
-    def test_emits_request_event(self, capsys):
-        event = RequestEvent(method="GET", path="/search", search_query="test")
+            with caplog.at_level("INFO", logger="src.observability"):
+                emitted = emit_event(event, force=True)
 
-        emitted = emit_event(event, force=True)
+            assert emitted is True
+            assert len(caplog.records) == 1
+            output = json.loads(caplog.records[0].message)
+            assert output["event_type"] == "feed_fetch"
+            assert output["feed_id"] == 1
+        finally:
+            logger.propagate = old_propagate
 
-        assert emitted is True
-        captured = capsys.readouterr()
-        output = json.loads(captured.out.strip())
-        assert output["event_type"] == "request"
-        assert output["search_query"] == "test"
+    def test_emits_request_event(self, caplog):
+        logger, old_propagate = self._enable_propagation()
+        try:
+            event = RequestEvent(method="GET", path="/search", search_query="test")
 
-    def test_emits_dict_event(self, capsys):
-        event = {"event_type": "test", "key": "value"}
+            with caplog.at_level("INFO", logger="src.observability"):
+                emitted = emit_event(event, force=True)
 
-        emitted = emit_event(event, force=True)
+            assert emitted is True
+            assert len(caplog.records) == 1
+            output = json.loads(caplog.records[0].message)
+            assert output["event_type"] == "request"
+            assert output["search_query"] == "test"
+        finally:
+            logger.propagate = old_propagate
 
-        assert emitted is True
-        captured = capsys.readouterr()
-        output = json.loads(captured.out.strip())
-        assert output["event_type"] == "test"
-        assert output["key"] == "value"
+    def test_emits_dict_event(self, caplog):
+        logger, old_propagate = self._enable_propagation()
+        try:
+            event = {"event_type": "test", "key": "value"}
+
+            with caplog.at_level("INFO", logger="src.observability"):
+                emitted = emit_event(event, force=True)
+
+            assert emitted is True
+            assert len(caplog.records) == 1
+            output = json.loads(caplog.records[0].message)
+            assert output["event_type"] == "test"
+            assert output["key"] == "value"
+        finally:
+            logger.propagate = old_propagate
 
     def test_respects_sampling(self):
         event = {"event_type": "feed_fetch", "outcome": "success", "wall_time_ms": 100}
@@ -383,14 +407,19 @@ class TestEmitEvent:
         results = [emit_event(event, sample_rate=0.0) for _ in range(100)]
         assert all(r is False for r in results)
 
-    def test_force_bypasses_sampling(self, capsys):
-        event = {"event_type": "feed_fetch", "outcome": "success", "wall_time_ms": 100}
+    def test_force_bypasses_sampling(self, caplog):
+        logger, old_propagate = self._enable_propagation()
+        try:
+            event = {"event_type": "feed_fetch", "outcome": "success", "wall_time_ms": 100}
 
-        emitted = emit_event(event, sample_rate=0.0, force=True)
+            with caplog.at_level("INFO", logger="src.observability"):
+                emitted = emit_event(event, sample_rate=0.0, force=True)
 
-        assert emitted is True
-        captured = capsys.readouterr()
-        assert "feed_fetch" in captured.out
+            assert emitted is True
+            assert len(caplog.records) == 1
+            assert "feed_fetch" in caplog.records[0].message
+        finally:
+            logger.propagate = old_propagate
 
 
 class TestTimer:
