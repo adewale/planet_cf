@@ -212,22 +212,24 @@ def should_sample(event, debug_feed_ids=None, sample_rate=0.10) -> bool:
 
 ### 1. ⚠️ Inconsistent Operational Logs
 
-**Issue:** `_log_op()` calls have inconsistent fields. Some include context, others don't.
+**Issue:** `log_op()` calls have inconsistent fields. Some include context, others don't.
 
 **Examples:**
 ```python
 # Missing request context:
-_log_op("queue_batch_received", batch_size=len(batch.messages))
-_log_op("feed_entries_found", feed_id=feed_id, entries_count=entries_found)
+log_op("queue_batch_received", batch_size=len(batch.messages))
+log_op("feed_entries_found", feed_id=feed_id, entries_count=entries_found)
 
 # Missing deployment context:
-_log_op("semantic_search_failed", error=str(e)[:ERROR_MESSAGE_MAX_LENGTH])
+log_op("semantic_search_failed", error=truncate_error(e))
 ```
 
-**Recommendation:** Enhance `_log_op()` to automatically include:
+**Recommendation:** Enhance `log_op()` to automatically include:
 - `request_id` (from current request/event context)
 - `worker_version`
 - `deployment_environment`
+
+**Note:** `log_op()` has been moved to the observability module (✅ Done)
 
 ---
 
@@ -252,9 +254,9 @@ _log_op("semantic_search_failed", error=str(e)[:ERROR_MESSAGE_MAX_LENGTH])
 
 ### High Priority
 
-1. **Enhance `_log_op()` with consistent context:**
+1. **Enhance `log_op()` with consistent context:**
    ```python
-   def _log_op(event_type: str, request_id: str = "", **kwargs) -> None:
+   def log_op(event_type: str, request_id: str = "", **kwargs) -> None:
        event = {
            "event_type": event_type,
            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -274,7 +276,7 @@ _log_op("semantic_search_failed", error=str(e)[:ERROR_MESSAGE_MAX_LENGTH])
 
 ### Medium Priority
 
-3. **Move `_log_op()` to observability module** for single source of truth
+3. ~~**Move `_log_op()` to observability module** for single source of truth~~ ✅ DONE
 
 4. **Add capacity metrics to wide events:**
    - Total feed count in SchedulerEvent
