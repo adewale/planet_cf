@@ -5,18 +5,20 @@ import json
 from datetime import UTC, datetime
 
 from src.main import (
-    ERROR_MESSAGE_MAX_LENGTH,
     RateLimitError,
     _feed_response,
     _get_display_author,
     _html_response,
     _json_error,
     _json_response,
-    _log_error,
-    _log_op,
     _parse_iso_datetime,
     _redirect_response,
-    _truncate_error,
+)
+from src.observability import (
+    ERROR_MESSAGE_MAX_LENGTH,
+    log_error,
+    log_op,
+    truncate_error,
 )
 from src.wrappers import (
     _extract_form_value,
@@ -284,18 +286,18 @@ class TestExtractFormValue:
 
 
 class TestLogOp:
-    """Tests for _log_op function."""
+    """Tests for log_op function."""
 
     def test_prints_json(self, caplog):
         """Logs JSON to stderr via logging module."""
         import logging
 
-        logger = logging.getLogger("src.main")
+        logger = logging.getLogger("src.observability")
         old_propagate = logger.propagate
         logger.propagate = True
         try:
-            with caplog.at_level("INFO", logger="src.main"):
-                _log_op("test_event", key="value", number=42)
+            with caplog.at_level("INFO", logger="src.observability"):
+                log_op("test_event", key="value", number=42)
             assert len(caplog.records) == 1
             output = json.loads(caplog.records[0].message)
             assert output["event_type"] == "test_event"
@@ -308,12 +310,12 @@ class TestLogOp:
         """Log includes timestamp."""
         import logging
 
-        logger = logging.getLogger("src.main")
+        logger = logging.getLogger("src.observability")
         old_propagate = logger.propagate
         logger.propagate = True
         try:
-            with caplog.at_level("INFO", logger="src.main"):
-                _log_op("test_event")
+            with caplog.at_level("INFO", logger="src.observability"):
+                log_op("test_event")
             assert len(caplog.records) == 1
             output = json.loads(caplog.records[0].message)
             assert "timestamp" in output
@@ -341,48 +343,48 @@ class TestErrorMessageMaxLength:
 
 
 class TestTruncateError:
-    """Tests for _truncate_error helper function."""
+    """Tests for truncate_error helper function."""
 
     def test_short_message_unchanged(self):
         """Messages under limit are returned unchanged."""
         msg = "Short error"
-        assert _truncate_error(msg) == msg
+        assert truncate_error(msg) == msg
 
     def test_exact_limit_unchanged(self):
         """Messages at exactly the limit are returned unchanged."""
         msg = "x" * ERROR_MESSAGE_MAX_LENGTH
-        assert _truncate_error(msg) == msg
-        assert len(_truncate_error(msg)) == ERROR_MESSAGE_MAX_LENGTH
+        assert truncate_error(msg) == msg
+        assert len(truncate_error(msg)) == ERROR_MESSAGE_MAX_LENGTH
 
     def test_long_message_truncated_with_ellipsis(self):
         """Messages over limit are truncated with ellipsis indicator."""
         msg = "x" * 500
-        result = _truncate_error(msg)
+        result = truncate_error(msg)
         assert len(result) == ERROR_MESSAGE_MAX_LENGTH
         assert result.endswith("...")
 
     def test_works_with_exception(self):
         """Can truncate exception objects."""
         error = ValueError("x" * 500)
-        result = _truncate_error(error)
+        result = truncate_error(error)
         assert len(result) == ERROR_MESSAGE_MAX_LENGTH
         assert result.endswith("...")
 
 
 class TestLogError:
-    """Tests for _log_error helper function."""
+    """Tests for log_error helper function."""
 
     def test_logs_error_type_and_message(self, caplog):
         """Logs error type and truncated message via logging module at ERROR level."""
         import logging
 
-        logger = logging.getLogger("src.main")
+        logger = logging.getLogger("src.observability")
         old_propagate = logger.propagate
         logger.propagate = True
         try:
             error = ValueError("Test error message")
-            with caplog.at_level("INFO", logger="src.main"):
-                _log_error("test_event", error, extra_field="extra_value")
+            with caplog.at_level("INFO", logger="src.observability"):
+                log_error("test_event", error, extra_field="extra_value")
 
             assert len(caplog.records) == 1
             # Verify it logs at ERROR level (not INFO)
