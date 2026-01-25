@@ -239,7 +239,7 @@ async def test_search_query_validation(mock_env):
     request = MockRequest("https://planetcf.com/search?q=a")
     response = await worker.fetch(request)
     body = response.body if hasattr(response, "body") else str(response)
-    assert "too short" in body.lower() or response.status != 200
+    assert "at least 2 characters" in body.lower() or response.status != 200
 
     # Empty query should redirect or show error
     request = MockRequest("https://planetcf.com/search?q=")

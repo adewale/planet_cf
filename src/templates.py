@@ -23,6 +23,9 @@ _EMBEDDED_TEMPLATES = {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ planet.name }}</title>
+    <link rel="icon" href="/static/favicon.ico" sizes="32x32">
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
     <link rel="stylesheet" href="/static/style.css">
     <link rel="alternate" type="application/atom+xml" title="{{ planet.name }} Atom Feed" href="/feed.atom">
     <link rel="alternate" type="application/rss+xml" title="{{ planet.name }} RSS Feed" href="/feed.rss">
@@ -106,6 +109,9 @@ _EMBEDDED_TEMPLATES = {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Search Results - {{ planet.name }}</title>
+    <link rel="icon" href="/static/favicon.ico" sizes="32x32">
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -160,6 +166,9 @@ _EMBEDDED_TEMPLATES = {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin - {{ planet.name }}</title>
+    <link rel="icon" href="/static/favicon.ico" sizes="32x32">
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
     <link rel="stylesheet" href="/static/style.css">
     <style>
         /* Admin-specific overrides */
@@ -342,6 +351,9 @@ _EMBEDDED_TEMPLATES = {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Error - {{ planet.name }} Admin</title>
+    <link rel="icon" href="/static/favicon.ico" sizes="32x32">
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -426,6 +438,9 @@ _EMBEDDED_TEMPLATES = {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Login - {{ planet.name }}</title>
+    <link rel="icon" href="/static/favicon.ico" sizes="32x32">
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
