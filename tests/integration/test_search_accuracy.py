@@ -199,6 +199,7 @@ def mock_env_with_fixtures(fixtures):
     env.SEARCH_TOP_K = None
     env.DEPLOYMENT_VERSION = "test"
     env.DEPLOYMENT_ENVIRONMENT = "test"
+    env.VERSION_METADATA = None  # Prevent MagicMock from returning mock for this
     return env
 
 
