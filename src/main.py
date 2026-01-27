@@ -1559,7 +1559,7 @@ class Default(WorkerEntrypoint):
             # Get feeds for sidebar
             feeds_result = await self.env.DB.prepare("""
                 SELECT
-                    id, title, site_url, last_success_at,
+                    id, title, site_url, url, last_success_at,
                     CASE WHEN consecutive_failures < 3 THEN 1 ELSE 0 END as is_healthy
                 FROM feeds
                 WHERE is_active = 1
