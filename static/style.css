@@ -194,6 +194,41 @@ article h3 a:hover {
     padding: 0;
 }
 
+/* Expressive Code / syntax highlighting support */
+.content figure {
+    margin: 1rem 0;
+}
+
+.content figure figcaption {
+    background: #e0e0e0;
+    padding: 0.5rem 1rem;
+    border-radius: 4px 4px 0 0;
+    font-size: 0.85rem;
+    font-family: monospace;
+    color: var(--text-light);
+}
+
+.content figure pre {
+    margin-top: 0;
+    border-radius: 0 0 4px 4px;
+}
+
+.content figure figcaption + pre {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+
+/* Code line structure (Expressive Code, Shiki, etc.) */
+.content pre .ec-line,
+.content pre .line {
+    display: block;
+    min-height: 1.4em;
+}
+
+.content pre .ec-line .code {
+    display: inline;
+}
+
 .content blockquote {
     border-left: 3px solid var(--primary-color);
     padding-left: 1rem;

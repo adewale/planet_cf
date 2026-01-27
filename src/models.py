@@ -272,6 +272,7 @@ class BleachSanitizer:
         "blockquote",
         "br",
         "code",
+        "div",
         "em",
         "figure",
         "figcaption",
@@ -288,6 +289,7 @@ class BleachSanitizer:
         "ol",
         "p",
         "pre",
+        "span",
         "strong",
         "table",
         "tbody",
@@ -298,11 +300,18 @@ class BleachSanitizer:
         "ul",
     ]
     # Note: target and loading are added dynamically via callbacks
+    # class is allowed on code-related elements for syntax highlighting (e.g., Expressive Code)
     ALLOWED_ATTRS = {
         "a": ["href", "title", "rel", "target"],
         "img": ["src", "alt", "title", "width", "height", "loading"],
         "abbr": ["title"],
         "acronym": ["title"],
+        "code": ["class"],
+        "div": ["class"],
+        "figure": ["class"],
+        "figcaption": ["class"],
+        "pre": ["class", "data-language"],
+        "span": ["class"],
     }
     ALLOWED_PROTOCOLS = ["http", "https", "mailto"]
 
