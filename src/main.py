@@ -1009,8 +1009,8 @@ class Default(WorkerEntrypoint):
 
         title = entry.get("title", "")
 
-        # Truncate summary with indicator
-        raw_summary = entry.get("summary") or ""
+        # Truncate summary with indicator (fall back to description for RSS feeds)
+        raw_summary = entry.get("summary") or entry.get("description") or ""
         if len(raw_summary) > SUMMARY_MAX_LENGTH:
             summary = raw_summary[: SUMMARY_MAX_LENGTH - 3] + "..."
         else:

@@ -132,7 +132,8 @@ class ParsedEntry:
             url=url,
             title=entry.get("title", "Untitled"),
             content=content,
-            summary=entry.get("summary"),
+            # Fall back to description for RSS feeds where summary may not be set
+            summary=entry.get("summary") or entry.get("description"),
             author=entry.get("author"),
             published_at=published_at,
         )
