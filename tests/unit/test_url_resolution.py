@@ -748,3 +748,196 @@ class TestFunctionAPI:
 
         assert "https://example.com/a.jpg" in result1
         assert "https://other.com/b.jpg" in result2
+
+
+# =============================================================================
+# REAL-WORLD POST FIXTURES (from Planet CF feeds)
+# =============================================================================
+
+
+class TestPlanetCFPosts:
+    """Tests using real-world post patterns from Planet CF feeds.
+
+    These tests use content patterns typical of:
+    - Cloudflare Blog (blog.cloudflare.com)
+    - Julia Evans (jvns.ca)
+    - Rachel by the Bay (rachelbythebay.com)
+    """
+
+    @pytest.fixture
+    def posts_fixture(self):
+        """Load the URL resolution test posts fixture."""
+        import json
+        from pathlib import Path
+
+        fixture_path = Path(__file__).parent.parent / "fixtures" / "url_resolution_posts.json"
+        with open(fixture_path) as f:
+            return json.load(f)
+
+    def test_cloudflare_workers_ai_post(self, resolver, posts_fixture):
+        """Cloudflare blog post with Ghost CMS patterns."""
+        post = next(p for p in posts_fixture["posts"] if p["id"] == "cf-workers-ai")
+
+        result = resolver.resolve(post["content_html"], post["base_url"])
+
+        # Absolute path images
+        assert "https://blog.cloudflare.com/content/images/2024/01/workers-ai-architecture.png" in result
+        assert "https://blog.cloudflare.com/content/images/2024/01/inference-diagram.svg" in result
+        # Absolute path links
+        assert "https://blog.cloudflare.com/workers-ai-docs/" in result
+        # External URLs preserved
+        assert "https://developers.cloudflare.com/workers-ai/" in result
+        # Parent directory traversal
+        assert "https://blog.cloudflare.com/birthday-week-recap/" in result
+
+    def test_cloudflare_d1_post(self, resolver, posts_fixture):
+        """Cloudflare blog with mixed URL patterns."""
+        post = next(p for p in posts_fixture["posts"] if p["id"] == "cf-d1-announcement")
+
+        result = resolver.resolve(post["content_html"], post["base_url"])
+
+        # External CDN URL preserved
+        assert "https://cf-assets.www.cloudflare.com/images/d1-logo.png" in result
+        # Relative path with ./
+        assert "https://blog.cloudflare.com/introducing-d1/images/d1-benchmarks.png" in result
+        # Video poster and source
+        assert "https://blog.cloudflare.com/content/videos/d1-demo-poster.jpg" in result
+        assert "https://blog.cloudflare.com/content/videos/d1-demo.mp4" in result
+        # External GitHub link preserved
+        assert "https://github.com/cloudflare/d1-northwind" in result
+
+    def test_jvns_dns_comics(self, resolver, posts_fixture):
+        """Julia Evans blog with typical image and link patterns."""
+        post = next(p for p in posts_fixture["posts"] if p["id"] == "jvns-dns-comics")
+
+        result = resolver.resolve(post["content_html"], post["base_url"])
+
+        # Absolute path images
+        assert "https://jvns.ca/images/dns-comic-1.png" in result
+        assert "https://jvns.ca/images/dns-comic-2.png" in result
+        # External link preserved
+        assert "https://wizardzines.com/zines/dns/" in result
+        # Parent directory traversals (RFC 3986: ../how-queries-work/ from dns-comics/)
+        assert "https://jvns.ca/blog/2022/04/how-queries-work/" in result
+        # Note: ../../2021/03 from /blog/2022/04/dns-comics/ resolves to /blog/2022/2021/03
+        # This is correct RFC 3986 behavior - .. goes up one directory from current
+        assert "https://jvns.ca/blog/2022/2021/03/dns-debugging/" in result
+        # Absolute path to PDF
+        assert "https://jvns.ca/zines/dns.pdf" in result
+
+    def test_jvns_git_internals(self, resolver, posts_fixture):
+        """Julia Evans post with srcset and relative images."""
+        post = next(p for p in posts_fixture["posts"] if p["id"] == "jvns-git-internals")
+
+        result = resolver.resolve(post["content_html"], post["base_url"])
+
+        # Relative path images (no leading slash)
+        assert "https://jvns.ca/blog/2024/01/inside-git/images/git-objects.svg" in result
+        # srcset with multiple images
+        assert "https://jvns.ca/blog/2024/01/inside-git/images/git-dag-small.png" in result
+        assert "https://jvns.ca/blog/2024/01/inside-git/images/git-dag-large.png" in result
+        # Absolute path internal link
+        assert "https://jvns.ca/blog/git-hierarchies/" in result
+        # External link preserved
+        assert "https://git-scm.com/book/en/v2/Git-Internals-Plumbing-and-Porcelain" in result
+
+    def test_rachel_oncall_post(self, resolver, posts_fixture):
+        """Rachel by the Bay post with typical patterns."""
+        post = next(p for p in posts_fixture["posts"] if p["id"] == "rachel-outage")
+
+        result = resolver.resolve(post["content_html"], post["base_url"])
+
+        # Absolute path image in post directory
+        assert "https://rachelbythebay.com/w/2024/03/15/oncall/dashboard.png" in result
+        # Parent directory traversal (RFC 3986: ../12 from oncall/ goes to /w/2024/03/15/12)
+        assert "https://rachelbythebay.com/w/2024/03/15/12/cascading/" in result
+        # Older absolute path
+        assert "https://rachelbythebay.com/w/2023/05/20/debugging/" in result
+        # Fragment-only preserved
+        assert 'href="#solution"' in result
+        # mailto preserved
+        assert 'href="mailto:feedback@rachelbythebay.com"' in result
+        # Relative path (no leading slash)
+        assert "https://rachelbythebay.com/w/2024/03/15/oncall/timeline.gif" in result
+
+    def test_rachel_systems_post(self, resolver, posts_fixture):
+        """Rachel by the Bay with picture element and srcset."""
+        post = next(p for p in posts_fixture["posts"] if p["id"] == "rachel-systems")
+
+        result = resolver.resolve(post["content_html"], post["base_url"])
+
+        # Picture element sources
+        assert "https://rachelbythebay.com/w/images/diagram-dark.svg" in result
+        assert "https://rachelbythebay.com/w/images/diagram-light.svg" in result
+        # Multiple parent directory traversal (RFC 3986: ../../2023 from systems/ resolves to /w/2024/2023)
+        assert "https://rachelbythebay.com/w/2024/2023/12/backups/" in result
+        # External link preserved
+        assert "https://sre.google/sre-book/table-of-contents/" in result
+        # Protocol-relative URL preserved
+        assert "//cdn.example.com/distributed-systems.pdf" in result
+        # Data URI preserved
+        assert "data:image/png;base64," in result
+
+    def test_cloudflare_responsive_images(self, resolver, posts_fixture):
+        """Cloudflare post with responsive images and srcset."""
+        post = next(p for p in posts_fixture["posts"] if p["id"] == "cf-responsive-images")
+
+        result = resolver.resolve(post["content_html"], post["base_url"])
+
+        # Main image src
+        assert "https://blog.cloudflare.com/content/images/hero.jpg" in result
+        # srcset URLs
+        assert "https://blog.cloudflare.com/content/images/hero-320.jpg" in result
+        assert "https://blog.cloudflare.com/content/images/hero-640.jpg" in result
+        assert "https://blog.cloudflare.com/content/images/hero-1280.jpg" in result
+        # Picture element with different formats
+        assert "https://blog.cloudflare.com/content/images/example.avif" in result
+        assert "https://blog.cloudflare.com/content/images/example.webp" in result
+        assert "https://blog.cloudflare.com/content/images/example.jpg" in result
+        # External link preserved
+        assert "https://web.dev/responsive-images/" in result
+
+    def test_jvns_debugging_tips(self, resolver, posts_fixture):
+        """Julia Evans post with various element types."""
+        post = next(p for p in posts_fixture["posts"] if p["id"] == "jvns-debugging")
+
+        result = resolver.resolve(post["content_html"], post["base_url"])
+
+        # Relative image with ./
+        assert "https://jvns.ca/blog/2024/debugging-tips/error-message.png" in result
+        # Fragment-only link preserved
+        assert 'href="#tip1"' in result
+        # Absolute path link
+        assert "https://jvns.ca/blog/binary-search-debugging/" in result
+        # External GitHub link
+        assert "https://github.com/jvns/dnspeep" in result
+        # tel: link preserved
+        assert 'href="tel:+15551234567"' in result
+        # object data attribute
+        assert "https://jvns.ca/interactive/debugger.swf" in result
+        # track src (relative)
+        assert "https://jvns.ca/blog/2024/debugging-tips/captions/debugging-en.vtt" in result
+
+    @pytest.mark.parametrize("post_id", [
+        "cf-workers-ai",
+        "cf-d1-announcement",
+        "jvns-dns-comics",
+        "jvns-git-internals",
+        "rachel-outage",
+        "rachel-systems",
+        "cf-responsive-images",
+        "jvns-debugging",
+    ])
+    def test_all_expected_urls_resolved(self, resolver, posts_fixture, post_id):
+        """Verify all expected URLs are properly resolved for each post."""
+        post = next(p for p in posts_fixture["posts"] if p["id"] == post_id)
+
+        result = resolver.resolve(post["content_html"], post["base_url"])
+
+        for expected_url in post["expected_resolved_urls"]:
+            # Check that the URL appears in the result
+            # For special URLs (mailto:, tel:, #, data:, //) they should be preserved
+            if expected_url.startswith(("#", "mailto:", "tel:", "data:", "//")):
+                assert expected_url in result, f"Expected preserved URL not found: {expected_url}"
+            else:
+                assert expected_url in result, f"Expected resolved URL not found: {expected_url}"

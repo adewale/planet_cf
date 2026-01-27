@@ -1,0 +1,167 @@
+{
+  "description": "Test dataset for URL resolution with realistic blog post content patterns",
+  "note": "Content patterns based on typical posts from Cloudflare Blog, Julia Evans (jvns.ca), and Rachel by the Bay",
+  "feeds": [
+    {
+      "id": 1,
+      "title": "Cloudflare Blog",
+      "url": "https://blog.cloudflare.com/rss/",
+      "site_url": "https://blog.cloudflare.com"
+    },
+    {
+      "id": 2,
+      "title": "Julia Evans",
+      "url": "https://jvns.ca/atom.xml",
+      "site_url": "https://jvns.ca"
+    },
+    {
+      "id": 3,
+      "title": "Rachel by the Bay",
+      "url": "https://rachelbythebay.com/w/atom.xml",
+      "site_url": "https://rachelbythebay.com"
+    }
+  ],
+  "posts": [
+    {
+      "id": "cf-workers-ai",
+      "feed_id": 1,
+      "title": "Introducing Workers AI",
+      "url": "https://blog.cloudflare.com/workers-ai/",
+      "author": "Michelle Chen",
+      "base_url": "https://blog.cloudflare.com/workers-ai/",
+      "content_html": "<p>Today we're announcing Workers AI, bringing AI inference to the edge.</p><figure class=\"kg-card kg-image-card\"><img src=\"/content/images/2024/01/workers-ai-architecture.png\" alt=\"Workers AI Architecture\" loading=\"lazy\"></figure><p>With Workers AI, you can run machine learning models directly in Cloudflare Workers.</p><h2>Getting Started</h2><p>Check out our <a href=\"/workers-ai-docs/\">documentation</a> to get started. You can also see <a href=\"https://developers.cloudflare.com/workers-ai/\">the full API reference</a>.</p><figure><img src=\"/content/images/2024/01/inference-diagram.svg\" alt=\"Inference flow\"></figure><p>For more details, read our <a href=\"../birthday-week-recap/\">Birthday Week recap</a>.</p>",
+      "expected_resolved_urls": [
+        "https://blog.cloudflare.com/content/images/2024/01/workers-ai-architecture.png",
+        "https://blog.cloudflare.com/workers-ai-docs/",
+        "https://developers.cloudflare.com/workers-ai/",
+        "https://blog.cloudflare.com/content/images/2024/01/inference-diagram.svg",
+        "https://blog.cloudflare.com/birthday-week-recap/"
+      ]
+    },
+    {
+      "id": "cf-d1-announcement",
+      "feed_id": 1,
+      "title": "D1: Our SQL Database",
+      "url": "https://blog.cloudflare.com/introducing-d1/",
+      "author": "Aly Cabral",
+      "base_url": "https://blog.cloudflare.com/introducing-d1/",
+      "content_html": "<p>D1 is now generally available!</p><img src=\"https://cf-assets.www.cloudflare.com/images/d1-logo.png\" alt=\"D1 Logo\"><p>Key features:</p><ul><li>SQLite at the edge</li><li>Automatic replication</li><li>Zero configuration</li></ul><figure><img src=\"./images/d1-benchmarks.png\" alt=\"D1 Benchmarks\"><figcaption>Performance comparison</figcaption></figure><p>Read the <a href=\"/d1-docs/getting-started/\">getting started guide</a> or check out our <a href=\"https://github.com/cloudflare/d1-northwind\">sample app on GitHub</a>.</p><video poster=\"/content/videos/d1-demo-poster.jpg\"><source src=\"/content/videos/d1-demo.mp4\" type=\"video/mp4\"></video>",
+      "expected_resolved_urls": [
+        "https://cf-assets.www.cloudflare.com/images/d1-logo.png",
+        "https://blog.cloudflare.com/introducing-d1/images/d1-benchmarks.png",
+        "https://blog.cloudflare.com/d1-docs/getting-started/",
+        "https://github.com/cloudflare/d1-northwind",
+        "https://blog.cloudflare.com/content/videos/d1-demo-poster.jpg",
+        "https://blog.cloudflare.com/content/videos/d1-demo.mp4"
+      ]
+    },
+    {
+      "id": "jvns-dns-comics",
+      "feed_id": 2,
+      "title": "How DNS Works (comic)",
+      "url": "https://jvns.ca/blog/2022/04/dns-comics/",
+      "author": "Julia Evans",
+      "base_url": "https://jvns.ca/blog/2022/04/dns-comics/",
+      "note": "Per RFC 3986, ../../2021 from /blog/2022/04/dns-comics/ resolves to /blog/2022/2021 (not /blog/2021)",
+      "content_html": "<p>I made some comics about how DNS works!</p><p><a href=\"/images/dns-comic-1.png\"><img src=\"/images/dns-comic-1.png\" alt=\"DNS Comic Page 1\"></a></p><p>Here's the second page:</p><p><a href=\"/images/dns-comic-2.png\"><img src=\"/images/dns-comic-2.png\" alt=\"DNS Comic Page 2\"></a></p><p>You can buy a print version at <a href=\"https://wizardzines.com/zines/dns/\">Wizard Zines</a>.</p><p>Related posts:</p><ul><li><a href=\"../how-queries-work/\">How DNS queries work</a></li><li><a href=\"../../2021/03/dns-debugging/\">DNS debugging tips</a></li></ul><p>Get the PDF: <a href=\"/zines/dns.pdf\">Download here</a></p>",
+      "expected_resolved_urls": [
+        "https://jvns.ca/images/dns-comic-1.png",
+        "https://jvns.ca/images/dns-comic-2.png",
+        "https://wizardzines.com/zines/dns/",
+        "https://jvns.ca/blog/2022/04/how-queries-work/",
+        "https://jvns.ca/blog/2022/2021/03/dns-debugging/",
+        "https://jvns.ca/zines/dns.pdf"
+      ]
+    },
+    {
+      "id": "jvns-git-internals",
+      "feed_id": 2,
+      "title": "Inside .git",
+      "url": "https://jvns.ca/blog/2024/01/inside-git/",
+      "author": "Julia Evans",
+      "base_url": "https://jvns.ca/blog/2024/01/inside-git/",
+      "content_html": "<p>Let's explore what's inside the <code>.git</code> directory!</p><figure><img src=\"images/git-objects.svg\" alt=\"Git Objects Diagram\"><figcaption>The four types of Git objects</figcaption></figure><pre><code>$ ls .git\nHEAD\nconfig\nobjects/\nrefs/</code></pre><p>The objects directory contains all your commits:</p><img srcset=\"images/git-dag-small.png 480w, images/git-dag-large.png 800w\" sizes=\"(max-width: 600px) 480px, 800px\" src=\"images/git-dag-large.png\" alt=\"Git DAG\"><p>For more on Git internals, see my <a href=\"/blog/git-hierarchies/\">post on Git hierarchies</a> or the <a href=\"https://git-scm.com/book/en/v2/Git-Internals-Plumbing-and-Porcelain\">Pro Git book</a>.</p>",
+      "expected_resolved_urls": [
+        "https://jvns.ca/blog/2024/01/inside-git/images/git-objects.svg",
+        "https://jvns.ca/blog/2024/01/inside-git/images/git-dag-small.png",
+        "https://jvns.ca/blog/2024/01/inside-git/images/git-dag-large.png",
+        "https://jvns.ca/blog/git-hierarchies/",
+        "https://git-scm.com/book/en/v2/Git-Internals-Plumbing-and-Porcelain"
+      ]
+    },
+    {
+      "id": "rachel-outage",
+      "feed_id": 3,
+      "title": "Tales from the on-call rotation",
+      "url": "https://rachelbythebay.com/w/2024/03/15/oncall/",
+      "author": "Rachel Kroll",
+      "base_url": "https://rachelbythebay.com/w/2024/03/15/oncall/",
+      "note": "Per RFC 3986, ../12 from /w/2024/03/15/oncall/ resolves to /w/2024/03/15/12 (not /w/2024/03/12)",
+      "content_html": "<p>Here's what happened during my last on-call shift.</p><p><img src=\"/w/2024/03/15/oncall/dashboard.png\" alt=\"Monitoring Dashboard\"></p><p>The alert came in at 3 AM:</p><blockquote>CRITICAL: API latency &gt; 500ms</blockquote><p>I wrote about similar incidents <a href=\"../12/cascading/\">earlier this month</a>.</p><p>Some relevant links:</p><ul><li><a href=\"/w/2023/05/20/debugging/\">My debugging checklist</a></li><li><a href=\"#solution\">Jump to solution</a></li><li><a href=\"mailto:feedback@rachelbythebay.com\">Send feedback</a></li></ul><p><img src=\"timeline.gif\" alt=\"Incident timeline\"></p>",
+      "expected_resolved_urls": [
+        "https://rachelbythebay.com/w/2024/03/15/oncall/dashboard.png",
+        "https://rachelbythebay.com/w/2024/03/15/12/cascading/",
+        "https://rachelbythebay.com/w/2023/05/20/debugging/",
+        "#solution",
+        "mailto:feedback@rachelbythebay.com",
+        "https://rachelbythebay.com/w/2024/03/15/oncall/timeline.gif"
+      ]
+    },
+    {
+      "id": "rachel-systems",
+      "feed_id": 3,
+      "title": "Distributed systems war stories",
+      "url": "https://rachelbythebay.com/w/2024/06/systems/",
+      "author": "Rachel Kroll",
+      "base_url": "https://rachelbythebay.com/w/2024/06/systems/",
+      "note": "Per RFC 3986, ../../2023 from /w/2024/06/systems/ resolves to /w/2024/2023 (not /w/2023)",
+      "content_html": "<p>I've collected some war stories from my time working on distributed systems.</p><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"/w/images/diagram-dark.svg\"><source media=\"(prefers-color-scheme: light)\" srcset=\"/w/images/diagram-light.svg\"><img src=\"/w/images/diagram-light.svg\" alt=\"System Architecture\"></picture><p>The key lessons:</p><ol><li>Always have backups</li><li>Test your backups</li><li>Did I mention backups?</li></ol><p><a href=\"../../2023/12/backups/\">My post on backup strategies</a></p><p>External resources:</p><ul><li><a href=\"https://sre.google/sre-book/table-of-contents/\">Google SRE Book</a></li><li><a href=\"//cdn.example.com/distributed-systems.pdf\">Protocol-relative PDF</a></li></ul><p><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==\" alt=\"Pixel\"></p>",
+      "expected_resolved_urls": [
+        "https://rachelbythebay.com/w/images/diagram-dark.svg",
+        "https://rachelbythebay.com/w/images/diagram-light.svg",
+        "https://rachelbythebay.com/w/2024/2023/12/backups/",
+        "https://sre.google/sre-book/table-of-contents/",
+        "//cdn.example.com/distributed-systems.pdf",
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+      ]
+    },
+    {
+      "id": "cf-responsive-images",
+      "feed_id": 1,
+      "title": "Responsive Images with Cloudflare",
+      "url": "https://blog.cloudflare.com/responsive-images/",
+      "author": "Kornel Lesinski",
+      "base_url": "https://blog.cloudflare.com/responsive-images/",
+      "content_html": "<h2>Optimizing Images for Every Device</h2><p>Responsive images are essential for modern web performance.</p><img src=\"/content/images/hero.jpg\" srcset=\"/content/images/hero-320.jpg 320w, /content/images/hero-640.jpg 640w, /content/images/hero-1280.jpg 1280w\" sizes=\"(max-width: 320px) 280px, (max-width: 640px) 600px, 1200px\" alt=\"Hero image showing image optimization\"><p>We support multiple formats:</p><picture><source type=\"image/avif\" srcset=\"/content/images/example.avif\"><source type=\"image/webp\" srcset=\"/content/images/example.webp\"><img src=\"/content/images/example.jpg\" alt=\"Format comparison\"></picture><p>Learn more in our <a href=\"/image-optimization-guide/\">optimization guide</a>.</p><p>See also: <a href=\"https://web.dev/responsive-images/\">web.dev article</a></p>",
+      "expected_resolved_urls": [
+        "https://blog.cloudflare.com/content/images/hero.jpg",
+        "https://blog.cloudflare.com/content/images/hero-320.jpg",
+        "https://blog.cloudflare.com/content/images/hero-640.jpg",
+        "https://blog.cloudflare.com/content/images/hero-1280.jpg",
+        "https://blog.cloudflare.com/content/images/example.avif",
+        "https://blog.cloudflare.com/content/images/example.webp",
+        "https://blog.cloudflare.com/content/images/example.jpg",
+        "https://blog.cloudflare.com/image-optimization-guide/",
+        "https://web.dev/responsive-images/"
+      ]
+    },
+    {
+      "id": "jvns-debugging",
+      "feed_id": 2,
+      "title": "Debugging tips I wish I'd known",
+      "url": "https://jvns.ca/blog/2024/debugging-tips/",
+      "author": "Julia Evans",
+      "base_url": "https://jvns.ca/blog/2024/debugging-tips/",
+      "content_html": "<p>Here are some debugging tips that took me years to learn.</p><h2 id=\"tip1\">Tip 1: Read the error message</h2><p><img src=\"./error-message.png\" alt=\"Screenshot of an error message\"></p><p>I know, obvious right? But really read it!</p><h2 id=\"tip2\">Tip 2: Binary search</h2><p><a href=\"#tip1\">Back to tip 1</a></p><p>Related: <a href=\"/blog/binary-search-debugging/\">Binary search debugging post</a></p><p>Tools I use:</p><ul><li><a href=\"https://github.com/jvns/dnspeep\">dnspeep</a> - my DNS tool</li><li><a href=\"tel:+15551234567\">Call my support line</a> (just kidding)</li></ul><object data=\"/interactive/debugger.swf\" type=\"application/x-shockwave-flash\"><p>Flash not supported</p></object><track src=\"captions/debugging-en.vtt\" kind=\"subtitles\" srclang=\"en\">",
+      "expected_resolved_urls": [
+        "https://jvns.ca/blog/2024/debugging-tips/error-message.png",
+        "#tip1",
+        "https://jvns.ca/blog/binary-search-debugging/",
+        "https://github.com/jvns/dnspeep",
+        "tel:+15551234567",
+        "https://jvns.ca/interactive/debugger.swf",
+        "https://jvns.ca/blog/2024/debugging-tips/captions/debugging-en.vtt"
+      ]
+    }
+  ]
+}
