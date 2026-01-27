@@ -582,19 +582,24 @@ class Default(WorkerEntrypoint):
                 # Enqueue each feed as a SEPARATE message
                 # Do NOT batch multiple feeds into one message
                 with Timer() as queue_timer:
-                    for feed in feeds:
-                        message = {
-                            "feed_id": feed["id"],
-                            "url": feed["url"],
-                            "etag": feed.get("etag"),
-                            "last_modified": feed.get("last_modified"),
-                            "scheduled_at": datetime.now(timezone.utc).isoformat(),
-                            # Cross-boundary correlation: link scheduler -> feed fetch
-                            "correlation_id": sched_event.correlation_id,
-                        }
+                    if self.env.FEED_QUEUE is None:
+                        # Queue not available (e.g., wrangler dev --remote mode)
+                        sched_event.outcome = "skipped"
+                        sched_event.error_message = "Queue binding unavailable"
+                    else:
+                        for feed in feeds:
+                            message = {
+                                "feed_id": feed["id"],
+                                "url": feed["url"],
+                                "etag": feed.get("etag"),
+                                "last_modified": feed.get("last_modified"),
+                                "scheduled_at": datetime.now(timezone.utc).isoformat(),
+                                # Cross-boundary correlation: link scheduler -> feed fetch
+                                "correlation_id": sched_event.correlation_id,
+                            }
 
-                        await self.env.FEED_QUEUE.send(message)
-                        enqueue_count += 1
+                            await self.env.FEED_QUEUE.send(message)
+                            enqueue_count += 1
 
                 sched_event.scheduler_queue_ms = queue_timer.elapsed_ms
                 sched_event.feeds_enqueued = enqueue_count
@@ -2699,12 +2704,13 @@ class Default(WorkerEntrypoint):
                 )
 
                 # Queue the feed for immediate full processing (fetch entries)
-                await self.env.FEED_QUEUE.send(
-                    {
-                        "feed_id": feed_id,
-                        "url": final_url,
-                    }
-                )
+                if self.env.FEED_QUEUE is not None:
+                    await self.env.FEED_QUEUE.send(
+                        {
+                            "feed_id": feed_id,
+                            "url": final_url,
+                        }
+                    )
 
                 admin_event.outcome = "success"
 
@@ -3041,13 +3047,14 @@ class Default(WorkerEntrypoint):
                 )
 
                 # Queue the feed for immediate fetch - feed is now a Python dict
-                message = {
-                    "feed_id": feed_id,
-                    "url": feed.get("url"),
-                    "etag": feed.get("etag"),
-                    "last_modified": feed.get("last_modified"),
-                }
-                await self.env.FEED_QUEUE.send(message)
+                if self.env.FEED_QUEUE is not None:
+                    message = {
+                        "feed_id": feed_id,
+                        "url": feed.get("url"),
+                        "etag": feed.get("etag"),
+                        "last_modified": feed.get("last_modified"),
+                    }
+                    await self.env.FEED_QUEUE.send(message)
 
                 # Audit log
                 await self._log_admin_action(

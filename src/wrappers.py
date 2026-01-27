@@ -457,8 +457,11 @@ class SafeEnv:
         self.DB = SafeD1(env.DB)
         self.AI = SafeAI(env.AI)
         self.SEARCH_INDEX = SafeVectorize(env.SEARCH_INDEX)
-        self.FEED_QUEUE = SafeQueue(env.FEED_QUEUE)
-        self.DEAD_LETTER_QUEUE = SafeQueue(env.DEAD_LETTER_QUEUE)
+        # Queue bindings are optional (not supported in wrangler dev --remote)
+        queue = getattr(env, "FEED_QUEUE", None)
+        self.FEED_QUEUE = SafeQueue(queue) if queue else None
+        dlq = getattr(env, "DEAD_LETTER_QUEUE", None)
+        self.DEAD_LETTER_QUEUE = SafeQueue(dlq) if dlq else None
 
     def __getattr__(self, name: str) -> Any:
         """Pass through other environment variables (strings, etc.)."""

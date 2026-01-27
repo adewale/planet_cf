@@ -50,11 +50,13 @@
   },
 
   // D1 Database
+  // Use remote: true in dev to access production data (create preview_database_id for safer dev)
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "planetcf",
-      "database_id": "e94e6c4e-83ba-42df-afd5-4648bfa558dd"
+      "database_id": "e94e6c4e-83ba-42df-afd5-4648bfa558dd",
+      "remote": true
     }
   ],
 
@@ -66,13 +68,15 @@
   "vectorize": [
     {
       "binding": "SEARCH_INDEX",
-      "index_name": "planetcf-entries"
+      "index_name": "planetcf-entries",
+      "remote": true
     }
   ],
 
   // Workers AI (for generating embeddings)
   "ai": {
-    "binding": "AI"
+    "binding": "AI",
+    "remote": true
   },
 
   // Version metadata (for observability)
