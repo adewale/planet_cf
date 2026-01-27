@@ -81,14 +81,16 @@ class TestPublicEndpoints:
         assert "application/xml" in response.headers.get("content-type", "")
 
     def test_search_requires_query(self):
-        """Search without query should return 400."""
+        """Search without query should show error message."""
         response = self.client.get("/search")
-        assert response.status_code == 400
+        assert response.status_code == 200
+        assert "at least 2 characters" in response.text
 
-    def test_search_with_short_query_returns_400(self):
-        """Search with too-short query should return 400."""
+    def test_search_with_short_query_shows_error(self):
+        """Search with too-short query should show error message."""
         response = self.client.get("/search?q=a")
-        assert response.status_code == 400
+        assert response.status_code == 200
+        assert "at least 2 characters" in response.text
 
     def test_static_css_served(self):
         """Static CSS should be served."""
