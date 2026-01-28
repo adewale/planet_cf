@@ -966,8 +966,11 @@ class Default(WorkerEntrypoint):
             ).hexdigest()[:16]
             guid = f"generated:{content_hash}"
 
-        # Extract content (prefer full content over summary)
+        # Extract content (prefer full content over summary, fall back to description)
         # Note: After JsProxy conversion, entry is a plain dict, so use .get() not hasattr()
+        # Priority: content[0].value > summary > description
+        # RSS uses <description> for content, Atom uses <content> or <summary>
+        # feedparser maps RSS <description> to both summary and description fields
         content = ""
         entry_content = entry.get("content")
         if entry_content and isinstance(entry_content, list) and len(entry_content) > 0:
@@ -978,6 +981,8 @@ class Default(WorkerEntrypoint):
                 content = str(first_content)
         elif entry.get("summary"):
             content = entry.get("summary", "")
+        elif entry.get("description"):
+            content = entry.get("description", "")
 
         # If content is just a short summary, try to fetch full article content
         # This handles feeds that only provide <description> without <content:encoded>
@@ -1009,8 +1014,8 @@ class Default(WorkerEntrypoint):
 
         title = entry.get("title", "")
 
-        # Truncate summary with indicator
-        raw_summary = entry.get("summary") or ""
+        # Truncate summary with indicator (fall back to description for RSS feeds)
+        raw_summary = entry.get("summary") or entry.get("description") or ""
         if len(raw_summary) > SUMMARY_MAX_LENGTH:
             summary = raw_summary[: SUMMARY_MAX_LENGTH - 3] + "..."
         else:
