@@ -304,8 +304,16 @@ article h3 a:hover {
     text-decoration: none;
 }
 
-.feeds li.unhealthy a {
+.feeds li.unhealthy a:not(.feed-icon) {
     color: var(--error-color);
+    border-bottom: 1px dashed var(--error-color);
+    cursor: help;
+}
+
+.feeds li.unhealthy a:not(.feed-icon):hover {
+    background-color: var(--error-color);
+    color: white;
+    text-decoration: none;
 }
 
 .feeds li.healthy::before,

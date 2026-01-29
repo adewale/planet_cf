@@ -402,7 +402,17 @@ article header {
     margin-right: 0.5rem;
 }
 
-.feeds li.unhealthy { color: var(--error); }
+.feeds li.unhealthy a:not(.feed-icon) {
+    color: var(--error);
+    border-bottom: 1px dashed var(--error);
+    cursor: help;
+}
+
+.feeds li.unhealthy a:not(.feed-icon):hover {
+    background-color: var(--error);
+    color: white;
+    text-decoration: none;
+}
 
 .feeds li.unhealthy::before {
     content: '';
