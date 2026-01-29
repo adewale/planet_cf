@@ -304,6 +304,10 @@ article h3 a:hover {
     text-decoration: none;
 }
 
+.feeds li.unhealthy a {
+    color: var(--error-color);
+}
+
 .feeds li.healthy::before,
 .feeds li.unhealthy::before {
     content: '';

@@ -966,6 +966,8 @@ article header {
     margin-right: 0.5rem;
 }
 
+.feeds li.unhealthy { color: var(--error); }
+
 .feeds li.unhealthy::before {
     content: '';
     flex-shrink: 0;
