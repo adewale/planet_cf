@@ -305,24 +305,24 @@ article h3 a:hover {
 }
 
 .feeds li.unhealthy a:not(.feed-icon) {
-    color: var(--error-color);
-    border-bottom: 1px dashed var(--error-color);
-    cursor: help;
+    border-bottom: 1px dashed var(--text-color);
 }
 
-.feeds li.unhealthy a:not(.feed-icon):hover {
-    background-color: var(--error-color);
-    color: white;
-    text-decoration: none;
-}
-
-.feeds li.healthy::before,
-.feeds li.unhealthy::before {
+.feeds li.healthy::before {
     content: '';
     flex-shrink: 0;
     width: 6px;
     height: 6px;
     background: var(--primary-color);
+    border-radius: 50%;
+}
+
+.feeds li.unhealthy::before {
+    content: '';
+    flex-shrink: 0;
+    width: 6px;
+    height: 6px;
+    background: var(--error-color);
     border-radius: 50%;
 }
 

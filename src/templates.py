@@ -967,15 +967,7 @@ article header {
 }
 
 .feeds li.unhealthy a:not(.feed-icon) {
-    color: var(--error);
-    border-bottom: 1px dashed var(--error);
-    cursor: help;
-}
-
-.feeds li.unhealthy a:not(.feed-icon):hover {
-    background-color: var(--error);
-    color: white;
-    text-decoration: none;
+    border-bottom: 1px dashed var(--text-primary);
 }
 
 .feeds li.unhealthy::before {
@@ -983,7 +975,7 @@ article header {
     flex-shrink: 0;
     width: 6px;
     height: 6px;
-    background: var(--accent);
+    background: var(--error);
     border-radius: 50%;
     margin-right: 0.5rem;
 }
