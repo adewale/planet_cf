@@ -369,6 +369,8 @@ article header {
 .feeds { list-style: none; }
 
 .feeds li {
+    display: flex;
+    align-items: center;
     padding: 0.625rem 0;
     border-bottom: 1px solid var(--border-light);
     font-size: 0.925rem;
@@ -384,28 +386,30 @@ article header {
 
 .feeds li a:hover { color: var(--accent); }
 
-.feeds li.healthy::before {
-    content: '';
-    display: inline-block;
-    width: 6px;
-    height: 6px;
-    background: var(--success);
-    border-radius: 50%;
+.feeds li .feed-icon {
+    display: flex;
+    align-items: center;
     margin-right: 0.5rem;
-    vertical-align: middle;
 }
 
-.feeds li.unhealthy { color: var(--error); }
+.feeds li.healthy::before {
+    content: '';
+    flex-shrink: 0;
+    width: 6px;
+    height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    margin-right: 0.5rem;
+}
 
 .feeds li.unhealthy::before {
     content: '';
-    display: inline-block;
+    flex-shrink: 0;
     width: 6px;
     height: 6px;
-    background: var(--error);
+    background: var(--accent);
     border-radius: 50%;
     margin-right: 0.5rem;
-    vertical-align: middle;
 }
 
 footer {
