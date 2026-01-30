@@ -14,8 +14,6 @@ For local development, you can use config/instance.yaml with the
 generate_wrangler_config.py script to generate wrangler.jsonc.
 """
 
-from typing import Optional
-
 from wrappers import SafeEnv
 
 # =============================================================================
@@ -27,7 +25,6 @@ from wrappers import SafeEnv
 DEFAULTS = {
     # Instance mode (full or lite)
     "INSTANCE_MODE": "full",
-
     # Core identity
     # PLANET_NAME: If not set, derived from PLANET_ID (e.g., "planet-python" -> "Planet Python")
     "PLANET_ID": "planet",
@@ -36,14 +33,12 @@ DEFAULTS = {
     "PLANET_URL": "https://example.com",
     "PLANET_OWNER_NAME": "Planet Owner",
     "PLANET_OWNER_EMAIL": "planet@example.com",
-
     # Branding
     # THEME: Falls back to 'default' if specified theme doesn't exist
     "THEME": "default",
     "USER_AGENT_TEMPLATE": "{name}/1.0 (+{url}; {email})",
     "FOOTER_TEXT": "Powered by {name}",
     "SHOW_ADMIN_LINK": "true",
-
     # Content Display
     # CONTENT_DAYS: Show entries from last N days (default: 7)
     # If no entries in range, automatically shows 50 most recent entries
@@ -52,19 +47,16 @@ DEFAULTS = {
     "MAX_ENTRIES_PER_FEED": "50",  # Max entries to keep per feed
     "RETENTION_DAYS": "90",  # Keep entries for 90 days
     "SUMMARY_MAX_LENGTH": "500",
-
     # Search
     "SEARCH_ENABLED": "true",
     "EMBEDDING_MAX_CHARS": "2000",
     "SEARCH_SCORE_THRESHOLD": "0.3",
     "SEARCH_TOP_K": "50",
-
     # Feed Processing (smart defaults for reliability)
     "HTTP_TIMEOUT_SECONDS": "30",  # HTTP request timeout
     "FEED_TIMEOUT_SECONDS": "60",  # Overall feed processing timeout
     "FEED_AUTO_DEACTIVATE_THRESHOLD": "10",  # Auto-deactivate after N failures
     "FEED_FAILURE_THRESHOLD": "3",  # Retry attempts before marking as failed
-
     # Auth
     "OAUTH_PROVIDER": "github",
     "SESSION_TTL_SECONDS": "604800",  # 7 days
@@ -76,7 +68,7 @@ DEFAULTS = {
 # =============================================================================
 
 
-def _get_env(env: SafeEnv, key: str, default: Optional[str] = None) -> str:
+def _get_env(env: SafeEnv, key: str, default: str | None = None) -> str:
     """Get environment variable with fallback to defaults."""
     value = getattr(env, key, None)
     if value is not None:
@@ -119,5 +111,5 @@ def is_lite_mode(env: SafeEnv) -> bool:
 # Currently only GitHub is supported as an OAuth provider.
 
 GITHUB_OAUTH_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
-GITHUB_OAUTH_TOKEN_URL = "https://github.com/login/oauth/access_token"
+GITHUB_OAUTH_TOKEN_URL = "https://github.com/login/oauth/access_token"  # noqa: S105
 GITHUB_USER_INFO_URL = "https://api.github.com/user"

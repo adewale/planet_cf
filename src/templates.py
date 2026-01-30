@@ -1327,6 +1327,7 @@ function rebuildSearchIndex() {
 # Template Loader and Environment
 # =============================================================================
 
+
 class EmbeddedLoader(BaseLoader):
     """Jinja2 loader that loads templates from embedded strings."""
 
