@@ -139,6 +139,9 @@ DEFAULT_SEARCH_TOP_K = 50  # Max semantic search results before filtering
 DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD = 10  # Consecutive failures before auto-deactivate
 DEFAULT_FEED_FAILURE_THRESHOLD = 3  # Consecutive failures to show in DLQ
 
+# SQL query limits (prevent unbounded result sets)
+DEFAULT_QUERY_LIMIT = 500  # Maximum entries returned in a single query
+
 # Smart defaults: Content display fallback
 # When no entries found in display range, show the N most recent entries
 FALLBACK_ENTRIES_LIMIT = 50  # Show 50 most recent entries if date range is empty
@@ -1639,10 +1642,10 @@ class Default(WorkerEntrypoint):
                 SELECT * FROM ranked
                 WHERE rn_per_day <= 5 AND rn_total <= ?
                 ORDER BY COALESCE(published_at, first_seen) DESC
-                LIMIT 500
+                LIMIT ?
                 """
                 )
-                .bind(cutoff_date, max_per_feed)
+                .bind(cutoff_date, max_per_feed, DEFAULT_QUERY_LIMIT)
                 .all()
             )
 
@@ -1650,11 +1653,11 @@ class Default(WorkerEntrypoint):
             feeds_result = await self.env.DB.prepare("""
                 SELECT
                     id, title, site_url, url, last_success_at,
-                    CASE WHEN consecutive_failures < 3 THEN 1 ELSE 0 END as is_healthy
+                    CASE WHEN consecutive_failures < ? THEN 1 ELSE 0 END as is_healthy
                 FROM feeds
                 WHERE is_active = 1
                 ORDER BY title
-            """).all()
+            """).bind(DEFAULT_FEED_FAILURE_THRESHOLD).all()
 
         # Populate generation metrics on the consolidated event
         if event:
@@ -1986,103 +1989,64 @@ class Default(WorkerEntrypoint):
         )
         return _html_response(html, cache_max_age=0)
 
+    def _get_config_value(
+        self,
+        env_key: str,
+        default: int | float,
+        value_type: type[int] | type[float] = int,
+    ) -> int | float:
+        """Get a configuration value from environment with type conversion and fallback.
+
+        This is a generic helper that consolidates the pattern used by all config getters.
+        It handles environment variable lookup, type conversion, and error logging.
+
+        Args:
+            env_key: The environment variable name to look up
+            default: The default value to use if not set or on error
+            value_type: The type to convert to (int or float)
+
+        Returns:
+            The configured value, or the default if not set or on conversion error
+        """
+        try:
+            value = getattr(self.env, env_key, None)
+            return value_type(value) if value else default
+        except (ValueError, TypeError) as e:
+            _log_op(
+                "config_validation_error",
+                config_key=env_key,
+                error=str(e),
+                using_default=default,
+            )
+            return default
+
     def _get_retention_days(self) -> int:
         """Get retention days from environment, default 90."""
-        try:
-            days = getattr(self.env, "RETENTION_DAYS", None)
-            return int(days) if days else DEFAULT_RETENTION_DAYS
-        except (ValueError, TypeError) as e:
-            log_op(
-                "config_validation_error",
-                config_key="RETENTION_DAYS",
-                error=str(e),
-                using_default=DEFAULT_RETENTION_DAYS,
-            )
-            return DEFAULT_RETENTION_DAYS
+        return int(self._get_config_value("RETENTION_DAYS", DEFAULT_RETENTION_DAYS))
 
     def _get_max_entries_per_feed(self) -> int:
-        """Get max entries per feed from environment, default 100."""
-        try:
-            max_entries = getattr(self.env, "RETENTION_MAX_ENTRIES_PER_FEED", None)
-            return int(max_entries) if max_entries else DEFAULT_MAX_ENTRIES_PER_FEED
-        except (ValueError, TypeError) as e:
-            log_op(
-                "config_validation_error",
-                config_key="RETENTION_MAX_ENTRIES_PER_FEED",
-                error=str(e),
-                using_default=DEFAULT_MAX_ENTRIES_PER_FEED,
-            )
-            return DEFAULT_MAX_ENTRIES_PER_FEED
+        """Get max entries per feed from environment, default 50."""
+        return int(self._get_config_value("RETENTION_MAX_ENTRIES_PER_FEED", DEFAULT_MAX_ENTRIES_PER_FEED))
 
     def _get_embedding_max_chars(self) -> int:
         """Get max chars to embed per entry from environment, default 2000."""
-        try:
-            max_chars = getattr(self.env, "EMBEDDING_MAX_CHARS", None)
-            return int(max_chars) if max_chars else DEFAULT_EMBEDDING_MAX_CHARS
-        except (ValueError, TypeError) as e:
-            log_op(
-                "config_validation_error",
-                config_key="EMBEDDING_MAX_CHARS",
-                error=str(e),
-                using_default=DEFAULT_EMBEDDING_MAX_CHARS,
-            )
-            return DEFAULT_EMBEDDING_MAX_CHARS
+        return int(self._get_config_value("EMBEDDING_MAX_CHARS", DEFAULT_EMBEDDING_MAX_CHARS))
 
     def _get_search_score_threshold(self) -> float:
         """Get minimum similarity score threshold from environment, default 0.3."""
-        try:
-            threshold = getattr(self.env, "SEARCH_SCORE_THRESHOLD", None)
-            return float(threshold) if threshold else DEFAULT_SEARCH_SCORE_THRESHOLD
-        except (ValueError, TypeError) as e:
-            log_op(
-                "config_validation_error",
-                config_key="SEARCH_SCORE_THRESHOLD",
-                error=str(e),
-                using_default=DEFAULT_SEARCH_SCORE_THRESHOLD,
-            )
-            return DEFAULT_SEARCH_SCORE_THRESHOLD
+        return float(self._get_config_value("SEARCH_SCORE_THRESHOLD", DEFAULT_SEARCH_SCORE_THRESHOLD, float))
 
     def _get_search_top_k(self) -> int:
         """Get max semantic search results from environment, default 50."""
-        try:
-            top_k = getattr(self.env, "SEARCH_TOP_K", None)
-            return int(top_k) if top_k else DEFAULT_SEARCH_TOP_K
-        except (ValueError, TypeError) as e:
-            log_op(
-                "config_validation_error",
-                config_key="SEARCH_TOP_K",
-                error=str(e),
-                using_default=DEFAULT_SEARCH_TOP_K,
-            )
-            return DEFAULT_SEARCH_TOP_K
+        return int(self._get_config_value("SEARCH_TOP_K", DEFAULT_SEARCH_TOP_K))
 
     def _get_feed_auto_deactivate_threshold(self) -> int:
         """Get threshold for auto-deactivating feeds from environment, default 10."""
-        try:
-            threshold = getattr(self.env, "FEED_AUTO_DEACTIVATE_THRESHOLD", None)
-            return int(threshold) if threshold else DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD
-        except (ValueError, TypeError) as e:
-            log_op(
-                "config_validation_error",
-                config_key="FEED_AUTO_DEACTIVATE_THRESHOLD",
-                error=str(e),
-                using_default=DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD,
-            )
-            return DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD
+        return int(self._get_config_value("FEED_AUTO_DEACTIVATE_THRESHOLD", DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD))
 
     def _get_feed_failure_threshold(self) -> int:
         """Get threshold for DLQ display from environment, default 3."""
-        try:
-            threshold = getattr(self.env, "FEED_FAILURE_THRESHOLD", None)
-            return int(threshold) if threshold else DEFAULT_FEED_FAILURE_THRESHOLD
-        except (ValueError, TypeError) as e:
-            log_op(
-                "config_validation_error",
-                config_key="FEED_FAILURE_THRESHOLD",
-                error=str(e),
-                using_default=DEFAULT_FEED_FAILURE_THRESHOLD,
-            )
-            return DEFAULT_FEED_FAILURE_THRESHOLD
+        return int(self._get_config_value("FEED_FAILURE_THRESHOLD", DEFAULT_FEED_FAILURE_THRESHOLD))
 
     def _generate_atom_feed(self, planet: dict[str, str], entries: list[dict[str, Any]]) -> str:
         """Generate Atom 1.0 feed XML using template."""
