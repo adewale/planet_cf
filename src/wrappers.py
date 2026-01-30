@@ -497,6 +497,8 @@ def feed_row_from_js(row: Any) -> dict[str, Any]:
         "last_error_message": _safe_str(py_row.get("last_error_message")),
         "created_at": _safe_str(py_row.get("created_at")) or "",
         "updated_at": _safe_str(py_row.get("updated_at")) or "",
+        # Computed fields from SQL queries (e.g., CASE expressions)
+        "is_healthy": py_row.get("is_healthy"),
         # Optional fields from joins
         "author_name": _safe_str(py_row.get("author_name")),
         "author_email": _safe_str(py_row.get("author_email")),
