@@ -1,0 +1,574 @@
+/* Planet Python Theme - Faithful recreation of planetpython.org */
+/* Based on the original python.org/PSF design language */
+/* LEFT sidebar, Georgia headings, classic blog aggregator style */
+
+:root {
+    /* Primary Blues - from python.org brand */
+    --python-blue-dark: #234764;
+    --python-blue-medium: #366D9C;
+    --python-blue-light: #5E72A5;
+
+    /* Navigation colors */
+    --nav-dark: #4B5A6A;
+    --nav-medium: #3C4B7B;
+    --nav-light: #5E72A5;
+
+    /* Link colors - classic web style */
+    --link-color: #0000AA;
+    --link-visited: #551A8B;
+    --link-hover: #366D9C;
+
+    /* Backgrounds */
+    --bg-primary: #FFFFFF;
+    --bg-secondary: #F5F5F5;
+    --bg-tertiary: #F7F7F7;
+    --bg-highlight: #FBFBF7;
+
+    /* Accent colors - Python yellow */
+    --accent-yellow: #FFDB4C;
+    --accent-gold: #FFBC29;
+
+    /* Text colors */
+    --text-primary: #000000;
+    --text-secondary: #333333;
+    --text-muted: #696969;
+
+    /* Borders */
+    --border-light: #CCCCCC;
+    --border-medium: #999999;
+    --border-dark: #666666;
+
+    /* Success/Error */
+    --success: #228B22;
+    --error: #CC0000;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: Arial, Verdana, Geneva, Helvetica, sans-serif;
+    font-size: 103%;
+    line-height: 1.4;
+    color: var(--text-primary);
+    background: var(--bg-primary);
+}
+
+/* Headings - Georgia serif font, Python blue colors */
+h1, h2, h3, h4, h5, h6 {
+    font-family: Georgia, "Bitstream Vera Serif", Palatino, serif;
+    font-weight: normal;
+}
+
+h1 {
+    font-size: 160%;
+    color: var(--python-blue-dark);
+}
+
+h2 {
+    font-size: 140%;
+    color: var(--python-blue-medium);
+}
+
+h3 {
+    font-size: 135%;
+    font-style: italic;
+    color: var(--python-blue-medium);
+}
+
+h4 {
+    font-size: 125%;
+    color: var(--python-blue-medium);
+}
+
+/* Header - Python.org style logo banner */
+header {
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-medium);
+    height: 84px;
+    padding: 0 3%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+header h1 {
+    font-size: 145%;
+    margin: 0;
+}
+
+header h1 a {
+    color: var(--python-blue-dark);
+    text-decoration: none;
+}
+
+header h1 a:hover {
+    color: var(--python-blue-medium);
+}
+
+header p {
+    color: var(--text-muted);
+    font-size: 0.9em;
+    margin: 0;
+}
+
+header a {
+    color: var(--python-blue-dark);
+    text-decoration: none;
+}
+
+header a:hover {
+    text-decoration: underline;
+}
+
+/* Container - LEFT sidebar layout (classic Planet style) */
+.container {
+    display: flex;
+    flex-direction: row;
+    max-width: 100%;
+    margin: 0 3%;
+    padding-top: 1rem;
+    gap: 1.5rem;
+}
+
+/* Sidebar - Left position, 16em width */
+.sidebar {
+    width: 16em;
+    flex-shrink: 0;
+    order: -1; /* Force left side */
+    padding-top: 0.5rem;
+}
+
+.sidebar h2 {
+    font-size: 100%;
+    color: var(--python-blue-dark);
+    text-transform: uppercase;
+    font-weight: bold;
+    font-family: Arial, Verdana, Geneva, Helvetica, sans-serif;
+    margin-bottom: 0.5rem;
+    padding: 0.4em 0;
+    background: var(--bg-secondary);
+    border-left: 4px solid var(--accent-yellow);
+    padding-left: 0.5em;
+}
+
+.search-form {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.search-form input {
+    width: 100%;
+    padding: 0.4em;
+    border: 1px solid var(--border-light);
+    font-size: 0.9em;
+    margin-bottom: 0.5em;
+    font-family: inherit;
+}
+
+.search-form input:focus {
+    outline: 1px solid var(--python-blue-medium);
+    border-color: var(--python-blue-medium);
+}
+
+.search-form button {
+    padding: 0.4em 1em;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-medium);
+    cursor: pointer;
+    font-size: 0.85em;
+    font-family: inherit;
+}
+
+.search-form button:hover {
+    background: var(--accent-yellow);
+    border-color: var(--accent-gold);
+}
+
+/* Feeds list - Classic indented navigation */
+.feeds {
+    list-style: none;
+    font-size: 0.9em;
+}
+
+.feeds li {
+    padding: 0.3em 0;
+    border-bottom: 1px dotted var(--border-light);
+}
+
+.feeds li:last-child {
+    border-bottom: none;
+}
+
+.feeds li a {
+    color: var(--nav-medium);
+    text-decoration: none;
+}
+
+.feeds li a:visited {
+    color: var(--link-visited);
+}
+
+.feeds li a:hover {
+    color: var(--link-hover);
+    text-decoration: underline;
+}
+
+/* Health indicators */
+.feeds li.healthy::before {
+    content: '\25CF';
+    color: var(--success);
+    margin-right: 0.4em;
+    font-size: 0.6em;
+    vertical-align: middle;
+}
+
+.feeds li.unhealthy::before {
+    content: '\25CF';
+    color: var(--error);
+    margin-right: 0.4em;
+    font-size: 0.6em;
+    vertical-align: middle;
+}
+
+/* RSS icon in sidebar */
+.feeds li .feed-icon {
+    color: var(--accent-gold);
+    margin-right: 0.3em;
+}
+
+.feeds li .feed-icon:hover {
+    color: var(--accent-yellow);
+}
+
+/* Main content area */
+main {
+    flex: 1;
+    min-width: 0;
+    line-height: 1.4em;
+}
+
+/* Day headers - Date grouping */
+.day {
+    margin-bottom: 1.5rem;
+}
+
+.day h2 {
+    font-size: 140%;
+    color: var(--python-blue-medium);
+    border-bottom: 1px solid var(--border-light);
+    padding-bottom: 0.3em;
+    margin-bottom: 1em;
+}
+
+.day h2.date {
+    color: var(--text-muted);
+    font-size: 100%;
+    font-family: Arial, Verdana, Geneva, Helvetica, sans-serif;
+    text-transform: none;
+    font-style: normal;
+}
+
+/* Articles */
+article {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border-light);
+}
+
+article:last-child {
+    border-bottom: none;
+}
+
+article h3 {
+    font-size: 135%;
+    font-style: italic;
+    color: var(--python-blue-medium);
+    margin-bottom: 0.25em;
+}
+
+article h3 a {
+    color: var(--link-color);
+    text-decoration: none;
+}
+
+article h3 a:visited {
+    color: var(--link-visited);
+}
+
+article h3 a:hover {
+    color: var(--link-hover);
+    text-decoration: underline;
+}
+
+/* Article header (nested inside article) */
+article header {
+    background: transparent;
+    border: none;
+    height: auto;
+    padding: 0;
+    display: block;
+}
+
+/* Author/meta information */
+.meta {
+    font-size: 0.85em;
+    color: var(--text-muted);
+    margin-bottom: 0.75em;
+}
+
+.meta .author {
+    color: var(--python-blue-medium);
+    font-weight: normal;
+}
+
+.meta .author a {
+    color: var(--link-color);
+    text-decoration: none;
+}
+
+.meta .author a:hover {
+    text-decoration: underline;
+}
+
+.meta .date-sep {
+    color: var(--text-muted);
+    margin: 0 0.25em;
+}
+
+/* Content area */
+.content {
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+.content p {
+    margin-bottom: 1em;
+}
+
+.content p:last-child {
+    margin-bottom: 0;
+}
+
+.content img {
+    max-width: 100%;
+    height: auto;
+    margin: 0.5em 0;
+}
+
+.content a {
+    color: var(--link-color);
+    text-decoration: underline;
+}
+
+.content a:visited {
+    color: var(--link-visited);
+}
+
+.content a:hover {
+    color: var(--link-hover);
+}
+
+.content ul, .content ol {
+    margin: 1em 0 1em 1em;
+}
+
+.content li {
+    margin-bottom: 0.3em;
+}
+
+.content code {
+    font-family: "Courier New", Courier, monospace;
+    font-size: 0.95em;
+    background: var(--bg-secondary);
+    padding: 0.1em 0.3em;
+}
+
+.content pre {
+    font-family: "Courier New", Courier, monospace;
+    font-size: 0.9em;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    padding: 1em;
+    overflow-x: auto;
+    margin: 1em 0;
+}
+
+.content pre code {
+    background: transparent;
+    padding: 0;
+}
+
+.content blockquote {
+    border-left: 3px solid var(--python-blue-light);
+    padding-left: 1em;
+    margin: 1em 0;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.content table {
+    border-collapse: collapse;
+    margin: 1em 0;
+}
+
+.content th, .content td {
+    border: 1px solid var(--border-light);
+    padding: 0.5em;
+}
+
+.content th {
+    background: var(--bg-secondary);
+}
+
+/* Footer */
+footer {
+    background: var(--bg-tertiary);
+    border-top: 1px solid var(--border-medium);
+    padding: 1.5rem 3%;
+    margin-top: 2rem;
+    text-align: center;
+    font-size: 0.85em;
+    color: var(--text-muted);
+}
+
+footer p {
+    margin-bottom: 0.5em;
+}
+
+footer p:last-child {
+    margin-bottom: 0;
+}
+
+footer a {
+    color: var(--link-color);
+    text-decoration: none;
+}
+
+footer a:hover {
+    text-decoration: underline;
+}
+
+footer kbd {
+    font-family: "Courier New", Courier, monospace;
+    font-size: 0.9em;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: 3px;
+    padding: 0.1em 0.4em;
+}
+
+/* Skip links for accessibility */
+.skip-link {
+    position: absolute;
+    left: -10000px;
+    top: auto;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+}
+
+.skip-link:focus {
+    position: static;
+    width: auto;
+    height: auto;
+    padding: 0.5em 1em;
+    background: var(--accent-yellow);
+    color: var(--text-primary);
+}
+
+/* Keyboard shortcuts panel styling */
+.shortcuts-backdrop {
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.shortcuts-panel {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-medium);
+    border-radius: 4px;
+}
+
+.shortcuts-panel h3 {
+    color: var(--python-blue-dark);
+    font-style: normal;
+    border-bottom: 1px solid var(--border-light);
+    padding-bottom: 0.5em;
+    margin-bottom: 1em;
+}
+
+.shortcuts-panel kbd {
+    font-family: "Courier New", Courier, monospace;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: 3px;
+    padding: 0.2em 0.5em;
+}
+
+.shortcuts-panel .close-btn {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-medium);
+    padding: 0.4em 1em;
+    cursor: pointer;
+}
+
+.shortcuts-panel .close-btn:hover {
+    background: var(--accent-yellow);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .container {
+        flex-direction: column;
+        margin: 0 1rem;
+    }
+
+    .sidebar {
+        width: 100%;
+        order: 1; /* Move below content on mobile */
+        margin-top: 2rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--border-light);
+    }
+
+    header {
+        height: auto;
+        padding: 1rem 1rem;
+        flex-direction: column;
+        gap: 0.5rem;
+        text-align: center;
+    }
+
+    footer {
+        padding: 1rem;
+    }
+}
+
+/* Print styles */
+@media print {
+    .sidebar, .search-form, footer {
+        display: none;
+    }
+
+    .container {
+        display: block;
+    }
+
+    header {
+        background: white;
+        border-bottom: 1px solid black;
+    }
+
+    article {
+        page-break-inside: avoid;
+    }
+
+    a {
+        color: black;
+    }
+
+    a:after {
+        content: " (" attr(href) ")";
+        font-size: 0.8em;
+    }
+}
