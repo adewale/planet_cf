@@ -694,6 +694,137 @@ footer kbd {
     }
 }
 
+/* Titles-only page styles */
+.titles-only .view-toggle {
+    margin-bottom: 1rem;
+    font-size: 0.9em;
+}
+
+.titles-only .view-toggle a {
+    color: var(--nav-medium);
+    text-decoration: none;
+}
+
+.titles-only .view-toggle a:hover {
+    color: var(--link-hover);
+    text-decoration: underline;
+}
+
+.titles-only .day {
+    margin-bottom: 1rem;
+}
+
+.titles-only .day h2.date {
+    margin-bottom: 0.5em;
+    padding-bottom: 0.25em;
+}
+
+.titles-only .titles-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.titles-only .titles-list li {
+    padding: 0.3em 0;
+    border-bottom: 1px dotted var(--border-light);
+    line-height: 1.4;
+}
+
+.titles-only .titles-list li:last-child {
+    border-bottom: none;
+}
+
+.titles-only .entry-title {
+    color: var(--link-color);
+    text-decoration: none;
+    font-family: Georgia, "Bitstream Vera Serif", Palatino, serif;
+    font-style: italic;
+}
+
+.titles-only .entry-title:visited {
+    color: var(--link-visited);
+}
+
+.titles-only .entry-title:hover {
+    color: var(--link-hover);
+    text-decoration: underline;
+}
+
+.titles-only .entry-meta {
+    font-size: 0.85em;
+    color: var(--text-muted);
+    margin-left: 0.5em;
+}
+
+.titles-only .entry-meta .author {
+    color: var(--python-blue-medium);
+}
+
+.titles-only .entry-meta .date-sep {
+    margin: 0 0.25em;
+}
+
+/* Titles-only page - Channel/Author grouping structure */
+.titles-only h3.post {
+    font-size: 135%;
+    font-style: italic;
+    color: var(--python-blue-medium);
+    margin-top: 1em;
+    margin-bottom: 0.25em;
+}
+
+.titles-only h3.post:first-of-type {
+    margin-top: 0;
+}
+
+.titles-only h3.post a {
+    color: var(--link-color);
+    text-decoration: none;
+}
+
+.titles-only h3.post a:visited {
+    color: var(--link-visited);
+}
+
+.titles-only h3.post a:hover {
+    color: var(--link-hover);
+    text-decoration: underline;
+}
+
+.titles-only h4.entry-title {
+    font-size: 100%;
+    font-family: Georgia, "Bitstream Vera Serif", Palatino, serif;
+    font-style: italic;
+    font-weight: normal;
+    color: var(--python-blue-medium);
+    margin: 0.25em 0 0 0;
+}
+
+.titles-only h4.entry-title a {
+    color: var(--link-color);
+    text-decoration: none;
+}
+
+.titles-only h4.entry-title a:visited {
+    color: var(--link-visited);
+}
+
+.titles-only h4.entry-title a:hover {
+    color: var(--link-hover);
+    text-decoration: underline;
+}
+
+.titles-only p.entry-meta {
+    font-size: 0.85em;
+    color: var(--text-muted);
+    margin: 0 0 0.5em 0;
+}
+
+.titles-only p.entry-meta em {
+    font-style: italic;
+}
+
 /* Print styles */
 @media print {
     .sidebar, .search-form, footer {
