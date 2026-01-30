@@ -1,103 +1,105 @@
 /* Planet Mozilla Theme - Faithful recreation of planet.mozilla.org */
-/* Based on Mozilla Protocol Design System and modern Mozilla branding */
-/* Clean, modern design with Zilla Slab typography and Mozilla colors */
-
-/* Import Google Fonts - Zilla Slab and Inter */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Zilla+Slab:wght@400;500;600;700&display=swap');
+/* Based on the actual Venus/Planet Mozilla design system */
+/* Matches the classic Mozilla styling with teal links and red accents */
 
 :root {
-    /* Primary Mozilla Colors - Black and White foundation */
-    --moz-black: #000000;
-    --moz-white: #FFFFFF;
+    /* Planet Mozilla Color Palette - From actual site */
+    --moz-link: #148cb5;
+    --moz-link-hover: #0e6a8a;
+    --moz-link-visited: #6d5a8e;
+    --moz-accent: #b72822;
+    --moz-accent-light: #d63027;
 
-    /* Mozilla Accent Colors */
-    --moz-cyan: #00FFFF;
-    --moz-yellow: #FFF44F;
-    --moz-green: #00FF7F;
-    --moz-magenta: #FF00FF;
+    /* Text Colors */
+    --text-primary: #000000;
+    --text-secondary: #555555;
+    --text-muted: #999999;
+    --text-light: #cccccc;
+    --text-on-dark: #ffffff;
 
-    /* Firefox Colors - For links and accents */
-    --firefox-orange: #FF7139;
-    --firefox-orange-light: #FF9500;
-    --firefox-orange-dark: #E65100;
+    /* Background Colors */
+    --bg-primary: #ffffff;
+    --bg-secondary: #f5f5f5;
+    --bg-tertiary: #eeeeee;
+    --bg-header: #000000;
+    --bg-footer: #2a2a2a;
+    --bg-sidebar: #f8f8f8;
 
-    /* Functional Colors */
-    --link-color: #0060DF;
-    --link-hover: #0250BB;
-    --link-visited: #7F53BE;
-
-    /* Backgrounds */
-    --bg-primary: #FFFFFF;
-    --bg-secondary: #F9F9FB;
-    --bg-tertiary: #EDEDF0;
-    --bg-dark: #2B2B33;
-    --bg-header: #20123A;
-
-    /* Text colors */
-    --text-primary: #15141A;
-    --text-secondary: #5B5B66;
-    --text-muted: #80808E;
-    --text-on-dark: #FBFBFE;
-
-    /* Borders */
-    --border-light: #CFCFD8;
-    --border-medium: #8F8F9D;
-    --border-dark: #5B5B66;
+    /* Border Colors */
+    --border-light: #dddddd;
+    --border-medium: #cccccc;
+    --border-dark: #999999;
 
     /* Status Colors */
-    --success: #058B00;
-    --warning: #FFA436;
-    --error: #D70022;
+    --success: #2d8a3a;
+    --error: #b72822;
 
     /* Typography */
-    --font-display: 'Zilla Slab', Georgia, serif;
-    --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    --font-mono: 'Fira Code', 'JetBrains Mono', Consolas, monospace;
+    --font-body: Helvetica, Arial, Verdana, sans-serif;
+    --font-heading: Georgia, 'Times New Roman', Times, serif;
+    --font-mono: 'Fira Code', Consolas, Monaco, monospace;
+
+    /* Sizing */
+    --sidebar-width: 300px;
+    --content-max-width: 900px;
+    --header-height: 101px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
     font-family: var(--font-body);
-    font-size: 16px;
-    line-height: 1.5;
+    font-size: 14px;
+    line-height: 1.6;
     color: var(--text-primary);
     background: var(--bg-primary);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
 
-/* Typography - Zilla Slab for headings */
+/* Typography */
 h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-display);
-    font-weight: 600;
-    line-height: 1.2;
+    font-family: var(--font-heading);
+    font-weight: 400;
+    line-height: 1.3;
     color: var(--text-primary);
 }
 
 h1 {
-    font-size: 2.5rem;
-    letter-spacing: -0.02em;
+    font-size: 2rem;
 }
 
 h2 {
-    font-size: 1.75rem;
-    letter-spacing: -0.01em;
+    font-size: 1.5rem;
 }
 
 h3 {
-    font-size: 1.375rem;
+    font-size: 1.25rem;
 }
 
 h4 {
     font-size: 1.125rem;
 }
 
-/* Header - Mozilla dark header style */
+a {
+    color: var(--moz-link);
+    text-decoration: none;
+}
+
+a:hover {
+    color: var(--moz-link-hover);
+    text-decoration: underline;
+}
+
+a:visited {
+    color: var(--moz-link-visited);
+}
+
+/* Header - Mozilla classic dark header */
 header {
     background: var(--bg-header);
-    border-bottom: 3px solid var(--firefox-orange);
-    padding: 1.5rem 5%;
+    min-height: var(--header-height);
+    padding: 1rem 2rem;
     display: flex;
     align-items: center;
     justify-content: flex-start;
@@ -112,7 +114,7 @@ header .logo-link {
 }
 
 header .logo-link:hover {
-    opacity: 0.8;
+    opacity: 0.85;
 }
 
 header .logo {
@@ -127,97 +129,92 @@ header .header-text {
 }
 
 header h1 {
+    font-family: var(--font-heading);
     font-size: 1.75rem;
-    font-weight: 700;
+    font-weight: 400;
     margin: 0;
-    letter-spacing: -0.02em;
+    line-height: 1.2;
 }
 
 header h1 a {
     color: var(--text-on-dark);
     text-decoration: none;
-    transition: color 0.2s ease;
 }
 
 header h1 a:hover {
-    color: var(--firefox-orange-light);
+    color: var(--text-light);
 }
 
 header p {
-    color: rgba(255, 255, 255, 0.7);
-    font-size: 0.9rem;
+    color: var(--text-muted);
+    font-size: 0.875rem;
     margin: 0.25rem 0 0 0;
     font-weight: 400;
 }
 
-header a {
-    color: var(--text-on-dark);
-    text-decoration: none;
-}
-
-/* Container - Modern responsive layout */
+/* Container Layout - Classic Planet style */
 .container {
     display: flex;
     flex-direction: row;
-    max-width: 1400px;
+    max-width: 1200px;
     margin: 0 auto;
-    padding: 2rem 5%;
-    gap: 3rem;
+    padding: 1.5rem 2rem;
+    gap: 2rem;
 }
 
-/* Main content area - Takes priority */
+/* Main content area */
 main {
     flex: 1;
     min-width: 0;
-    max-width: 900px;
+    max-width: var(--content-max-width);
 }
 
-/* Sidebar - Right position, clean modern style */
+/* Sidebar - Right position, classic Planet style */
 .sidebar {
-    width: 280px;
+    width: var(--sidebar-width);
     flex-shrink: 0;
     padding-top: 0;
+    font-size: 0.875rem;
 }
 
 .sidebar h2 {
     font-family: var(--font-body);
     font-size: 0.75rem;
     font-weight: 700;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-bottom: 0.75rem;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
     padding-bottom: 0.5rem;
-    border-bottom: 2px solid var(--border-light);
+    border-bottom: 1px solid var(--border-light);
 }
 
-/* Sidebar links (RSS, titles-only, etc.) */
+/* Sidebar feed links (RSS, OPML, etc.) */
 .sidebar-links {
-    margin-bottom: 1.5rem;
+    margin-bottom: 1.25rem;
     padding-bottom: 1rem;
     border-bottom: 1px solid var(--border-light);
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem 1rem;
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
 }
 
 .sidebar-links a {
-    color: var(--link-color);
+    color: var(--moz-link);
     text-decoration: none;
-    font-weight: 500;
-    transition: color 0.2s ease;
+    font-weight: 600;
 }
 
 .sidebar-links a:hover {
-    color: var(--firefox-orange);
+    color: var(--moz-accent);
     text-decoration: underline;
 }
 
 /* Search form styling */
 .search-form {
-    margin-bottom: 1.5rem;
-    padding-bottom: 1.5rem;
+    margin-bottom: 1.25rem;
+    padding-bottom: 1.25rem;
     border-bottom: 1px solid var(--border-light);
 }
 
@@ -225,28 +222,27 @@ main {
     display: block;
     font-size: 0.75rem;
     font-weight: 700;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.05em;
     margin-bottom: 0.5rem;
 }
 
 .search-form input {
     width: 100%;
-    padding: 0.75rem 1rem;
-    border: 2px solid var(--border-light);
-    border-radius: 8px;
-    font-size: 0.9375rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-medium);
+    border-radius: 3px;
+    font-size: 0.875rem;
     font-family: var(--font-body);
     background: var(--bg-primary);
     color: var(--text-primary);
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .search-form input:focus {
     outline: none;
-    border-color: var(--link-color);
-    box-shadow: 0 0 0 3px rgba(0, 96, 223, 0.15);
+    border-color: var(--moz-link);
+    box-shadow: 0 0 0 2px rgba(20, 140, 181, 0.2);
 }
 
 .search-form input::placeholder {
@@ -255,31 +251,33 @@ main {
 
 .search-form button {
     margin-top: 0.5rem;
-    padding: 0.625rem 1.25rem;
-    background: var(--link-color);
-    color: var(--moz-white);
+    padding: 0.5rem 1rem;
+    background: var(--moz-link);
+    color: var(--text-on-dark);
     border: none;
-    border-radius: 6px;
+    border-radius: 3px;
     cursor: pointer;
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
     font-weight: 600;
     font-family: var(--font-body);
-    transition: background 0.2s ease;
 }
 
 .search-form button:hover {
-    background: var(--link-hover);
+    background: var(--moz-link-hover);
 }
 
-/* Feeds list - Clean modern styling */
+/* Feeds list - Classic Planet styling */
 .feeds {
     list-style: none;
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
+    max-height: 400px;
+    overflow-y: auto;
 }
 
 .feeds li {
-    padding: 0.5rem 0;
+    padding: 0.375rem 0;
     border-bottom: 1px solid var(--bg-tertiary);
+    line-height: 1.4;
 }
 
 .feeds li:last-child {
@@ -287,18 +285,16 @@ main {
 }
 
 .feeds li a {
-    color: var(--link-color);
+    color: var(--moz-link);
     text-decoration: none;
-    font-weight: 500;
-    transition: color 0.2s ease;
 }
 
 .feeds li a:visited {
-    color: var(--link-visited);
+    color: var(--moz-link-visited);
 }
 
 .feeds li a:hover {
-    color: var(--firefox-orange);
+    color: var(--moz-accent);
     text-decoration: underline;
 }
 
@@ -327,32 +323,31 @@ main {
 
 /* RSS icon in sidebar */
 .feeds li .feed-icon {
-    color: var(--firefox-orange);
+    color: var(--moz-accent);
     margin-right: 0.25rem;
     font-size: 0.75rem;
 }
 
 .feeds li .feed-icon:hover {
-    color: var(--firefox-orange-light);
+    color: var(--moz-accent-light);
 }
 
 /* Submission link at bottom of subscriptions */
 .submission-link {
     margin-top: 1rem;
-    padding-top: 1rem;
+    padding-top: 0.75rem;
     border-top: 1px solid var(--border-light);
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
     color: var(--text-secondary);
 }
 
 .submission-link a {
-    color: var(--link-color);
+    color: var(--moz-link);
     text-decoration: none;
-    font-weight: 500;
 }
 
 .submission-link a:hover {
-    color: var(--firefox-orange);
+    color: var(--moz-accent);
     text-decoration: underline;
 }
 
@@ -362,13 +357,13 @@ h2.nav-level-one {
     font-family: var(--font-body);
     font-size: 0.75rem;
     font-weight: 700;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-top: 1.5rem;
-    margin-bottom: 0.75rem;
+    letter-spacing: 0.05em;
+    margin-top: 1.25rem;
+    margin-bottom: 0.5rem;
     padding-bottom: 0.5rem;
-    border-bottom: 2px solid var(--border-light);
+    border-bottom: 1px solid var(--border-light);
 }
 
 .nav-level-two,
@@ -379,19 +374,17 @@ ul.nav-level-two {
 }
 
 .nav-level-two li {
-    padding: 0.375rem 0;
+    padding: 0.25rem 0;
 }
 
 .nav-level-two a {
-    color: var(--link-color);
+    color: var(--moz-link);
     text-decoration: none;
-    font-size: 0.875rem;
-    font-weight: 500;
-    transition: color 0.2s ease;
+    font-size: 0.8125rem;
 }
 
 .nav-level-two a:hover {
-    color: var(--firefox-orange);
+    color: var(--moz-accent);
     text-decoration: underline;
 }
 
@@ -403,50 +396,49 @@ ul.nav-level-two {
 }
 
 .related-links li {
-    padding: 0.375rem 0;
+    padding: 0.25rem 0;
 }
 
 .related-links a {
-    color: var(--link-color);
+    color: var(--moz-link);
     text-decoration: none;
-    font-size: 0.875rem;
-    transition: color 0.2s ease;
+    font-size: 0.8125rem;
 }
 
 .related-links a:hover {
-    color: var(--firefox-orange);
+    color: var(--moz-accent);
     text-decoration: underline;
 }
 
-/* Day headers - Date grouping */
+/* Day headers - Date grouping (Classic Planet style) */
 .day {
-    margin-bottom: 2.5rem;
+    margin-bottom: 2rem;
 }
 
 .day h2 {
-    font-family: var(--font-display);
-    font-size: 1.5rem;
-    font-weight: 600;
+    font-family: var(--font-heading);
+    font-size: 1.25rem;
+    font-weight: 400;
     color: var(--text-primary);
-    border-bottom: 3px solid var(--firefox-orange);
-    padding-bottom: 0.5rem;
-    margin-bottom: 1.5rem;
+    border-bottom: 2px solid var(--moz-accent);
+    padding-bottom: 0.375rem;
+    margin-bottom: 1.25rem;
 }
 
 .day h2.date {
     font-family: var(--font-body);
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--text-muted);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--text-secondary);
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    border-bottom: 2px solid var(--border-light);
+    letter-spacing: 0.03em;
+    border-bottom: 1px solid var(--border-light);
 }
 
 /* Articles */
 article {
-    margin-bottom: 2rem;
-    padding-bottom: 2rem;
+    margin-bottom: 1.75rem;
+    padding-bottom: 1.5rem;
     border-bottom: 1px solid var(--border-light);
 }
 
@@ -455,18 +447,17 @@ article:last-child {
 }
 
 article h3 {
-    font-family: var(--font-display);
+    font-family: var(--font-heading);
     font-size: 1.375rem;
-    font-weight: 600;
+    font-weight: 400;
     color: var(--text-primary);
-    margin-bottom: 0.5rem;
-    line-height: 1.3;
+    margin-bottom: 0.375rem;
+    line-height: 1.35;
 }
 
 article h3 a {
     color: var(--text-primary);
     text-decoration: none;
-    transition: color 0.2s ease;
 }
 
 article h3 a:visited {
@@ -474,7 +465,8 @@ article h3 a:visited {
 }
 
 article h3 a:hover {
-    color: var(--firefox-orange);
+    color: var(--moz-link);
+    text-decoration: underline;
 }
 
 /* Article header (nested inside article) */
@@ -482,14 +474,15 @@ article header {
     background: transparent;
     border: none;
     padding: 0;
+    min-height: auto;
     display: block;
 }
 
 /* Author/meta information */
 .meta {
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
     color: var(--text-muted);
-    margin-bottom: 1rem;
+    margin-bottom: 0.75rem;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -497,17 +490,17 @@ article header {
 }
 
 .meta .author {
-    color: var(--link-color);
+    color: var(--moz-link);
     font-weight: 600;
 }
 
 .meta .author a {
-    color: var(--link-color);
+    color: var(--moz-link);
     text-decoration: none;
 }
 
 .meta .author a:hover {
-    color: var(--firefox-orange);
+    color: var(--moz-accent);
     text-decoration: underline;
 }
 
@@ -520,11 +513,11 @@ article header {
 .content {
     line-height: 1.7;
     color: var(--text-primary);
-    font-size: 1rem;
+    font-size: 0.9375rem;
 }
 
 .content p {
-    margin-bottom: 1.25rem;
+    margin-bottom: 1rem;
 }
 
 .content p:last-child {
@@ -532,52 +525,50 @@ article header {
 }
 
 .content img {
-    max-width: 100%;
+    max-width: 50%;
     height: auto;
-    margin: 1rem 0;
-    border-radius: 8px;
+    margin: 0.75rem 0;
+    border-radius: 3px;
 }
 
 .content a {
-    color: var(--link-color);
+    color: var(--moz-link);
     text-decoration: underline;
-    text-underline-offset: 2px;
-    transition: color 0.2s ease;
 }
 
 .content a:visited {
-    color: var(--link-visited);
+    color: var(--moz-link-visited);
 }
 
 .content a:hover {
-    color: var(--firefox-orange);
+    color: var(--moz-accent);
 }
 
 .content ul, .content ol {
-    margin: 1.25rem 0 1.25rem 1.5rem;
+    margin: 1rem 0 1rem 1.5rem;
 }
 
 .content li {
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.375rem;
 }
 
 .content code {
     font-family: var(--font-mono);
     font-size: 0.875em;
     background: var(--bg-tertiary);
-    padding: 0.2em 0.4em;
-    border-radius: 4px;
+    padding: 0.15em 0.35em;
+    border-radius: 2px;
 }
 
 .content pre {
     font-family: var(--font-mono);
-    font-size: 0.875rem;
-    background: var(--bg-dark);
-    color: var(--text-on-dark);
-    padding: 1.25rem;
+    font-size: 0.8125rem;
+    background: var(--bg-footer);
+    color: var(--text-light);
+    padding: 1rem;
     overflow-x: auto;
-    margin: 1.5rem 0;
-    border-radius: 8px;
+    margin: 1.25rem 0;
+    border-radius: 4px;
     line-height: 1.5;
 }
 
@@ -588,25 +579,24 @@ article header {
 }
 
 .content blockquote {
-    border-left: 4px solid var(--firefox-orange);
-    padding: 0.5rem 0 0.5rem 1.5rem;
-    margin: 1.5rem 0;
+    border-left: 3px solid var(--moz-accent);
+    padding: 0.5rem 0 0.5rem 1rem;
+    margin: 1.25rem 0;
     color: var(--text-secondary);
     font-style: italic;
     background: var(--bg-secondary);
-    border-radius: 0 8px 8px 0;
 }
 
 .content table {
     border-collapse: collapse;
-    margin: 1.5rem 0;
+    margin: 1.25rem 0;
     width: 100%;
-    font-size: 0.9375rem;
+    font-size: 0.875rem;
 }
 
 .content th, .content td {
     border: 1px solid var(--border-light);
-    padding: 0.75rem 1rem;
+    padding: 0.5rem 0.75rem;
     text-align: left;
 }
 
@@ -619,15 +609,22 @@ article header {
     background: var(--bg-secondary);
 }
 
-/* Footer */
+/* Video elements - Limited width per original Planet Mozilla */
+.content video,
+.content iframe {
+    max-width: 80%;
+    border-radius: 4px;
+    margin: 1rem 0;
+}
+
+/* Footer - Classic Planet Mozilla dark footer */
 footer {
-    background: var(--bg-dark);
-    border-top: 3px solid var(--firefox-orange);
-    padding: 2rem 5%;
-    margin-top: 3rem;
+    background: var(--bg-footer);
+    padding: 1.5rem 2rem;
+    margin-top: 2rem;
     text-align: center;
-    font-size: 0.875rem;
-    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.8125rem;
+    color: var(--text-muted);
 }
 
 footer p {
@@ -639,23 +636,22 @@ footer p:last-child {
 }
 
 footer a {
-    color: var(--text-on-dark);
+    color: var(--text-light);
     text-decoration: none;
-    transition: color 0.2s ease;
 }
 
 footer a:hover {
-    color: var(--firefox-orange-light);
+    color: var(--text-on-dark);
     text-decoration: underline;
 }
 
 footer kbd {
     font-family: var(--font-mono);
-    font-size: 0.875em;
+    font-size: 0.8125em;
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
-    padding: 0.2em 0.5em;
+    border-radius: 3px;
+    padding: 0.15em 0.4em;
 }
 
 /* Skip links for accessibility */
@@ -672,29 +668,29 @@ footer kbd {
     position: static;
     width: auto;
     height: auto;
-    padding: 0.75rem 1.5rem;
-    background: var(--firefox-orange);
-    color: var(--moz-white);
+    padding: 0.5rem 1rem;
+    background: var(--moz-accent);
+    color: var(--text-on-dark);
     font-weight: 600;
 }
 
 /* Keyboard shortcuts panel styling */
 .shortcuts-backdrop {
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(0, 0, 0, 0.5);
 }
 
 .shortcuts-panel {
     background: var(--bg-primary);
     border: none;
-    border-radius: 12px;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    border-radius: 6px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
 }
 
 .shortcuts-panel h3 {
-    font-family: var(--font-display);
+    font-family: var(--font-heading);
     color: var(--text-primary);
-    font-weight: 600;
-    border-bottom: 2px solid var(--border-light);
+    font-weight: 400;
+    border-bottom: 1px solid var(--border-light);
     padding-bottom: 0.75rem;
     margin-bottom: 1rem;
 }
@@ -704,64 +700,76 @@ footer kbd {
     font-size: 0.8125rem;
     background: var(--bg-tertiary);
     border: 1px solid var(--border-light);
-    border-radius: 4px;
-    padding: 0.25rem 0.5rem;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    border-radius: 3px;
+    padding: 0.2rem 0.5rem;
 }
 
 .shortcuts-panel .close-btn {
-    background: var(--link-color);
-    color: var(--moz-white);
+    background: var(--moz-link);
+    color: var(--text-on-dark);
     border: none;
-    border-radius: 6px;
+    border-radius: 3px;
     padding: 0.5rem 1rem;
     cursor: pointer;
     font-weight: 600;
-    transition: background 0.2s ease;
 }
 
 .shortcuts-panel .close-btn:hover {
-    background: var(--link-hover);
+    background: var(--moz-link-hover);
 }
 
 /* Responsive design */
-@media (max-width: 1024px) {
+@media (max-width: 900px) {
     .container {
         flex-direction: column;
-        padding: 1.5rem;
-        gap: 2rem;
+        padding: 1rem;
+        gap: 1.5rem;
     }
 
     .sidebar {
         width: 100%;
         order: 1;
-        padding-top: 1.5rem;
-        border-top: 2px solid var(--border-light);
+        padding-top: 1rem;
+        border-top: 1px solid var(--border-light);
+    }
+
+    .feeds {
+        max-height: none;
     }
 
     main {
         max-width: none;
     }
+
+    .content img {
+        max-width: 100%;
+    }
+
+    .content video,
+    .content iframe {
+        max-width: 100%;
+    }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 600px) {
     header {
         padding: 1rem;
         flex-direction: column;
         text-align: center;
         gap: 0.75rem;
+        min-height: auto;
     }
 
     header h1 {
         font-size: 1.5rem;
     }
 
-    h1 { font-size: 2rem; }
-    h2 { font-size: 1.5rem; }
-    h3 { font-size: 1.25rem; }
+    h1 { font-size: 1.75rem; }
+    h2 { font-size: 1.25rem; }
+    h3 { font-size: 1.125rem; }
 
     .day h2 {
-        font-size: 1.25rem;
+        font-size: 1.125rem;
     }
 
     article h3 {
@@ -769,38 +777,37 @@ footer kbd {
     }
 
     .container {
-        padding: 1rem;
+        padding: 0.75rem;
     }
 
     footer {
-        padding: 1.5rem 1rem;
+        padding: 1rem;
     }
 }
 
 /* Titles-only page styles */
 .titles-only .view-toggle {
-    margin-bottom: 1.5rem;
-    font-size: 0.875rem;
+    margin-bottom: 1.25rem;
+    font-size: 0.8125rem;
 }
 
 .titles-only .view-toggle a {
-    color: var(--link-color);
+    color: var(--moz-link);
     text-decoration: none;
-    font-weight: 500;
 }
 
 .titles-only .view-toggle a:hover {
-    color: var(--firefox-orange);
+    color: var(--moz-accent);
     text-decoration: underline;
 }
 
 .titles-only .day {
-    margin-bottom: 1.5rem;
+    margin-bottom: 1.25rem;
 }
 
 .titles-only .day h2.date {
-    margin-bottom: 0.75rem;
-    padding-bottom: 0.5rem;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.375rem;
 }
 
 .titles-only .titles-list {
@@ -810,7 +817,7 @@ footer kbd {
 }
 
 .titles-only .titles-list li {
-    padding: 0.5rem 0;
+    padding: 0.375rem 0;
     border-bottom: 1px solid var(--bg-tertiary);
     line-height: 1.5;
 }
@@ -820,30 +827,29 @@ footer kbd {
 }
 
 .titles-only .entry-title {
-    color: var(--link-color);
+    color: var(--moz-link);
     text-decoration: none;
-    font-family: var(--font-display);
-    font-weight: 500;
+    font-family: var(--font-heading);
 }
 
 .titles-only .entry-title:visited {
-    color: var(--link-visited);
+    color: var(--moz-link-visited);
 }
 
 .titles-only .entry-title:hover {
-    color: var(--firefox-orange);
+    color: var(--moz-accent);
     text-decoration: underline;
 }
 
 .titles-only .entry-meta {
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
     color: var(--text-muted);
     margin-left: 0.5rem;
 }
 
 .titles-only .entry-meta .author {
-    color: var(--link-color);
-    font-weight: 500;
+    color: var(--moz-link);
+    font-weight: 600;
 }
 
 .titles-only .entry-meta .date-sep {
@@ -852,12 +858,12 @@ footer kbd {
 
 /* Titles-only page - Channel/Author grouping structure */
 .titles-only h3.post {
-    font-family: var(--font-display);
-    font-size: 1.125rem;
-    font-weight: 600;
+    font-family: var(--font-heading);
+    font-size: 1rem;
+    font-weight: 400;
     color: var(--text-primary);
-    margin-top: 1.25rem;
-    margin-bottom: 0.5rem;
+    margin-top: 1rem;
+    margin-bottom: 0.375rem;
 }
 
 .titles-only h3.post:first-of-type {
@@ -870,60 +876,38 @@ footer kbd {
 }
 
 .titles-only h3.post a:hover {
-    color: var(--firefox-orange);
+    color: var(--moz-link);
 }
 
 .titles-only h4.entry-title {
-    font-size: 1rem;
-    font-family: var(--font-display);
-    font-weight: 500;
+    font-size: 0.9375rem;
+    font-family: var(--font-heading);
+    font-weight: 400;
     color: var(--text-primary);
     margin: 0.25rem 0 0 0;
 }
 
 .titles-only h4.entry-title a {
-    color: var(--link-color);
+    color: var(--moz-link);
     text-decoration: none;
 }
 
 .titles-only h4.entry-title a:hover {
-    color: var(--firefox-orange);
+    color: var(--moz-accent);
     text-decoration: underline;
 }
 
 .titles-only p.entry-meta {
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
     color: var(--text-muted);
     margin: 0 0 0.5rem 0;
-}
-
-/* Mozilla-specific accent styles */
-.mozilla-highlight {
-    background: linear-gradient(135deg, var(--firefox-orange) 0%, var(--firefox-orange-light) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-.mozilla-badge {
-    display: inline-block;
-    background: var(--firefox-orange);
-    color: var(--moz-white);
-    font-size: 0.6875rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    margin-left: 0.5rem;
-    vertical-align: middle;
 }
 
 /* Focus states for accessibility */
 a:focus-visible,
 button:focus-visible,
 input:focus-visible {
-    outline: 3px solid var(--link-color);
+    outline: 2px solid var(--moz-link);
     outline-offset: 2px;
 }
 
@@ -942,40 +926,35 @@ input:focus-visible {
 /* Dark mode support */
 @media (prefers-color-scheme: dark) {
     :root {
-        --bg-primary: #1C1B22;
-        --bg-secondary: #23222B;
-        --bg-tertiary: #2B2A33;
-        --bg-dark: #15141A;
+        --bg-primary: #1a1a1a;
+        --bg-secondary: #222222;
+        --bg-tertiary: #2d2d2d;
+        --bg-header: #000000;
+        --bg-footer: #111111;
+        --bg-sidebar: #1e1e1e;
 
-        --text-primary: #FBFBFE;
-        --text-secondary: #CFCFD8;
-        --text-muted: #80808E;
-        --text-on-dark: #FBFBFE;
+        --text-primary: #e5e5e5;
+        --text-secondary: #b0b0b0;
+        --text-muted: #888888;
+        --text-light: #cccccc;
+        --text-on-dark: #ffffff;
 
-        --border-light: #3F3E47;
-        --border-medium: #5B5B66;
-        --border-dark: #80808E;
+        --border-light: #3a3a3a;
+        --border-medium: #4a4a4a;
+        --border-dark: #666666;
 
-        --link-color: #6DB3F8;
-        --link-hover: #A8D1FA;
-        --link-visited: #C496FF;
+        --moz-link: #4db8d8;
+        --moz-link-hover: #6ccaeb;
+        --moz-link-visited: #a891c4;
     }
 
     .content pre {
-        background: var(--bg-dark);
+        background: #0d0d0d;
         border: 1px solid var(--border-light);
     }
 
     .content code {
         background: var(--bg-tertiary);
-    }
-
-    header {
-        background: #000000;
-    }
-
-    footer {
-        background: #000000;
     }
 }
 
@@ -994,6 +973,7 @@ input:focus-visible {
         background: white;
         color: black;
         border-bottom: 2px solid black;
+        min-height: auto;
     }
 
     header h1 a,
@@ -1012,7 +992,7 @@ input:focus-visible {
 
     a:after {
         content: " (" attr(href) ")";
-        font-size: 0.8em;
+        font-size: 0.75em;
         color: #666;
     }
 
@@ -1020,5 +1000,9 @@ input:focus-visible {
         background: #f5f5f5;
         color: black;
         border: 1px solid #ccc;
+    }
+
+    .content img {
+        max-width: 100%;
     }
 }
