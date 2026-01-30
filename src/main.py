@@ -46,6 +46,7 @@ from templates import (
     TEMPLATE_FEEDS_OPML,
     TEMPLATE_INDEX,
     TEMPLATE_SEARCH,
+    TEMPLATE_TITLES,
     render_template,
 )
 from wrappers import (
@@ -1388,6 +1389,12 @@ class Default(WorkerEntrypoint):
                     event.content_type = "html"
                     event.cache_status = "cacheable"
 
+                elif path == "/titles" or path == "/titles.html":
+                    event.route = "/titles"
+                    response = await self._serve_titles(event)
+                    event.content_type = "html"
+                    event.cache_status = "cacheable"
+
                 elif path == "/feed.atom":
                     event.route = "/feed.atom"
                     response = await self._serve_atom()
@@ -1493,11 +1500,21 @@ class Default(WorkerEntrypoint):
         html = await self._generate_html(event=event)
         return _html_response(html)
 
+    async def _serve_titles(self, event: RequestEvent | None = None) -> Response:
+        """Generate and serve the titles-only page on-demand.
+
+        Similar to _serve_html but renders TEMPLATE_TITLES instead,
+        showing only entry titles without content for a compact view.
+        """
+        html = await self._generate_html(event=event, template=TEMPLATE_TITLES)
+        return _html_response(html)
+
     async def _generate_html(
         self,
         trigger: str = "http",
         triggered_by: str | None = None,
         event: RequestEvent | None = None,
+        template: str = TEMPLATE_INDEX,
     ) -> str:
         """Generate the aggregated HTML page on-demand.
 
@@ -1507,6 +1524,7 @@ class Default(WorkerEntrypoint):
             trigger: What triggered generation ("http", "cron", "admin_manual")
             triggered_by: Admin username if manually triggered
             event: RequestEvent to populate with generation metrics (optional)
+            template: Template to render (TEMPLATE_INDEX or TEMPLATE_TITLES)
 
         """
         # Get planet config from environment
@@ -1634,7 +1652,7 @@ class Default(WorkerEntrypoint):
         # Render template - track template time
         with Timer() as render_timer:
             html = render_template(
-                TEMPLATE_INDEX,
+                template,
                 planet=planet,
                 entries_by_date=entries_by_date,
                 feeds=feeds,

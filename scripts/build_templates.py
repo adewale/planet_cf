@@ -21,6 +21,7 @@ OUTPUT_FILE = Path(__file__).parent.parent / "src" / "templates.py"
 # Template files to include (relative to TEMPLATE_DIR)
 TEMPLATE_FILES = [
     "index.html",
+    "titles.html",
     "search.html",
     "admin/dashboard.html",
     "admin/error.html",
@@ -306,6 +307,7 @@ def render_template(name: str, **context) -> str:
 
 # Template name constants for type safety
 TEMPLATE_INDEX = "index.html"
+TEMPLATE_TITLES = "titles.html"
 TEMPLATE_SEARCH = "search.html"
 TEMPLATE_ADMIN_DASHBOARD = "admin/dashboard.html"
 TEMPLATE_ADMIN_ERROR = "admin/error.html"
