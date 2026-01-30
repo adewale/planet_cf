@@ -304,8 +304,26 @@ article h3 a:hover {
     text-decoration: none;
 }
 
-.feeds li.unhealthy a {
-    color: var(--error-color);
+.feeds li.unhealthy a:not(.feed-icon) {
+    border-bottom: 1px dashed var(--text-color);
+}
+
+.feeds li.healthy::before {
+    content: '';
+    flex-shrink: 0;
+    width: 6px;
+    height: 6px;
+    background: var(--primary-color);
+    border-radius: 50%;
+}
+
+.feeds li.unhealthy::before {
+    content: '';
+    flex-shrink: 0;
+    width: 6px;
+    height: 6px;
+    background: var(--error-color);
+    border-radius: 50%;
 }
 
 .feeds .last-updated {
