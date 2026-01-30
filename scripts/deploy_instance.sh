@@ -73,7 +73,7 @@ if [[ -z "$INSTANCE_ID" ]]; then
     exit 1
 fi
 
-CONFIG_FILE="$PROJECT_ROOT/wrangler.${INSTANCE_ID}.jsonc"
+CONFIG_FILE="$PROJECT_ROOT/examples/${INSTANCE_ID}/wrangler.jsonc"
 
 # Check prerequisites
 echo -e "${BLUE}========================================${NC}"
@@ -92,8 +92,22 @@ fi
 if [[ ! -f "$CONFIG_FILE" ]]; then
     echo -e "${RED}Error: Configuration file not found: ${CONFIG_FILE}${NC}"
     echo ""
+    # List available examples
+    if [[ -d "$PROJECT_ROOT/examples" ]]; then
+        echo "Available examples:"
+        for dir in "$PROJECT_ROOT/examples"/*/; do
+            if [[ -f "${dir}wrangler.jsonc" ]]; then
+                example_name=$(basename "$dir")
+                echo "  - $example_name"
+            fi
+        done
+        echo ""
+    fi
     echo "Create the instance first with:"
     echo "  python scripts/create_instance.py --id ${INSTANCE_ID} --name \"Your Planet Name\""
+    echo ""
+    echo "Or copy from an existing example:"
+    echo "  python scripts/create_instance.py --id ${INSTANCE_ID} --from-example planet-cloudflare"
     exit 1
 fi
 

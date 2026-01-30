@@ -1,42 +1,38 @@
-// wrangler.planet-mozilla.jsonc
+// examples/planet-mozilla/wrangler.jsonc
 // Planet instance: Planet Mozilla
-// Generated for use with Planet CF
+// A comprehensive clone of https://planet.mozilla.org/
 //
 // =============================================================================
-// DEPLOYMENT INSTRUCTIONS
+// QUICK DEPLOY (Recommended)
+// =============================================================================
+//
+//   ./scripts/deploy_instance.sh planet-mozilla
+//
+// =============================================================================
+// MANUAL DEPLOY (Alternative)
 // =============================================================================
 //
 // Step 1: Create the D1 Database
 //   Run: npx wrangler d1 create planet-mozilla-db
+//   Copy the database_id and replace "YOUR_DATABASE_ID" below.
 //
-//   This will output something like:
-//     [[d1_databases]]
-//     binding = "DB"
-//     database_name = "planet-mozilla-db"
-//     database_id = "abc12345-6789-def0-1234-567890abcdef"
-//
-// Step 2: Update database_id Below (REQUIRED)
-//   Copy the database_id value from Step 1 output and replace
-//   "YOUR_DATABASE_ID" in the d1_databases section below.
-//   Example: "database_id": "abc12345-6789-def0-1234-567890abcdef"
-//
-// Step 3: Create Vectorize Index
+// Step 2: Create Vectorize Index
 //   Run: npx wrangler vectorize create planet-mozilla-entries --dimensions 768 --metric cosine
 //
-// Step 4: Create Queues
+// Step 3: Create Queues
 //   Run: npx wrangler queues create planet-mozilla-feed-queue
 //   Run: npx wrangler queues create planet-mozilla-feed-dlq
 //
-// Step 5: Set Secrets
-//   Run: npx wrangler secret put GITHUB_CLIENT_ID --config wrangler.planet-mozilla.jsonc
-//   Run: npx wrangler secret put GITHUB_CLIENT_SECRET --config wrangler.planet-mozilla.jsonc
-//   Run: npx wrangler secret put SESSION_SECRET --config wrangler.planet-mozilla.jsonc
+// Step 4: Set Secrets
+//   Run: npx wrangler secret put GITHUB_CLIENT_ID --config examples/planet-mozilla/wrangler.jsonc
+//   Run: npx wrangler secret put GITHUB_CLIENT_SECRET --config examples/planet-mozilla/wrangler.jsonc
+//   Run: npx wrangler secret put SESSION_SECRET --config examples/planet-mozilla/wrangler.jsonc
 //
-// Step 6: Run Database Migrations
-//   Run: npx wrangler d1 execute planet-mozilla-db --file migrations/001_initial.sql
+// Step 5: Run Database Migrations
+//   Run: npx wrangler d1 execute planet-mozilla-db --remote --file migrations/001_initial.sql
 //
-// Step 7: Deploy
-//   Run: npx wrangler deploy --config wrangler.planet-mozilla.jsonc
+// Step 6: Deploy
+//   Run: npx wrangler deploy --config examples/planet-mozilla/wrangler.jsonc
 //
 // =============================================================================
 

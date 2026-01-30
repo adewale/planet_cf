@@ -9,11 +9,16 @@ Usage:
     python scripts/build_templates.py
     python scripts/build_templates.py --theme planet-python
     python scripts/build_templates.py --theme dark
+    python scripts/build_templates.py --example planet-mozilla
 
 Options:
-    --theme <name>  Use CSS from themes/<name>/style.css instead of
-                    the default templates/style.css. Available themes:
-                    default, classic, dark, minimal, planet-python
+    --theme <name>    Use CSS from themes/<name>/style.css
+    --example <name>  Use CSS from examples/<name>/theme/style.css
+
+Theme resolution order:
+  1. examples/<name>/theme/style.css (if --example is used)
+  2. themes/<name>/style.css (if --theme is used)
+  3. themes/default/style.css (fallback)
 
 After editing any file in templates/, run this script to regenerate
 src/templates.py, then deploy with `wrangler deploy`.
@@ -27,6 +32,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 TEMPLATE_DIR = PROJECT_ROOT / "templates"
 THEMES_DIR = PROJECT_ROOT / "themes"
+EXAMPLES_DIR = PROJECT_ROOT / "examples"
 OUTPUT_FILE = PROJECT_ROOT / "src" / "templates.py"
 
 # Template files to include (relative to TEMPLATE_DIR)
@@ -60,21 +66,47 @@ def escape_for_python(content: str) -> str:
     return content.replace('"""', r"\"\"\"")
 
 
-def get_theme_css(theme: str | None, fallback: bool = True) -> tuple[str, str]:
-    """Get CSS content for the specified theme.
+def get_theme_css(theme: str | None, example: str | None = None, fallback: bool = True) -> tuple[str, str]:
+    """Get CSS content for the specified theme or example.
 
     Args:
         theme: Theme name (e.g., 'planet-python', 'dark') or None for default.
+        example: Example name (e.g., 'planet-mozilla'). If provided, check
+                 examples/<name>/theme/style.css first.
         fallback: If True (default), fall back to 'default' theme when specified
                   theme doesn't exist. If False, raise FileNotFoundError.
 
     Returns:
         Tuple of (css_content, source_description)
 
-    Smart default: When a specified theme doesn't exist, gracefully fall back
-    to the 'default' theme instead of erroring. This ensures the build succeeds
-    even with misconfigured theme settings.
+    Resolution order:
+      1. examples/<example>/theme/style.css (if example is provided)
+      2. themes/<theme>/style.css (if theme is provided)
+      3. themes/default/style.css (fallback)
     """
+    # First, check examples directory if example is specified
+    if example:
+        example_css_path = EXAMPLES_DIR / example / "theme" / "style.css"
+        if example_css_path.exists():
+            return example_css_path.read_text(encoding="utf-8"), f"examples/{example}/theme/style.css"
+        else:
+            # List available examples for helpful message
+            available_examples = [d.name for d in EXAMPLES_DIR.iterdir()
+                                  if d.is_dir() and (d / "theme" / "style.css").exists()]
+            if fallback:
+                print(
+                    f"Warning: Example '{example}' theme not found at {example_css_path}\n"
+                    f"  Available examples with themes: {', '.join(sorted(available_examples))}\n"
+                    f"  Falling back to 'default' theme.",
+                    file=sys.stderr
+                )
+            else:
+                raise FileNotFoundError(
+                    f"Example '{example}' theme not found at {example_css_path}\n"
+                    f"Available examples with themes: {', '.join(sorted(available_examples))}"
+                )
+
+    # Then check themes directory
     if theme and theme != "default":
         theme_css_path = THEMES_DIR / theme / "style.css"
         if theme_css_path.exists():
@@ -105,12 +137,14 @@ def get_theme_css(theme: str | None, fallback: bool = True) -> tuple[str, str]:
     return read_template(CSS_FILE), "templates/style.css"
 
 
-def build_templates(theme: str | None = None):
+def build_templates(theme: str | None = None, example: str | None = None):
     """Generate src/templates.py from template files.
 
     Args:
         theme: Optional theme name. If provided, CSS is loaded from
                themes/<name>/style.css instead of templates/style.css.
+        example: Optional example name. If provided, CSS is loaded from
+               examples/<name>/theme/style.css first.
     """
 
     # Read all templates
@@ -118,8 +152,8 @@ def build_templates(theme: str | None = None):
     for name in TEMPLATE_FILES:
         templates[name] = read_template(name)
 
-    # Read CSS (from theme or default)
-    css_content, css_source = get_theme_css(theme)
+    # Read CSS (from example, theme, or default)
+    css_content, css_source = get_theme_css(theme, example)
 
     # Read keyboard navigation JS
     keyboard_nav_js = read_template(KEYBOARD_NAV_JS_FILE)
@@ -396,12 +430,28 @@ def list_available_themes() -> list[str]:
     ])
 
 
+def list_available_examples() -> list[str]:
+    """Return list of available example names with themes."""
+    if not EXAMPLES_DIR.exists():
+        return []
+    return sorted([
+        d.name for d in EXAMPLES_DIR.iterdir()
+        if d.is_dir() and (d / "theme" / "style.css").exists()
+    ])
+
+
 def main():
     """Parse arguments and build templates."""
     available_themes = list_available_themes()
+    available_examples = list_available_examples()
+
     theme_help = (
-        f"Theme to use for CSS. If specified, loads CSS from themes/<name>/style.css. "
+        f"Theme to use for CSS. Loads CSS from themes/<name>/style.css. "
         f"Available: {', '.join(available_themes) if available_themes else 'none found'}"
+    )
+    example_help = (
+        f"Example to use for CSS. Loads CSS from examples/<name>/theme/style.css. "
+        f"Available: {', '.join(available_examples) if available_examples else 'none found'}"
     )
 
     parser = argparse.ArgumentParser(
@@ -412,8 +462,11 @@ Examples:
   # Use default CSS from templates/style.css
   python scripts/build_templates.py
 
-  # Use Planet Python theme
+  # Use Planet Python theme from themes/
   python scripts/build_templates.py --theme planet-python
+
+  # Use Planet Mozilla example from examples/
+  python scripts/build_templates.py --example planet-mozilla
 
   # Use dark theme
   python scripts/build_templates.py --theme dark
@@ -425,21 +478,29 @@ Examples:
         help=theme_help,
     )
     parser.add_argument(
+        "--example", "-e",
+        metavar="NAME",
+        help=example_help,
+    )
+    parser.add_argument(
         "--list-themes",
         action="store_true",
-        help="List available themes and exit",
+        help="List available themes and examples and exit",
     )
 
     args = parser.parse_args()
 
     if args.list_themes:
-        print("Available themes:")
+        print("Available themes (themes/<name>/style.css):")
         for theme in available_themes:
             print(f"  - {theme}")
+        print("\nAvailable examples (examples/<name>/theme/style.css):")
+        for example in available_examples:
+            print(f"  - {example}")
         return
 
     try:
-        build_templates(theme=args.theme)
+        build_templates(theme=args.theme, example=args.example)
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
