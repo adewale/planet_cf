@@ -7,6 +7,19 @@
 # - Environment variable overrides for secrets
 
 # =============================================================================
+# Instance Mode
+# =============================================================================
+# Mode determines the feature set of this instance:
+# - full: All features enabled (search, OAuth authentication, admin dashboard)
+# - lite: Simplified read-only instance (no search, no auth, no admin)
+#
+# Lite mode is ideal for:
+# - Simple public feed aggregators
+# - Lower resource usage (no Vectorize, no KV for sessions)
+# - Faster deployment (fewer Cloudflare resources to provision)
+mode: full
+
+# =============================================================================
 # Core Identity
 # =============================================================================
 planet:

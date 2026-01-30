@@ -54,11 +54,13 @@
             </div>
             {% endif %}
 
+            {% if not is_lite_mode %}
             <form action="/search" method="GET" class="search-form">
                 <label class="search-label"><strong>Search</strong></label>
                 <input type="search" name="q" placeholder="Search entries..." aria-label="Search entries">
                 <button type="submit">Search</button>
             </form>
+            {% endif %}
 
             <h2>Subscriptions</h2>
             <ul class="feeds">

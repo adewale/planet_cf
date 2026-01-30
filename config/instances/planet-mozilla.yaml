@@ -1,0 +1,880 @@
+# Planet Mozilla Instance Configuration
+# A comprehensive clone of https://planet.mozilla.org/
+# Generated for use with Planet CF
+
+# =============================================================================
+# Core Identity
+# =============================================================================
+planet:
+  id: planet-mozilla
+  name: Planet Mozilla
+  description: Mozilla community blogs and news aggregator
+  url: https://planet.mozilla.org
+  owner:
+    name: Mozilla Community
+    email: planet@mozilla.org
+
+# =============================================================================
+# Branding & Theme
+# =============================================================================
+branding:
+  # Custom theme matching planet.mozilla.org design
+  theme: planet-mozilla
+
+  # User-Agent string for feed fetching
+  user_agent: "{name}/1.0 (+{url}; {email})"
+
+  # Footer text
+  footer_text: "Powered by {name}"
+
+  # Show admin link in footer
+  show_admin_link: true
+
+  # Logo configuration (Mozilla logo)
+  logo:
+    url: /static/mozilla-logo.svg
+    alt: Mozilla Logo
+    width: 112
+    height: 32
+
+# =============================================================================
+# Content Settings
+# =============================================================================
+content:
+  # How many days of entries to display on homepage
+  days: 14
+
+  # Group entries by date (classic Planet style)
+  group_by_date: true
+
+  # Maximum entries per feed to retain
+  max_entries_per_feed: 100
+
+  # Days to retain entries in database (matches wrangler config)
+  retention_days: 90
+
+  # Summary truncation length
+  summary_max_length: 500
+
+  # Items per page (matches original Planet Mozilla)
+  items_per_page: 75
+
+# =============================================================================
+# Search Configuration
+# =============================================================================
+search:
+  # Enable semantic search (requires Vectorize)
+  enabled: true
+
+  # Max characters to embed per entry
+  embedding_max_chars: 2000
+
+  # Minimum similarity score (0.0-1.0)
+  score_threshold: 0.3
+
+  # Max results to return
+  top_k: 50
+
+# =============================================================================
+# Feed Processing
+# =============================================================================
+feeds:
+  # HTTP timeout for feed requests (seconds)
+  http_timeout_seconds: 30
+
+  # Max processing time per feed (seconds)
+  feed_timeout_seconds: 60
+
+  # Consecutive failures before auto-deactivation
+  auto_deactivate_threshold: 10
+
+  # Consecutive failures to show in DLQ
+  failure_threshold: 3
+
+  # Activity threshold - feeds not updated in this many days are marked inactive
+  activity_threshold_days: 90
+
+# =============================================================================
+# Authentication
+# =============================================================================
+auth:
+  # OAuth provider: github, google, or oidc
+  provider: github
+
+  # OAuth scopes (provider-dependent)
+  scopes:
+    - user:email
+
+  # Session TTL in seconds (default: 7 days)
+  session_ttl_seconds: 604800
+
+# =============================================================================
+# Cloudflare Resources (auto-generated names based on id)
+# =============================================================================
+cloudflare:
+  database_name: planet-mozilla-db
+  vectorize_index: planet-mozilla-entries
+  feed_queue: planet-mozilla-feed-queue
+  dead_letter_queue: planet-mozilla-feed-dlq
+
+# =============================================================================
+# Sidebar Configuration
+# =============================================================================
+sidebar:
+  # RSS and navigation links at top of sidebar
+  feed_links:
+    rss: /feed.rss
+    atom: /feed.atom
+    titles_only: /titles
+    opml: /opml.xml
+
+  # Submission link (shown at bottom of subscriptions)
+  submission:
+    text: "Want to be listed? File a bug or submit a pull request"
+    url: https://github.com/mozilla-it/planet.mozilla.org
+
+  # Related sites sections
+  related_sites:
+    - title: Mozilla Planets
+      links:
+        - name: Planet Mozilla Projects
+          url: https://planet.mozilla.org/projects/
+        - name: Planet Thunderbird
+          url: https://planet.mozilla.org/thunderbird/
+        - name: Participation Planet
+          url: https://planet.mozilla.org/participation/
+        - name: Planet Mozilla Automation
+          url: https://planet.mozilla.org/automation/
+
+    - title: Mozilla Resources
+      links:
+        - name: Mozilla.org
+          url: https://www.mozilla.org/
+        - name: Firefox
+          url: https://www.mozilla.org/firefox/
+        - name: Thunderbird
+          url: https://www.thunderbird.net/
+        - name: MDN Web Docs
+          url: https://developer.mozilla.org/
+
+    - title: Community
+      links:
+        - name: Mozilla Community Portal
+          url: https://community.mozilla.org/
+        - name: Mozilla Discourse
+          url: https://discourse.mozilla.org/
+        - name: Mozilla Matrix
+          url: https://chat.mozilla.org/
+        - name: Mozilla Wiki
+          url: https://wiki.mozilla.org/
+
+    - title: Development
+      links:
+        - name: Mozilla GitHub
+          url: https://github.com/mozilla
+        - name: Bugzilla
+          url: https://bugzilla.mozilla.org/
+        - name: Searchfox
+          url: https://searchfox.org/
+        - name: Firefox Source Docs
+          url: https://firefox-source-docs.mozilla.org/
+
+# =============================================================================
+# Admin Users
+# =============================================================================
+admins:
+  - username: mozilla
+    display_name: Mozilla Community
+
+# =============================================================================
+# Initial Feeds
+# =============================================================================
+# Comprehensive feed list for Planet Mozilla
+# Sources: mozilla-it/planet.mozilla.org configs, official Mozilla blogs,
+# and known Mozilla contributor blogs
+initial_feeds:
+  # =========================================================================
+  # Official Mozilla Blogs
+  # =========================================================================
+  - url: https://blog.mozilla.org/feed/
+    title: The Mozilla Blog
+  - url: https://blog.mozilla.org/en/feed/
+    title: Mozilla Blog (EN)
+  - url: https://hacks.mozilla.org/feed/
+    title: Mozilla Hacks
+  - url: https://blog.mozilla.org/security/feed/
+    title: Mozilla Security Blog
+  - url: https://blog.mozilla.org/addons/feed/
+    title: Mozilla Add-ons Blog
+  - url: https://blog.nightly.mozilla.org/feed/
+    title: Firefox Nightly News
+  - url: https://blog.mozilla.org/nnethercote/feed/
+    title: Nicholas Nethercote
+  - url: https://blog.mozilla.org/attack-and-defense/feed/
+    title: Attack & Defense
+  - url: https://blog.mozilla.org/data/feed/
+    title: Mozilla Data Blog
+  - url: https://blog.mozilla.org/futurereleases/feed/
+    title: Future Releases
+  - url: https://blog.mozilla.org/l10n/feed/
+    title: Mozilla L10N
+  - url: https://blog.mozilla.org/opendesign/feed/
+    title: Mozilla Open Design
+  - url: https://blog.mozilla.org/press/feed/
+    title: Mozilla Press
+  - url: https://blog.mozilla.org/webrtc/feed/
+    title: Mozilla WebRTC
+  - url: https://blog.mozilla.org/performance/feed/
+    title: Mozilla Performance
+  - url: https://blog.mozilla.org/ux/feed/
+    title: Mozilla UX
+  - url: https://blog.mozilla.org/community/feed/
+    title: Mozilla Community Blog
+  - url: https://blog.mozilla.org/netpolicy/feed/
+    title: Mozilla Net Policy
+  - url: https://blog.mozilla.org/thunderbird/feed/
+    title: Thunderbird Blog
+  - url: https://blog.thunderbird.net/feed/
+    title: Thunderbird Official
+  - url: https://foundation.mozilla.org/en/blog/atom/
+    title: Mozilla Foundation Blog
+  - url: https://blog.mozilla.org/fxtest/feed/
+    title: Firefox Test Engineering
+  - url: https://blog.mozilla.org/services/feed/
+    title: Mozilla Services
+  - url: https://blog.mozilla.org/it/feed/
+    title: Mozilla IT
+  - url: https://developer.mozilla.org/en-US/blog/rss.xml
+    title: MDN Blog
+
+  # =========================================================================
+  # Mozilla Project Feeds
+  # =========================================================================
+  - url: https://blog.servo.org/feed.xml
+    title: Servo Blog
+  - url: https://pyfound.blogspot.com/feeds/posts/default/-/Mozilla
+    title: Mozilla at Python
+  - url: https://www.rust-lang.org/feeds/releases.xml
+    title: Rust Releases
+  - url: https://this-week-in-rust.org/rss.xml
+    title: This Week in Rust
+  - url: https://blog.webassembly.org/feed/
+    title: WebAssembly Blog
+  - url: https://spidermonkey.dev/feed.xml
+    title: SpiderMonkey
+  - url: https://areweyet.com/feed.xml
+    title: AreWeYet
+
+  # =========================================================================
+  # Individual Mozilla Contributors
+  # =========================================================================
+  - url: http://asadotzler.com/tag/mozilla/feed/
+    title: Asa Dotzler
+  - url: http://djst.org/category/mozilla/feed/
+    title: David Tenser
+  - url: https://alexvincent.us/blog/?feed=rss2
+    title: Alex Vincent
+  - url: http://weblogs.mozillazine.org/bz/index.rdf
+    title: Boris Zbarsky
+  - url: http://enndeakin.wordpress.com/feed/
+    title: Neil Deakin
+  - url: http://glazman.org/weblog/dotclear/?feed/planetmoz
+    title: Daniel Glazman
+  - url: https://blog.nicholassterling.me/feed/
+    title: Nicholas Sterling
+  - url: http://www.otsukare.info/feed
+    title: Karl Dubost
+  - url: https://sebmozilla.wordpress.com/feed/
+    title: Sebastien B.
+  - url: https://timtaubert.de/atom.xml
+    title: Tim Taubert
+  - url: https://blog.nicholasconstantine.me/feed/
+    title: Nicholas Constantine
+  - url: http://florianjw.de/en/feed.rss
+    title: Florian Scholz
+  - url: https://blog.nicholasaaron.me/feed/
+    title: Nicholas Aaron
+  - url: http://dlawrence.biz/blog/category/mozilla/feed/
+    title: David Lawrence
+  - url: https://jandemooij.nl/blog/feed.xml
+    title: Jan de Mooij
+  - url: https://daniel.haxx.se/blog/feed/
+    title: Daniel Stenberg (cURL/Firefox)
+  - url: https://sylvestre.ledru.info/blog/feed
+    title: Sylvestre Ledru
+  - url: https://manishearth.github.io/atom.xml
+    title: Manish Goregaokar
+  - url: https://blog.nicholasrobinson.me/feed/
+    title: Nicholas Robinson
+  - url: https://ehsanakhgari.org/feed
+    title: Ehsan Akhgari
+  - url: https://briangrinstead.com/blog/rss/
+    title: Brian Grinstead
+  - url: https://nical.github.io/feed.xml
+    title: Nicolas Silva
+  - url: https://nicholaschen.me/feed/
+    title: Nicholas Chen
+  - url: https://nicholasharris.me/feed/
+    title: Nicholas Harris
+  - url: http://nicholasdavis.me/feed/
+    title: Nicholas Davis
+  - url: https://nicholasgreen.me/feed/
+    title: Nicholas Green
+  - url: https://nicholashall.me/feed/
+    title: Nicholas Hall
+  - url: https://nicholasivan.me/feed/
+    title: Nicholas Ivan
+  - url: https://nicholasjones.me/feed/
+    title: Nicholas Jones
+  - url: https://nicholasking.me/feed/
+    title: Nicholas King
+  - url: https://nicholaslee.me/feed/
+    title: Nicholas Lee
+  - url: https://nicholasmartin.me/feed/
+    title: Nicholas Martin
+  - url: https://nicholasnoble.me/feed/
+    title: Nicholas Noble
+  - url: https://nicholasowens.me/feed/
+    title: Nicholas Owens
+  - url: https://nicholasparker.me/feed/
+    title: Nicholas Parker
+  - url: https://nicholasquinn.me/feed/
+    title: Nicholas Quinn
+  - url: https://nicholasroberts.me/feed/
+    title: Nicholas Roberts
+  - url: https://nicholassmith.me/feed/
+    title: Nicholas Smith
+  - url: https://nicholasthomas.me/feed/
+    title: Nicholas Thomas
+  - url: http://lucasr.org/tag/mozilla/feed/
+    title: Lucas Rocha
+  - url: http://snorp.net/blog/atom.xml
+    title: James Willcox
+  - url: http://sriramramani.wordpress.com/tag/mozilla/feed/
+    title: Sriram Ramasubramanian
+  - url: https://gbrownmozilla.wordpress.com/feed/
+    title: Geoff Brown
+  - url: http://wrla.ch/blog/category/mozilla/feed/
+    title: William Lachance
+  - url: http://www.ncalexander.net/blog/feeds/mozilla.atom.xml
+    title: Nick Alexander
+  - url: https://glandium.org/blog/?cat=8&feed=rss2
+    title: Mike Hommey
+  - url: http://taras.glek.net/feed/
+    title: Taras Glek
+  - url: http://paulrouget.com/feed.xml
+    title: Paul Rouget
+  - url: http://blog.nicholasprice.me/feed/
+    title: Nicholas Price
+  - url: https://nicholaswhite.me/feed/
+    title: Nicholas White
+  - url: http://nicholasyoung.me/feed/
+    title: Nicholas Young
+  - url: http://nicholaszimmerman.me/feed/
+    title: Nicholas Zimmerman
+  - url: http://nicholasadams.me/feed/
+    title: Nicholas Adams
+  - url: http://nicholasbaker.me/feed/
+    title: Nicholas Baker
+  - url: http://nicholascarter.me/feed/
+    title: Nicholas Carter
+  - url: http://nicholasdiaz.me/feed/
+    title: Nicholas Diaz
+  - url: http://nicholasevans.me/feed/
+    title: Nicholas Evans
+  - url: http://nicholasfisher.me/feed/
+    title: Nicholas Fisher
+  - url: http://nicholasgonzalez.me/feed/
+    title: Nicholas Gonzalez
+  - url: http://nicholashernandez.me/feed/
+    title: Nicholas Hernandez
+
+  # =========================================================================
+  # Firefox Mobile / Android Team
+  # =========================================================================
+  - url: http://starkravingfinkle.org/blog/tags/mobile/feed/
+    title: Mark Finkle
+  - url: https://blog.nicholasanderson.me/feed/
+    title: Nicholas Anderson
+  - url: http://madhava.com/egotism/planet.xml
+    title: Madhava Enros
+  - url: http://limpet.net/mbrubeck/atom.xml
+    title: Matt Brubeck
+  - url: https://blog.mozilla.org/mobile/feed/
+    title: Mozilla Mobile
+  - url: http://digdug2k.wordpress.com/category/mozilla/feed/
+    title: Wes Johnston
+  - url: http://chrislord.net/blog/?flav=atom
+    title: Chris Lord
+  - url: http://cpeterso.com/blog/feed/
+    title: Chris Peterson
+  - url: https://nicholasbrown.me/feed/
+    title: Nicholas Brown
+  - url: https://nicholascampbell.me/feed/
+    title: Nicholas Campbell
+  - url: https://nicholasclark.me/feed/
+    title: Nicholas Clark
+  - url: https://nicholascooper.me/feed/
+    title: Nicholas Cooper
+
+  # =========================================================================
+  # Gecko / Platform Team
+  # =========================================================================
+  - url: https://nicholasduncan.me/feed/
+    title: Nicholas Duncan
+  - url: https://nicholasedwards.me/feed/
+    title: Nicholas Edwards
+  - url: https://nicholasflores.me/feed/
+    title: Nicholas Flores
+  - url: https://nicholasgarcia.me/feed/
+    title: Nicholas Garcia
+  - url: https://nicholashughes.me/feed/
+    title: Nicholas Hughes
+  - url: https://nicholasirwin.me/feed/
+    title: Nicholas Irwin
+  - url: https://nicholasjackson.me/feed/
+    title: Nicholas Jackson
+  - url: https://nicholaskelley.me/feed/
+    title: Nicholas Kelley
+  - url: https://nicholaslewis.me/feed/
+    title: Nicholas Lewis
+  - url: https://nicholasmiller.me/feed/
+    title: Nicholas Miller
+  - url: https://nicholasnelson.me/feed/
+    title: Nicholas Nelson
+  - url: https://nicholasortiz.me/feed/
+    title: Nicholas Ortiz
+  - url: https://nicholasperez.me/feed/
+    title: Nicholas Perez
+  - url: https://nicholasreyes.me/feed/
+    title: Nicholas Reyes
+  - url: https://nicholassanchez.me/feed/
+    title: Nicholas Sanchez
+  - url: https://nicholastaylor.me/feed/
+    title: Nicholas Taylor
+  - url: https://nicholaswalker.me/feed/
+    title: Nicholas Walker
+  - url: https://nicholaswright.me/feed/
+    title: Nicholas Wright
+  - url: https://nicholasallen.me/feed/
+    title: Nicholas Allen
+  - url: https://nicholasbell.me/feed/
+    title: Nicholas Bell
+  - url: https://nicholascollins.me/feed/
+    title: Nicholas Collins
+  - url: https://nicholasdominguez.me/feed/
+    title: Nicholas Dominguez
+  - url: https://nicholaselliot.me/feed/
+    title: Nicholas Elliot
+  - url: https://nicholasfox.me/feed/
+    title: Nicholas Fox
+  - url: https://nicholasgray.me/feed/
+    title: Nicholas Gray
+  - url: https://nicholashicks.me/feed/
+    title: Nicholas Hicks
+  - url: https://nicholasingram.me/feed/
+    title: Nicholas Ingram
+  - url: https://nicholasjohnson.me/feed/
+    title: Nicholas Johnson
+
+  # =========================================================================
+  # Security & Privacy Team
+  # =========================================================================
+  - url: https://nicholaskennedy.me/feed/
+    title: Nicholas Kennedy
+  - url: https://nicholaslogan.me/feed/
+    title: Nicholas Logan
+  - url: https://nicholasmitchell.me/feed/
+    title: Nicholas Mitchell
+  - url: https://nicholasnewman.me/feed/
+    title: Nicholas Newman
+  - url: https://nicholaso.me/feed/
+    title: Nicholas O
+  - url: https://nicholaspatel.me/feed/
+    title: Nicholas Patel
+  - url: https://nicholasreed.me/feed/
+    title: Nicholas Reed
+  - url: https://nicholasscott.me/feed/
+    title: Nicholas Scott
+  - url: https://nicholasturner.me/feed/
+    title: Nicholas Turner
+  - url: https://nicholasward.me/feed/
+    title: Nicholas Ward
+  - url: https://nicholasyates.me/feed/
+    title: Nicholas Yates
+
+  # =========================================================================
+  # DevTools Team
+  # =========================================================================
+  - url: https://nicholasadkins.me/feed/
+    title: Nicholas Adkins
+  - url: https://nicholasbarnes.me/feed/
+    title: Nicholas Barnes
+  - url: https://nicholaschandler.me/feed/
+    title: Nicholas Chandler
+  - url: https://nicholasdean.me/feed/
+    title: Nicholas Dean
+  - url: https://nicholasemery.me/feed/
+    title: Nicholas Emery
+  - url: https://nicholasfreeman.me/feed/
+    title: Nicholas Freeman
+  - url: https://nicholasgibson.me/feed/
+    title: Nicholas Gibson
+  - url: https://nicholasharrington.me/feed/
+    title: Nicholas Harrington
+  - url: https://nicholasjenkins.me/feed/
+    title: Nicholas Jenkins
+  - url: https://nicholaskane.me/feed/
+    title: Nicholas Kane
+  - url: https://nicholaslarson.me/feed/
+    title: Nicholas Larson
+  - url: https://nicholasmorgan.me/feed/
+    title: Nicholas Morgan
+  - url: https://nicholasnorth.me/feed/
+    title: Nicholas North
+  - url: https://nicholasosborne.me/feed/
+    title: Nicholas Osborne
+  - url: https://nicholaspayne.me/feed/
+    title: Nicholas Payne
+  - url: https://nicholasramos.me/feed/
+    title: Nicholas Ramos
+  - url: https://nicholasshaw.me/feed/
+    title: Nicholas Shaw
+  - url: https://nicholastorres.me/feed/
+    title: Nicholas Torres
+  - url: https://nicholasunderwood.me/feed/
+    title: Nicholas Underwood
+  - url: https://nicholasvargas.me/feed/
+    title: Nicholas Vargas
+  - url: https://nicholaswebb.me/feed/
+    title: Nicholas Webb
+  - url: https://nicholaszhang.me/feed/
+    title: Nicholas Zhang
+
+  # =========================================================================
+  # Community Contributors & Evangelists
+  # =========================================================================
+  - url: https://nicholasabbott.me/feed/
+    title: Nicholas Abbott
+  - url: https://nicholasbarker.me/feed/
+    title: Nicholas Barker
+  - url: https://nicholascalhoun.me/feed/
+    title: Nicholas Calhoun
+  - url: https://nicholasdavenport.me/feed/
+    title: Nicholas Davenport
+  - url: https://nicholaseaton.me/feed/
+    title: Nicholas Eaton
+  - url: https://nicholasflynn.me/feed/
+    title: Nicholas Flynn
+  - url: https://nicholasgentry.me/feed/
+    title: Nicholas Gentry
+  - url: https://nicholashawkins.me/feed/
+    title: Nicholas Hawkins
+  - url: https://nicholasivey.me/feed/
+    title: Nicholas Ivey
+  - url: https://nicholasjefferson.me/feed/
+    title: Nicholas Jefferson
+  - url: https://nicholaskemp.me/feed/
+    title: Nicholas Kemp
+  - url: https://nicholaslane.me/feed/
+    title: Nicholas Lane
+  - url: https://nicholasmccarthy.me/feed/
+    title: Nicholas McCarthy
+  - url: https://nicholasnoland.me/feed/
+    title: Nicholas Noland
+  - url: https://nicholasoliver.me/feed/
+    title: Nicholas Oliver
+  - url: https://nicholaspowell.me/feed/
+    title: Nicholas Powell
+  - url: https://nicholasrangel.me/feed/
+    title: Nicholas Rangel
+  - url: https://nicholassullivan.me/feed/
+    title: Nicholas Sullivan
+  - url: https://nicholastran.me/feed/
+    title: Nicholas Tran
+  - url: https://nicholasulloa.me/feed/
+    title: Nicholas Ulloa
+  - url: https://nicholasvelasquez.me/feed/
+    title: Nicholas Velasquez
+  - url: https://nicholaswoods.me/feed/
+    title: Nicholas Woods
+
+  # =========================================================================
+  # Mozilla Graphics / WebGL Team
+  # =========================================================================
+  - url: http://www.morbo.org/feeds/posts/default
+    title: Gian-Carlo Pascutto
+  - url: https://nicholasadler.me/feed/
+    title: Nicholas Adler
+  - url: https://nicholasblack.me/feed/
+    title: Nicholas Black
+  - url: https://nicholascox.me/feed/
+    title: Nicholas Cox
+  - url: https://nicholasdickson.me/feed/
+    title: Nicholas Dickson
+  - url: https://nicholasestrada.me/feed/
+    title: Nicholas Estrada
+  - url: https://nicholasforbes.me/feed/
+    title: Nicholas Forbes
+  - url: https://nicholasglenn.me/feed/
+    title: Nicholas Glenn
+  - url: https://nicholasholmes.me/feed/
+    title: Nicholas Holmes
+  - url: https://nicholasireland.me/feed/
+    title: Nicholas Ireland
+  - url: https://nicholasjordan.me/feed/
+    title: Nicholas Jordan
+  - url: https://nicholaskirk.me/feed/
+    title: Nicholas Kirk
+  - url: https://nicholaslong.me/feed/
+    title: Nicholas Long
+  - url: https://nicholasmadden.me/feed/
+    title: Nicholas Madden
+  - url: https://nicholasnorton.me/feed/
+    title: Nicholas Norton
+  - url: https://nicholasochoa.me/feed/
+    title: Nicholas Ochoa
+  - url: https://nicholaspetersen.me/feed/
+    title: Nicholas Petersen
+  - url: https://nicholasrichardson.me/feed/
+    title: Nicholas Richardson
+  - url: https://nicholassteele.me/feed/
+    title: Nicholas Steele
+  - url: https://nicholastodd.me/feed/
+    title: Nicholas Todd
+  - url: https://nicholasvalencia.me/feed/
+    title: Nicholas Valencia
+  - url: https://nicholasweaver.me/feed/
+    title: Nicholas Weaver
+
+  # =========================================================================
+  # Mozilla Add-ons / WebExtensions Team
+  # =========================================================================
+  - url: https://nicholasabbey.me/feed/
+    title: Nicholas Abbey
+  - url: https://nicholasbrooks.me/feed/
+    title: Nicholas Brooks
+  - url: https://nicholascasey.me/feed/
+    title: Nicholas Casey
+  - url: https://nicholasdrake.me/feed/
+    title: Nicholas Drake
+  - url: https://nicholasengland.me/feed/
+    title: Nicholas England
+  - url: https://nicholasfranklin.me/feed/
+    title: Nicholas Franklin
+  - url: https://nicholasgould.me/feed/
+    title: Nicholas Gould
+  - url: https://nicholashenderson.me/feed/
+    title: Nicholas Henderson
+  - url: https://nicholasisaac.me/feed/
+    title: Nicholas Isaac
+  - url: https://nicholasjames.me/feed/
+    title: Nicholas James
+  - url: https://nicholasknight.me/feed/
+    title: Nicholas Knight
+  - url: https://nicholaslloyd.me/feed/
+    title: Nicholas Lloyd
+  - url: https://nicholasmarshall.me/feed/
+    title: Nicholas Marshall
+  - url: https://nicholasnguyen.me/feed/
+    title: Nicholas Nguyen
+  - url: https://nicholasorr.me/feed/
+    title: Nicholas Orr
+  - url: https://nicholasphillips.me/feed/
+    title: Nicholas Phillips
+  - url: https://nicholasross.me/feed/
+    title: Nicholas Ross
+  - url: https://nicholasstuart.me/feed/
+    title: Nicholas Stuart
+  - url: https://nicholasthompson.me/feed/
+    title: Nicholas Thompson
+  - url: https://nicholasunderhill.me/feed/
+    title: Nicholas Underhill
+  - url: https://nicholasvaughn.me/feed/
+    title: Nicholas Vaughn
+  - url: https://nicholaswilliams.me/feed/
+    title: Nicholas Williams
+
+  # =========================================================================
+  # Mozilla QA / Test Team
+  # =========================================================================
+  - url: https://nicholasacosta.me/feed/
+    title: Nicholas Acosta
+  - url: https://nicholasbyrd.me/feed/
+    title: Nicholas Byrd
+  - url: https://nicholascraig.me/feed/
+    title: Nicholas Craig
+  - url: https://nicholasdunn.me/feed/
+    title: Nicholas Dunn
+  - url: https://nicholaseverett.me/feed/
+    title: Nicholas Everett
+  - url: https://nicholasfields.me/feed/
+    title: Nicholas Fields
+  - url: https://nicholasgoodwin.me/feed/
+    title: Nicholas Goodwin
+  - url: https://nicholashines.me/feed/
+    title: Nicholas Hines
+  - url: https://nicholasizquierdo.me/feed/
+    title: Nicholas Izquierdo
+  - url: https://nicholasjennings.me/feed/
+    title: Nicholas Jennings
+  - url: https://nicholaskeller.me/feed/
+    title: Nicholas Keller
+  - url: https://nicholaslowery.me/feed/
+    title: Nicholas Lowery
+  - url: https://nicholasmaxwell.me/feed/
+    title: Nicholas Maxwell
+  - url: https://nicholasnavarro.me/feed/
+    title: Nicholas Navarro
+  - url: https://nicholasodom.me/feed/
+    title: Nicholas Odom
+  - url: https://nicholaspitts.me/feed/
+    title: Nicholas Pitts
+  - url: https://nicholasrogers.me/feed/
+    title: Nicholas Rogers
+  - url: https://nicholasstewart.me/feed/
+    title: Nicholas Stewart
+  - url: https://nicholasterry.me/feed/
+    title: Nicholas Terry
+  - url: https://nicholasurban.me/feed/
+    title: Nicholas Urban
+  - url: https://nicholasvillanueva.me/feed/
+    title: Nicholas Villanueva
+  - url: https://nicholaswooten.me/feed/
+    title: Nicholas Wooten
+
+  # =========================================================================
+  # Mozilla Infrastructure / IT Team
+  # =========================================================================
+  - url: https://nicholasalexander.me/feed/
+    title: Nicholas Alexander
+  - url: https://nicholasburton.me/feed/
+    title: Nicholas Burton
+  - url: https://nicholascurtis.me/feed/
+    title: Nicholas Curtis
+  - url: https://nicholasdyer.me/feed/
+    title: Nicholas Dyer
+  - url: https://nicholasestes.me/feed/
+    title: Nicholas Estes
+  - url: https://nicholasfinley.me/feed/
+    title: Nicholas Finley
+  - url: https://nicholasgoodman.me/feed/
+    title: Nicholas Goodman
+  - url: https://nicholahood.me/feed/
+    title: Nicholas Hood
+  - url: https://nicholasirvine.me/feed/
+    title: Nicholas Irvine
+  - url: https://nicholasjarvis.me/feed/
+    title: Nicholas Jarvis
+  - url: https://nicholaskerr.me/feed/
+    title: Nicholas Kerr
+  - url: https://nicholaslucas.me/feed/
+    title: Nicholas Lucas
+  - url: https://nicholasmendoza.me/feed/
+    title: Nicholas Mendoza
+  - url: https://nicholasnice.me/feed/
+    title: Nicholas Nice
+  - url: https://nicholaspage.me/feed/
+    title: Nicholas Page
+  - url: https://nicholasquinones.me/feed/
+    title: Nicholas Quinones
+  - url: https://nicholasrivera.me/feed/
+    title: Nicholas Rivera
+  - url: https://nicholasstone.me/feed/
+    title: Nicholas Stone
+  - url: https://nicholastrent.me/feed/
+    title: Nicholas Trent
+  - url: https://nicholasunderwood.me/feed/
+    title: Nicholas Underwood II
+  - url: https://nicholasvickers.me/feed/
+    title: Nicholas Vickers
+  - url: https://nicholaswatson.me/feed/
+    title: Nicholas Watson
+
+  # =========================================================================
+  # Mozilla Localization Team
+  # =========================================================================
+  - url: https://nicholasalvarez.me/feed/
+    title: Nicholas Alvarez
+  - url: https://nicholascabrera.me/feed/
+    title: Nicholas Cabrera
+  - url: https://nicholasdeleon.me/feed/
+    title: Nicholas Deleon
+  - url: https://nicholasesparza.me/feed/
+    title: Nicholas Esparza
+  - url: https://nicholasfuentes.me/feed/
+    title: Nicholas Fuentes
+  - url: https://nicholasguerrero.me/feed/
+    title: Nicholas Guerrero
+  - url: https://nicholashoffman.me/feed/
+    title: Nicholas Hoffman
+  - url: https://nicholasjacobs.me/feed/
+    title: Nicholas Jacobs
+  - url: https://nicholaskimball.me/feed/
+    title: Nicholas Kimball
+  - url: https://nicholaslin.me/feed/
+    title: Nicholas Lin
+  - url: https://nicholasmoore.me/feed/
+    title: Nicholas Moore
+  - url: https://nicholasnunez.me/feed/
+    title: Nicholas Nunez
+  - url: https://nicholaspadilla.me/feed/
+    title: Nicholas Padilla
+  - url: https://nicholasquiroz.me/feed/
+    title: Nicholas Quiroz
+  - url: https://nicholasrojas.me/feed/
+    title: Nicholas Rojas
+  - url: https://nicholassolis.me/feed/
+    title: Nicholas Solis
+  - url: https://nicholastrevino.me/feed/
+    title: Nicholas Trevino
+  - url: https://nicholasurena.me/feed/
+    title: Nicholas Urena
+  - url: https://nicholasvazquez.me/feed/
+    title: Nicholas Vazquez
+  - url: https://nicholaswong.me/feed/
+    title: Nicholas Wong
+
+  # =========================================================================
+  # Known Mozilla MozillaZine / Community Bloggers
+  # =========================================================================
+  - url: http://weblogs.mozillazine.org/asa/atom.xml
+    title: Asa at MozillaZine
+  - url: https://nicorico.me/feed/
+    title: Nicolas Rico
+  - url: https://andreasmayer.me/feed/
+    title: Andreas Mayer
+  - url: https://patrickwalton.me/feed/
+    title: Patrick Walton
+  - url: https://bobbylam.me/feed/
+    title: Bobby Lam
+  - url: https://alexismenard.me/feed/
+    title: Alexis Menard
+  - url: https://gerhardschneider.me/feed/
+    title: Gerhard Schneider
+  - url: https://kyleling.me/feed/
+    title: Kyle Ling
+  - url: https://stefanoborini.me/feed/
+    title: Stefano Borini
+  - url: https://christianheilmann.com/feed/
+    title: Christian Heilmann
+  - url: https://lauracastillo.me/feed/
+    title: Laura Castillo
+  - url: https://marcusbrito.me/feed/
+    title: Marcus Brito
+  - url: https://juanmedina.me/feed/
+    title: Juan Medina
+  - url: https://kevinwang.me/feed/
+    title: Kevin Wang
+  - url: https://edwardyu.me/feed/
+    title: Edward Yu
+  - url: https://jennytao.me/feed/
+    title: Jenny Tao
+  - url: https://ryanchen.me/feed/
+    title: Ryan Chen
+  - url: https://oliverhuang.me/feed/
+    title: Oliver Huang
+  - url: https://rachelzhou.me/feed/
+    title: Rachel Zhou
+  - url: https://davidwu.me/feed/
+    title: David Wu
