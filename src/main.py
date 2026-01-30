@@ -24,6 +24,7 @@ from urllib.parse import parse_qs, urlparse
 import feedparser
 from workers import Response, WorkerEntrypoint
 
+from instance_config import is_lite_mode as check_lite_mode
 from models import BleachSanitizer
 from observability import (
     ERROR_MESSAGE_MAX_LENGTH,
@@ -37,7 +38,6 @@ from observability import (
     log_op,
     truncate_error,
 )
-from instance_config import is_lite_mode as check_lite_mode
 from templates import (
     ADMIN_JS,
     KEYBOARD_NAV_JS,
@@ -1489,7 +1489,9 @@ class Default(WorkerEntrypoint):
                 elif path == "/auth/github":
                     event.route = "/auth/github"
                     if check_lite_mode(self.env):
-                        response = _json_error("Authentication is not available in lite mode", status=404)
+                        response = _json_error(
+                            "Authentication is not available in lite mode", status=404
+                        )
                         event.content_type = "error"
                     else:
                         event.oauth_stage = "redirect"
@@ -1502,7 +1504,9 @@ class Default(WorkerEntrypoint):
                 elif path == "/auth/github/callback":
                     event.route = "/auth/github/callback"
                     if check_lite_mode(self.env):
-                        response = _json_error("Authentication is not available in lite mode", status=404)
+                        response = _json_error(
+                            "Authentication is not available in lite mode", status=404
+                        )
                         event.content_type = "error"
                     else:
                         event.oauth_stage = "callback"
@@ -1650,14 +1654,18 @@ class Default(WorkerEntrypoint):
             )
 
             # Get feeds for sidebar
-            feeds_result = await self.env.DB.prepare("""
+            feeds_result = (
+                await self.env.DB.prepare("""
                 SELECT
                     id, title, site_url, url, last_success_at,
                     CASE WHEN consecutive_failures < ? THEN 1 ELSE 0 END as is_healthy
                 FROM feeds
                 WHERE is_active = 1
                 ORDER BY title
-            """).bind(DEFAULT_FEED_FAILURE_THRESHOLD).all()
+            """)
+                .bind(DEFAULT_FEED_FAILURE_THRESHOLD)
+                .all()
+            )
 
         # Populate generation metrics on the consolidated event
         if event:
@@ -1670,7 +1678,6 @@ class Default(WorkerEntrypoint):
 
         # Smart default: Content display fallback
         # If no entries in configured date range, show the most recent entries instead
-        used_fallback = False
         if not entries:
             _log_op(
                 "content_fallback_triggered",
@@ -1704,7 +1711,6 @@ class Default(WorkerEntrypoint):
                 .all()
             )
             entries = entry_rows_from_d1(fallback_result.results)
-            used_fallback = True
             if event:
                 event.generation_used_fallback = True
 
@@ -2026,7 +2032,9 @@ class Default(WorkerEntrypoint):
 
     def _get_max_entries_per_feed(self) -> int:
         """Get max entries per feed from environment, default 50."""
-        return int(self._get_config_value("RETENTION_MAX_ENTRIES_PER_FEED", DEFAULT_MAX_ENTRIES_PER_FEED))
+        return int(
+            self._get_config_value("RETENTION_MAX_ENTRIES_PER_FEED", DEFAULT_MAX_ENTRIES_PER_FEED)
+        )
 
     def _get_embedding_max_chars(self) -> int:
         """Get max chars to embed per entry from environment, default 2000."""
@@ -2034,7 +2042,9 @@ class Default(WorkerEntrypoint):
 
     def _get_search_score_threshold(self) -> float:
         """Get minimum similarity score threshold from environment, default 0.3."""
-        return float(self._get_config_value("SEARCH_SCORE_THRESHOLD", DEFAULT_SEARCH_SCORE_THRESHOLD, float))
+        return float(
+            self._get_config_value("SEARCH_SCORE_THRESHOLD", DEFAULT_SEARCH_SCORE_THRESHOLD, float)
+        )
 
     def _get_search_top_k(self) -> int:
         """Get max semantic search results from environment, default 50."""
@@ -2042,7 +2052,11 @@ class Default(WorkerEntrypoint):
 
     def _get_feed_auto_deactivate_threshold(self) -> int:
         """Get threshold for auto-deactivating feeds from environment, default 10."""
-        return int(self._get_config_value("FEED_AUTO_DEACTIVATE_THRESHOLD", DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD))
+        return int(
+            self._get_config_value(
+                "FEED_AUTO_DEACTIVATE_THRESHOLD", DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD
+            )
+        )
 
     def _get_feed_failure_threshold(self) -> int:
         """Get threshold for DLQ display from environment, default 3."""
