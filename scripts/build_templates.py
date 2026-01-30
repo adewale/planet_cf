@@ -7,16 +7,27 @@ and doesn't have filesystem access for loading templates at runtime.
 
 Usage:
     python scripts/build_templates.py
+    python scripts/build_templates.py --theme planet-python
+    python scripts/build_templates.py --theme dark
+
+Options:
+    --theme <name>  Use CSS from themes/<name>/style.css instead of
+                    the default templates/style.css. Available themes:
+                    default, classic, dark, minimal, planet-python
 
 After editing any file in templates/, run this script to regenerate
 src/templates.py, then deploy with `wrangler deploy`.
 """
 
+import argparse
+import sys
 from pathlib import Path
 
-# Template directory relative to this script
-TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
-OUTPUT_FILE = Path(__file__).parent.parent / "src" / "templates.py"
+# Directories relative to this script
+PROJECT_ROOT = Path(__file__).parent.parent
+TEMPLATE_DIR = PROJECT_ROOT / "templates"
+THEMES_DIR = PROJECT_ROOT / "themes"
+OUTPUT_FILE = PROJECT_ROOT / "src" / "templates.py"
 
 # Template files to include (relative to TEMPLATE_DIR)
 TEMPLATE_FILES = [
@@ -49,16 +60,45 @@ def escape_for_python(content: str) -> str:
     return content.replace('"""', r"\"\"\"")
 
 
-def build_templates():
-    """Generate src/templates.py from template files."""
+def get_theme_css(theme: str | None) -> tuple[str, str]:
+    """Get CSS content for the specified theme.
+
+    Args:
+        theme: Theme name (e.g., 'planet-python', 'dark') or None for default.
+
+    Returns:
+        Tuple of (css_content, source_description)
+    """
+    if theme and theme != "default":
+        theme_css_path = THEMES_DIR / theme / "style.css"
+        if theme_css_path.exists():
+            return theme_css_path.read_text(encoding="utf-8"), f"themes/{theme}/style.css"
+        else:
+            # List available themes for helpful error message
+            available = [d.name for d in THEMES_DIR.iterdir() if d.is_dir() and (d / "style.css").exists()]
+            raise FileNotFoundError(
+                f"Theme '{theme}' not found at {theme_css_path}\n"
+                f"Available themes: {', '.join(sorted(available))}"
+            )
+    # Default: use templates/style.css
+    return read_template(CSS_FILE), "templates/style.css"
+
+
+def build_templates(theme: str | None = None):
+    """Generate src/templates.py from template files.
+
+    Args:
+        theme: Optional theme name. If provided, CSS is loaded from
+               themes/<name>/style.css instead of templates/style.css.
+    """
 
     # Read all templates
     templates = {}
     for name in TEMPLATE_FILES:
         templates[name] = read_template(name)
 
-    # Read CSS
-    css_content = read_template(CSS_FILE)
+    # Read CSS (from theme or default)
+    css_content, css_source = get_theme_css(theme)
 
     # Read keyboard navigation JS
     keyboard_nav_js = read_template(KEYBOARD_NAV_JS_FILE)
@@ -322,8 +362,67 @@ TEMPLATE_FEEDS_OPML = "feeds.opml"
     OUTPUT_FILE.write_text(output, encoding="utf-8")
     print(f"Generated {OUTPUT_FILE}")
     print(f"  - {len(templates)} templates")
-    print(f"  - {len(css_content)} bytes of CSS")
+    print(f"  - {len(css_content)} bytes of CSS from {css_source}")
+
+
+def list_available_themes() -> list[str]:
+    """Return list of available theme names."""
+    if not THEMES_DIR.exists():
+        return []
+    return sorted([
+        d.name for d in THEMES_DIR.iterdir()
+        if d.is_dir() and (d / "style.css").exists()
+    ])
+
+
+def main():
+    """Parse arguments and build templates."""
+    available_themes = list_available_themes()
+    theme_help = (
+        f"Theme to use for CSS. If specified, loads CSS from themes/<name>/style.css. "
+        f"Available: {', '.join(available_themes) if available_themes else 'none found'}"
+    )
+
+    parser = argparse.ArgumentParser(
+        description="Build HTML/CSS templates into src/templates.py for Cloudflare Workers.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Use default CSS from templates/style.css
+  python scripts/build_templates.py
+
+  # Use Planet Python theme
+  python scripts/build_templates.py --theme planet-python
+
+  # Use dark theme
+  python scripts/build_templates.py --theme dark
+""",
+    )
+    parser.add_argument(
+        "--theme", "-t",
+        metavar="NAME",
+        help=theme_help,
+    )
+    parser.add_argument(
+        "--list-themes",
+        action="store_true",
+        help="List available themes and exit",
+    )
+
+    args = parser.parse_args()
+
+    if args.list_themes:
+        print("Available themes:")
+        for theme in available_themes:
+            print(f"  - {theme}")
+        return
+
+    try:
+        build_templates(theme=args.theme)
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    build_templates()
+    main()
