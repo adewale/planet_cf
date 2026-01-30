@@ -1,0 +1,25 @@
+# Minimal Planet Configuration - Lite Mode
+# Inspired by Rogue Planet's simplicity
+#
+# This is a lite mode instance - simple, read-only feed aggregation.
+# No semantic search, no admin interface, no OAuth.
+#
+# To upgrade to full mode, copy from examples/planet-cloudflare/
+
+mode: lite
+
+planet:
+  id: my-planet
+  name: My Planet
+  description: A simple feed aggregator
+  url: https://my-planet.example.com
+  owner:
+    name: Your Name
+    email: you@example.com
+
+content:
+  days: 14
+  group_by_date: true
+
+# Add your feeds to initial_feeds below
+initial_feeds: []

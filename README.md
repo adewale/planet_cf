@@ -209,19 +209,31 @@ uv run pytest tests/ -v
 uvx ruff check src/
 ```
 
-## Multi-Instance Deployment
+## Examples and Multi-Instance Deployment
 
-Deploy additional Planet instances (e.g., Planet Python, Planet Ruby) with a single command:
+Planet CF includes ready-to-deploy examples in the `examples/` directory:
+
+| Example | Description |
+|---------|-------------|
+| `examples/default/` | Minimal lite-mode starting point |
+| `examples/planet-cloudflare/` | Full-featured configuration |
+| `examples/planet-python/` | Planet Python clone (500+ feeds) |
+| `examples/planet-mozilla/` | Planet Mozilla clone (190 feeds) |
+
+### Quick Start with Examples
 
 ```bash
-# Create config and deploy everything
-python scripts/create_instance.py \
-  --id planet-python \
-  --name "Planet Python" \
-  --deploy
-
-# Or deploy an existing configuration
+# Deploy Planet Python
 ./scripts/deploy_instance.sh planet-python
+
+# Create a new instance from an example
+python scripts/create_instance.py --id my-planet --from-example planet-cloudflare
+
+# Create a fresh instance
+python scripts/create_instance.py \
+  --id my-planet \
+  --name "My Planet" \
+  --deploy
 ```
 
 The deploy script handles:

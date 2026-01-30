@@ -1,74 +1,89 @@
 # Multi-Instance Deployment Guide
 
-This guide explains how to deploy multiple Planet instances (like Planet Python, Planet PHP, Planet Ruby) using the configurable architecture inspired by [Rogue Planet](https://github.com/adewale/rogue_planet).
+This guide explains how to deploy multiple Planet instances (like Planet Python, Planet PHP, Planet Ruby) using the examples-based architecture inspired by [Rogue Planet](https://github.com/adewale/rogue_planet).
 
 ## Overview
 
-Planet CF now supports configurable multi-instance deployment:
+Planet CF supports configurable multi-instance deployment through the `examples/` directory:
 
-- **Instance Configuration**: YAML-based configuration per instance
-- **Multiple Themes**: 4 built-in themes (default, classic, dark, minimal)
+- **Examples-Based Structure**: Each instance has its own directory in `examples/`
+- **Ready-to-Deploy Instances**: Planet Python and Planet Mozilla included
+- **Multiple Themes**: Per-instance themes in `examples/<id>/theme/`
 - **OAuth Abstraction**: Support for GitHub, Google, and custom OIDC providers
 - **CLI Tooling**: Scripts to provision and deploy new instances
 - **One-Command Deployment**: Single script handles all Cloudflare resources
 
+## Available Examples
+
+| Example | Mode | Description |
+|---------|------|-------------|
+| `examples/default/` | lite | Minimal starting point, no search/auth |
+| `examples/planet-cloudflare/` | full | Full-featured with search and admin |
+| `examples/planet-python/` | full | 500+ Python community feeds |
+| `examples/planet-mozilla/` | full | 190 Mozilla community feeds |
+
 ## Quick Start
 
-### Option A: One-Command Deployment (Recommended)
+### Option A: Deploy an Existing Example
 
-Deploy a new instance with a single command:
+The fastest way to get started is to deploy one of the included examples:
+
+```bash
+# Deploy Planet Python (500+ feeds)
+./scripts/deploy_instance.sh planet-python
+
+# Deploy Planet Mozilla (190 feeds)
+./scripts/deploy_instance.sh planet-mozilla
+
+# Skip interactive secret prompts (set later)
+./scripts/deploy_instance.sh planet-python --skip-secrets
+```
+
+### Option B: Copy from an Example
+
+Create a new instance by copying from an existing example:
+
+```bash
+# Copy from planet-cloudflare (full-featured)
+python scripts/create_instance.py \
+  --id my-planet \
+  --from-example planet-cloudflare
+
+# Copy from default (minimal lite-mode)
+python scripts/create_instance.py \
+  --id my-planet \
+  --from-example default
+
+# Then deploy
+./scripts/deploy_instance.sh my-planet
+```
+
+### Option C: Create from Scratch
+
+Create a completely new instance:
 
 ```bash
 # Create config and deploy everything
 python scripts/create_instance.py \
-  --id planet-python \
-  --name "Planet Python" \
+  --id my-planet \
+  --name "My Planet" \
   --deploy
 
-# Or skip interactive secret prompts (set later)
+# Or create a lite-mode instance (no search, no auth)
 python scripts/create_instance.py \
-  --id planet-python \
-  --name "Planet Python" \
-  --deploy --skip-secrets
+  --id my-planet \
+  --name "My Planet" \
+  --lite \
+  --deploy
 ```
 
 This will:
-1. Create instance configuration files
+1. Create `examples/my-planet/` directory with config and wrangler files
 2. Create all Cloudflare resources (D1, Vectorize, Queues)
 3. Auto-update database_id in wrangler config
-4. Prompt for GitHub OAuth secrets
+4. Prompt for GitHub OAuth secrets (unless --lite)
 5. Run database migrations
 6. Deploy the worker
-
-### Option B: Two-Step Deployment
-
-First create the configuration, then deploy:
-
-```bash
-# Step 1: Create configuration files
-python scripts/create_instance.py \
-  --id planet-python \
-  --name "Planet Python" \
-  --url "https://planetpython.org"
-
-# Step 2: Deploy with the deploy script
-./scripts/deploy_instance.sh planet-python
-```
-
-### Option C: Deploy Existing Configuration
-
-If you already have configuration files:
-
-```bash
-# Deploy an existing instance
-./scripts/deploy_instance.sh planet-python
-
-# Preview what would happen
-./scripts/deploy_instance.sh planet-python --dry-run
-
-# Skip secrets (set later manually)
-./scripts/deploy_instance.sh planet-python --skip-secrets
-```
 
 ### Deploy Script Options
 
@@ -100,15 +115,17 @@ python scripts/create_instance.py \
 ```
 
 This creates:
-- `config/instances/planet-python.yaml` - Instance configuration
-- `wrangler.planet-python.jsonc` - Cloudflare Workers config
+- `examples/planet-python/config.yaml` - Instance configuration
+- `examples/planet-python/wrangler.jsonc` - Cloudflare Workers config
+- `examples/planet-python/theme/` - Theme directory
+- `examples/planet-python/static/` - Static assets directory
 
 ### Provision Cloudflare Resources Manually
 
 ```bash
 # Create D1 database
 npx wrangler d1 create planet-python-db
-# Copy the database_id from output and update wrangler.planet-python.jsonc
+# Copy the database_id from output and update examples/planet-python/wrangler.jsonc
 
 # Create Vectorize index
 npx wrangler vectorize create planet-python-entries --dimensions 768 --metric cosine
@@ -118,18 +135,18 @@ npx wrangler queues create planet-python-feed-queue
 npx wrangler queues create planet-python-feed-dlq
 
 # Set secrets
-npx wrangler secret put GITHUB_CLIENT_ID --config wrangler.planet-python.jsonc
-npx wrangler secret put GITHUB_CLIENT_SECRET --config wrangler.planet-python.jsonc
-npx wrangler secret put SESSION_SECRET --config wrangler.planet-python.jsonc
+npx wrangler secret put GITHUB_CLIENT_ID --config examples/planet-python/wrangler.jsonc
+npx wrangler secret put GITHUB_CLIENT_SECRET --config examples/planet-python/wrangler.jsonc
+npx wrangler secret put SESSION_SECRET --config examples/planet-python/wrangler.jsonc
 
 # Run migrations
 npx wrangler d1 execute planet-python-db \
   --remote \
   --file migrations/001_initial.sql \
-  --config wrangler.planet-python.jsonc
+  --config examples/planet-python/wrangler.jsonc
 
 # Deploy
-npx wrangler deploy --config wrangler.planet-python.jsonc
+npx wrangler deploy --config examples/planet-python/wrangler.jsonc
 ```
 
 ## Before vs After Comparison
@@ -150,7 +167,7 @@ npx wrangler deploy --config wrangler.planet-python.jsonc
 ### Instance Configuration (YAML)
 
 ```yaml
-# config/instances/planet-python.yaml
+# examples/planet-python/config.yaml
 
 planet:
   id: planet-python
@@ -267,7 +284,11 @@ branding:
 
 4. Rebuild templates:
 ```bash
+# For themes in themes/<name>/
 python scripts/build_templates.py --theme my-theme
+
+# For themes in examples/<name>/theme/
+python scripts/build_templates.py --example my-planet
 ```
 
 ## OAuth Provider Configuration
@@ -329,12 +350,30 @@ auth:
 
 ```
 planet_cf/
-├── config/
-│   ├── instance.example.yaml    # Template for new instances
-│   └── instances/               # Instance-specific configs
-│       ├── planetcf.yaml
-│       └── planet-python.yaml
-├── themes/
+├── examples/                    # Instance configurations
+│   ├── default/                 # Minimal lite-mode template
+│   │   ├── config.yaml
+│   │   ├── wrangler.jsonc
+│   │   └── README.md
+│   ├── planet-cloudflare/       # Full-featured template
+│   │   ├── config.yaml
+│   │   ├── wrangler.jsonc
+│   │   ├── theme/style.css
+│   │   ├── static/
+│   │   └── README.md
+│   ├── planet-python/           # Planet Python clone
+│   │   ├── config.yaml          # 500+ feeds
+│   │   ├── wrangler.jsonc
+│   │   ├── theme/style.css
+│   │   ├── static/
+│   │   └── README.md
+│   └── planet-mozilla/          # Planet Mozilla clone
+│       ├── config.yaml          # 190 feeds
+│       ├── wrangler.jsonc
+│       ├── theme/style.css
+│       ├── static/
+│       └── README.md
+├── themes/                      # Shared themes
 │   ├── default/style.css
 │   ├── classic/style.css
 │   ├── dark/style.css
@@ -342,13 +381,12 @@ planet_cf/
 ├── scripts/
 │   ├── create_instance.py       # Instance configuration generator
 │   ├── deploy_instance.sh       # One-command deployment script
-│   ├── build_templates.py       # Template compiler
+│   ├── build_templates.py       # Template compiler (--example flag)
 │   └── seed_admins.py           # Admin seeding
 ├── src/
 │   ├── instance_config.py       # Config loader
 │   └── ...
-├── wrangler.jsonc               # Default instance
-├── wrangler.planet-python.jsonc # Per-instance configs
+├── wrangler.jsonc               # Root config for local dev
 └── ...
 ```
 
