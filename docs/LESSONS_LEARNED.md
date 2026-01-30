@@ -316,13 +316,29 @@ result = await env.AI.run(
 
 **Solution:** Always sanitize HTML before storage:
 ```python
-import nh3  # Safe HTML sanitizer
+import bleach  # Safe HTML sanitizer
 
-ALLOWED_TAGS = {"p", "br", "a", "strong", "em", "code", "pre", "blockquote", "ul", "ol", "li", "h1", "h2", "h3"}
-ALLOWED_ATTRS = {"a": {"href", "title"}}
+ALLOWED_TAGS = [
+    "a", "abbr", "acronym", "b", "blockquote", "br", "code", "div", "em",
+    "figure", "figcaption", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i",
+    "img", "li", "ol", "p", "pre", "span", "strong", "table", "tbody", "td",
+    "th", "thead", "tr", "ul",
+]
+ALLOWED_ATTRS = {
+    "a": ["href", "title", "rel", "target"],
+    "img": ["src", "alt", "title", "width", "height", "loading"],
+    "abbr": ["title"],
+    "acronym": ["title"],
+    "code": ["class"],
+    "div": ["class"],
+    "figure": ["class"],
+    "figcaption": ["class"],
+    "pre": ["class", "data-language"],
+    "span": ["class"],
+}
 
 def sanitize(html):
-    return nh3.clean(html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS)
+    return bleach.clean(html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS, strip=True)
 ```
 
 ---
@@ -479,7 +495,7 @@ async def test_semantic_search_returns_results(client):
 | Tests pass, prod fails | Add E2E tests with real infra |
 | Templates not loading | Embed in Python, use build script |
 | Search misses keywords | Add hybrid search (semantic + LIKE) |
-| XSS in feed content | Sanitize with nh3 before storage |
+| XSS in feed content | Sanitize with bleach before storage |
 | Sessions in Workers | HMAC-signed cookies |
 | Missing feed dates | Store NULL, don't fake current time |
 | SSRF via feed URLs | Block private IPs + metadata endpoints |

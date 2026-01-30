@@ -134,7 +134,7 @@
 
 | Test Suite | Status | Files |
 |------------|--------|-------|
-| Unit tests | ✅ | tests/unit/*.py (165 tests) |
+| Unit tests | ✅ | tests/unit/*.py (426 tests) |
 | Integration tests | ✅ | tests/integration/*.py |
 | Property tests | ✅ | tests/unit/test_properties.py |
 | Pre-commit hooks | ✅ | .pre-commit-config.yaml |
@@ -150,7 +150,7 @@
 
 ## NOTES
 
-- All 165 tests pass
+- All 426 tests pass
 - All API endpoints are implemented
 - All Admin UI features are implemented
 - Lint passes with ruff
