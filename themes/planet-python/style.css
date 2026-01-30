@@ -84,11 +84,29 @@ h4 {
 header {
     background: var(--bg-tertiary);
     border-bottom: 1px solid var(--border-medium);
-    height: 84px;
-    padding: 0 3%;
+    min-height: 84px;
+    padding: 0.5rem 3%;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
+    gap: 1rem;
+}
+
+header .logo-link {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+header .logo {
+    max-height: 71px;
+    width: auto;
+}
+
+header .header-text {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
 }
 
 header h1 {
@@ -151,10 +169,36 @@ header a:hover {
     padding-left: 0.5em;
 }
 
+/* Sidebar links (RSS, titles-only, Planet Planet) */
+.sidebar-links {
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border-light);
+    font-size: 0.9em;
+}
+
+.sidebar-links a {
+    color: var(--nav-medium);
+    text-decoration: none;
+    margin-right: 1em;
+}
+
+.sidebar-links a:hover {
+    color: var(--link-hover);
+    text-decoration: underline;
+}
+
+/* Search form styling */
 .search-form {
     margin-bottom: 1.5rem;
     padding-bottom: 1rem;
     border-bottom: 1px solid var(--border-light);
+}
+
+.search-form .search-label {
+    display: block;
+    margin-bottom: 0.5em;
+    color: var(--text-primary);
 }
 
 .search-form input {
@@ -240,6 +284,112 @@ header a:hover {
 
 .feeds li .feed-icon:hover {
     color: var(--accent-yellow);
+}
+
+/* Submission link at bottom of subscriptions */
+.submission-link {
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px dotted var(--border-light);
+    font-size: 0.85em;
+    color: var(--text-muted);
+}
+
+.submission-link a {
+    color: var(--nav-medium);
+    text-decoration: none;
+}
+
+.submission-link a:hover {
+    color: var(--link-hover);
+    text-decoration: underline;
+}
+
+/* Navigation Level Styling (for Related Sites sections) */
+/* Level One - Section headers */
+.nav-level-one,
+h2.nav-level-one {
+    background: var(--bg-secondary);
+    color: var(--nav-dark);
+    border-left: 4px solid var(--accent-yellow);
+    border-bottom: 1px solid #DADADA;
+    padding: 0.4em 0.5em;
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+    font-size: 100%;
+    font-weight: bold;
+    font-family: Arial, Verdana, Geneva, Helvetica, sans-serif;
+    text-transform: uppercase;
+}
+
+/* Level Two - Link lists */
+.nav-level-two,
+ul.nav-level-two {
+    list-style: none;
+    font-size: 0.9em;
+    border-top: 1px solid #DDD;
+    margin: 0;
+    padding: 0;
+}
+
+.nav-level-two li {
+    padding: 0.25em 0;
+    border-bottom: 1px dotted var(--border-light);
+}
+
+.nav-level-two li:last-child {
+    border-bottom: none;
+}
+
+.nav-level-two a {
+    color: var(--nav-medium);
+    text-decoration: none;
+}
+
+.nav-level-two a:hover {
+    color: var(--link-hover);
+    text-decoration: underline;
+}
+
+/* Level Three - Indented items */
+.nav-level-three,
+li.nav-level-three {
+    margin-left: 1.8em;
+    font-size: 95%;
+}
+
+.nav-level-three a {
+    color: var(--nav-light);
+}
+
+.nav-level-three a:hover {
+    color: var(--link-hover);
+}
+
+/* Related links list styling */
+.related-links {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.related-links li {
+    padding: 0.3em 0;
+    border-bottom: 1px dotted var(--border-light);
+}
+
+.related-links li:last-child {
+    border-bottom: none;
+}
+
+.related-links a {
+    color: var(--nav-light);
+    text-decoration: none;
+}
+
+.related-links a:hover {
+    color: var(--link-hover);
+    text-decoration: underline;
 }
 
 /* Main content area */
