@@ -1,0 +1,213 @@
+# Planet Python Instance Configuration
+# A faithful clone of https://planetpython.org/
+# Generated for use with Planet CF
+
+# =============================================================================
+# Core Identity
+# =============================================================================
+planet:
+  id: planet-python
+  name: Planet Python
+  description: Python community feed aggregator
+  url: https://planetpython.org
+  owner:
+    name: Python Software Foundation
+    email: planet@python.org
+
+# =============================================================================
+# Branding & Theme
+# =============================================================================
+branding:
+  # Custom theme matching planetpython.org design
+  theme: planet-python
+
+  # User-Agent string for feed fetching
+  user_agent: "{name}/1.0 (+{url}; {email})"
+
+  # Footer text
+  footer_text: "Powered by {name}"
+
+  # Show admin link in footer
+  show_admin_link: true
+
+  # Logo configuration (Python logo)
+  logo:
+    url: /static/python-logo.svg
+    alt: Python Logo
+    width: 211
+    height: 71
+
+# =============================================================================
+# Content Settings
+# =============================================================================
+content:
+  # How many days of entries to display on homepage
+  days: 10
+
+  # Group entries by date (classic Planet style)
+  group_by_date: true
+
+  # Maximum entries per feed to retain
+  max_entries_per_feed: 100
+
+  # Days to retain entries in database (matches wrangler config)
+  retention_days: 90
+
+  # Summary truncation length
+  summary_max_length: 500
+
+  # Items per page (matches original Planet Python)
+  items_per_page: 25
+
+# =============================================================================
+# Search Configuration
+# =============================================================================
+search:
+  # Enable semantic search (requires Vectorize)
+  enabled: true
+
+  # Max characters to embed per entry
+  embedding_max_chars: 2000
+
+  # Minimum similarity score (0.0-1.0)
+  score_threshold: 0.3
+
+  # Max results to return
+  top_k: 50
+
+# =============================================================================
+# Feed Processing
+# =============================================================================
+feeds:
+  # HTTP timeout for feed requests (seconds)
+  http_timeout_seconds: 30
+
+  # Max processing time per feed (seconds)
+  feed_timeout_seconds: 60
+
+  # Consecutive failures before auto-deactivation
+  auto_deactivate_threshold: 10
+
+  # Consecutive failures to show in DLQ
+  failure_threshold: 3
+
+# =============================================================================
+# Authentication
+# =============================================================================
+auth:
+  # OAuth provider: github, google, or oidc
+  provider: github
+
+  # OAuth scopes (provider-dependent)
+  scopes:
+    - user:email
+
+  # Session TTL in seconds (default: 7 days)
+  session_ttl_seconds: 604800
+
+# =============================================================================
+# Cloudflare Resources (auto-generated names based on id)
+# =============================================================================
+cloudflare:
+  database_name: planet-python-db
+  vectorize_index: planet-python-entries
+  feed_queue: planet-python-feed-queue
+  dead_letter_queue: planet-python-feed-dlq
+
+# =============================================================================
+# Admin Users
+# =============================================================================
+admins:
+  - username: python
+    display_name: Python Software Foundation
+
+# =============================================================================
+# Initial Feeds
+# =============================================================================
+# Selected feeds from the original Planet Python (450+ total)
+# Full list available at: https://github.com/python/planet/blob/main/config/config.ini
+initial_feeds:
+  # Core Python
+  - url: https://blog.python.org/feeds/posts/default
+    title: Python Insider
+    site_url: https://blog.python.org/
+
+  - url: https://pyfound.blogspot.com/feeds/posts/default
+    title: Python Software Foundation
+    site_url: https://pyfound.blogspot.com/
+
+  # Popular Educators & Community Leaders
+  - url: https://realpython.com/atom.xml
+    title: Real Python
+    site_url: https://realpython.com/
+
+  - url: https://www.fullstackpython.com/feeds/all.atom.xml
+    title: Full Stack Python
+    site_url: https://www.fullstackpython.com/
+
+  - url: https://talkpython.fm/episodes/rss
+    title: Talk Python to Me
+    site_url: https://talkpython.fm/
+
+  - url: https://pythonbytes.fm/episodes/rss
+    title: Python Bytes
+    site_url: https://pythonbytes.fm/
+
+  - url: https://testandcode.com/rss
+    title: Test and Code
+    site_url: https://testandcode.com/
+
+  # Notable Developers
+  - url: https://lucumr.pocoo.org/feed.atom
+    title: Armin Ronacher (Lucumr)
+    site_url: https://lucumr.pocoo.org/
+
+  - url: https://nedbatchelder.com/blog/rss.xml
+    title: Ned Batchelder
+    site_url: https://nedbatchelder.com/blog/
+
+  - url: https://www.youtube.com/feeds/videos.xml?channel_id=UCLjC1MDEkvqFH4Hm3VD7a8w
+    title: Corey Schafer
+    site_url: https://www.youtube.com/c/Coreyms
+
+  - url: https://treyhunner.com/atom.xml
+    title: Trey Hunner
+    site_url: https://treyhunner.com/
+
+  - url: https://hynek.me/atom.xml
+    title: Hynek Schlawack
+    site_url: https://hynek.me/
+
+  - url: https://snarky.ca/rss/
+    title: Brett Cannon (Snarky)
+    site_url: https://snarky.ca/
+
+  # Frameworks & Libraries
+  - url: https://www.djangoproject.com/rss/weblog/
+    title: Django Weblog
+    site_url: https://www.djangoproject.com/weblog/
+
+  - url: https://blog.flask.dev/feed.xml
+    title: Flask Blog
+    site_url: https://blog.flask.dev/
+
+  - url: https://blog.pypi.org/feeds/all.atom.xml
+    title: PyPI Blog
+    site_url: https://blog.pypi.org/
+
+  - url: https://peps.python.org/peps.rss
+    title: Python Enhancement Proposals
+    site_url: https://peps.python.org/
+
+  # Data Science
+  - url: https://jakevdp.github.io/feeds/all.atom.xml
+    title: Jake VanderPlas (Pythonic Perambulations)
+    site_url: https://jakevdp.github.io/
+
+  - url: https://wesmckinney.com/blog/feed/
+    title: Wes McKinney
+    site_url: https://wesmckinney.com/
+
+  - url: https://sebastianraschka.com/rss_feed.xml
+    title: Sebastian Raschka
+    site_url: https://sebastianraschka.com/

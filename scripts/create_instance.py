@@ -363,9 +363,8 @@ Examples:
     parser.add_argument("--owner-email", help="Contact email")
     parser.add_argument(
         "--theme",
-        choices=["default", "classic", "dark", "minimal"],
         default="default",
-        help="Theme to use (default: default)",
+        help="Theme to use (default: default). Built-in: default, classic, dark, minimal. Or use a custom theme name.",
     )
     parser.add_argument(
         "--auto-provision",
