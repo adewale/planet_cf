@@ -101,6 +101,7 @@ class RequestEvent:
     generation_entries_total: int | None = None
     generation_feeds_healthy: int | None = None
     generation_trigger: str | None = None  # "http"
+    generation_used_fallback: bool | None = None  # True if fallback entries shown
 
     # === OAuth fields (null for non-OAuth routes) ===
     oauth_stage: str | None = None  # "redirect" | "callback"

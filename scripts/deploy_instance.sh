@@ -98,6 +98,15 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
 fi
 
 echo -e "${GREEN}Found config: ${CONFIG_FILE}${NC}"
+
+# Detect lite mode from config file
+LITE_MODE=false
+if grep -q '"INSTANCE_MODE": "lite"' "$CONFIG_FILE" 2>/dev/null; then
+    LITE_MODE=true
+    echo -e "${YELLOW}Mode: LITE (no Vectorize, no auth)${NC}"
+else
+    echo -e "Mode: FULL"
+fi
 echo ""
 
 # Function to extract UUID from wrangler output
@@ -152,18 +161,22 @@ else
 fi
 echo ""
 
-# Step 2: Create Vectorize index
+# Step 2: Create Vectorize index (skip in lite mode)
 echo -e "${YELLOW}Step 2/6: Creating Vectorize index...${NC}"
-INDEX_NAME="${INSTANCE_ID}-entries"
-
-if npx wrangler vectorize info "$INDEX_NAME" &> /dev/null; then
-    echo -e "  ${GREEN}Vectorize index already exists: ${INDEX_NAME}${NC}"
+if [[ "$LITE_MODE" == "true" ]]; then
+    echo -e "  ${YELLOW}Skipping Vectorize index (lite mode)${NC}"
 else
-    npx wrangler vectorize create "$INDEX_NAME" --dimensions 768 --metric cosine 2>&1 || {
-        # May fail if already exists, which is fine
-        echo -e "  ${YELLOW}Note: Index may already exist${NC}"
-    }
-    echo -e "  ${GREEN}Vectorize index ready: ${INDEX_NAME}${NC}"
+    INDEX_NAME="${INSTANCE_ID}-entries"
+
+    if npx wrangler vectorize info "$INDEX_NAME" &> /dev/null; then
+        echo -e "  ${GREEN}Vectorize index already exists: ${INDEX_NAME}${NC}"
+    else
+        npx wrangler vectorize create "$INDEX_NAME" --dimensions 768 --metric cosine 2>&1 || {
+            # May fail if already exists, which is fine
+            echo -e "  ${YELLOW}Note: Index may already exist${NC}"
+        }
+        echo -e "  ${GREEN}Vectorize index ready: ${INDEX_NAME}${NC}"
+    fi
 fi
 echo ""
 
@@ -184,9 +197,11 @@ for QUEUE in "$FEED_QUEUE" "$DLQ"; do
 done
 echo ""
 
-# Step 4: Set secrets
+# Step 4: Set secrets (skip in lite mode)
 echo -e "${YELLOW}Step 4/6: Configuring secrets...${NC}"
-if [[ "$SKIP_SECRETS" == "true" ]]; then
+if [[ "$LITE_MODE" == "true" ]]; then
+    echo -e "  ${YELLOW}Skipping secrets (lite mode - no auth required)${NC}"
+elif [[ "$SKIP_SECRETS" == "true" ]]; then
     echo -e "  ${YELLOW}Skipping secrets (--skip-secrets flag set)${NC}"
     echo -e "  Remember to set them manually:"
     echo -e "    npx wrangler secret put GITHUB_CLIENT_ID --config $CONFIG_FILE"
@@ -265,10 +280,19 @@ echo -e "${GREEN}========================================${NC}"
 echo ""
 echo "Your Planet instance is now live."
 echo ""
-echo "Next steps:"
-echo "  1. Visit your worker URL to verify it's working"
-echo "  2. Add feeds via the admin interface (/admin)"
-echo "  3. Configure a custom domain if desired"
+if [[ "$LITE_MODE" == "true" ]]; then
+    echo "Mode: LITE (read-only, no admin interface)"
+    echo ""
+    echo "Next steps:"
+    echo "  1. Visit your worker URL to verify it's working"
+    echo "  2. Add feeds directly to the D1 database"
+    echo "  3. Configure a custom domain if desired"
+else
+    echo "Next steps:"
+    echo "  1. Visit your worker URL to verify it's working"
+    echo "  2. Add feeds via the admin interface (/admin)"
+    echo "  3. Configure a custom domain if desired"
+fi
 echo ""
 echo "Useful commands:"
 echo "  # View logs"

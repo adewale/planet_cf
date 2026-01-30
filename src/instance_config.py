@@ -20,38 +20,53 @@ from typing import Optional
 from wrappers import SafeEnv
 
 # =============================================================================
-# Configuration Defaults (matching Rogue Planet's sensible defaults)
+# Configuration Defaults (Smart Defaults - Rogue Planet inspired)
 # =============================================================================
+# These defaults are designed to "just work" for minimal configuration.
+# All values can be overridden via environment variables.
 
 DEFAULTS = {
+    # Instance mode (full or lite)
+    "INSTANCE_MODE": "full",
+
     # Core identity
+    # PLANET_NAME: If not set, derived from PLANET_ID (e.g., "planet-python" -> "Planet Python")
     "PLANET_ID": "planet",
     "PLANET_NAME": "Planet",
     "PLANET_DESCRIPTION": "A feed aggregator",
     "PLANET_URL": "https://example.com",
     "PLANET_OWNER_NAME": "Planet Owner",
     "PLANET_OWNER_EMAIL": "planet@example.com",
+
     # Branding
+    # THEME: Falls back to 'default' if specified theme doesn't exist
     "THEME": "default",
     "USER_AGENT_TEMPLATE": "{name}/1.0 (+{url}; {email})",
     "FOOTER_TEXT": "Powered by {name}",
     "SHOW_ADMIN_LINK": "true",
-    # Content
+
+    # Content Display
+    # CONTENT_DAYS: Show entries from last N days (default: 7)
+    # If no entries in range, automatically shows 50 most recent entries
     "CONTENT_DAYS": "7",
     "GROUP_BY_DATE": "true",
-    "MAX_ENTRIES_PER_FEED": "100",
-    "RETENTION_DAYS": "90",
+    "MAX_ENTRIES_PER_FEED": "50",  # Max entries to keep per feed
+    "RETENTION_DAYS": "90",  # Keep entries for 90 days
     "SUMMARY_MAX_LENGTH": "500",
+
     # Search
     "SEARCH_ENABLED": "true",
     "EMBEDDING_MAX_CHARS": "2000",
     "SEARCH_SCORE_THRESHOLD": "0.3",
     "SEARCH_TOP_K": "50",
-    # Feed processing
-    "HTTP_TIMEOUT_SECONDS": "30",
-    "FEED_TIMEOUT_SECONDS": "60",
-    "FEED_AUTO_DEACTIVATE_THRESHOLD": "10",
-    "FEED_FAILURE_THRESHOLD": "3",
+
+    # Feed Processing (smart defaults for reliability)
+    "HTTP_TIMEOUT_SECONDS": "30",  # HTTP request timeout
+    "FEED_TIMEOUT_SECONDS": "60",  # Overall feed processing timeout
+    "FEED_AUTO_DEACTIVATE_THRESHOLD": "10",  # Auto-deactivate after N failures
+    "FEED_FAILURE_THRESHOLD": "3",  # Retry attempts before marking as failed
+    "FEED_RETRY_ATTEMPTS": "3",  # Queue retry attempts for transient failures
+
     # Auth
     "OAUTH_PROVIDER": "github",
     "SESSION_TTL_SECONDS": "604800",  # 7 days
@@ -134,11 +149,35 @@ class InstanceConfig:
     feeds: FeedConfig
     auth: AuthConfig
 
+    # Instance mode: "full" or "lite"
+    mode: str = field(default="full")
+
     # Cloudflare resource names (for reference)
     database_name: str = field(default="")
     vectorize_index: str = field(default="")
     feed_queue: str = field(default="")
     dead_letter_queue: str = field(default="")
+
+    def is_lite_mode(self) -> bool:
+        """Check if this instance is running in lite mode.
+
+        Lite mode disables:
+        - Semantic search (Vectorize)
+        - OAuth authentication
+        - Admin dashboard
+
+        Returns:
+            True if running in lite mode, False for full mode.
+        """
+        return self.mode.lower() == "lite"
+
+    def is_full_mode(self) -> bool:
+        """Check if this instance is running in full mode.
+
+        Returns:
+            True if running in full mode (default), False for lite mode.
+        """
+        return not self.is_lite_mode()
 
 
 def _get_env(env: SafeEnv, key: str, default: Optional[str] = None) -> str:
@@ -187,9 +226,23 @@ def load_config(env: SafeEnv) -> InstanceConfig:
     Returns:
         Complete InstanceConfig with all settings resolved
     """
+    # Load instance mode first (affects other config loading)
+    instance_mode = _get_env(env, "INSTANCE_MODE", "full").lower()
+    is_lite = instance_mode == "lite"
+
     # Load core identity
     planet_id = _get_env(env, "PLANET_ID", _get_env(env, "INSTANCE_ID", "planet"))
-    planet_name = _get_env(env, "PLANET_NAME")
+
+    # Smart default: Derive planet name from instance ID if not explicitly set
+    # e.g., "planet-python" -> "Planet Python"
+    explicit_name = getattr(env, "PLANET_NAME", None)
+    if explicit_name:
+        planet_name = str(explicit_name)
+    else:
+        # Convert instance ID to a readable name
+        # "planet-python" -> "Planet Python", "my_feed" -> "My Feed"
+        planet_name = planet_id.replace("-", " ").replace("_", " ").title()
+
     planet_url = _get_env(env, "PLANET_URL")
     owner_email = _get_env(env, "PLANET_OWNER_EMAIL")
 
@@ -218,11 +271,14 @@ def load_config(env: SafeEnv) -> InstanceConfig:
         id=planet_id,
     )
 
+    # In lite mode, hide admin link by default
+    show_admin_link = _get_bool(env, "SHOW_ADMIN_LINK") if not is_lite else False
+
     branding = BrandingConfig(
         theme=_get_env(env, "THEME"),
         user_agent=user_agent,
         footer_text=footer_text,
-        show_admin_link=_get_bool(env, "SHOW_ADMIN_LINK"),
+        show_admin_link=show_admin_link,
     )
 
     content = ContentConfig(
@@ -233,8 +289,11 @@ def load_config(env: SafeEnv) -> InstanceConfig:
         summary_max_length=_get_int(env, "SUMMARY_MAX_LENGTH"),
     )
 
+    # In lite mode, search is always disabled (no Vectorize)
+    search_enabled = _get_bool(env, "SEARCH_ENABLED") if not is_lite else False
+
     search = SearchConfig(
-        enabled=_get_bool(env, "SEARCH_ENABLED"),
+        enabled=search_enabled,
         embedding_max_chars=_get_int(env, "EMBEDDING_MAX_CHARS"),
         score_threshold=_get_float(env, "SEARCH_SCORE_THRESHOLD"),
         top_k=_get_int(env, "SEARCH_TOP_K"),
@@ -247,20 +306,30 @@ def load_config(env: SafeEnv) -> InstanceConfig:
         failure_threshold=_get_int(env, "FEED_FAILURE_THRESHOLD"),
     )
 
-    # Auth config - secrets come from dedicated secret bindings
-    auth = AuthConfig(
-        provider=_get_env(env, "OAUTH_PROVIDER"),
-        session_ttl_seconds=_get_int(env, "SESSION_TTL_SECONDS"),
-        client_id=getattr(env, "OAUTH_CLIENT_ID", None)
-        or getattr(env, "GITHUB_CLIENT_ID", None),
-        client_secret=getattr(env, "OAUTH_CLIENT_SECRET", None)
-        or getattr(env, "GITHUB_CLIENT_SECRET", None),
-        redirect_uri=getattr(env, "OAUTH_REDIRECT_URI", None),
-    )
+    # Auth config - in lite mode, auth is disabled (no OAuth secrets needed)
+    if is_lite:
+        auth = AuthConfig(
+            provider="none",
+            session_ttl_seconds=0,
+            client_id=None,
+            client_secret=None,
+            redirect_uri=None,
+        )
+    else:
+        auth = AuthConfig(
+            provider=_get_env(env, "OAUTH_PROVIDER"),
+            session_ttl_seconds=_get_int(env, "SESSION_TTL_SECONDS"),
+            client_id=getattr(env, "OAUTH_CLIENT_ID", None)
+            or getattr(env, "GITHUB_CLIENT_ID", None),
+            client_secret=getattr(env, "OAUTH_CLIENT_SECRET", None)
+            or getattr(env, "GITHUB_CLIENT_SECRET", None),
+            redirect_uri=getattr(env, "OAUTH_REDIRECT_URI", None),
+        )
 
     # Cloudflare resource names (derived from planet_id if not explicit)
     database_name = _get_env(env, "DATABASE_NAME", f"{planet_id}-db")
-    vectorize_index = _get_env(env, "VECTORIZE_INDEX", f"{planet_id}-entries")
+    # In lite mode, vectorize_index is empty (not used)
+    vectorize_index = "" if is_lite else _get_env(env, "VECTORIZE_INDEX", f"{planet_id}-entries")
     feed_queue = _get_env(env, "FEED_QUEUE_NAME", f"{planet_id}-feed-queue")
     dead_letter_queue = _get_env(env, "DLQ_NAME", f"{planet_id}-feed-dlq")
 
@@ -271,11 +340,50 @@ def load_config(env: SafeEnv) -> InstanceConfig:
         search=search,
         feeds=feeds,
         auth=auth,
+        mode=instance_mode,
         database_name=database_name,
         vectorize_index=vectorize_index,
         feed_queue=feed_queue,
         dead_letter_queue=dead_letter_queue,
     )
+
+
+# =============================================================================
+# Lite Mode Helper Functions
+# =============================================================================
+
+
+def is_lite_mode(env: SafeEnv) -> bool:
+    """Check if the instance is running in lite mode.
+
+    This is a convenience function for checking lite mode without loading
+    the full configuration. Useful for early checks in request handling.
+
+    Lite mode disables:
+    - Semantic search (Vectorize)
+    - OAuth authentication
+    - Admin dashboard
+
+    Args:
+        env: SafeEnv wrapper around Worker environment bindings
+
+    Returns:
+        True if running in lite mode, False for full mode.
+    """
+    mode = _get_env(env, "INSTANCE_MODE", "full").lower()
+    return mode == "lite"
+
+
+def is_full_mode(env: SafeEnv) -> bool:
+    """Check if the instance is running in full mode.
+
+    Args:
+        env: SafeEnv wrapper around Worker environment bindings
+
+    Returns:
+        True if running in full mode (default), False for lite mode.
+    """
+    return not is_lite_mode(env)
 
 
 # =============================================================================

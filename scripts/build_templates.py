@@ -60,26 +60,47 @@ def escape_for_python(content: str) -> str:
     return content.replace('"""', r"\"\"\"")
 
 
-def get_theme_css(theme: str | None) -> tuple[str, str]:
+def get_theme_css(theme: str | None, fallback: bool = True) -> tuple[str, str]:
     """Get CSS content for the specified theme.
 
     Args:
         theme: Theme name (e.g., 'planet-python', 'dark') or None for default.
+        fallback: If True (default), fall back to 'default' theme when specified
+                  theme doesn't exist. If False, raise FileNotFoundError.
 
     Returns:
         Tuple of (css_content, source_description)
+
+    Smart default: When a specified theme doesn't exist, gracefully fall back
+    to the 'default' theme instead of erroring. This ensures the build succeeds
+    even with misconfigured theme settings.
     """
     if theme and theme != "default":
         theme_css_path = THEMES_DIR / theme / "style.css"
         if theme_css_path.exists():
             return theme_css_path.read_text(encoding="utf-8"), f"themes/{theme}/style.css"
         else:
-            # List available themes for helpful error message
+            # List available themes for helpful message
             available = [d.name for d in THEMES_DIR.iterdir() if d.is_dir() and (d / "style.css").exists()]
-            raise FileNotFoundError(
-                f"Theme '{theme}' not found at {theme_css_path}\n"
-                f"Available themes: {', '.join(sorted(available))}"
-            )
+
+            if fallback:
+                # Smart default: Fall back to default theme
+                print(
+                    f"Warning: Theme '{theme}' not found at {theme_css_path}\n"
+                    f"  Available themes: {', '.join(sorted(available))}\n"
+                    f"  Falling back to 'default' theme.",
+                    file=sys.stderr
+                )
+                default_css_path = THEMES_DIR / "default" / "style.css"
+                if default_css_path.exists():
+                    return default_css_path.read_text(encoding="utf-8"), "themes/default/style.css (fallback)"
+                # Ultimate fallback: use templates/style.css
+                return read_template(CSS_FILE), "templates/style.css (fallback)"
+            else:
+                raise FileNotFoundError(
+                    f"Theme '{theme}' not found at {theme_css_path}\n"
+                    f"Available themes: {', '.join(sorted(available))}"
+                )
     # Default: use templates/style.css
     return read_template(CSS_FILE), "templates/style.css"
 
