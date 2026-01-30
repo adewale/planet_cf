@@ -32,8 +32,15 @@ _EMBEDDED_TEMPLATES = {
 </head>
 <body>
     <header>
-        <h1>{{ planet.name }}</h1>
-        <p>{{ planet.description }}</p>
+        {% if logo %}
+        <a href="/" class="logo-link">
+            <img src="{{ logo.url }}" alt="{{ logo.alt }}" width="{{ logo.width }}" height="{{ logo.height }}" class="logo">
+        </a>
+        {% endif %}
+        <div class="header-text">
+            <h1><a href="/">{{ planet.name }}</a></h1>
+            <p>{{ planet.description }}</p>
+        </div>
     </header>
 
     <div class="container">
@@ -58,10 +65,21 @@ _EMBEDDED_TEMPLATES = {
         </main>
 
         <aside class="sidebar">
+            {% if feed_links %}
+            <div class="sidebar-links">
+                <a href="{{ feed_links.rss or '/feed.rss' }}">RSS</a>
+                {% if feed_links.titles_only %}<a href="{{ feed_links.titles_only }}">titles only</a>{% endif %}
+                {% if feed_links.planet_planet %}<a href="{{ feed_links.planet_planet }}">Planet Planet</a>{% endif %}
+            </div>
+            {% endif %}
+
+            {% if not is_lite_mode %}
             <form action="/search" method="GET" class="search-form">
+                <label class="search-label"><strong>Search</strong></label>
                 <input type="search" name="q" placeholder="Search entries..." aria-label="Search entries">
                 <button type="submit">Search</button>
             </form>
+            {% endif %}
 
             <h2>Subscriptions</h2>
             <ul class="feeds">
@@ -74,12 +92,26 @@ _EMBEDDED_TEMPLATES = {
                 <li>No feeds configured</li>
                 {% endfor %}
             </ul>
+            {% if submission %}
+            <p class="submission-link"><a href="{{ submission.url }}">{{ submission.text }}</a></p>
+            {% endif %}
+
+            {% if related_sites %}
+            {% for section in related_sites %}
+            <h2 class="nav-level-one">{{ section.title }}</h2>
+            <ul class="related-links nav-level-two">
+                {% for link in section.links %}
+                <li class="nav-level-three"><a href="{{ link.url }}">{{ link.name }}</a></li>
+                {% endfor %}
+            </ul>
+            {% endfor %}
+            {% endif %}
         </aside>
     </div>
 
     <footer>
         <p><a href="/feed.atom">Atom</a> · <a href="/feed.rss">RSS</a> · <a href="/feeds.opml">OPML</a></p>
-        <p>Powered by Planet CF · <a href="/admin" style="color: #999; font-size: 0.8em;">Admin</a> · <span class="hint">Press <kbd>?</kbd> for shortcuts</span></p>
+        <p>{{ footer_text }}{% if show_admin_link %} · <a href="/admin" style="color: #999; font-size: 0.8em;">Admin</a>{% endif %} · <span class="hint">Press <kbd>?</kbd> for shortcuts</span></p>
         <p>Last updated: {{ generated_at }}</p>
     </footer>
 
@@ -101,6 +133,106 @@ _EMBEDDED_TEMPLATES = {
     </div>
 
     <script src="/static/keyboard-nav.js"></script>
+</body>
+</html>
+""",
+    "titles.html": """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ planet.name }} - Titles Only</title>
+    <link rel="icon" href="/static/favicon.ico" sizes="32x32">
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="alternate" type="application/atom+xml" title="{{ planet.name }} Atom Feed" href="/feed.atom">
+    <link rel="alternate" type="application/rss+xml" title="{{ planet.name }} RSS Feed" href="/feed.rss">
+</head>
+<body class="titles-only">
+    <header>
+        {% if logo %}
+        <a href="/" class="logo-link">
+            <img src="{{ logo.url }}" alt="{{ logo.alt }}" width="{{ logo.width }}" height="{{ logo.height }}" class="logo">
+        </a>
+        {% endif %}
+        <div class="header-text">
+            <h1><a href="/">{{ planet.name }}</a></h1>
+            <p>{{ planet.description }}</p>
+        </div>
+    </header>
+
+    <div class="container">
+        <main>
+            <p class="view-toggle"><a href="/">View full content</a></p>
+            {% for date, day_entries in entries_by_date.items() %}
+            <section class="day">
+                <h2 class="date">{{ date }}</h2>
+                {% set current_author = namespace(value='') %}
+                {% for entry in day_entries %}
+                    {% if entry.display_author != current_author.value %}
+                        {% set current_author.value = entry.display_author %}
+                <h3 class="post"><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}">{{ entry.display_author or 'Unknown' }}</a></h3>
+                    {% endif %}
+                <h4 class="entry-title"><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h4>
+                <p class="entry-meta"><em>{% if entry.display_author %}by {{ entry.display_author }} at {% endif %}{{ entry.published_at_display }}</em></p>
+                {% endfor %}
+            </section>
+            {% else %}
+            <p>No entries yet.</p>
+            {% endfor %}
+        </main>
+
+        <aside class="sidebar">
+            {% if feed_links %}
+            <div class="sidebar-links">
+                <a href="{{ feed_links.rss or '/feed.rss' }}">RSS</a>
+                {% if feed_links.titles_only %}<a href="{{ feed_links.titles_only }}">titles only</a>{% endif %}
+                {% if feed_links.planet_planet %}<a href="{{ feed_links.planet_planet }}">Planet Planet</a>{% endif %}
+            </div>
+            {% endif %}
+
+            {% if not is_lite_mode %}
+            <form action="/search" method="GET" class="search-form">
+                <label class="search-label"><strong>Search</strong></label>
+                <input type="search" name="q" placeholder="Search entries..." aria-label="Search entries">
+                <button type="submit">Search</button>
+            </form>
+            {% endif %}
+
+            <h2>Subscriptions</h2>
+            <ul class="feeds">
+                {% for feed in feeds %}
+                <li class="{{ 'healthy' if feed.is_healthy else 'unhealthy' }}">
+                    {% if feed.url %}<a href="{{ feed.url }}" class="feed-icon" title="RSS Feed"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="6.18" cy="17.82" r="2.18"/><path d="M4 4.44v2.83c7.03 0 12.73 5.7 12.73 12.73h2.83c0-8.59-6.97-15.56-15.56-15.56zm0 5.66v2.83c3.9 0 7.07 3.17 7.07 7.07h2.83c0-5.47-4.43-9.9-9.9-9.9z"/></svg></a>{% endif %}
+                    {% if feed.site_url %}<a href="{{ feed.site_url }}">{{ feed.title or 'Untitled' }}</a>{% else %}{{ feed.title or 'Untitled' }}{% endif %}
+                </li>
+                {% else %}
+                <li>No feeds configured</li>
+                {% endfor %}
+            </ul>
+            {% if submission %}
+            <p class="submission-link"><a href="{{ submission.url }}">{{ submission.text }}</a></p>
+            {% endif %}
+
+            {% if related_sites %}
+            {% for section in related_sites %}
+            <h2 class="nav-level-one">{{ section.title }}</h2>
+            <ul class="related-links nav-level-two">
+                {% for link in section.links %}
+                <li class="nav-level-three"><a href="{{ link.url }}">{{ link.name }}</a></li>
+                {% endfor %}
+            </ul>
+            {% endfor %}
+            {% endif %}
+        </aside>
+    </div>
+
+    <footer>
+        <p><a href="/feed.atom">Atom</a> · <a href="/feed.rss">RSS</a> · <a href="/feeds.opml">OPML</a></p>
+        <p>{{ footer_text }}{% if show_admin_link %} · <a href="/admin" style="color: #999; font-size: 0.8em;">Admin</a>{% endif %}</p>
+        <p>Last updated: {{ generated_at }}</p>
+    </footer>
 </body>
 </html>
 """,
@@ -562,9 +694,11 @@ _EMBEDDED_TEMPLATES = {
 """,
 }
 
-STATIC_CSS = """/* Planet CF Styles - Generated from templates/style.css */
+STATIC_CSS = """/* Default Theme - Modern, clean design with accent colors */
+/* Based on the original Planet CF design */
+
 :root {
-    /* Accent color - used sparingly */
+    /* Theme: Default - Configurable via CSS custom properties */
     --accent: #f6821f;
     --accent-dark: #e5731a;
     --accent-light: #fff7ed;
@@ -607,16 +741,13 @@ body {
     color: var(--text-primary);
     background: var(--bg-secondary);
     -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
 }
 
-/* Headings use bold serif for elegance */
 h1, h2, h3, h4, h5, h6 {
     font-family: 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
     font-weight: 700;
 }
 
-/* UI elements use clean sans-serif */
 .search-form, .sidebar, footer, .meta, button, .day h2 {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
@@ -652,64 +783,8 @@ header p::before {
     color: var(--border-medium);
 }
 
-header a {
-    color: var(--text-primary);
-    text-decoration: none;
-}
-
-header a:hover {
-    color: var(--accent);
-}
-
-.search-form {
-    margin-bottom: 1.5rem;
-    padding-bottom: 1.5rem;
-    border-bottom: 1px solid var(--border-light);
-    display: flex;
-    flex-direction: column;
-    gap: 0.625rem;
-}
-
-.search-form input {
-    padding: 0.75rem 1rem;
-    border: 1px solid var(--border-light);
-    border-radius: 6px;
-    width: 100%;
-    box-sizing: border-box;
-    font-size: 0.9rem;
-    background: var(--bg-secondary);
-    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
-}
-
-.search-form input:focus {
-    outline: none;
-    border-color: var(--accent);
-    background: var(--bg-primary);
-    box-shadow: 0 0 0 3px var(--accent-light);
-}
-
-.search-form button {
-    padding: 0.75rem 1rem;
-    background: var(--bg-primary);
-    color: var(--text-secondary);
-    border: 1px solid var(--border-medium);
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 600;
-    font-size: 0.9rem;
-    width: 100%;
-    transition: all 0.15s ease;
-}
-
-.search-form button:hover {
-    background: var(--bg-secondary);
-    border-color: var(--accent-subtle);
-    color: var(--text-primary);
-}
-
-.search-form button:active {
-    transform: scale(0.98);
-}
+header a { color: var(--text-primary); text-decoration: none; }
+header a:hover { color: var(--accent); }
 
 .container {
     display: grid;
@@ -742,7 +817,6 @@ article {
     margin-bottom: 1rem;
     box-shadow: var(--shadow-sm);
     transition: box-shadow 0.2s ease, border-color 0.2s ease;
-    scroll-margin-top: 1rem;
 }
 
 article:hover {
@@ -754,7 +828,6 @@ article h3 {
     margin-bottom: 0.625rem;
     font-size: 1.25rem;
     font-weight: 600;
-    letter-spacing: -0.02em;
     line-height: 1.35;
 }
 
@@ -764,9 +837,7 @@ article h3 a {
     transition: color 0.15s ease;
 }
 
-article h3 a:hover {
-    color: var(--accent);
-}
+article h3 a:hover { color: var(--accent); }
 
 article header {
     background: transparent;
@@ -781,26 +852,11 @@ article header {
     margin-bottom: 1rem;
 }
 
-.meta .author {
-    color: var(--text-secondary);
-    font-weight: 500;
-}
+.meta .author { color: var(--text-secondary); font-weight: 500; }
+.meta .date-sep { color: var(--text-muted); margin: 0 0.25rem; }
 
-.meta .date-sep {
-    color: var(--text-muted);
-    margin: 0 0.25rem;
-}
-
-.meta time {
-    color: var(--text-muted);
-    font-variant-numeric: tabular-nums;
-}
-
-/* Content security: prevent foreign content from breaking layout */
 .content {
     overflow-wrap: break-word;
-    word-wrap: break-word;
-    word-break: break-word;
     color: var(--text-secondary);
     font-size: 1.0625rem;
     line-height: 1.85;
@@ -836,7 +892,6 @@ article header {
     padding: 1.25rem;
     border-radius: 8px;
     overflow-x: auto;
-    max-width: 100%;
     margin: 1rem 0;
 }
 
@@ -846,68 +901,21 @@ article header {
     padding: 0;
 }
 
-.content table {
-    display: block;
-    overflow-x: auto;
-    max-width: 100%;
-    border-collapse: collapse;
-    margin: 1rem 0;
-    font-size: 0.925rem;
+.content a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.15s ease;
 }
 
-.content th, .content td {
-    border: 1px solid var(--border-light);
-    padding: 0.75rem 1rem;
-    text-align: left;
-}
-
-.content th {
-    background: var(--bg-tertiary);
-    font-weight: 600;
-    color: var(--text-primary);
-}
+.content a:hover { border-bottom-color: var(--accent); }
 
 .content blockquote {
     border-left: 3px solid var(--border-medium);
     margin: 1.25rem 0;
     padding: 0.75rem 1.25rem;
     background: var(--bg-tertiary);
-    color: var(--text-secondary);
-    border-radius: 0 6px 6px 0;
     font-style: italic;
-}
-
-.content a {
-    color: var(--accent);
-    text-decoration: none;
-    border-bottom: 1px solid transparent;
-    transition: border-color 0.15s ease;
-    word-break: break-all;
-}
-
-.content a:hover { border-bottom-color: var(--accent); }
-
-.content h1, .content h2, .content h3, .content h4 {
-    color: var(--text-primary);
-    font-weight: 600;
-    margin: 1.5rem 0 0.75rem 0;
-    line-height: 1.3;
-}
-
-.content h1 { font-size: 1.5rem; }
-.content h2 { font-size: 1.3rem; }
-.content h3 { font-size: 1.15rem; }
-.content h4 { font-size: 1rem; }
-
-.content ul, .content ol {
-    margin: 1rem 0;
-    padding-left: 1.5rem;
-}
-
-.content li { margin-bottom: 0.5rem; }
-
-.content iframe, .content object, .content embed {
-    display: none !important;
 }
 
 .sidebar {
@@ -930,54 +938,75 @@ article header {
     color: var(--text-muted);
 }
 
-.feeds { list-style: none; }
-
-.feeds li {
+.search-form {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border-light);
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    gap: 0.625rem;
+}
+
+.search-form input {
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border-light);
+    border-radius: 6px;
+    width: 100%;
+    font-size: 0.9rem;
+    background: var(--bg-secondary);
+}
+
+.search-form input:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: var(--bg-primary);
+    box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.search-form button {
+    padding: 0.75rem 1rem;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-medium);
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.search-form button:hover {
+    background: var(--bg-secondary);
+    border-color: var(--accent-subtle);
+}
+
+.feeds { list-style: none; }
+.feeds li {
     padding: 0.625rem 0;
     border-bottom: 1px solid var(--border-light);
     font-size: 0.925rem;
 }
-
 .feeds li:last-child { border-bottom: none; }
-
-.feeds li a {
-    color: var(--text-secondary);
-    text-decoration: none;
-    transition: color 0.15s ease;
-}
-
+.feeds li a { color: var(--text-secondary); text-decoration: none; }
 .feeds li a:hover { color: var(--accent); }
-
-.feeds li .feed-icon {
-    display: flex;
-    align-items: center;
-    margin-right: 0.5rem;
-}
-
 .feeds li.healthy::before {
     content: '';
-    flex-shrink: 0;
+    display: inline-block;
     width: 6px;
     height: 6px;
-    background: var(--accent);
+    background: var(--success);
     border-radius: 50%;
     margin-right: 0.5rem;
+    vertical-align: middle;
 }
-
-.feeds li.unhealthy a:not(.feed-icon) {
-    border-bottom: 1px dashed var(--text-primary);
-}
-
 .feeds li.unhealthy::before {
     content: '';
-    flex-shrink: 0;
+    display: inline-block;
     width: 6px;
     height: 6px;
     background: var(--error);
     border-radius: 50%;
     margin-right: 0.5rem;
+    vertical-align: middle;
 }
 
 footer {
@@ -988,249 +1017,15 @@ footer {
     border-top: 1px solid var(--border-light);
 }
 
-footer p {
-    color: var(--text-muted);
-    font-size: 0.9rem;
-    margin-bottom: 0.5rem;
-}
-
-footer a {
-    color: var(--accent);
-    text-decoration: none;
-    transition: color 0.15s ease;
-}
-
+footer p { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.5rem; }
+footer a { color: var(--accent); text-decoration: none; }
 footer a:hover { color: var(--accent-dark); }
 
-footer .hint {
-    color: var(--text-muted);
-    font-size: 0.8rem;
-}
-
-footer .hint kbd {
-    display: inline-block;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-light);
-    border-radius: 3px;
-    padding: 0.1rem 0.35rem;
-    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-    font-size: 0.75rem;
-}
-
-/* Search errors */
-.search-error {
-    background: var(--accent-light);
-    border: 1px solid var(--accent-subtle);
-    border-radius: 8px;
-    padding: 1rem 1.5rem;
-    margin-bottom: 1.5rem;
-    color: var(--text-secondary);
-}
-
-.search-error p {
-    margin: 0;
-}
-
-.search-notice {
-    background: #f0f7ff;
-    border: 1px solid #c9e0ff;
-    border-radius: 8px;
-    padding: 0.75rem 1rem;
-    margin-bottom: 1rem;
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-}
-
-/* Search results */
-.search-results { list-style: none; }
-
-.search-results li {
-    background: var(--bg-primary);
-    border: 1px solid var(--border-light);
-    border-radius: 10px;
-    padding: 1.5rem;
-    margin-bottom: 1rem;
-    box-shadow: var(--shadow-sm);
-    transition: box-shadow 0.2s ease;
-}
-
-.search-results li:hover { box-shadow: var(--shadow-md); }
-
-.search-results h3 {
-    margin-bottom: 0.5rem;
-    font-weight: 600;
-}
-
-.search-results h3 a {
-    color: var(--text-primary);
-    text-decoration: none;
-    transition: color 0.15s ease;
-}
-
-.search-results h3 a:hover { color: var(--accent); }
-
-/* Admin table styles */
-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 1rem 0;
-}
-
-th, td {
-    padding: 0.75rem 1rem;
-    text-align: left;
-    border-bottom: 1px solid var(--border-light);
-}
-
-th {
-    background: var(--bg-tertiary);
-    font-weight: 600;
-    color: var(--text-secondary);
-    font-size: 0.875rem;
-}
-
-button {
-    padding: 0.625rem 1.25rem;
-    background: var(--bg-primary);
-    color: var(--accent);
-    border: 2px solid var(--accent);
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 600;
-    font-size: 0.95rem;
-    transition: background 0.15s ease, color 0.15s ease;
-}
-
-button:hover {
-    background: var(--accent);
-    color: white;
-}
-
-/* Button variants */
-.btn {
-    padding: 0.625rem 1.25rem;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 600;
-    font-size: 0.95rem;
-    border: none;
-    transition: opacity 0.15s ease;
-}
-.btn:hover { opacity: 0.9; }
-.btn-sm { padding: 0.375rem 0.75rem; font-size: 0.8rem; }
-.btn-success { background: var(--success); color: white; }
-.btn-danger { background: var(--error); color: white; }
-.btn-warning { background: #f59e0b; color: white; }
-
-/* Keyboard navigation */
-article.selected {
-    outline: 2px solid var(--accent);
-    outline-offset: 4px;
-}
-
-.shortcuts-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 999;
-}
-
-.shortcuts-panel {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: var(--bg-primary);
-    border: 1px solid var(--border-medium);
-    border-radius: 10px;
-    padding: 1.5rem 2rem;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-    z-index: 1000;
-    min-width: 280px;
-}
-
-.shortcuts-panel h3 {
-    margin: 0 0 1rem 0;
-    font-size: 1rem;
-    color: var(--text-primary);
-}
-
-.shortcuts-panel dl {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 0.5rem 1rem;
-    margin: 0;
-}
-
-.shortcuts-panel dt {
-    text-align: right;
-}
-
-.shortcuts-panel dd {
-    margin: 0;
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-}
-
-.shortcuts-panel kbd {
-    display: inline-block;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-light);
-    border-radius: 4px;
-    padding: 0.15rem 0.5rem;
-    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-    font-size: 0.8rem;
-    color: var(--text-primary);
-}
-
-.shortcuts-panel .close-btn {
-    margin-top: 1rem;
-    width: 100%;
-    padding: 0.5rem;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-light);
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    transition: background 0.15s ease;
-}
-
-.shortcuts-panel .close-btn:hover {
-    background: var(--bg-secondary);
-}
-
-.shortcuts-panel .close-btn:focus {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-}
-
-.hidden {
-    display: none !important;
-}
-
-/* Responsive */
 @media (max-width: 768px) {
-    header {
-        padding: 0.5rem 1rem;
-        flex-direction: column;
-        gap: 0.125rem;
-    }
-    header h1 { font-size: 1rem; }
-    header p { font-size: 0.75rem; }
+    header { flex-direction: column; gap: 0.125rem; }
     header p::before { display: none; }
-    .container {
-        grid-template-columns: 1fr;
-        gap: 1.5rem;
-        margin: 1.5rem auto;
-    }
+    .container { grid-template-columns: 1fr; }
     .sidebar { position: static; }
-    .search-form {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    .search-form input { width: 100%; }
-    article { padding: 1.25rem; }
 }
 """
 
@@ -1555,6 +1350,7 @@ def render_template(name: str, **context) -> str:
 
 # Template name constants for type safety
 TEMPLATE_INDEX = "index.html"
+TEMPLATE_TITLES = "titles.html"
 TEMPLATE_SEARCH = "search.html"
 TEMPLATE_ADMIN_DASHBOARD = "admin/dashboard.html"
 TEMPLATE_ADMIN_ERROR = "admin/error.html"

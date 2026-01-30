@@ -1,0 +1,199 @@
+# Planet Instance Configuration
+# Copy this file to config/instance.yaml and customize for your planet
+#
+# =============================================================================
+# IMPORTANT: Instance Creation vs Runtime Configuration
+# =============================================================================
+# This YAML file is used ONLY for initial instance creation and provisioning.
+# At runtime, all configuration is read from environment variables.
+#
+# Workflow:
+# 1. Create/edit this YAML file with your instance settings
+# 2. Run `python scripts/generate_wrangler_config.py` to generate wrangler.jsonc
+# 3. Deploy with `wrangler deploy` - settings become environment variables
+# 4. At runtime, the Worker reads from env vars (not this YAML file)
+#
+# To change settings after deployment, either:
+# - Update this YAML and re-run generate_wrangler_config.py + deploy
+# - Or set environment variables directly in Cloudflare dashboard
+#
+# =============================================================================
+# Configuration Schema: Required vs Optional Keys
+# =============================================================================
+# REQUIRED keys (must be set for a working instance):
+#   - planet.id          : Unique identifier for Cloudflare resources
+#   - planet.name        : Display name shown in header/feeds
+#   - planet.url         : Public URL of your planet
+#   - planet.owner.email : Contact email (used in User-Agent)
+#
+# OPTIONAL keys (have sensible defaults):
+#   - mode               : "full" or "lite" (default: "full")
+#   - planet.description : Tagline (default: "A feed aggregator")
+#   - planet.owner.name  : Owner name (default: "Planet Owner")
+#   - branding.*         : Theme, footer, etc (see defaults below)
+#   - content.*          : Display settings (see defaults below)
+#   - search.*           : Semantic search settings (see defaults below)
+#   - feeds.*            : Feed processing settings (see defaults below)
+#   - auth.*             : OAuth settings (see defaults below)
+#   - cloudflare.*       : Resource names (auto-derived from planet.id)
+#   - admins             : Initial admin users (optional)
+#
+# =============================================================================
+#
+# This follows the same philosophy as Rogue Planet's config.ini:
+# - All instance-specific settings in one place
+# - Sensible defaults with full customization
+# - Environment variable overrides for secrets
+
+# =============================================================================
+# Instance Mode
+# =============================================================================
+# Mode determines the feature set of this instance:
+# - full: All features enabled (search, OAuth authentication, admin dashboard)
+# - lite: Simplified read-only instance (no search, no auth, no admin)
+#
+# Lite mode is ideal for:
+# - Simple public feed aggregators
+# - Lower resource usage (no Vectorize, no KV for sessions)
+# - Faster deployment (fewer Cloudflare resources to provision)
+mode: full
+
+# =============================================================================
+# Core Identity
+# =============================================================================
+planet:
+  # Instance identifier (used for resource naming)
+  id: planetcf
+
+  # Display name shown in header and feeds
+  name: Planet CF
+
+  # Tagline/description
+  description: Aggregated posts from Cloudflare employees and community
+
+  # Public URL of this planet
+  url: https://planetcf.com
+
+  # Owner information (shown in feeds and OPML)
+  owner:
+    name: Cloudflare
+    email: planet@planetcf.com
+
+# =============================================================================
+# Branding & Theme
+# =============================================================================
+branding:
+  # Theme to use: default, classic, elegant, dark, minimal
+  # Or path to custom theme directory
+  theme: default
+
+  # User-Agent string for feed fetching
+  # Supports {name}, {url}, {email} placeholders
+  user_agent: "{name}/1.0 (+{url}; {email})"
+
+  # Footer text (supports {name} placeholder)
+  footer_text: "Powered by {name}"
+
+  # Show admin link in footer
+  show_admin_link: true
+
+# =============================================================================
+# Content Settings
+# =============================================================================
+content:
+  # How many days of entries to display on homepage
+  days: 7
+
+  # Group entries by date (like Rogue Planet)
+  group_by_date: true
+
+  # Maximum entries per feed to retain
+  max_entries_per_feed: 100
+
+  # Days to retain entries in database
+  retention_days: 90
+
+  # Summary truncation length
+  summary_max_length: 500
+
+# =============================================================================
+# Search Configuration
+# =============================================================================
+search:
+  # Enable semantic search (requires Vectorize)
+  enabled: true
+
+  # Max characters to embed per entry
+  embedding_max_chars: 2000
+
+  # Minimum similarity score (0.0-1.0)
+  score_threshold: 0.3
+
+  # Max results to return
+  top_k: 50
+
+# =============================================================================
+# Feed Processing
+# =============================================================================
+feeds:
+  # HTTP timeout for feed requests (seconds)
+  http_timeout_seconds: 30
+
+  # Max processing time per feed (seconds)
+  feed_timeout_seconds: 60
+
+  # Consecutive failures before auto-deactivation
+  auto_deactivate_threshold: 10
+
+  # Consecutive failures to show in DLQ
+  failure_threshold: 3
+
+# =============================================================================
+# Authentication
+# =============================================================================
+auth:
+  # OAuth provider: github, google, or oidc
+  provider: github
+
+  # Provider-specific configuration
+  # Secrets (client_id, client_secret) should be set via environment variables:
+  # - OAUTH_CLIENT_ID
+  # - OAUTH_CLIENT_SECRET
+  # - SESSION_SECRET
+
+  # OAuth scopes (provider-dependent)
+  scopes:
+    - user:email
+
+  # Session TTL in seconds (default: 7 days)
+  session_ttl_seconds: 604800
+
+  # Optional: explicit redirect URI (security best practice)
+  # If not set, uses request origin
+  # redirect_uri: https://planetcf.com/auth/callback
+
+# =============================================================================
+# Cloudflare Resources
+# =============================================================================
+# These are auto-generated by the provisioning script based on planet.id
+# You can override them here if needed
+cloudflare:
+  # D1 database name (default: {id}-db)
+  # database_name: planetcf-db
+
+  # Vectorize index name (default: {id}-entries)
+  # vectorize_index: planetcf-entries
+
+  # Queue names (default: {id}-feed-queue, {id}-feed-dlq)
+  # feed_queue: planetcf-feed-queue
+  # dead_letter_queue: planetcf-feed-dlq
+
+# =============================================================================
+# Admin Users
+# =============================================================================
+# Initial admin users to seed into the database
+# Additional admins can be added via the admin dashboard
+admins:
+  - username: adewale
+    display_name: Adewale Oshineye
+    # provider defaults to auth.provider above

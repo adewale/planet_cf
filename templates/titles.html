@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ planet.name }}</title>
+    <title>{{ planet.name }} - Titles Only</title>
     <link rel="icon" href="/static/favicon.ico" sizes="32x32">
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
@@ -11,7 +11,7 @@
     <link rel="alternate" type="application/atom+xml" title="{{ planet.name }} Atom Feed" href="{{ feed_links.atom or '/feed.atom' }}">
     <link rel="alternate" type="application/rss+xml" title="{{ planet.name }} RSS Feed" href="{{ feed_links.rss or '/feed.rss' }}">
 </head>
-<body>
+<body class="titles-only">
     <header>
         {% if logo %}
         <a href="/" class="logo-link">
@@ -26,18 +26,18 @@
 
     <div class="container">
         <main>
+            <p class="view-toggle"><a href="/">View full content</a></p>
             {% for date, day_entries in entries_by_date.items() %}
             <section class="day">
                 <h2 class="date">{{ date }}</h2>
+                {% set current_author = namespace(value='') %}
                 {% for entry in day_entries %}
-                <article>
-                    <h3><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
-                    <p class="meta">
-                        <span class="author">{{ entry.display_author }}</span>
-                        {% if entry.published_at_display %}<span class="date-sep">·</span> <time datetime="{{ entry.published_at }}">{{ entry.published_at_display }}</time>{% endif %}
-                    </p>
-                    <div class="content">{{ entry.content | safe }}</div>
-                </article>
+                    {% if entry.display_author != current_author.value %}
+                        {% set current_author.value = entry.display_author %}
+                <h3 class="post"><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}">{{ entry.display_author or 'Unknown' }}</a></h3>
+                    {% endif %}
+                <h4 class="entry-title"><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h4>
+                <p class="entry-meta"><em>{% if entry.display_author %}by {{ entry.display_author }} at {% endif %}{{ entry.published_at_display }}</em></p>
                 {% endfor %}
             </section>
             {% else %}
@@ -92,27 +92,8 @@
 
     <footer>
         <p><a href="{{ feed_links.atom or '/feed.atom' }}">Atom</a> · <a href="{{ feed_links.rss or '/feed.rss' }}">RSS</a> · <a href="{{ feed_links.opml or '/feeds.opml' }}">OPML</a></p>
-        <p>{{ footer_text }}{% if show_admin_link %} · <a href="/admin" style="color: #999; font-size: 0.8em;">Admin</a>{% endif %} · <span class="hint">Press <kbd>?</kbd> for shortcuts</span></p>
+        <p>{{ footer_text }}{% if show_admin_link %} · <a href="/admin" style="color: #999; font-size: 0.8em;">Admin</a>{% endif %}</p>
         <p>Last updated: {{ generated_at }}</p>
     </footer>
-
-    <!-- Keyboard shortcuts help panel -->
-    <div class="shortcuts-backdrop hidden" id="shortcuts-backdrop"></div>
-    <div class="shortcuts-panel hidden" id="shortcuts-panel" role="dialog" aria-labelledby="shortcuts-title" aria-modal="true">
-        <h3 id="shortcuts-title">Keyboard Shortcuts</h3>
-        <dl>
-            <dt><kbd>j</kbd></dt>
-            <dd>Next entry</dd>
-            <dt><kbd>k</kbd></dt>
-            <dd>Previous entry</dd>
-            <dt><kbd>?</kbd></dt>
-            <dd>Toggle this help</dd>
-            <dt><kbd>Esc</kbd></dt>
-            <dd>Close help</dd>
-        </dl>
-        <button type="button" class="close-btn" id="close-shortcuts">Close</button>
-    </div>
-
-    <script src="/static/keyboard-nav.js"></script>
 </body>
 </html>

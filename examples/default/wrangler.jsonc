@@ -1,0 +1,102 @@
+// wrangler.jsonc - Minimal Lite Mode Configuration
+// Planet CF - Feed Aggregator for Cloudflare Python Workers
+//
+// This is the minimal starting point for a lite mode instance.
+// Lite mode features:
+// - Simple, read-only feed aggregation
+// - No semantic search (no Vectorize binding)
+// - No admin interface (no OAuth required)
+// - Fewer Cloudflare resources to provision
+//
+// To upgrade to full mode, copy from examples/planet-cloudflare/
+//
+// =============================================================================
+// DEPLOYMENT INSTRUCTIONS
+// =============================================================================
+//
+// Step 1: Create the D1 Database
+//   Run: npx wrangler d1 create my-planet-db
+//   Copy the database_id and replace "YOUR_DATABASE_ID" below.
+//
+// Step 2: Create Queues
+//   Run: npx wrangler queues create my-planet-feed-queue
+//   Run: npx wrangler queues create my-planet-feed-dlq
+//
+// Step 3: Run Database Migrations
+//   Run: npx wrangler d1 execute my-planet-db --remote --file migrations/001_initial.sql
+//
+// Step 4: Deploy
+//   Run: npx wrangler deploy --config examples/default/wrangler.jsonc
+//
+// No secrets required for lite mode!
+// =============================================================================
+
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "my-planet",
+  "main": "src/main.py",
+  "compatibility_date": "2026-01-01",
+  "compatibility_flags": ["python_workers", "python_dedicated_snapshot"],
+
+  // CPU time limit - increase from 30s default for feed parsing
+  "limits": {
+    "cpu_ms": 60000
+  },
+
+  // Environment variables - Lite mode
+  "vars": {
+    "PLANET_ID": "my-planet",
+    "PLANET_NAME": "My Planet",
+    "PLANET_DESCRIPTION": "A simple feed aggregator",
+    "PLANET_URL": "https://my-planet.example.com",
+    "PLANET_OWNER_NAME": "Your Name",
+    "PLANET_OWNER_EMAIL": "you@example.com",
+    "INSTANCE_MODE": "lite",
+    "THEME": "default",
+    "RETENTION_DAYS": "90",
+    "RETENTION_MAX_ENTRIES_PER_FEED": "100",
+    "FEED_TIMEOUT_SECONDS": "60",
+    "HTTP_TIMEOUT_SECONDS": "30"
+  },
+
+  // Workers Observability
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1.0
+  },
+
+  // D1 Database
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "my-planet-db",
+      "database_id": "YOUR_DATABASE_ID"
+    }
+  ],
+
+  // No vectorize binding - lite mode doesn't use semantic search
+  // No ai binding - lite mode doesn't generate embeddings
+
+  // Queues: Scheduler -> Fetcher
+  "queues": {
+    "producers": [
+      { "binding": "FEED_QUEUE", "queue": "my-planet-feed-queue" },
+      { "binding": "DEAD_LETTER_QUEUE", "queue": "my-planet-feed-dlq" }
+    ],
+    "consumers": [
+      {
+        "queue": "my-planet-feed-queue",
+        "max_batch_size": 5,
+        "max_batch_timeout": 30,
+        "max_retries": 3,
+        "dead_letter_queue": "my-planet-feed-dlq",
+        "retry_delay": 300
+      }
+    ]
+  },
+
+  // Cron trigger: Hourly feed fetch
+  "triggers": {
+    "crons": ["0 * * * *"]
+  }
+}

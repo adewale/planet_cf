@@ -1,0 +1,555 @@
+# Planet Mozilla Instance Configuration
+# A comprehensive clone of https://planet.mozilla.org/
+# Generated for use with Planet CF
+#
+# Feed list sourced from: https://github.com/mozilla-it/planet.mozilla.org/blob/master/configs/mozilla.ini
+# Total feeds: 190
+
+# =============================================================================
+# Core Identity
+# =============================================================================
+planet:
+  id: planet-mozilla
+  name: Planet Mozilla
+  description: Mozilla community blogs and news aggregator
+  url: https://planet.mozilla.org
+  owner:
+    name: Mozilla Community
+    email: planet@mozilla.org
+
+# =============================================================================
+# Branding & Theme
+# =============================================================================
+branding:
+  # Custom theme matching planet.mozilla.org design
+  theme: planet-mozilla
+
+  # User-Agent string for feed fetching
+  user_agent: "{name}/1.0 (+{url}; {email})"
+
+  # Footer text
+  footer_text: "Powered by {name}"
+
+  # Show admin link in footer
+  show_admin_link: true
+
+  # Logo configuration (Mozilla logo)
+  logo:
+    url: /static/mozilla-logo.svg
+    alt: Mozilla Logo
+    width: 112
+    height: 32
+
+# =============================================================================
+# Content Settings
+# =============================================================================
+content:
+  # How many days of entries to display on homepage
+  days: 14
+
+  # Group entries by date (classic Planet style)
+  group_by_date: true
+
+  # Maximum entries per feed to retain
+  max_entries_per_feed: 100
+
+  # Days to retain entries in database (matches wrangler config)
+  retention_days: 90
+
+  # Summary truncation length
+  summary_max_length: 500
+
+# =============================================================================
+# Search Configuration
+# =============================================================================
+search:
+  # Enable semantic search (requires Vectorize)
+  enabled: true
+
+  # Max characters to embed per entry
+  embedding_max_chars: 2000
+
+  # Minimum similarity score (0.0-1.0)
+  score_threshold: 0.3
+
+  # Max results to return
+  top_k: 50
+
+# =============================================================================
+# Feed Processing
+# =============================================================================
+feeds:
+  # HTTP timeout for feed requests (seconds)
+  http_timeout_seconds: 30
+
+  # Max processing time per feed (seconds)
+  feed_timeout_seconds: 60
+
+  # Consecutive failures before auto-deactivation
+  auto_deactivate_threshold: 10
+
+  # Consecutive failures to show in DLQ
+  failure_threshold: 3
+
+# =============================================================================
+# Authentication
+# =============================================================================
+auth:
+  # OAuth provider: github, google, or oidc
+  provider: github
+
+  # OAuth scopes (provider-dependent)
+  scopes:
+    - user:email
+
+  # Session TTL in seconds (default: 7 days)
+  session_ttl_seconds: 604800
+
+# =============================================================================
+# Cloudflare Resources (auto-generated names based on id)
+# =============================================================================
+cloudflare:
+  database_name: planet-mozilla-db
+  vectorize_index: planet-mozilla-entries
+  feed_queue: planet-mozilla-feed-queue
+  dead_letter_queue: planet-mozilla-feed-dlq
+
+# =============================================================================
+# Sidebar Configuration
+# =============================================================================
+sidebar:
+  # RSS and navigation links at top of sidebar (matching real Planet Mozilla URLs)
+  feed_links:
+    rss: /rss20.xml
+    atom: /atom.xml
+    foafroll: /foafroll.xml
+    opml: /opml.xml
+
+  # Submission link (shown at bottom of subscriptions)
+  submission:
+    text: "Want to be listed? File a bug or submit a pull request"
+    url: https://github.com/mozilla-it/planet.mozilla.org
+
+  # Related sites sections (matching real Planet Mozilla)
+  related_sites:
+    - title: Other Mozilla Planets
+      links:
+        - name: Planet Mozilla Projects
+          url: https://planet.mozilla.org/projects/
+
+    - title: Mozilla
+      links:
+        - name: Mozilla.org
+          url: https://www.mozilla.org/
+        - name: Mozilla Wiki
+          url: https://wiki.mozilla.org/
+        - name: Mozilla Developer Network
+          url: https://developer.mozilla.org/
+        - name: Bugzilla
+          url: https://bugzilla.mozilla.org/
+        - name: Community Portal
+          url: https://community.mozilla.org/
+
+# =============================================================================
+# Admin Users
+# =============================================================================
+admins:
+  - username: mozilla
+    display_name: Mozilla Community
+
+# =============================================================================
+# Initial Feeds - Accurate list from Planet Mozilla (190 feeds)
+# =============================================================================
+# Source: https://github.com/mozilla-it/planet.mozilla.org/blob/master/configs/mozilla.ini
+initial_feeds:
+  # =========================================================================
+  # Official Mozilla Blogs
+  # =========================================================================
+  - url: https://blog.mozilla.org/feed/
+    title: The Mozilla Blog
+  - url: https://hacks.mozilla.org/feed/
+    title: Hacks.Mozilla.Org
+  - url: https://blog.mozilla.org/security/feed/
+    title: Mozilla Security Blog
+  - url: https://blog.mozilla.org/addons/feed/
+    title: Mozilla Addons Blog
+  - url: https://blog.nightly.mozilla.org/feed/
+    title: Firefox Nightly
+  - url: https://blog.mozilla.org/javascript/feed/
+    title: JavaScript at Mozilla
+  - url: https://blog.mozilla.org/services/feed
+    title: Mozilla Cloud Services Blog
+  - url: https://blog.mozilla.org/community/feed/
+    title: About:Community
+  - url: https://blog.mozilla.org/sumo/feed/
+    title: Support.Mozilla.Org
+  - url: https://blog.mozilla.org/ux/feed/
+    title: Firefox UX
+  - url: https://blog.mozilla.org/l10n/category/planet/feed/
+    title: Mozilla Localization (L10N)
+  - url: https://blog.mozilla.org/opendesign/feed/
+    title: Mozilla Open Design Blog
+  - url: https://blog.mozilla.org/futurereleases/feed/
+    title: Mozilla Future Releases Blog
+  - url: https://blog.mozilla.org/data/feed/
+    title: Data@Mozilla
+  - url: https://blog.mozilla.org/accessibility/feed/
+    title: Mozilla Accessibility
+  - url: https://blog.mozilla.org/performance/feed/
+    title: Mozilla Performance Blog
+  - url: https://blog.mozilla.org/thunderbird/feed/rss/
+    title: Thunderbird Blog
+  - url: https://blog.mozilla.org/netpolicy/feed/
+    title: Mozilla Open Policy & Advocacy Blog
+  - url: https://blog.mozilla.org/privacy/feed/
+    title: Mozilla Privacy Blog
+  - url: https://blog.mozilla.org/webdev/feed/
+    title: Mozilla WebDev Community
+  - url: https://blog.mozilla.org/webrtc/feed
+    title: Advancing WebRTC
+
+  # =========================================================================
+  # Mozilla Project Blogs
+  # =========================================================================
+  - url: https://blog.servo.org/feed.xml
+    title: The Servo Blog
+  - url: https://blog.rust-lang.org/feed.xml
+    title: The Rust Programming Language Blog
+  - url: https://this-week-in-rust.org/atom.xml
+    title: This Week In Rust
+  - url: https://release.mozilla.org/feed.xml
+    title: Mozilla Release Management Team
+  - url: https://mozilla.github.io/meao/atom.xml
+    title: Mozilla Marketing Engineering & Ops Blog
+  - url: https://mozillagfx.wordpress.com/feed/
+    title: Mozilla GFX
+  - url: https://mozilla.github.io/firefox-browser-architecture/newsletters.xml
+    title: Firefox Browser Architecture
+  - url: https://spidermonkey.dev/feed.xml
+    title: Spidermonkey Development Blog
+  - url: https://attackanddefense.dev/feed.xml
+    title: Mozilla Attack & Defense
+  - url: https://addons.mozilla.org/blog/feed.xml
+    title: Firefox Add-on Reviews
+  - url: https://fxdx.dev/feed/
+    title: Firefox Developer Experience
+  - url: https://mozilla-necko.github.io/feed.xml
+    title: Mozilla Necko Blog
+  - url: https://discourse.mozilla.org/c/firefox-tooling-announcements/521.rss
+    title: Firefox Tooling Announcements
+
+  # =========================================================================
+  # Individual Mozilla Contributors
+  # =========================================================================
+  - url: https://enndeakin.wordpress.com/feed/
+    title: Neil Deakin
+  - url: http://glazman.org/weblog/dotclear/?feed/planetmoz
+    title: Daniel Glazman
+  - url: https://blog.lizardwrangler.com/feed/atom/
+    title: Mitchell Baker
+  - url: https://dbaron.org/log/rss1
+    title: L. David Baron
+  - url: https://birtles.blog/feed.xml
+    title: Brian Birtles
+  - url: https://mykzilla.org/category/mozilla/feed/
+    title: Myk Melez
+  - url: https://autonome.wordpress.com/category/mozilla/feed/
+    title: Dietrich Ayala
+  - url: https://www.chevrel.org/carnet/?feed/tag/InEnglish/atom
+    title: Pascal Chevrel
+  - url: https://blog.humphd.org/tag/mozilla/rss/
+    title: David Humphrey
+  - url: https://www.rhelmer.org/blog/feeds/tag/mozilla.atom.xml
+    title: Robert Helmer
+  - url: https://dolske.wordpress.com/category/planetmozilla/feed/
+    title: Justin Dolske
+  - url: https://feeds.feedburner.com/mkaply/musings
+    title: Michael Kaply
+  - url: https://home.kairo.at/blog/?c=&f.tags=Mozilla
+    title: Robert Kaiser
+  - url: https://palant.de/atom/?category=mozilla,gecko,security
+    title: Wladimir Palant
+  - url: https://www.oxymoronical.com/blog/category/technical/mozilla/feed
+    title: Dave Townsend
+  - url: https://feeds.feedburner.com/InPursuitOfMysteries/Mozilla
+    title: Al Billings
+  - url: https://micropipes.com/feed/by_tag/Mozilla.xml
+    title: Wil Clouser
+  - url: https://www.hskupin.info/category/mozilla/feed/
+    title: Henrik Skupin
+  - url: https://www.gijsk.com/blog/category/mozilla/feed/
+    title: Gijs Kruitbosch
+  - url: https://blog.mozilla.org/ted/feed/
+    title: Ted Mielczarek
+  - url: https://hearsum.ca/rss.xml
+    title: Ben Hearsum
+  - url: https://diary.braniecki.net/tag/planetmo/feed/
+    title: Zibi Braniecki
+  - url: https://blog.mozilla.org/tomcat/feed/
+    title: Carsten Book
+  - url: https://www.thebanners.uk/standard8/category/mozilla/feed/
+    title: Mark Banner
+  - url: https://www.visophyte.org/blog/feed/
+    title: Andrew Sutherland
+  - url: https://hackademix.net/category/mozilla/feed
+    title: Giorgio Maone
+  - url: https://blog.lmorchard.com/tag/mozilla/index.rss
+    title: Les Orchard
+  - url: https://feeds.feedburner.com/SoftwareIsHardPlanetMozilla
+    title: Jan Odvarko
+  - url: https://whereswalden.com/feed/atom/
+    title: Jeff Walden
+  - url: https://www.blogger.com/feeds/5537325711190185140/posts/default/-/mozilla
+    title: Chris Pearce
+  - url: https://muizelaar.blogspot.com/feeds/posts/default
+    title: Jeff Muizelaar
+  - url: https://escapewindow.dreamwidth.org/data/rss?tag=mozilla
+    title: Aki Sasaki
+  - url: https://blog.mozilla.org/nnethercote/feed/atom/
+    title: Nicholas Nethercote
+  - url: http://blog.dholbert.org/feeds/posts/default/-/mozilla
+    title: Daniel Holbert
+  - url: https://garykwong.wordpress.com/category/mozilla/feed/
+    title: Gary Kwong
+  - url: https://ludovic.hirlimann.net/feeds/posts/default/-/mozilla
+    title: Ludovic Hirlimann
+  - url: https://www.yetanothertechblog.com/category/planet/feed
+    title: Francesco Lodolo
+  - url: https://elvis314.wordpress.com/feed/
+    title: Joel Maher
+  - url: https://hsivonen.iki.fi/feed/mozilla/
+    title: Henri Sivonen
+  - url: https://bholley.net/feed.xml
+    title: Bobby Holley
+  - url: https://markusstange.wordpress.com/tag/planet/feed/
+    title: Markus Stange
+  - url: https://jwatt.org/rss.xml
+    title: Jonathan Watt
+  - url: https://lu.is/category/mozilla/feed/
+    title: Luis Villa
+  - url: http://bonardo.net/feed.mozilla.xml
+    title: Marco Bonardo
+  - url: https://weblog.latte.ca/tags/mozilla.xml
+    title: Blake Winton
+  - url: https://limpet.net/mbrubeck/atom.xml
+    title: Matt Brubeck
+  - url: https://glandium.org/blog/?feed=rss2&cat=25&tag=en
+    title: Mike Hommey
+  - url: https://ftangftang.wordpress.com/category/mozilla/feed/
+    title: Nick Thomas
+  - url: https://frederic-wang.fr/feeds/atom-mozilla.xml
+    title: Frederic Wang
+  - url: https://tantek.com/updates.atom?ot=article
+    title: Tantek Celik
+  - url: https://blog.ziade.org/feed.xml
+    title: Tarek Ziade
+  - url: http://code.v.igoro.us/feed.mozilla.xml
+    title: Dustin J. Mitchell
+  - url: https://blog.mozilla.org/sfink/tag/planet/feed/
+    title: Steve Fink
+  - url: https://www.theautomatedtester.co.uk/blog/index.xml
+    title: David Burns
+  - url: https://blog.mozilla.org/jseward/feed/
+    title: Julian Seward
+  - url: https://itcouldbesomuchbetter.wordpress.com/category/mozilla/feed/
+    title: Jim Blandy
+  - url: https://www.wirfs-brock.com/allen/feed
+    title: Allen Wirfs-Brock
+  - url: https://mikeconley.ca/blog/category/mozilla-2/feed/
+    title: Mike Conley
+  - url: https://bitsup.blogspot.com/feeds/posts/default/-/firefox
+    title: Patrick McManus
+  - url: https://davehunt.co.uk/feed.xml
+    title: Dave Hunt
+  - url: https://timtaubert.de/atom.xml
+    title: Tim Taubert
+  - url: https://blog.mozilla.org/luke/category/mozilla/feed/
+    title: Luke Wagner
+  - url: https://msujaws.wordpress.com/tag/planet-mozilla/feed/
+    title: Jared Wein
+  - url: https://globau.wordpress.com/category/mozilla/feed/
+    title: Byron Jones
+  - url: https://wrla.ch/feeds/Mozilla.rss.xml
+    title: William Lachance
+  - url: https://blog.mozilla.org/nfroyd/feed/
+    title: Nathan Froyd
+  - url: https://yoric.github.io/categories/mozilla/index.xml
+    title: David Teller
+  - url: https://feeds.feedburner.com/jnchen/mozilla
+    title: Jim Chen
+  - url: https://incompleteness.me/blog/atom.xml
+    title: Joe Walker
+  - url: https://blog.monotonous.org/feed/atom
+    title: Eitan Isaacson
+  - url: https://ahal.ca/tags/mozilla/index.xml
+    title: Andrew Halberstadt
+  - url: https://javascript-reverse.tumblr.com/tagged/mozilla/rss
+    title: Tom Schuster
+  - url: https://asurkov.blogspot.com/feeds/posts/default
+    title: Alexander Surkov
+  - url: https://blog.techno-barje.fr/feed/pm.xml
+    title: Alexandre Poirot
+  - url: https://www.nukeador.com/tag/mozilla-en/feed/
+    title: Ruben Martin
+  - url: https://smallcultfollowing.com/babysteps/atom.xml
+    title: Niko Matsakis
+  - url: https://feeds.feedburner.com/PastMidnight
+    title: Panos Astithas
+  - url: https://www.joshmatthews.net/blog/feed/
+    title: Josh Matthews
+  - url: https://campd.wordpress.com/category/mozilla/feed/
+    title: David Camp
+  - url: https://staktrace.com/spout/getrss.php?posts&tag=mozilla
+    title: Kartikaya Gupta
+  - url: https://bluesock.org/~willkg/blog/tag/mozilla.xml
+    title: Will Kahn-Greene
+  - url: https://gregoryszorc.com/blog/category/mozilla/feed/atom/index.xml
+    title: Gregory Szorc
+  - url: https://feeding.cloud.geek.nz/tags/mozilla/index.rss
+    title: Francois Marier
+  - url: https://kimmoir.blog/category/mozilla/feed/
+    title: Kim Moir
+  - url: https://patrick.cloke.us/feeds/rss.xml
+    title: Patrick Cloke
+  - url: http://www.cpeterso.com/blog/feed/
+    title: Chris Peterson
+  - url: https://satdavmozilla.wordpress.com/category/mozilla/feed/
+    title: David Weir (satdav)
+  - url: https://ianbicking.org/feeds/mozilla.atom.xml
+    title: Ian Bicking
+  - url: https://matthew.noorenberghe.com/tags/mozilla/feed
+    title: Matthew Noorenberghe
+  - url: https://blog.mozilla.org/tanvi/feed/
+    title: Tanvi Vyas
+  - url: https://dblohm7.ca/blog/categories/mozilla/atom.xml
+    title: Aaron Klotz
+  - url: https://www.chesnok.com/daily/feed/
+    title: Selena Deckelmann
+  - url: https://bookmaniac.org/category/planetmozilla/feed
+    title: Liz Henry
+  - url: https://www.janbambas.cz/tag/mozilla/feed/
+    title: Honza Bambas
+  - url: https://fitzgeraldnick.com/weblog/feeds/latest-atom/
+    title: Nick Fitzgerald
+  - url: https://www.otsukare.info/feeds/atom.xml
+    title: Karl Dubost
+  - url: http://petemoore.tumblr.com/rss
+    title: Pete Moore
+  - url: http://jve.linuxwall.info/blog/index.php?feed/atom
+    title: Julien Vehent
+  - url: https://mreid-moz.github.io/mozilla.xml
+    title: Mark Reid
+  - url: https://pmac.io/tag/mozilla/feed.xml
+    title: Paul McLanahan
+  - url: https://billmccloskey.wordpress.com/feed/
+    title: Bill McCloskey
+  - url: http://blog.queze.net/feed/category/Mozilla/rss2
+    title: Florian Queze
+  - url: https://jandemooij.nl/feed.xml
+    title: Jan de Mooij
+  - url: https://daniel.haxx.se/blog/category/mozilla/feed/
+    title: Daniel Stenberg
+  - url: https://sylvestre.ledru.info/blog/cat15/mozilla/?tempskin=_rss2
+    title: Sylvestre Ledru
+  - url: https://manishearth.github.io/blog/categories/mozilla/atom.xml
+    title: Manish Goregaokar
+  - url: https://www.kevinbrosnan.net/category/mozilla/feed/
+    title: Kevin Brosnan
+  - url: https://botondballo.wordpress.com/tag/mozilla/feed/
+    title: Botond Ballo
+  - url: https://ricaud.me/blog/feed/tag/mozilla/atom
+    title: Anthony Ricaud
+  - url: http://www.erranderr.com/blog/feeds/mozilla.atom.xml
+    title: Maja Frydrychowicz
+  - url: https://adblockplus.org/atom/?category=mozilla
+    title: Adblock Plus
+  - url: https://miketaylr.com/posts/rss.xml
+    title: Mike Taylor
+  - url: https://www.ncalexander.net/blog/feeds/mozilla.atom.xml
+    title: Nick Alexander
+  - url: https://tenfourfox.blogspot.com/feeds/posts/default?alt=rss
+    title: Cameron Kaiser
+  - url: https://h4writer.com/?cat=2&feed=rss2
+    title: Hannes Verschore
+  - url: https://muffinresearch.co.uk/tag/mozilla/rss/
+    title: Stuart Colville
+  - url: https://parkouss.wordpress.com/feed/?tag=Mozilla
+    title: Julien Pages
+  - url: https://emceeaich.dreamwidth.org/data/atom?tag=planetmozilla
+    title: Emma Humphries
+  - url: https://chuttenblog.wordpress.com/category/mozilla/feed/
+    title: Chris H-C
+  - url: https://blog.benj.me/tag/mozilla.rss
+    title: Benjamin Bouvier
+  - url: https://insufficient.coffee/feed/by_tag/mozilla.xml
+    title: J.C. Jones
+  - url: https://www.erahm.org/?cat=4&feed=rss2
+    title: Eric Rahm
+  - url: https://medium.com/feed/mozilla-open-innovation
+    title: Mozilla Open Innovation Team
+  - url: https://www.a2p.it/categories/mozilla/index.xml
+    title: Alessio Placitelli
+  - url: http://blog.harterrt.com/feeds/mozilla.rss.xml
+    title: Ryan Harter
+  - url: https://overengineer.dev/blog/feeds/mozilla.xml
+    title: Dennis Schubert
+  - url: https://www.ahunt.org/category/mozilla/feed/
+    title: Andrzej Hunt
+  - url: https://annevankesteren.nl/feeds/weblog
+    title: Anne van Kesteren
+  - url: https://www.brycevandyk.com/tag/mozilla/rss/
+    title: Bryce Van Dyk
+  - url: https://marco-c.github.io/feed.xml
+    title: Marco Castelluccio
+  - url: https://farre.github.io/blog/rss/mozilla.xml
+    title: Andreas Farre
+  - url: https://feeds.mozilla-podcasts.org/irl
+    title: IRL (podcast)
+  - url: https://oeekker.wordpress.com/category/planet/feed/
+    title: Onno Ekker
+  - url: https://jmvalin.dreamwidth.org/tag/mozilla
+    title: Jean-Marc Valin
+  - url: https://feeds.feedburner.com/MozillaChrisIlias
+    title: Chris Ilias
+  - url: https://humanoids.be/log/category/software/freeware/opensource/mozilla/feed/?lang=en_us
+    title: Martin Giger
+  - url: http://blog.johnford.org/feeds/posts/default/-/mozilla?alt=rss
+    title: John Ford
+  - url: https://droettboom.com/feeds/mozilla.atom.xml
+    title: Michael Droettboom
+  - url: https://mcc.id.au/feed-planet-mozilla
+    title: Cameron McCormack
+  - url: https://paul.bone.id.au/blog-planet-mozilla.xml
+    title: Paul Bone
+  - url: https://fnordig.de/tagged/mozilla.xml
+    title: Jan-Erik Rediger
+  - url: https://mystor.github.io/feeds/tags/mozilla.atom.xml
+    title: Nika Layzell
+  - url: https://blog.paul.cx/tags/mozilla/
+    title: Paul Adenot
+  - url: https://www.talospace.com/feeds/posts/default/-/Firefox/?alt=rss
+    title: The Talospace Project
+  - url: https://frederik-braun.com/feeds/all.rss.xml
+    title: Frederik Braun
+  - url: https://tigeroakes.com/posts/tags/planet-mozilla/index.xml
+    title: Tiger Oakes
+  - url: https://lowentropy.net/feed/mozilla.xml
+    title: Martin Thompson
+  - url: https://dev.to/feed/lzoog
+    title: Lauren Zugai
+  - url: http://dev.to/feed/jody
+    title: Jody Heavener
+  - url: https://williamdurand.fr/mozilla.xml
+    title: William Durand
+  - url: https://www.mgaudet.ca/technical/category/Mozilla?format=rss
+    title: Matthew Gaudet
+  - url: https://serge-sans-paille.github.io/pythran-stories/feeds/mozilla.atom.xml
+    title: Serge Guelton
+  - url: https://www.youtube.com/feeds/videos.xml?channel_id=UCS1zp4AVNvykWzPC-vB_Daw
+    title: Mozilla Data YouTube Channel
+  - url: https://blog.narf.ssji.net/category/mozilla/feed/
+    title: Olivier Mehani
+  - url: https://jonalmeida.com/tags/mozilla/atom.xml
+    title: Jonathan Almeida
+  - url: https://mastransky.wordpress.com/feed/
+    title: Firefox hacking in Fedora

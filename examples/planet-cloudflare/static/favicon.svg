@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Palatino-inspired serif P in Cloudflare orange with shadow -->
+  <!-- Shadow: offset up and right -->
+  <path fill="#000000" fill-rule="evenodd" transform="translate(1.5, -1.5)" d="
+    M5 3 h13 c5.5 0 10 3.5 10 8 s-4.5 8-10 8 h-5 v9 h2.5 v2 h-10 v-2 h2.5 v-21 h-2.5 v-2 z
+    M13 7 v8 h4 c3.5 0 6-1.8 6-4 s-2.5-4-6-4 z
+  "/>
+  <!-- Main P -->
+  <path fill="#f6821f" fill-rule="evenodd" d="
+    M5 3 h13 c5.5 0 10 3.5 10 8 s-4.5 8-10 8 h-5 v9 h2.5 v2 h-10 v-2 h2.5 v-21 h-2.5 v-2 z
+    M13 7 v8 h4 c3.5 0 6-1.8 6-4 s-2.5-4-6-4 z
+  "/>
+</svg>

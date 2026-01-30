@@ -25,6 +25,7 @@ from urllib.parse import parse_qs, urlparse
 import feedparser
 from workers import Response, WorkerEntrypoint
 
+from instance_config import is_lite_mode as check_lite_mode
 from models import BleachSanitizer
 from observability import (
     AdminActionEvent,
@@ -46,6 +47,7 @@ from templates import (
     TEMPLATE_FEEDS_OPML,
     TEMPLATE_INDEX,
     TEMPLATE_SEARCH,
+    TEMPLATE_TITLES,
     render_template,
 )
 from wrappers import (
@@ -128,7 +130,7 @@ ERROR_MESSAGE_MAX_LENGTH = 200
 
 # Retention policy defaults (can be overridden via env vars)
 DEFAULT_RETENTION_DAYS = 90  # Default to 90 days
-DEFAULT_MAX_ENTRIES_PER_FEED = 100  # Max entries to keep per feed
+DEFAULT_MAX_ENTRIES_PER_FEED = 50  # Max entries to keep per feed (smart default)
 
 # Search configuration defaults (can be overridden via env vars)
 DEFAULT_EMBEDDING_MAX_CHARS = 2000  # Max chars to embed per entry
@@ -138,6 +140,13 @@ DEFAULT_SEARCH_TOP_K = 50  # Max semantic search results before filtering
 # Feed failure thresholds (can be overridden via env vars)
 DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD = 10  # Consecutive failures before auto-deactivate
 DEFAULT_FEED_FAILURE_THRESHOLD = 3  # Consecutive failures to show in DLQ
+
+# SQL query limits (prevent unbounded result sets)
+DEFAULT_QUERY_LIMIT = 500  # Maximum entries returned in a single query
+
+# Smart defaults: Content display fallback
+# When no entries found in display range, show the N most recent entries
+FALLBACK_ENTRIES_LIMIT = 50  # Show 50 most recent entries if date range is empty
 
 # HTML sanitizer instance (uses settings from types.py)
 _sanitizer = BleachSanitizer()
@@ -530,6 +539,112 @@ class Default(WorkerEntrypoint):
         """Get HTTP timeout from environment, default 30 seconds."""
         val = getattr(self.env, "HTTP_TIMEOUT_SECONDS", None)
         return int(val) if val else HTTP_TIMEOUT_SECONDS
+
+    # Track if database has been initialized (per-isolate state)
+    _db_initialized: bool = False
+
+    async def _ensure_database_initialized(self) -> None:
+        """Auto-run migrations on first request if tables don't exist.
+
+        Smart default: For simpler deployment, automatically initialize the database
+        schema on first request. This checks if core tables exist and creates them
+        if missing.
+
+        Note: This is a lightweight check that only runs once per worker isolate.
+        For production deployments, explicit migration via wrangler is preferred.
+        """
+        if self._db_initialized:
+            return
+
+        try:
+            # Check if feeds table exists (core table)
+            result = await self.env.DB.prepare(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='feeds'"
+            ).first()
+
+            if result is None:
+                _log_op("database_auto_init", status="initializing")
+                # Create core tables (minimal schema for basic operation)
+                await self.env.DB.exec("""
+                    -- Feeds table
+                    CREATE TABLE IF NOT EXISTS feeds (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        url TEXT UNIQUE NOT NULL,
+                        title TEXT,
+                        site_url TEXT,
+                        author_name TEXT,
+                        author_email TEXT,
+                        etag TEXT,
+                        last_modified TEXT,
+                        last_fetch_at TEXT,
+                        last_success_at TEXT,
+                        fetch_error TEXT,
+                        fetch_error_count INTEGER DEFAULT 0,
+                        consecutive_failures INTEGER DEFAULT 0,
+                        is_active INTEGER DEFAULT 1,
+                        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_feeds_active ON feeds(is_active);
+                    CREATE INDEX IF NOT EXISTS idx_feeds_url ON feeds(url);
+
+                    -- Entries table
+                    CREATE TABLE IF NOT EXISTS entries (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        feed_id INTEGER NOT NULL,
+                        guid TEXT NOT NULL,
+                        url TEXT,
+                        title TEXT,
+                        author TEXT,
+                        content TEXT,
+                        summary TEXT,
+                        published_at TEXT,
+                        updated_at TEXT,
+                        first_seen TEXT DEFAULT CURRENT_TIMESTAMP,
+                        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (feed_id) REFERENCES feeds(id) ON DELETE CASCADE,
+                        UNIQUE(feed_id, guid)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_entries_published ON entries(published_at DESC);
+                    CREATE INDEX IF NOT EXISTS idx_entries_feed ON entries(feed_id);
+                    CREATE INDEX IF NOT EXISTS idx_entries_guid ON entries(feed_id, guid);
+
+                    -- Admin users table
+                    CREATE TABLE IF NOT EXISTS admins (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        github_username TEXT UNIQUE NOT NULL,
+                        github_id INTEGER,
+                        display_name TEXT,
+                        avatar_url TEXT,
+                        is_active INTEGER DEFAULT 1,
+                        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                        last_login_at TEXT
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_admins_github ON admins(github_username);
+
+                    -- Audit log for admin actions
+                    CREATE TABLE IF NOT EXISTS audit_log (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        admin_id INTEGER,
+                        action TEXT NOT NULL,
+                        target_type TEXT,
+                        target_id INTEGER,
+                        details TEXT,
+                        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (admin_id) REFERENCES admins(id)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC);
+                """)
+                _log_op("database_auto_init", status="completed")
+            else:
+                _log_op("database_auto_init", status="already_initialized")
+
+            self._db_initialized = True
+
+        except Exception as e:
+            _log_error("database_auto_init_error", e)
+            # Don't prevent the request from proceeding
+            self._db_initialized = True  # Avoid retrying on every request
 
     # =========================================================================
     # Cron Handler - Scheduler
@@ -1381,10 +1496,19 @@ class Default(WorkerEntrypoint):
 
         with Timer() as timer:
             try:
+                # Smart default: Auto-initialize database on first request
+                await self._ensure_database_initialized()
+
                 # Public routes (cacheable at edge via Cache-Control headers)
                 if path == "/" or path == "/index.html":
                     event.route = "/"
                     response = await self._serve_html(event)
+                    event.content_type = "html"
+                    event.cache_status = "cacheable"
+
+                elif path == "/titles" or path == "/titles.html":
+                    event.route = "/titles"
+                    response = await self._serve_titles(event)
                     event.content_type = "html"
                     event.cache_status = "cacheable"
 
@@ -1408,8 +1532,13 @@ class Default(WorkerEntrypoint):
 
                 elif path == "/search":
                     event.route = "/search"
-                    response = await self._search_entries(request, event)
-                    event.content_type = "search"
+                    # Search disabled in lite mode (no Vectorize)
+                    if check_lite_mode(self.env):
+                        response = _json_error("Search is not available in lite mode", status=404)
+                        event.content_type = "error"
+                    else:
+                        response = await self._search_entries(request, event)
+                        event.content_type = "search"
                     event.cache_status = "bypass"  # Dynamic based on query
 
                 elif path.startswith("/static/"):
@@ -1419,28 +1548,46 @@ class Default(WorkerEntrypoint):
                     event.cache_status = "cacheable"
 
                 # OAuth routes (bypass cache - session handling)
+                # Disabled in lite mode (no OAuth)
                 elif path == "/auth/github":
                     event.route = "/auth/github"
-                    event.oauth_stage = "redirect"
-                    event.oauth_provider = "github"
-                    event.oauth_success = None  # Redirect phase, not callback
-                    response = self._redirect_to_github_oauth(request)
-                    event.content_type = "auth"
+                    if check_lite_mode(self.env):
+                        response = _json_error(
+                            "Authentication is not available in lite mode", status=404
+                        )
+                        event.content_type = "error"
+                    else:
+                        event.oauth_stage = "redirect"
+                        event.oauth_provider = "github"
+                        event.oauth_success = None  # Redirect phase, not callback
+                        response = self._redirect_to_github_oauth(request)
+                        event.content_type = "auth"
                     event.cache_status = "bypass"
 
                 elif path == "/auth/github/callback":
                     event.route = "/auth/github/callback"
-                    event.oauth_stage = "callback"
-                    event.oauth_provider = "github"
-                    response = await self._handle_github_callback(request, event)
-                    event.content_type = "auth"
+                    if check_lite_mode(self.env):
+                        response = _json_error(
+                            "Authentication is not available in lite mode", status=404
+                        )
+                        event.content_type = "error"
+                    else:
+                        event.oauth_stage = "callback"
+                        event.oauth_provider = "github"
+                        response = await self._handle_github_callback(request, event)
+                        event.content_type = "auth"
                     event.cache_status = "bypass"
 
                 # Admin routes (bypass cache - authenticated, dynamic)
+                # Disabled in lite mode (no OAuth, no admin)
                 elif path.startswith("/admin"):
                     event.route = "/admin/*"
-                    response = await self._handle_admin(request, path, event)
-                    event.content_type = "admin"
+                    if check_lite_mode(self.env):
+                        response = _json_error("Admin is not available in lite mode", status=404)
+                        event.content_type = "error"
+                    else:
+                        response = await self._handle_admin(request, path, event)
+                        event.content_type = "admin"
                     event.cache_status = "bypass"
 
                 else:
@@ -1493,11 +1640,21 @@ class Default(WorkerEntrypoint):
         html = await self._generate_html(event=event)
         return _html_response(html)
 
+    async def _serve_titles(self, event: RequestEvent | None = None) -> Response:
+        """Generate and serve the titles-only page on-demand.
+
+        Similar to _serve_html but renders TEMPLATE_TITLES instead,
+        showing only entry titles without content for a compact view.
+        """
+        html = await self._generate_html(event=event, template=TEMPLATE_TITLES)
+        return _html_response(html)
+
     async def _generate_html(
         self,
         trigger: str = "http",
         triggered_by: str | None = None,
         event: RequestEvent | None = None,
+        template: str = TEMPLATE_INDEX,
     ) -> str:
         """Generate the aggregated HTML page on-demand.
 
@@ -1507,6 +1664,7 @@ class Default(WorkerEntrypoint):
             trigger: What triggered generation ("http", "cron", "admin_manual")
             triggered_by: Admin username if manually triggered
             event: RequestEvent to populate with generation metrics (optional)
+            template: Template to render (TEMPLATE_INDEX or TEMPLATE_TITLES)
 
         """
         # Get planet config from environment
@@ -1554,22 +1712,26 @@ class Default(WorkerEntrypoint):
                 SELECT * FROM ranked
                 WHERE rn_per_day <= 5 AND rn_total <= ?
                 ORDER BY COALESCE(published_at, first_seen) DESC
-                LIMIT 500
+                LIMIT ?
                 """
                 )
-                .bind(cutoff_date, max_per_feed)
+                .bind(cutoff_date, max_per_feed, DEFAULT_QUERY_LIMIT)
                 .all()
             )
 
             # Get feeds for sidebar
-            feeds_result = await self.env.DB.prepare("""
+            feeds_result = (
+                await self.env.DB.prepare("""
                 SELECT
                     id, title, site_url, url, last_success_at,
-                    CASE WHEN consecutive_failures < 3 THEN 1 ELSE 0 END as is_healthy
+                    CASE WHEN consecutive_failures < ? THEN 1 ELSE 0 END as is_healthy
                 FROM feeds
                 WHERE is_active = 1
                 ORDER BY title
-            """).all()
+            """)
+                .bind(DEFAULT_FEED_FAILURE_THRESHOLD)
+                .all()
+            )
 
         # Populate generation metrics on the consolidated event
         if event:
@@ -1579,6 +1741,44 @@ class Default(WorkerEntrypoint):
         # Convert D1 results to typed Python dicts
         entries = entry_rows_from_d1(entries_result.results)
         feeds = feed_rows_from_d1(feeds_result.results)
+
+        # Smart default: Content display fallback
+        # If no entries in configured date range, show the most recent entries instead
+        if not entries:
+            _log_op(
+                "content_fallback_triggered",
+                retention_days=retention_days,
+                fallback_limit=FALLBACK_ENTRIES_LIMIT,
+            )
+            # Query most recent entries without date filter
+            fallback_result = await (
+                self.env.DB.prepare(
+                    """
+                WITH ranked AS (
+                    SELECT
+                        e.*,
+                        f.title as feed_title,
+                        f.site_url as feed_site_url,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY e.feed_id
+                            ORDER BY COALESCE(e.published_at, e.first_seen) DESC
+                        ) as rn_total
+                    FROM entries e
+                    JOIN feeds f ON e.feed_id = f.id
+                    WHERE f.is_active = 1
+                )
+                SELECT * FROM ranked
+                WHERE rn_total <= ?
+                ORDER BY COALESCE(published_at, first_seen) DESC
+                LIMIT ?
+                """
+                )
+                .bind(max_per_feed, FALLBACK_ENTRIES_LIMIT)
+                .all()
+            )
+            entries = entry_rows_from_d1(fallback_result.results)
+            if event:
+                event.generation_used_fallback = True
 
         # Group entries by published_at (actual publication date from feed)
         # Fall back to first_seen only if published_at is missing
@@ -1632,13 +1832,17 @@ class Default(WorkerEntrypoint):
             feed["last_success_at_relative"] = self._relative_time(feed["last_success_at"])
 
         # Render template - track template time
+        # Check if running in lite mode (no search, no auth)
+        is_lite = check_lite_mode(self.env)
+
         with Timer() as render_timer:
             html = render_template(
-                TEMPLATE_INDEX,
+                template,
                 planet=planet,
                 entries_by_date=entries_by_date,
                 feeds=feeds,
                 generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+                is_lite_mode=is_lite,
             )
 
         # Populate remaining generation metrics
@@ -1863,103 +2067,72 @@ class Default(WorkerEntrypoint):
         )
         return _html_response(html, cache_max_age=0)
 
+    def _get_config_value(
+        self,
+        env_key: str,
+        default: int | float,
+        value_type: type[int] | type[float] = int,
+    ) -> int | float:
+        """Get a configuration value from environment with type conversion and fallback.
+
+        This is a generic helper that consolidates the pattern used by all config getters.
+        It handles environment variable lookup, type conversion, and error logging.
+
+        Args:
+            env_key: The environment variable name to look up
+            default: The default value to use if not set or on error
+            value_type: The type to convert to (int or float)
+
+        Returns:
+            The configured value, or the default if not set or on conversion error
+        """
+        try:
+            value = getattr(self.env, env_key, None)
+            return value_type(value) if value else default
+        except (ValueError, TypeError) as e:
+            _log_op(
+                "config_validation_error",
+                config_key=env_key,
+                error=str(e),
+                using_default=default,
+            )
+            return default
+
     def _get_retention_days(self) -> int:
         """Get retention days from environment, default 90."""
-        try:
-            days = getattr(self.env, "RETENTION_DAYS", None)
-            return int(days) if days else DEFAULT_RETENTION_DAYS
-        except (ValueError, TypeError) as e:
-            _log_op(
-                "config_validation_error",
-                config_key="RETENTION_DAYS",
-                error=str(e),
-                using_default=DEFAULT_RETENTION_DAYS,
-            )
-            return DEFAULT_RETENTION_DAYS
+        return int(self._get_config_value("RETENTION_DAYS", DEFAULT_RETENTION_DAYS))
 
     def _get_max_entries_per_feed(self) -> int:
-        """Get max entries per feed from environment, default 100."""
-        try:
-            max_entries = getattr(self.env, "RETENTION_MAX_ENTRIES_PER_FEED", None)
-            return int(max_entries) if max_entries else DEFAULT_MAX_ENTRIES_PER_FEED
-        except (ValueError, TypeError) as e:
-            _log_op(
-                "config_validation_error",
-                config_key="RETENTION_MAX_ENTRIES_PER_FEED",
-                error=str(e),
-                using_default=DEFAULT_MAX_ENTRIES_PER_FEED,
-            )
-            return DEFAULT_MAX_ENTRIES_PER_FEED
+        """Get max entries per feed from environment, default 50."""
+        return int(
+            self._get_config_value("RETENTION_MAX_ENTRIES_PER_FEED", DEFAULT_MAX_ENTRIES_PER_FEED)
+        )
 
     def _get_embedding_max_chars(self) -> int:
         """Get max chars to embed per entry from environment, default 2000."""
-        try:
-            max_chars = getattr(self.env, "EMBEDDING_MAX_CHARS", None)
-            return int(max_chars) if max_chars else DEFAULT_EMBEDDING_MAX_CHARS
-        except (ValueError, TypeError) as e:
-            _log_op(
-                "config_validation_error",
-                config_key="EMBEDDING_MAX_CHARS",
-                error=str(e),
-                using_default=DEFAULT_EMBEDDING_MAX_CHARS,
-            )
-            return DEFAULT_EMBEDDING_MAX_CHARS
+        return int(self._get_config_value("EMBEDDING_MAX_CHARS", DEFAULT_EMBEDDING_MAX_CHARS))
 
     def _get_search_score_threshold(self) -> float:
         """Get minimum similarity score threshold from environment, default 0.3."""
-        try:
-            threshold = getattr(self.env, "SEARCH_SCORE_THRESHOLD", None)
-            return float(threshold) if threshold else DEFAULT_SEARCH_SCORE_THRESHOLD
-        except (ValueError, TypeError) as e:
-            _log_op(
-                "config_validation_error",
-                config_key="SEARCH_SCORE_THRESHOLD",
-                error=str(e),
-                using_default=DEFAULT_SEARCH_SCORE_THRESHOLD,
-            )
-            return DEFAULT_SEARCH_SCORE_THRESHOLD
+        return float(
+            self._get_config_value("SEARCH_SCORE_THRESHOLD", DEFAULT_SEARCH_SCORE_THRESHOLD, float)
+        )
 
     def _get_search_top_k(self) -> int:
         """Get max semantic search results from environment, default 50."""
-        try:
-            top_k = getattr(self.env, "SEARCH_TOP_K", None)
-            return int(top_k) if top_k else DEFAULT_SEARCH_TOP_K
-        except (ValueError, TypeError) as e:
-            _log_op(
-                "config_validation_error",
-                config_key="SEARCH_TOP_K",
-                error=str(e),
-                using_default=DEFAULT_SEARCH_TOP_K,
-            )
-            return DEFAULT_SEARCH_TOP_K
+        return int(self._get_config_value("SEARCH_TOP_K", DEFAULT_SEARCH_TOP_K))
 
     def _get_feed_auto_deactivate_threshold(self) -> int:
         """Get threshold for auto-deactivating feeds from environment, default 10."""
-        try:
-            threshold = getattr(self.env, "FEED_AUTO_DEACTIVATE_THRESHOLD", None)
-            return int(threshold) if threshold else DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD
-        except (ValueError, TypeError) as e:
-            _log_op(
-                "config_validation_error",
-                config_key="FEED_AUTO_DEACTIVATE_THRESHOLD",
-                error=str(e),
-                using_default=DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD,
+        return int(
+            self._get_config_value(
+                "FEED_AUTO_DEACTIVATE_THRESHOLD", DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD
             )
-            return DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD
+        )
 
     def _get_feed_failure_threshold(self) -> int:
         """Get threshold for DLQ display from environment, default 3."""
-        try:
-            threshold = getattr(self.env, "FEED_FAILURE_THRESHOLD", None)
-            return int(threshold) if threshold else DEFAULT_FEED_FAILURE_THRESHOLD
-        except (ValueError, TypeError) as e:
-            _log_op(
-                "config_validation_error",
-                config_key="FEED_FAILURE_THRESHOLD",
-                error=str(e),
-                using_default=DEFAULT_FEED_FAILURE_THRESHOLD,
-            )
-            return DEFAULT_FEED_FAILURE_THRESHOLD
+        return int(self._get_config_value("FEED_FAILURE_THRESHOLD", DEFAULT_FEED_FAILURE_THRESHOLD))
 
     def _generate_atom_feed(self, planet: dict[str, str], entries: list[dict[str, Any]]) -> str:
         """Generate Atom 1.0 feed XML using template."""
