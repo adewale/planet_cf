@@ -115,6 +115,78 @@ cloudflare:
   dead_letter_queue: planet-python-feed-dlq
 
 # =============================================================================
+# Sidebar Configuration
+# =============================================================================
+sidebar:
+  # RSS and navigation links at top of sidebar
+  feed_links:
+    rss: /feed.rss
+    titles_only: /titles
+    planet_planet: http://www.planetplanet.org/
+
+  # GitHub submission link (shown at bottom of subscriptions)
+  submission:
+    text: "To add your blog, submit a PR or open an issue on GitHub"
+    url: https://github.com/python/planet
+
+  # Related sites sections
+  related_sites:
+    - title: Regional Python Communities
+      links:
+        - name: Planet Python Francophone
+          url: http://www.yourtion.com/aggregator/python-fr/
+        - name: Planet Python Argentina
+          url: https://planetalinux.org/python-argentina/
+        - name: Planet Python Brasil
+          url: http://planeta.python.org.br/
+        - name: Planet Python Poland
+          url: http://python.org.pl/planet/
+
+    - title: Python Library Projects
+      links:
+        - name: OLPC
+          url: http://planet.laptop.org/
+        - name: PySoy
+          url: http://pysoy.org/planet/
+        - name: SciPy
+          url: http://planet.scipy.org/
+        - name: SymPy
+          url: http://planet.sympy.org/
+        - name: Twisted
+          url: http://planet.twistedmatrix.com/
+
+    - title: Python Web Frameworks
+      links:
+        - name: CherryPy
+          url: http://www.cherrypy.org/wiki/CherryPlanet
+        - name: Django
+          url: http://www.planetdjango.org/
+        - name: Plone
+          url: http://planet.plone.org/
+        - name: TurboGears
+          url: http://planet.turbogears.org/
+
+    - title: Other Programming Languages
+      links:
+        - name: Haskell
+          url: http://planet.haskell.org/
+        - name: Lisp
+          url: http://planet.lisp.org/
+        - name: Parrot
+          url: http://planet.parrotcode.org/
+        - name: Perl
+          url: http://planet.perl.org/
+        - name: Ruby
+          url: http://www.planetruby.net/
+
+    - title: Databases
+      links:
+        - name: MySQL
+          url: http://www.planetmysql.org/
+        - name: PostgreSQL
+          url: http://planet.postgresql.org/
+
+# =============================================================================
 # Admin Users
 # =============================================================================
 admins:
@@ -124,90 +196,1128 @@ admins:
 # =============================================================================
 # Initial Feeds
 # =============================================================================
-# Selected feeds from the original Planet Python (450+ total)
-# Full list available at: https://github.com/python/planet/blob/main/config/config.ini
+# Complete feed list from Planet Python (561 feeds)
+# Source: https://github.com/python/planet/blob/main/config/config.ini
 initial_feeds:
-  # Core Python
-  - url: https://blog.python.org/feeds/posts/default
-    title: Python Insider
-    site_url: https://blog.python.org/
-
-  - url: https://pyfound.blogspot.com/feeds/posts/default
-    title: Python Software Foundation
-    site_url: https://pyfound.blogspot.com/
-
-  # Popular Educators & Community Leaders
-  - url: https://realpython.com/atom.xml
-    title: Real Python
-    site_url: https://realpython.com/
-
+  - url: http://freshfoo.com/blog/index.atom
+    title: "\"Menno's Musings\""
+  - url: http://mjtokelly.blogspot.com/feeds/posts/default/-/Python
+    title: "\"Michael J.T. O'Kelly\""
+  - url: https://mkennedy.codes/tags/python/index.xml
+    title: "\"Michael Kennedy's Thoughts on Technology\""
+  - url: http://blogologue.com/atom.xml?category=1470141490X3
+    title: "\"Morphex's Blogologue\""
+  - url: http://speno.blogspot.com/atom.xml
+    title: "\"Speno's Pythonic Avocado\""
+  - url: http://william-os4y.livejournal.com/data/atom
+    title: "\"William's Journal\""
+  - url: http://dev.2degreesnetwork.com/feeds/posts/default/-/python
+    title: 2degrees
+  - url: https://emptysqua.re/blog/category/python/index.xml
+    title: A. Jesse Jiryu Davis
+  - url: http://www.artima.com/weblogs/feeds/bloggers/aahz.rss
+    title: Aahz
+  - url: https://djangocentral.com/feed/
+    title: Abhijeet Pal
+  - url: http://ablog.readthedocs.org/blog/atom.xml
+    title: ABlog for Sphinx
+  - url: http://masnun.rocks/tags/python/index.xml
+    title: Abu Ashraf Masnun
+  - url: http://techarttiki.blogspot.com/feeds/posts/default/-/python
+    title: Adam Pletcher
+  - url: https://blog.adarshd.dev/feed.xml
+    title: Adrarsh Divakaran
+  - url: http://agendaless.com/blog/index.atom?category=python
+    title: Agendaless Consulting
+  - url: https://www.ahmedbouchefra.com/python/feed.xml
+    title: Ahmed Bouchefra
+  - url: http://alstatr.blogspot.com/feeds/posts/default/-/Python
+    title: Al-Ahmadgaid Asaad
+  - url: http://alecmunro.blogspot.com/feeds/posts/default/-/python
+    title: Alec Munro
+  - url: http://alextechrants.blogspot.com/feeds/posts/default/-/python
+    title: Alex Grönholm
+  - url: https://alexmorozov.github.io/feeds/tag-python.atom.xml
+    title: Alex Morozov
+  - url: http://feeds.limi.net/on-python
+    title: Alexander Limi
+  - url: http://www.alexconrad.org/feeds/posts/default/-/python
+    title: Alexandre Conrad
+  - url: http://peadrop.com/blog/category/python/feed/
+    title: Alexandre Vassalotti
+  - url: http://feeds.feedburner.com/en_lexevorg
+    title: Alexey Evseev
+  - url: http://akaptur.github.io/blog/categories/python/atom.xml
+    title: Allison Kaptur
+  - url: https://amjith.com/tags/python/index.xml
+    title: Amjith Ramanujam
+  - url: http://blog.amvtek.com/feeds/tags/python.atom.xml
+    title: AmvTek
+  - url: https://anarc.at/tag/python-planet/index.rss
+    title: Anarcat
+  - url: http://techtonik.rainforce.org/feeds/posts/default/-/python
+    title: Anatoly Techtonik
+  - url: http://aroberge.blogspot.com/atom.xml
+    title: Andre Roberge
+  - url: https://www.andreagrandi.it/feeds/python.rss.xml
+    title: Andrea Grandi
+  - url: http://dalkescientific.com/writings/diary/diary-rss.xml
+    title: Andrew Dalke
+  - url: http://mindref.blogspot.com/feeds/posts/default/-/python
+    title: Andriy Kornatskyy
+  - url: http://mysql-python.blogspot.com/feeds/posts/default
+    title: Andy Dustman
+  - url: http://andy.terrel.us/feeds/python-tag.rss.xml
+    title: Andy R. Terrel
+  - url: http://annaraven.blogspot.com/feeds/posts/default/-/python
+    title: Anna Martelli Ravenscroft
+  - url: http://codingweasel.blogspot.com/feeds/posts/default/-/python
+    title: Anthony Baxter
+  - url: http://kpoxit.blogspot.com/feeds/posts/default/-/python
+    title: Anton Belyaev
+  - url: http://bobrochel.blogspot.com/feeds/posts/default/-/python
+    title: Anton Bobrov
+  - url: https://antocuni.eu/feed_rss_updated.xml
+    title: Antonio Cuni
+  - url: https://anweshadas.in/tag/python/rss/
+    title: Anwesha Das
+  - url: https://arilamstein.com/tag/Python/feed/
+    title: Ari Lamstein
+  - url: http://lucumr.pocoo.org/feed.atom
+    title: Armin Ronacher
+  - url: https://rushter.com/blog/feed/pyplanet.xml
+    title: Artem Golubin
+  - url: https://medium.com/feed/python4you
+    title: Artem Rys
+  - url: http://pyfunc.blogspot.com/feeds/posts/default/-/python
+    title: Ashish Vidyarthi
+  - url: http://astrocodeschool.com/feeds/all.rss.xml
+    title: Astro Code School
+  - url: http://automatingosint.com/blog/category/python/feed/
+    title: Automating OSINT
+  - url: https://raw.githubusercontent.com/mahmoud/awesome-python-applications/master/atom.xml
+    title: Awesome Python Applications
+  - url: http://baijum.blogspot.com/feeds/posts/default/-/python
+    title: Baiju Muthukadan
+  - url: http://gbtami.github.io/feed.python.xml
+    title: Bajusz Tamás
+  - url: http://www.bedjango.com/planet/feed/
+    title: BeDjango
+  - url: http://codedstructure.blogspot.com/feeds/posts/default/-/python
+    title: Ben Bass
+  - url: https://jbencook.com/feed.xml
+    title: Ben Cook
+  - url: http://clusterbleep.net/blog/category/python/feed/
+    title: Ben Rousch
+  - url: http://pybites.blogspot.com/feeds/posts/default
+    title: Benjamin Peterson
+  - url: http://www.benjiyork.com/blog/atom.xml
+    title: Benji York
+  - url: http://zebert.blogspot.com/feeds/posts/default/-/python
+    title: Bertrand Mathieu
+  - url: https://geeksocket.in/tags/python/index.xml
+    title: Bhavin Gandhi
+  - url: http://feeds.feedburner.com/thetaranights
+    title: Bhishan Bhandari
+  - url: http://news.open-bio.org/news/category/obf-projects/biopython/feed/atom/
+    title: BioPython News
+  - url: http://bitofcheese.blogspot.com/feeds/posts/default
+    title: Bit of Cheese
+  - url: http://source.mihelac.org/feeds/categories/django/
+    title: Bojan Mihelac
+  - url: http://blog.bottlepy.org/feeds/all.atom.xml
+    title: bottlepy-dev
+  - url: http://rhodesmill.org/brandon/category/python/feed
+    title: Brandon Rhodes
+  - url: https://breadcrumbscollector.tech/category/python/feed/
+    title: BreadcrumbsCollector
+  - url: http://python4dads.wordpress.com/feed/
+    title: Brendan Scott
+  - url: https://snarky.ca/rss/
+    title: Brett Cannon
+  - url: http://pythontest.com/posts/index.xml
+    title: Brian Okken
+  - url: http://nicoddemus.github.io/tag/python/atom.xml
+    title: Bruno Oliveira
+  - url: https://www.codingthepast.com/feed_python_planet.xml
+    title: Bruno Ponne / Coding The Past
+  - url: http://brunorocha.org/tag/pythonplanet.atom
+    title: Bruno Rocha
+  - url: http://www.caktusgroup.com/feeds/tags/python/
+    title: Caktus Consulting Group
+  - url: http://www.calvinx.com/category/code/python/feed/
+    title: Calvin Cheng
+  - url: http://techblog.ironfroggy.com/feeds/posts/default/-/programming
+    title: Calvin Spealman
+  - url: http://carlchenet.com/category/planetpython/feed/
+    title: Carl Chenet
+  - url: https://carl.duevel.online/tags/python/index.xml
+    title: Carl Düvel
+  - url: http://pyright.blogspot.com/feeds/posts/default?alt=rss
+    title: Carl Trachte
+  - url: http://themindcaster.blogspot.com/feeds/posts/default/-/python
+    title: Carlos Eduardo de Paula
+  - url: http://eatthedots.blogspot.com/feeds/posts/default
+    title: Casey Duncan
+  - url: http://catherinedevlin.blogspot.com/feeds/posts/default/-/python
+    title: Catherine Devlin
+  - url: https://chinghwayu.com/category/python/feed/
+    title: Ching-Hwa Yu
+  - url: https://www.metachris.com/tags/python/index.xml
+    title: Chris Hager
+  - url: http://chris-miles-writes-python.blogspot.com/feeds/posts/default?alt=rss
+    title: Chris Miles
+  - url: http://pyinformatics.blogspot.com/feeds/posts/default
+    title: Chris Mitchell
+  - url: http://pbpython.com/feeds/all.atom.xml
+    title: Chris Moffitt
+  - url: http://offby1.website/feeds/tag-python.atom.xml
+    title: Chris Rose
+  - url: http://feeds.feedburner.com/ChrisWarrickPython
+    title: Chris Warrick
+  - url: http://lipyrary.blogspot.com/feeds/posts/default
+    title: Christian Heimes
+  - url: https://dev.to/feed/ldrscke.rss
+    title: Christian Ledermann
+  - url: http://feeds.feedburner.com/mrtopf-python
+    title: Christian Scholz
+  - url: https://bugfactory.io/articles-on-python/feed.xml
+    title: Christoph Schiessl
+  - url: https://cito.github.io/tags/python/index.xml
+    title: Christoph Zwerschke
+  - url: http://feeds.feedburner.com/codeboje_python
+    title: codeboje
+  - url: https://blog.codegrades.com/feed.xml
+    title: CodeGrades
+  - url: https://coderslegacy.com/category/python/feed/
+    title: CodersLegacy
+  - url: http://codesnipers.com/?q=taxonomy/term/16/0/feed
+    title: CodeSnipers
+  - url: http://allanderek.github.io/categories/python.xml
+    title: Coding Diet
+  - url: https://www.gallon.me/tag/python/feed
+    title: Corey Gallon
+  - url: http://feeds.feedburner.com/goldblog/python
+    title: Corey Goldberg
+  - url: http://feeds.feedburner.com/cormoran-project
+    title: Cormoran Project
+  - url: http://feeds2.feedburner.com/portablecommandline
+    title: Cross-Platform Command Line Tools
+  - url: http://feeds.feedburner.com/cubicweborg
+    title: CubicWeb
+  - url: https://ntguardian.wordpress.com/category/python/feed/
+    title: Curtis Miller
+  - url: http://dailytechvideo.com/category/python/feed/
+    title: Daily Tech Video (Python)
+  - url: http://dfwpython.blogspot.com/feeds/posts/default
+    title: Dallas Fort Worth Pythoneers
+  - url: http://late.am/python.feed.xml
+    title: Dan Crosta
+  - url: http://strombrg.blogspot.com/feeds/posts/default/-/Python
+    title: Dan Stromberg
+  - url: http://dan.yeaw.me/categories/python.xml
+    title: Dan Yeaw
+  - url: http://dbader.org/blog/tags/python/rss
+    title: Daniel Bader
+  - url: http://danielnouri.org/notes/category/python/feed/index.xml
+    title: Daniel Nouri
+  - url: https://daniel.feldroy.com/feeds/python.atom.xml
+    title: Daniel Roy Greenfeld
+  - url: http://dapythonista.com/?feed=rdf
+    title: DaPythonista
+  - url: http://www.datacommunitydc.org/blog?format=RSS&tag=python
+    title: Data Community DC
+  - url: https://www.dataschool.io/tag/python/rss/
+    title: Data School
+  - url: https://www.datawars.io/articles/rss.xml
+    title: DataWars.io
+  - url: http://dabeaz.blogspot.com/feeds/posts/default
+    title: Dave Beazley
+  - url: https://davidamos.dev/tag/python/rss/
+    title: David Amos
+  - url: https://davidcaron.dev/feeds/tags/python.atom.xml
+    title: David Caron
+  - url: http://www.artima.com/weblogs/feeds/bloggers/goodger.rss
+    title: David Goodger
+  - url: http://davidlindelof.com/category/python/feed/
+    title: David Lindelof
+  - url: http://www.drmaciver.com/category/python/feed/
+    title: David MacIver
+  - url: http://dmalcolm.livejournal.com/data/atom?tag=python
+    title: David Malcolm
+  - url: http://www.szotten.com/david/feeds/python.atom.xml
+    title: David Szotten
+  - url: http://davidemoro.blogspot.com/feeds/posts/default/-/planetpython
+    title: Davide Moro
+  - url: http://feeds2.feedburner.com/Daftpython
+    title: Davy Mitchell
+  - url: http://davywybiral.blogspot.com/feeds/posts/default
+    title: Davy Wybiral
+  - url: https://death.andgravity.com/_feed/index/_tags/python.xml
+    title: death and gravity
+  - url: https://declassed.art/en/feed/python.xml
+    title: Declassed Art
+  - url: http://makkalot-opensource.blogspot.com/feeds/posts/default/-/python
+    title: Denis Kurov
+  - url: http://www.djangoproject.com/rss/weblog/
+    title: Django Weblog
+  - url: https://djangostars.com/blog/category/python/feed/
+    title: Djangostars
+  - url: http://doingmathwithpython.github.io/feeds/all.atom.xml
+    title: Doing Math with Python
+  - url: https://feeds.feedburner.com/doughellmann/python
+    title: Doug Hellmann
+  - url: http://www.dougalmatthews.com/feeds/python.atom.xml
+    title: Dougal Matthews
+  - url: http://dspillustrations.com/static/dspillustrations.rss.xml
+    title: DSPIllustrations.com
+  - url: http://oubiwann.blogspot.com/feeds/posts/default/-/python
+    title: Duncan McGreggor
+  - url: http://edcrewe.blogspot.com/feeds/posts/default/-/python
+    title: Ed Crewe
+  - url: http://edreamleo.blogspot.com/feeds/posts/default/-/python
+    title: Edward K. Ream
+  - url: https://www.egenix.com/company/news/rss2
+    title: eGenix.com
+  - url: http://eli.thegreenplace.net/feeds/python.atom.xml
+    title: Eli Bendersky
+  - url: http://eniramltd.github.io/devblog/rss/categories/python.xml
+    title: Eniram Ltd.
+  - url: https://examachine.net/blog/category/python/feed/
+    title: Eray Özkural (examachine)
+  - url: http://www.marsja.se/category/python/feed/
+    title: Erik Marsja
+  - url: http://etienned.github.io/categories/python.xml
+    title: Etienne Desautels
+  - url: http://blog.europython.eu/rss
+    title: EuroPython
+  - url: http://www.europython-society.org/rss
+    title: EuroPython Society
+  - url: http://evennia.blogspot.com/feeds/posts/default
+    title: Evennia
+  - url: https://everydaysuperpowers.dev/feed/python/
+    title: Everyday Superpowers
+  - url: http://pydev.blogspot.com/atom.xml
+    title: Fabio Zadrozny
+  - url: http://en.ig.ma/notebook/feeds/atom/tag/python.xml
+    title: Filip Wasilewski
+  - url: http://blog.filipesaraiva.info/?feed=rss2&tag=planet-python
+    title: Filipe Saraiva
+  - url: https://first.institute/en/rss/python/
+    title: First Institute of Reliable Software
+  - url: http://pyinsci.blogspot.com/feeds/posts/default
+    title: Flavio Coelho
+  - url: http://blog.flaper87.com/feeds/python.atom.xml
+    title: Flavio Percoco
+  - url: http://blog.devork.be/feeds/posts/default/-/python
+    title: Floris Bruynooghe
+  - url: http://fwierzbicki.blogspot.com/atom.xml
+    title: Frank Wierzbicki
+  - url: http://raspberry-python.blogspot.com/feeds/posts/default/-/english/python
+    title: François Dion
+  - url: http://feeding.cloud.geek.nz/tags/python/index.rss
+    title: François Marier
+  - url: http://www.fridh.nl/tag/python.atom.xml
+    title: Frederik Rietdijk
+  - url: https://www.frompythonimportpodcast.com/feed
+    title: From Python Import Podcast
   - url: https://www.fullstackpython.com/feeds/all.atom.xml
     title: Full Stack Python
-    site_url: https://www.fullstackpython.com/
-
-  - url: https://talkpython.fm/episodes/rss
-    title: Talk Python to Me
-    site_url: https://talkpython.fm/
-
+  - url: http://gael-varoquaux.info/feeds/programming.atom.xml
+    title: "Ga&#235;l Varoquaux"
+  - url: http://compiletoi.net/feeds/python.atom.xml
+    title: Georges Dubus
+  - url: http://ghaandeeonit.tumblr.com/rss
+    title: Ghaandee on IT
+  - url: https://gmpy.dev/feeds/atom.tag.python.xml
+    title: Giampaolo Rodola
+  - url: http://giuliofidente.com/feeds/tag/python.atom.xml
+    title: Giulio Fidente
+  - url: http://hackermojo.com/mt-static/tagged/python.rdf
+    title: Glenn Franxman
+  - url: http://glyph.twistedmatrix.com/feeds/posts/default
+    title: Glyph Lefkowitz
+  - url: http://feeds.feedburner.com/GoDeh
+    title: Go Deh
+  - url: http://blog.gocept.com/tag/python/feed/atom/
+    title: Gocept Weblog
+  - url: http://blog.godson.in/feeds/posts/default/-/Python
+    title: Godson Gera
+  - url: http://www.curiousvenn.com/?feed=rss2&cat=4
+    title: Graeme Cross
+  - url: https://grahamdumpleton.me/feed.xml
+    title: Graham Dumpleton
+  - url: https://www.grahamwheeler.com/categories/python.xml
+    title: Graham Wheeler
+  - url: http://defrobnication.blogspot.com/feeds/posts/default/-/python
+    title: Grant Baillie
+  - url: http://www.wisdomandwonder.com/tag/python/feed
+    title: Grant Rettke
+  - url: http://gc-taylor.com/?format=rss&category=Python
+    title: Greg Taylor
+  - url: http://agiletesting.blogspot.com/feeds/posts/default/-/python
+    title: Grig Gheorghiu
+  - url: https://fizyk.dev/tags/python.xml
+    title: Grzegorz Śliwiński
+  - url: http://neopythonic.blogspot.com/feeds/posts/default
+    title: Guido van Rossum
+  - url: http://gustavonarea.net/blog/tags/python/feed/
+    title: Gustavo Narea
+  - url: http://blog.labix.org/tag/python/feed
+    title: Gustavo Niemeyer
+  - url: http://pycloud.blogspot.com/feeds/posts/default/-/python
+    title: Gökhan Sever
+  - url: http://python-in-the-lab.blogspot.de//feeds/posts/default/-/Python
+    title: Hernan Grecco
+  - url: http://www.hilarymason.com/tag/python/feed/
+    title: Hilary Mason
+  - url: http://tetamap.wordpress.com/feed/atom/
+    title: Holger Krekel
+  - url: http://www.holger-peters.de/feeds/python.atom.xml
+    title: Holger Peters
+  - url: https://blog.holoviz.org/index.xml
+    title: HoloViz
+  - url: https://hugovk.dev/tags/python/index.xml
+    title: Hugo van Kemenade
+  - url: https://humberto.io/tags/python/index.xml
+    title: Humberto Rocha
+  - url: https://hynek.me/feed-python.xml
+    title: Hynek Schlawack
+  - url: http://hypothesis.works/articles/python/feed/
+    title: hypothesis.works articles
+  - url: http://ianozsvald.com/category/python/feed/atom/
+    title: Ian Ozsvald
+  - url: http://ilian.i-n-i.org/feed/?tag=python
+    title: Ilian Iliev
+  - url: http://importpython.com/blog/feed/
+    title: Import Python
+  - url: https://www.inspiredpython.com/feed
+    title: Inspired Python
+  - url: https://blog.ionelmc.ro/feeds/python.rss.xml
+    title: Ionel Cristian Maries
+  - url: http://ironpython-urls.blogspot.com/feeds/posts/default
+    title: IronPython-URLs
+  - url: https://islandtropicaman.com/wp/category/python/feed/
+    title: IslandT
+  - url: http://fruch.github.io/feed.python.xml
+    title: Israel Fruchter
+  - url: http://codewithoutrules.com/python-atom.xml
+    title: Itamar Turner Trauring
+  - url: https://iximiuz.com/feed-python.atom
+    title: Ivan Velichko
+  - url: https://pupeno.com/tag/python/feed/
+    title: J. Pablo Fernández
+  - url: http://jackdied.blogspot.com/feeds/posts/default
+    title: Jack Diederich
+  - url: http://feeds.feedburner.com/StreamHackerPython
+    title: Jacob Perkins
+  - url: http://rahmonov.me/feeds/python.atom.xml
+    title: Jahongir Rahmonov
+  - url: http://wrongsideofmemphis.wordpress.com/feed/atom/?tag=english+python
+    title: Jaime Buelta
+  - url: http://www.datadependence.com/tag/python/feed/
+    title: Jamal Moir
+  - url: https://www.b-list.org/feeds/entries/
+    title: James Bennett
+  - url: https://janusworx.com/tags/planetpython/index.xml
+    title: Janusworx
+  - url: http://blog.jarrodmillman.com/feeds/posts/default/-/python
+    title: Jarrod Millman
+  - url: http://as.ynchrono.us/feeds/posts/default/-/python
+    title: Jean-Paul Calderone
+  - url: http://jbisbee.blogspot.com/feeds/posts/default/-/python
+    title: Jeff Bisbee
+  - url: http://jeffbradberry.com/feeds/python.atom.xml
+    title: Jeff Bradberry
+  - url: http://inre.dundeemt.com/category/python/feed/
+    title: Jeff Hinrichs
+  - url: http://griddlenoise.blogspot.com/feeds/posts/default/-/python
+    title: Jeff Shell
+  - url: http://greenash.net.au/thoughts/topics/python/rss/
+    title: Jeremy Epstein
+  - url: http://jeremyhylton.blogspot.com/atom.xml
+    title: Jeremy Hylton
+  - url: http://www.blogger.com/feeds/6330681631629046724/posts/default
+    title: Jim Fulton
+  - url: http://pyrseas.wordpress.com/tag/python/feed/atom/
+    title: Joe Abbate
+  - url: http://feeds.feedburner.com/JoePitz-TechnologyBlogPython
+    title: Joe Pitz
+  - url: http://blogs.gnome.org/johan/category/python/feed/atom
+    title: Johan Dahlin
+  - url: http://clouddbs.blogspot.com/feeds/posts/default/-/python
+    title: John Burns
+  - url: http://www.johndcook.com/blog/category/python/feed/
+    title: John Cook
+  - url: http://eigenhombre.com/feed.python.xml
+    title: John Jacobsen
+  - url: https://www.nbshare.io/feeds/all.atom.xml
+    title: John Ludhi/nbshare.io
+  - url: http://www.indelible.org/feeds/ink/python.xml
+    title: Jon Parise
+  - url: http://spyced.blogspot.com/feeds/posts/default/-/python
+    title: Jonathan Ellis
+  - url: http://feeds.feedburner.com/JonathansPythonBlog
+    title: Jonathan Harrington
+  - url: https://www.tartley.com/categories/python.xml
+    title: Jonathan Hartley
+  - url: http://jonathanstreet.com/blog/tag/python/atom/
+    title: Jonathan Street
+  - url: http://blog.jorgenschaefer.de/feeds/posts/default/-/Python
+    title: Jorgen Schäfer
+  - url: http://pythonmonopoly.wordpress.com/feed/
+    title: Juan Manuel Contreras
+  - url: http://julien.danjou.info/blog/tags/Python.xml
+    title: Julien Danjou
+  - url: http://beauty-of-imagination.blogspot.fr/feeds/posts/default/-/python
+    title: Julien Tayon
+  - url: http://www.iki.fi/juri/blog/index.rss
+    title: Juri Pakaste
+  - url: http://pythonisito.blogspot.com/feeds/posts/default
+    title: Just a little Python
+  - url: http://feeds.hackercodex.com/feeds/python
+    title: Justin Mayer
+  - url: http://lautaportti.wordpress.com/feed/atom/
+    title: Kai Lautaportti
+  - url: https://www.afternerd.com/blog/tag/python/feed/
+    title: Karim Elghamrawy
+  - url: http://nuitka.net/categories/Python.xml
+    title: Kay Hayen
+  - url: http://fiber-space.de/wordpress/category/python/feed
+    title: Kay Schluehr
+  - url: http://scummos.blogspot.com/feeds/posts/default/-/kdev-python
+    title: kdev-python
+  - url: http://kbyanc.blogspot.com/feeds/posts/default/-/python
+    title: Kelly Yancey
+  - url: https://www.loopwerk.io/articles/tag/python/feed.xml
+    title: Kevin Renskers
+  - url: https://kodnito.com/python/rss/
+    title: Kodnito
+  - url: https://devblog.kogan.com/?category=Django&format=rss
+    title: Kogan Dev
+  - url: http://konryd.blogspot.com/feeds/posts/default
+    title: Konrad Delong
+  - url: https://koodaamo.wordpress.com/category/python/feed
+    title: Koodaamo
+  - url: http://cosmicpercolator.com/category/python/feed/atom/
+    title: Kristján Valur Jónsson
+  - url: http://blog.kritigodey.com/tag/python/rss
+    title: Kriti Godey
+  - url: http://gofedora.com/archives/category/python/feed/
+    title: Kulbir Saini
+  - url: http://farmdev.com/feeds/thoughts/on/3/python/
+    title: Kumar McMillan
+  - url: https://vipin711.wordpress.com/category/python/feed/
+    title: Kumar Vipin Yadav
+  - url: http://kushaldas.in/categories/python.xml
+    title: Kushal Das
+  - url: http://charlesnagy.info/category/it/python/feed/
+    title: Károly Nagy
+  - url: https://www.laac.dev/tags/python/index.xml
+    title: LAAC Technology
+  - url: http://laurentszyster.be/blog/feed/
+    title: Laurent Szyster
+  - url: http://hypatia.ca/tag/python/feed/
+    title: Leigh Honeywell
+  - url: http://regebro.wordpress.com/category/python/feed/atom/
+    title: Lennart Regebro
+  - url: http://leovt.wordpress.com/category/python/feed/atom/
+    title: Leonhard Vogt
+  - url: http://blog.lintel.in/tag/python/feed/
+    title: Lintel Technologies
+  - url: https://linuxstans.com/tag/python/feed/
+    title: Linux Stans
+  - url: https://www.listendata.com/feeds/posts/default/-/Python
+    title: ListenData
+  - url: http://feeds.feedburner.com/logilaborg_en
+    title: Logilab
+  - url: http://lowkster.blogspot.com/feeds/posts/default
+    title: Low Kian Seong
+  - url: http://codingandlinux.blogspot.com/feeds/posts/default/-/python
+    title: Luca Botti
+  - url: https://chezsoi.org/shaarli/?do=atom&searchtags=python+FromPelican
+    title: Lucas Cimon
+  - url: http://blog.gmludo.eu/feeds/posts/default/-/python
+    title: Ludovic Gasc
+  - url: http://bsg.lericson.se/rssfiltered.rss
+    title: Ludvig Ericson
+  - url: http://lukeplant.me.uk/blog/categories/python/atom/index.xml
+    title: Luke Plant
+  - url: http://lostinjit.blogspot.com/feeds/posts/default
+    title: Maciej Fijalkowsk
+  - url: https://madewith.mu/feed.xml
+    title: Made With Mu
+  - url: http://sedimental.org/tagged/python/atom.xml
+    title: Mahmoud Hashemi
+  - url: https://maltheborch.com/rss?tags=python
+    title: Malthe Borch
+  - url: https://www.marc-richter.info/category/python/planet-python-articles/feed/
+    title: Marc Richter
+  - url: https://www.malemburg.com/rss
+    title: Marc-André Lemburg
+  - url: http://www.grulic.org.ar/~mdione/glob/categories/python.xml
+    title: Marcos Dione
+  - url: https://mariatta.ca/tags/python/index.xml
+    title: Mariatta
+  - url: http://mg.pov.lt/blog/index.xml
+    title: Marius Gedminas
+  - url: http://shed-skin.blogspot.com/feeds/posts/default
+    title: Mark Dufour
+  - url: http://blogs.gnome.org/markmc/category/python/feed/
+    title: Mark McLoughlin
+  - url: http://pywinauto.blogspot.com/atom.xml
+    title: Mark McMahon
+  - url: http://feeds.feedburner.com/zopatista/python
+    title: Martijn Pieters
+  - url: https://www.mfitzp.com/feeds/python.tag.atom.xml
+    title: Martin Fitzpatrick
+  - url: http://mysqlmusings.blogspot.se/feeds/posts/default/-/python
+    title: Mats Kindahl
+  - url: https://www.mattlayman.com/categories/python/index.xml
+    title: Matt Layman
+  - url: http://matthewrocklin.com/blog/feed.python.xml
+    title: Matthew Rocklin
+  - url: http://www.stealthcopter.com/blog/tag/python/feed/
+    title: Matthew Rollings
+  - url: http://blog.tplus1.com/index.php/category/python/feed
+    title: Matthew Wilson
+  - url: https://www.wrighters.io/category/python/feed/
+    title: Matthew Wright
+  - url: http://copypasteprogrammer.blogspot.com/feeds/posts/default/-/python
+    title: Mattias Brändström
+  - url: http://mauveweb.co.uk/rss.xml
+    title: Mauveweb
+  - url: https://meejah.ca/planetpython.xml
+    title: meejah.ca
+  - url: http://beckerfuffle.com/blog/categories/python/atom.xml
+    title: Michael Becker
+  - url: http://mdboom.github.io/feeds/all.atom.xml
+    title: Michael Droettboom
+  - url: https://agileabstractions.com/feed.xml
+    title: Michael Foord
+  - url: http://micknelson.wordpress.com/category/python/feed/atom/
+    title: Michael Nelson
+  - url: http://mousebender.wordpress.com/feed/atom/
+    title: Michal Kwiatkowski
+  - url: https://bultrowicz.com/blog/tag/python/atom.xml
+    title: Michał Bultrowicz
+  - url: http://www.artima.com/weblogs/feeds/bloggers/micheles.rss
+    title: Michele Simionato
+  - url: http://www.firsttimeprogrammer.blogspot.com/feeds/posts/default/-/python?alt=rss
+    title: Michy Alice
+  - url: http://blog.vrplumber.com/index.php?/feeds/categories/1-Snaking.rss
+    title: Mike C. Fletcher
+  - url: http://www.blog.pythonlibrary.org/feed/
+    title: Mike Driscoll
+  - url: http://python-academy.blogspot.com/feeds/posts/default
+    title: Mike Müller
+  - url: http://kmike.ru/feeds/tags/planet-python.atom.xml
+    title: Mikhail Korobov
+  - url: http://opensourcehacker.com/category/python/feed/
+    title: Mikko Ohtamaa
+  - url: https://mirekdlugosz.com/blog/feeds/planet-python.atom.xml
+    title: Mirek Długosz
+  - url: http://www.elastician.com/feeds/posts/default
+    title: Mitchell Garnaat
+  - url: http://pythonbyexample.blogspot.com/feeds/posts/default/
+    title: Mitya Sirenef
+  - url: http://montrealpython.com/feed/
+    title: Montreal Python User Group
+  - url: https://orbifold.xyz/feeds/all.atom.xml
+    title: Moshe Zadka
+  - url: https://www.moyaproject.com/blog/feed/
+    title: Moya Project
+  - url: http://blog.mozilla.com/webdev/category/python-2/feed/
+    title: Mozilla Web Development
+  - url: http://muharem.wordpress.com/feed/atom/
+    title: Muharem Hrnjadovic
+  - url: http://www.mycli.net/feeds/tag.python.rss.xml
+    title: Mycli
+  - url: http://www.thesamet.com/blog/tags/python/rss
+    title: Nadav Samet
+  - url: http://learnpython.wordpress.com/feed/atom/
+    title: Naomi Ceder
+  - url: http://www.natan.termitnjak.net/blog/category/python/feed/atom/index.xml
+    title: Natan Zabkar
+  - url: http://nedbatchelder.com/blog/planetpython.xml
+    title: Ned Batchelder
+  - url: http://python.ca/nas/log/rss-python.xml
+    title: Neil Schemenauer
+  - url: http://www.curiousefficiency.org/categories/python.xml
+    title: Nick Coghlan
+  - url: http://www.craig-wood.com/nick/articles/category/python/feed/atom/index.xml
+    title: Nick Craig-Wood
+  - url: http://blog.efford.org/tag/feeds/python.atom.xml
+    title: Nick Efford
+  - url: http://nickjanetakis.blogspot.com/feeds/posts/default/-/python
+    title: Nick Janetakis
+  - url: http://nicolaiarocci.com/tags/python/index.xml
+    title: Nicola Iarocci
+  - url: http://nicdumz.fr/blog/category/python/feed/index.xml
+    title: Nicolas Dumazet
+  - url: http://www.nicosphere.net/tag/python-en/feed/
+    title: Nicolas Paris
+  - url: http://nigelb.me/python.xml
+    title: Nigel Babu
+  - url: http://feeds.feedburner.com/getnikola/QBjz
+    title: Nikola
+  - url: https://nikos7am.com/index.xml
+    title: Nikolaos Diamantis
+  - url: http://nl-project.blogspot.com/feeds/posts/default/-/python
+    title: nl-project
+  - url: http://dev.nextthought.com/blog/categories/python.atom
+    title: Not Invented Here
+  - url: https://nskm.xyz/tags/python/index.xml
+    title: Nsukami Patrick
+  - url: http://www.obeythetestinggoat.com/feeds/all.atom.xml
+    title: Obey the Testing Goat
+  - url: https://ofosos.org/tag/python/rss/
+    title: Ofosos
+  - url: http://www.omahapython.org/blog/feed
+    title: Omaha Python Users Group
+  - url: http://ondrejcertik.blogspot.com/feeds/posts/default/-/python
+    title: "Ond&#345;ej &#268;ert&iacute;k"
+  - url: https://www.paulox.net/feed/python.xml
+    title: Paolo Melchiorre
+  - url: http://s3.amazonaws.com/blog.pathwright.com/feeds/tag.Python.atom.xml
+    title: Pathwright
+  - url: http://weblog.patrice.ch/tags/Python.atom
+    title: Patrice Neff
+  - url: https://wedgworth.dev/tag/python/rss/
+    title: Patrick Altman
+  - url: http://www.patricksoftwareblog.com/tag/python/feed/
+    title: Patrick Kennedy
+  - url: https://patrickm.de/tag/python/rss/
+    title: Patrick Müller
+  - url: http://pauleveritt.wordpress.com/feed/atom/
+    title: Paul Everitt
+  - url: http://www.logarithmic.net/pfh?action=atom;hasname=1;name=gcgmgpghfpgdgpgegf
+    title: Paul Harrison
+  - url: http://codebright.wordpress.com/category/python/feed/atom/
+    title: Paul Redman
+  - url: http://pfertyk.me/feeds/python.atom.xml
+    title: Paweł Fertyk
+  - url: http://pedro.valelima.com/blog/feed/tag/python/
+    title: Pedro Lima
+  - url: http://www.peterbe.com/oc-Python/rss.xml
+    title: Peter Bengtsson
+  - url: http://petereisentraut.blogspot.com/feeds/posts/default/-/Python/
+    title: Peter Eisentraut
+  - url: http://neovox.advancedmagic.de/?feed=rss2&cat=6
+    title: Peter Fankhänel
+  - url: http://push.cx/tag/python/feed
+    title: Peter Harkins
+  - url: http://peter-hoffmann.com/feed/atom-python.xml
+    title: Peter Hoffmann
+  - url: http://pgcli.com/feeds/tag.python.atom.xml
+    title: pgcli
+  - url: http://www.philhassey.com/blog/category/python/feed
+    title: Phil Hassey
+  - url: http://dunderboss.blogspot.com/feeds/posts/default/-/python
+    title: Philip Jenvey
+  - url: http://philikon.wordpress.com/category/python/feed/atom/
+    title: Philipp von Weitershausen
+  - url: http://base-art.net/Articles/rss.xml
+    title: Philippe Normand
+  - url: http://feeds.feedburner.com/pje-on-programming
+    title: Phillip J. Eby
+  - url: https://www.podcastinit.com/feed/mp3/
+    title: Podcast.__init__
+  - url: http://polyglot.ninja/category/python/feed/
+    title: Polyglot.Ninja()
+  - url: https://blog.ironboundsoftware.com/category/python/feed.xml
+    title: Possbility and Probability
+  - url: http://feeds.feedburner.com/btbytes_python
+    title: Pradeep Gowda
+  - url: http://www.flicker-technical.blogspot.fr/feeds/posts/default/-/Python
+    title: Pranav Pandey
+  - url: http://feeds.feedburner.com/shutupandship_python
+    title: Praveen Gollakota
+  - url: https://www.programiz.com/python-programming/rss.xml
+    title: Programiz
+  - url: https://programmingideaswithjake.wordpress.com/category/python/feed/rdf/
+    title: Programming Ideas With Jake
+  - url: https://eshlox.net/tags/python/index.xml
+    title: Przemysław Kołodziejczyk
+  - url: https://py.checkio.org/blog/special-rss/
+    title: py.CheckIO
+  - url: https://pyatl.dev/blog/feed/latest/
+    title: PyATL Bytecode
+  - url: https://pybit.es/feeds/all.atom.xml
+    title: PyBites
+  - url: http://feeds.feedburner.com/Pycharm
+    title: PyCharm
+  - url: https://pycoders.com/feed/planetpython
+    title: PyCoder’s Weekly
+  - url: http://feeds.feedburner.com/PyCon
+    title: PyCon
+  - url: https://www.pygame.org/news/feed/atom
+    title: pygame
+  - url: https://pypodcats.live/episodes/index.xml
+    title: PyPodcats
+  - url: https://www.pypy.org/rss.xml
+    title: PyPy
+  - url: http://pytennessee.tumblr.com/rss
+    title: PyTennessee
+  - url: http://python4kids.wordpress.com/feed/atom/
+    title: Python 4 Kids
+  - url: http://www.awaretek.com/python/index.xml
+    title: Python 411 Podcast
+  - url: http://python-advocacy.blogspot.com/atom.xml
+    title: Python Advocacy
+  - url: http://blog.pythonanywhere.com/feed/
+    title: Python Anywhere
   - url: https://pythonbytes.fm/episodes/rss
     title: Python Bytes
-    site_url: https://pythonbytes.fm/
-
-  - url: https://testandcode.com/rss
+  - url: https://www.python-celery.com/feed.xml
+    title: Python Celery - Weekly Celery Tutorials and How-tos
+  - url: https://www.pythoncircle.com/feed/
+    title: Python Circle
+  - url: http://pythondata.com/feed/
+    title: Python Data
+  - url: http://www.pythondiary.com/blog.xml
+    title: Python Diary
+  - url: https://python.github.io/editorial-board/index.xml
+    title: Python Docs Editorial Board
+  - url: http://pythondoeswhat.blogspot.com/feeds/posts/default
+    title: "Python Does What?!"
+  - url: https://blogs.msdn.microsoft.com/pythonengineering/feed/
+    title: Python Engineering at Microsoft
+  - url: https://www.pythonforbeginners.com/feed/
+    title: Python for Beginners
+  - url: https://www.pythonguis.com/feeds/all.atom.xml
+    title: Python GUIs
+  - url: http://feeds.feedburner.com/PythonInsider
+    title: Python Insider
+  - url: https://www.pythonmorsels.com/topics/feed/
+    title: Python Morsels
+  - url: http://python-karan.blogspot.in//feeds/posts/default
+    title: Python on Karan
+  - url: https://pythonpeople.fm/rss
+    title: Python People
+  - url: http://www.pyptug.org/feeds/posts/default/
+    title: Python Piedmont Triad User Group
+  - url: https://www.pythonpool.com/feed/
+    title: Python Pool
+  - url: https://pyfound.blogspot.com/feeds/posts/default
+    title: Python Software Foundation
+  - url: https://sweetness.hmmz.org/feeds/python.rss.xml
+    title: Python Sweetness
+  - url: http://python-groups.blogspot.com/feeds/posts/default
+    title: Python User Groups
+  - url: http://developerblog.myo.com/tag/python/rss/
+    title: Python with Myo
+  - url: http://pythonxynews.blogspot.com/feeds/posts/default
+    title: "Python(x,y) News"
+  - url: http://pythonclub.com.br/feeds/all.atom.xml
+    title: PythonClub - A Brazilian collaborative blog about Python
+  - url: http://pythondebugging.com/category/python/feed.xml
+    title: PythonDebugging.com
+  - url: https://coady.github.io/index.xml
+    title: Pythonicity
+  - url: http://pythonology.blogspot.com/atom.xml
+    title: Pythonology
+  - url: http://www.pythonwise.blogspot.com/feeds/posts/default/-/python
+    title: pythonwise
+  - url: https://pythonspeed.com/atom.xml
+    title: Python⇒Speed
+  - url: http://ptspts.blogspot.com/feeds/posts/default/-/planet-python
+    title: Péter Szabó
+  - url: http://blog.zsoldosp.eu/category/python/feed/
+    title: Péter Zsoldos
+  - url: https://labs.quansight.org/rss.xml
+    title: Quansight Labs Blog
+  - url: http://blog.qutebrowser.org/feeds/tag-pyplanet.rss.xml
+    title: qutebrowser development blog
+  - url: http://www.bitdance.com/blog/rss.xml
+    title: R David Murray
+  - url: http://threebean.org/blog/category/python/feed/atom/index.xml
+    title: Ralph Bean
+  - url: https://blog.ram.rachum.com/tagged/planetpython/rss
+    title: Ram Rachum
+  - url: http://blog.randell.ph/tag/python/feed/atom/
+    title: Randell Benavidez
+  - url: http://randlet.com/blog/python/rss.xml
+    title: Randle Taylor
+  - url: http://randyzwitch.com/tag/python/feed/
+    title: Randy Zwitch
+  - url: http://rhettinger.wordpress.com/feed/atom/
+    title: Raymond Hettinger
+  - url: http://blog.readthedocs.com/archive/tag/python/atom.xml
+    title: Read the Docs
+  - url: https://realpython.com/atom.xml
+    title: Real Python
+  - url: https://developers.redhat.com/blog/category/python/feed/atom/
+    title: Red Hat Developers
+  - url: http://renesd.blogspot.com/feeds/posts/default/-/python
+    title: Rene Dudfield
+  - url: http://blog.lerner.co.il/category/python/feed/
+    title: Reuven Lerner
+  - url: http://posted-stuff.blogspot.com/feeds/posts/default/-/python
+    title: Richard Tew
+  - url: http://blog.the-moon.net/feeds/posts/default/-/python
+    title: Richard Wall
+  - url: http://rickardlindberg.me/tags/python/rss.xml
+    title: Rickard Lindberg
+  - url: https://cmlzagk.github.io/feeds/python.atom.xml
+    title: Rishi Maker
+  - url: https://blog.rmotr.com/feed/tagged/python
+    title: RMOTR
+  - url: http://www.robg3d.com/?tag=python&feed=atom
+    title: Rob Galanakis
+  - url: http://rbtcollins.wordpress.com/tag/python/feed/atom/
+    title: Robert Collins
+  - url: http://rz.scale-it.pl/rss-python.html
+    title: Robert Zaremba
+  - url: http://www.theatreofnoise.com/feeds/posts/default/-/dev
+    title: Robin Parmar
+  - url: http://blog.rtwilson.com/category/programming-2/python/feed/
+    title: Robin Wilson
+  - url: http://linil.wordpress.com/feed/atom/
+    title: Rodrigo Araúj
+  - url: https://mathspp.com/blog/tags/python.rss
+    title: Rodrigo Girão Serrão
+  - url: https://www.rosehosting.com/blog/tag/python/feed/
+    title: RoseHosting Blog
+  - url: http://ruslanspivak.com/category/python/feed/atom/
+    title: Ruslan Spivak
+  - url: http://www.asciiarmor.com/tagged/python/rss
+    title: Ryan Cox
+  - url: http://slott-softwarearchitect.blogspot.com/feeds/posts/default/-/python
+    title: S. Lott
+  - url: https://pyhelper.wordpress.com/feed/
+    title: S. R. Krishnan
+  - url: http://recollection.saaj.me/tag/python.xml
+    title: saaj/recollection
+  - url: http://feeds.feedburner.com/sfpy
+    title: Salim Fadhley
+  - url: https://sandipanweb.wordpress.com/category/python/feed/
+    title: Sandipan Dey
+  - url: http://sandrotosi.blogspot.com/feeds/posts/default/-/Python
+    title: Sandro Tosi
+  - url: https://blog.scikit-learn.org/feed.xml
+    title: scikit-learn
+  - url: http://www.sdjournal.com/archives/categories/languages/python/rss.xml
+    title: SDJournal
+  - url: http://seanmcgrath.blogspot.com/feeds/posts/default/-/python
+    title: Sean McGrath
+  - url: https://k-d-w.org/tags/python/index.xml
+    title: Sebastian Pölsterl
+  - url: https://switowski.com/python.feed.xml
+    title: Sebastian Witowski
+  - url: http://www.chesnok.com/daily/category/python/feed/
+    title: Selena Deckelmann
+  - url: http://feeds.feedburner.com/phoe6pythonfeeds
+    title: Senthil Kumaran
+  - url: https://sethmlarson.dev/feed
+    title: Seth Michael Larson
+  - url: http://jjinux.blogspot.com/feeds/posts/default/-/python
+    title: Shannon -jj Behrens
+  - url: http://shiningpanda.com/feeds/all.atom.xml
+    title: ShiningPanda
+  - url: http://simeonfranklin.com/feeds/python/
+    title: Simeon Franklin
+  - url: http://feeds.feedburner.com/simeon_visser_python
+    title: Simeon Visser
+  - url: http://aboutsimon.com/category/python/feed/atom/
+    title: Simon
+  - url: http://www.brunningonline.net/simon/blog/index-P.xml
+    title: Simon Brunning
+  - url: http://entitycrisis.blogspot.com/feeds/posts/default/-/Python
+    title: Simon Wittber
+  - url: https://simpleisbetterthancomplex.com/feed.xml
+    title: Simple is Better Than Complex
+  - url: http://www.softformance.com/feed/?tag=python
+    title: SoftFormance
+  - url: http://pythonide.blogspot.com/feeds/posts/default
+    title: SPE Weblog
+  - url: https://brmmm3.github.io/feed.xml
+    title: Speed Matters
+  - url: http://spikeekips.tumblr.com/tagged/python/rss
+    title: Spike ekipS
+  - url: https://www.spyder-ide.org/blog/feed.xml
+    title: Spyder IDE
+  - url: http://stackabuse.com/tag/python/rss
+    title: Stack Abuse
+  - url: https://smorbieu.gitlab.io/feeds/tag_python.atom.xml
+    title: Stanislas Morbieu
+  - url: https://www.starzel.de/blog/starzel-de-python-blog/RSS
+    title: Starzel.de
+  - url: http://blog.behnel.de/index.php?feed=rss2&cat=22
+    title: Stefan Behnel
+  - url: http://stefan.sofa-rockers.org/feeds/python
+    title: Stefan Scherfke
+  - url: https://stefaniemolin.com/feeds/Python-atom.xml
+    title: Stefanie Molin
+  - url: http://www.jodal.no/atom-python.xml
+    title: Stein Magnus Jodal
+  - url: http://pythonconquerstheuniverse.wordpress.com/feed/atom/
+    title: Stephen Ferg
+  - url: http://holdenweb.blogspot.com/feeds/posts/default/-/python
+    title: Steve Holden
+  - url: http://rh0dium.blogspot.com/feeds/posts/default/-/python
+    title: Steven Klass
+  - url: http://TuringFinance.com/category/python/feed/
+    title: Stuart Gordon Reid
+  - url: https://www.stxnext.com/blog/tag/python/rss.xml
+    title: STX Next
+  - url: https://wirtel.be/tags/python/index.xml
+    title: Stéphane Wirtel
+  - url: https://www.harihareswara.net/rss/python/
+    title: "Sumana Harihareswara - Cogito, Ergo Sumana"
+  - url: https://www.tutlane.com/pythonfeed.xml
+    title: Suresh Dasari/Tutlane.com
+  - url: https://ict.swisscom.ch/feed/?post_type=cubetech_post&cubetech_keyword=Python
+    title: Swisscom ICT
+  - url: https://talkpython.fm/blog/posts/index.xml
+    title: Talk Python Blog
+  - url: https://talkpython.fm/episodes/rss
+    title: Talk Python to Me
+  - url: http://blog.tedmiston.com/tag/python/rss
+    title: Taylor Edmiston
+  - url: https://www.techbeamers.com/python-programming-tutorials/feed/
+    title: TechBeamers Python
+  - url: https://www.techiediaries.com/tag/django/index.xml
+    title: Techiediaries - Django
+  - url: http://terriko.dreamwidth.org/data/rss?tag=python
+    title: Terri Oda
+  - url: http://blogs.fluidinfo.com/terry/category/python/feed/atom/
+    title: Terry Jones
+  - url: http://testandcode.com/rss
     title: Test and Code
-    site_url: https://testandcode.com/
-
-  # Notable Developers
-  - url: https://lucumr.pocoo.org/feed.atom
-    title: Armin Ronacher (Lucumr)
-    site_url: https://lucumr.pocoo.org/
-
-  - url: https://nedbatchelder.com/blog/rss.xml
-    title: Ned Batchelder
-    site_url: https://nedbatchelder.com/blog/
-
-  - url: https://www.youtube.com/feeds/videos.xml?channel_id=UCLjC1MDEkvqFH4Hm3VD7a8w
-    title: Corey Schafer
-    site_url: https://www.youtube.com/c/Coreyms
-
-  - url: https://treyhunner.com/atom.xml
+  - url: https://testdriven.io/blog/topics/django/feed.xml
+    title: TestDriven.io
+  - url: https://testmon.org/index.xml
+    title: testmon
+  - url: http://www.thedatascientist.de/category/python/feed/
+    title: The Data Scientist
+  - url: https://www.thedigitalcatonline.com/categories/python/atom.xml
+    title: The Digital Cat
+  - url: https://lunarcowboy.com/feeds/python.atom.xml
+    title: The Lunar Cowboy
+  - url: https://no-title.victordomingos.com/feeds/python_rss.xml
+    title: The No Title® Tech Blog
+  - url: http://blog.dowski.com/category/python/feed
+    title: The Occasional Occurrence
+  - url: https://fortintam.com/blog/category/planet-python/feed/
+    title: The Open Sourcerer
+  - url: http://blog.parcon.opengroove.org/feeds/posts/default
+    title: The Parcon Blog
+  - url: https://thepythoncodingbook.com/feed/
+    title: The Python Coding Blog
+  - url: https://www.thepythoncodingstack.com/feed
+    title: The Python Coding Stack
+  - url: http://pythonpapers.blogspot.com/atom.xml
+    title: The Python Papers
+  - url: https://www.pythonshow.com/feed
+    title: The Python Show
+  - url: https://threeofwands.com/tag/python/rss/
+    title: The Three of Wands
+  - url: http://www.tibonihoo.net/blog/en/tag/python/feed/
+    title: Thibauld Nion
+  - url: https://thishosting.rocks/tag/python/feed/
+    title: ThisHosting.Rocks
+  - url: http://feeds.wordaligned.org/wordaligned/python
+    title: Thomas Guest
+  - url: http://thomas.apestaart.org/log/?feed=rss2&cat=22
+    title: Thomas Vander Stichele
+  - url: https://www.tibobeijen.nl/tags/python/index.xml
+    title: Tibo Beijen
+  - url: https://reachtim.com/feeds/python.atom.xml
+    title: Tim Arnold / reachtim
+  - url: http://timgilbert.wordpress.com/category/python/feed/atom/
+    title: Tim Gilbert
+  - url: http://feeds.feedburner.com/duffyd
+    title: Tim Knapp
+  - url: http://apipes.blogspot.com/feeds/posts/default/-/python
+    title: Tim Lesher
+  - url: http://feeds.feedburner.com/thobe/wardrobe
+    title: Tobias Ivarsson
+  - url: http://thewebhaswon.wordpress.com/category/python/atom
+    title: Tom Christie
+  - url: http://www.sys-exit.blogspot.com/feeds/posts/default/-/python
+    title: Tomasz Ducin
+  - url: http://www.tomaz.me/tags/python.xml
+    title: Tomaž Muraus
+  - url: http://tomerfiliba.com/blog/python-atom.xml
+    title: Tomer Filiba
+  - url: http://tonybreyal.wordpress.com/category/python/feed/atom/
+    title: Tony Breyal
+  - url: http://anonbadger.wordpress.com/tag/python/feed/atom/
+    title: Toshio Kuratomi
+  - url: http://technicaldiscovery.blogspot.com/feeds/posts/default/-/python
+    title: Travis Oliphant
+  - url: https://treyhunner.com/python.xml
     title: Trey Hunner
-    site_url: https://treyhunner.com/
-
-  - url: https://hynek.me/atom.xml
-    title: Hynek Schlawack
-    site_url: https://hynek.me/
-
-  - url: https://snarky.ca/rss/
-    title: Brett Cannon (Snarky)
-    site_url: https://snarky.ca/
-
-  # Frameworks & Libraries
-  - url: https://www.djangoproject.com/rss/weblog/
-    title: Django Weblog
-    site_url: https://www.djangoproject.com/weblog/
-
-  - url: https://blog.flask.dev/feed.xml
-    title: Flask Blog
-    site_url: https://blog.flask.dev/
-
-  - url: https://blog.pypi.org/feeds/all.atom.xml
-    title: PyPI Blog
-    site_url: https://blog.pypi.org/
-
-  - url: https://peps.python.org/peps.rss
-    title: Python Enhancement Proposals
-    site_url: https://peps.python.org/
-
-  # Data Science
-  - url: https://jakevdp.github.io/feeds/all.atom.xml
-    title: Jake VanderPlas (Pythonic Perambulations)
-    site_url: https://jakevdp.github.io/
-
-  - url: https://wesmckinney.com/blog/feed/
-    title: Wes McKinney
-    site_url: https://wesmckinney.com/
-
-  - url: https://sebastianraschka.com/rss_feed.xml
-    title: Sebastian Raschka
-    site_url: https://sebastianraschka.com/
+  - url: http://tryexceptpass.org/index.xml
+    title: tryexceptpass
+  - url: http://www.tryton.org/rss.xml
+    title: Tryton News
+  - url: http://www.turnkeylinux.org/taxonomy/term/103/0/feed
+    title: Turnkey Linux
+  - url: http://feeds.feedburner.com/TwistedMatrixLaboratories
+    title: Twisted Matrix Labs
+  - url: https://typethepipe.com/categories/python/index.xml
+    title: TypeThePipe
+  - url: http://vsbabu.org/mt/index.rdf
+    title: V.S. Babu
+  - url: http://prayogshala.wordpress.com/category/scripting/python/feed/atom/
+    title: Varun Nischal
+  - url: http://jugad2.blogspot.co.uk/feeds/posts/default/-/python
+    title: Vasudev Ram
+  - url: http://pymolurus.blogspot.com/feeds/posts/default
+    title: Vinay Sajip
+  - url: http://plumberjack.blogspot.com/feeds/posts/default
+    title: Vinay Sajip (Logging)
+  - url: https://vinayak.io/feed/tag/python/rss.xml
+    title: Vinayak Mehta
+  - url: http://www.hardcoded.net/articles/rss_python.xml
+    title: Virgil Dupras
+  - url: http://www.vperic.blogspot.com/feeds/posts/default/-/Twisted
+    title: Vladimir Perić
+  - url: http://pieceofpy.com/category/python/feed/atom/index.xml
+    title: Wayne Witzel
+  - url: http://www.weeklypython.chat/feed/
+    title: Weekly Python Chat
+  - url: http://python-weekly.blogspot.com/feeds/posts/default?alt=rss
+    title: Weekly Python StackOverflow Report
+  - url: http://1stvamp.org/tag/python/atom/
+    title: Wes Mason
+  - url: http://wescpy.blogspot.com/feeds/posts/default/-/python
+    title: Wesley Chun
+  - url: http://bluesock.org/~willkg/blog/tag/python.xml
+    title: Will Kahn-Greene
+  - url: http://www.willmcgugan.com/blog/tech/feeds/posts/
+    title: Will McGugan
+  - url: http://willpython.blogspot.com/feeds/posts/default
+    title: Will Pierce
+  - url: http://blog.minchin.ca/feeds/label.python.atom.xml
+    title: William Minchin
+  - url: http://foolish-assertions.blogspot.com/feeds/posts/default/-/python
+    title: William Reade
+  - url: http://wingware.com/blog/rss&noheader=1
+    title: Wing Tips
+  - url: http://wingware.com/news/rss&noheader=1
+    title: Wingware
+  - url: https://wyattbaldwin.com/categories/planet-python/rss.xml
+    title: Wyatt Baldwin
+  - url: http://tech.blog.aknin.name/tag/python/feed/atom/
+    title: Yaniv Aknin
+  - url: http://www.ylarrivee.com/tag/python/feed/
+    title: Yann Larrivée
+  - url: http://uberpython.wordpress.com/tag/python/feed/atom/
+    title: Yuval Greenfield
+  - url: http://za.github.io/feed.python.xml
+    title: Zaki Akhmad
+  - url: https://zato.io/blog/rss.xml
+    title: Zato Blog
+  - url: https://zerotomastery.io/rss/python-rss.xml
+    title: Zero to Mastery
+  - url: https://zerowithdot.com/feed.xml
+    title: Zero-with-Dot (Oleg Żero)
+  - url: https://medium.com/feed/@ZeroDB_
+    title: ZeroDB
+  - url: http://wokslog.wordpress.com/tag/python/feed/atom/
+    title: Éric Araujo
+  - url: https://lukasz.langa.pl/python/atom.xml
+    title: Łukasz Langa

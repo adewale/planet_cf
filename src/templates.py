@@ -32,8 +32,15 @@ _EMBEDDED_TEMPLATES = {
 </head>
 <body>
     <header>
-        <h1>{{ planet.name }}</h1>
-        <p>{{ planet.description }}</p>
+        {% if logo %}
+        <a href="/" class="logo-link">
+            <img src="{{ logo.url }}" alt="{{ logo.alt }}" width="{{ logo.width }}" height="{{ logo.height }}" class="logo">
+        </a>
+        {% endif %}
+        <div class="header-text">
+            <h1><a href="/">{{ planet.name }}</a></h1>
+            <p>{{ planet.description }}</p>
+        </div>
     </header>
 
     <div class="container">
@@ -58,7 +65,16 @@ _EMBEDDED_TEMPLATES = {
         </main>
 
         <aside class="sidebar">
+            {% if feed_links %}
+            <div class="sidebar-links">
+                <a href="{{ feed_links.rss or '/feed.rss' }}">RSS</a>
+                {% if feed_links.titles_only %}<a href="{{ feed_links.titles_only }}">titles only</a>{% endif %}
+                {% if feed_links.planet_planet %}<a href="{{ feed_links.planet_planet }}">Planet Planet</a>{% endif %}
+            </div>
+            {% endif %}
+
             <form action="/search" method="GET" class="search-form">
+                <label class="search-label"><strong>Search</strong></label>
                 <input type="search" name="q" placeholder="Search entries..." aria-label="Search entries">
                 <button type="submit">Search</button>
             </form>
@@ -74,12 +90,26 @@ _EMBEDDED_TEMPLATES = {
                 <li>No feeds configured</li>
                 {% endfor %}
             </ul>
+            {% if submission %}
+            <p class="submission-link"><a href="{{ submission.url }}">{{ submission.text }}</a></p>
+            {% endif %}
+
+            {% if related_sites %}
+            {% for section in related_sites %}
+            <h2 class="nav-level-one">{{ section.title }}</h2>
+            <ul class="related-links nav-level-two">
+                {% for link in section.links %}
+                <li class="nav-level-three"><a href="{{ link.url }}">{{ link.name }}</a></li>
+                {% endfor %}
+            </ul>
+            {% endfor %}
+            {% endif %}
         </aside>
     </div>
 
     <footer>
         <p><a href="/feed.atom">Atom</a> · <a href="/feed.rss">RSS</a> · <a href="/feeds.opml">OPML</a></p>
-        <p>Powered by Planet CF · <a href="/admin" style="color: #999; font-size: 0.8em;">Admin</a> · <span class="hint">Press <kbd>?</kbd> for shortcuts</span></p>
+        <p>{{ footer_text }}{% if show_admin_link %} · <a href="/admin" style="color: #999; font-size: 0.8em;">Admin</a>{% endif %} · <span class="hint">Press <kbd>?</kbd> for shortcuts</span></p>
         <p>Last updated: {{ generated_at }}</p>
     </footer>
 
@@ -1531,7 +1561,6 @@ function rebuildSearchIndex() {
 # =============================================================================
 # Template Loader and Environment
 # =============================================================================
-
 
 class EmbeddedLoader(BaseLoader):
     """Jinja2 loader that loads templates from embedded strings."""
