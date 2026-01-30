@@ -59,9 +59,6 @@ content:
   # Summary truncation length
   summary_max_length: 500
 
-  # Items per page (matches original Planet Mozilla)
-  items_per_page: 75
-
 # =============================================================================
 # Search Configuration
 # =============================================================================
@@ -93,9 +90,6 @@ feeds:
 
   # Consecutive failures to show in DLQ
   failure_threshold: 3
-
-  # Activity threshold - feeds not updated in this many days are marked inactive
-  activity_threshold_days: 90
 
 # =============================================================================
 # Authentication

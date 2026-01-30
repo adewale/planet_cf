@@ -56,9 +56,6 @@ content:
   # Summary truncation length
   summary_max_length: 500
 
-  # Items per page (matches original Planet Python)
-  items_per_page: 25
-
 # =============================================================================
 # Search Configuration
 # =============================================================================
