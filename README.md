@@ -136,6 +136,31 @@ uv run pytest tests/ -v
 uvx ruff check src/
 ```
 
+## Multi-Instance Deployment
+
+Deploy additional Planet instances (e.g., Planet Python, Planet Ruby) with a single command:
+
+```bash
+# Create config and deploy everything
+python scripts/create_instance.py \
+  --id planet-python \
+  --name "Planet Python" \
+  --deploy
+
+# Or deploy an existing configuration
+./scripts/deploy_instance.sh planet-python
+```
+
+The deploy script handles:
+- Creating D1 database and auto-updating config
+- Creating Vectorize index
+- Creating queues
+- Interactive prompts for GitHub OAuth secrets
+- Running database migrations
+- Deploying the worker
+
+See [docs/MULTI_INSTANCE.md](docs/MULTI_INSTANCE.md) for detailed configuration options.
+
 ## Architecture
 
 - **Scheduler (cron):** Runs hourly, enqueues each feed as a separate queue message

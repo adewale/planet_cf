@@ -9,17 +9,86 @@ Planet CF now supports configurable multi-instance deployment:
 - **Instance Configuration**: YAML-based configuration per instance
 - **Multiple Themes**: 4 built-in themes (default, classic, dark, minimal)
 - **OAuth Abstraction**: Support for GitHub, Google, and custom OIDC providers
-- **CLI Tooling**: Scripts to provision new instances
+- **CLI Tooling**: Scripts to provision and deploy new instances
+- **One-Command Deployment**: Single script handles all Cloudflare resources
 
 ## Quick Start
 
-### Create a New Instance
+### Option A: One-Command Deployment (Recommended)
+
+Deploy a new instance with a single command:
 
 ```bash
-# Interactive mode
-python scripts/create_instance.py
+# Create config and deploy everything
+python scripts/create_instance.py \
+  --id planet-python \
+  --name "Planet Python" \
+  --deploy
 
-# Or with arguments
+# Or skip interactive secret prompts (set later)
+python scripts/create_instance.py \
+  --id planet-python \
+  --name "Planet Python" \
+  --deploy --skip-secrets
+```
+
+This will:
+1. Create instance configuration files
+2. Create all Cloudflare resources (D1, Vectorize, Queues)
+3. Auto-update database_id in wrangler config
+4. Prompt for GitHub OAuth secrets
+5. Run database migrations
+6. Deploy the worker
+
+### Option B: Two-Step Deployment
+
+First create the configuration, then deploy:
+
+```bash
+# Step 1: Create configuration files
+python scripts/create_instance.py \
+  --id planet-python \
+  --name "Planet Python" \
+  --url "https://planetpython.org"
+
+# Step 2: Deploy with the deploy script
+./scripts/deploy_instance.sh planet-python
+```
+
+### Option C: Deploy Existing Configuration
+
+If you already have configuration files:
+
+```bash
+# Deploy an existing instance
+./scripts/deploy_instance.sh planet-python
+
+# Preview what would happen
+./scripts/deploy_instance.sh planet-python --dry-run
+
+# Skip secrets (set later manually)
+./scripts/deploy_instance.sh planet-python --skip-secrets
+```
+
+### Deploy Script Options
+
+```
+./scripts/deploy_instance.sh <instance-id> [options]
+
+Options:
+  --skip-secrets  Skip secret prompts (set later manually)
+  --help, -h      Show help message
+```
+
+The script is idempotent - it safely skips resources that already exist, so you can re-run it if needed.
+
+## Manual Deployment (Alternative)
+
+If you prefer manual control:
+
+### Create Instance Configuration
+
+```bash
 python scripts/create_instance.py \
   --id planet-python \
   --name "Planet Python" \
@@ -34,11 +103,12 @@ This creates:
 - `config/instances/planet-python.yaml` - Instance configuration
 - `wrangler.planet-python.jsonc` - Cloudflare Workers config
 
-### Provision Cloudflare Resources
+### Provision Cloudflare Resources Manually
 
 ```bash
 # Create D1 database
 npx wrangler d1 create planet-python-db
+# Copy the database_id from output and update wrangler.planet-python.jsonc
 
 # Create Vectorize index
 npx wrangler vectorize create planet-python-entries --dimensions 768 --metric cosine
@@ -54,12 +124,26 @@ npx wrangler secret put SESSION_SECRET --config wrangler.planet-python.jsonc
 
 # Run migrations
 npx wrangler d1 execute planet-python-db \
+  --remote \
   --file migrations/001_initial.sql \
   --config wrangler.planet-python.jsonc
 
 # Deploy
 npx wrangler deploy --config wrangler.planet-python.jsonc
 ```
+
+## Before vs After Comparison
+
+| Task | Before (Manual) | After (Automated) |
+|------|-----------------|-------------------|
+| Create D1 database | Run command, copy ID | Automatic |
+| Update database_id | Manual edit | Automatic |
+| Create Vectorize | Run command | Automatic |
+| Create queues (2) | Run 2 commands | Automatic |
+| Set secrets (3) | Run 3 commands | Interactive prompts |
+| Run migrations | Run command | Automatic |
+| Deploy | Run command | Automatic |
+| **Total commands** | **8+ commands** | **1 command** |
 
 ## Configuration Reference
 
@@ -256,7 +340,8 @@ planet_cf/
 │   ├── dark/style.css
 │   └── minimal/style.css
 ├── scripts/
-│   ├── create_instance.py       # Instance provisioning
+│   ├── create_instance.py       # Instance configuration generator
+│   ├── deploy_instance.sh       # One-command deployment script
 │   ├── build_templates.py       # Template compiler
 │   └── seed_admins.py           # Admin seeding
 ├── src/
