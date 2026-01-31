@@ -92,6 +92,8 @@ class RequestEvent:
     search_exact_title_matches: int | None = None
     search_title_in_query_matches: int | None = None
     search_query_in_title_matches: int | None = None
+    search_semantic_error: str | None = None  # Error from semantic search
+    search_keyword_error: str | None = None  # Error from keyword search
 
     # === Generation fields (null for non-generation routes) ===
     generation_d1_ms: float | None = None
@@ -148,9 +150,11 @@ class FeedFetchEvent:
     # Feed context
     feed_id: int = 0
     feed_url: str = ""
+    feed_url_original: str | None = None  # URL before redirect (if redirected)
     feed_domain: str = ""
     feed_title: str | None = None
     feed_consecutive_failures: int = 0
+    feed_auto_deactivated: bool = False  # True if feed was auto-deactivated this fetch
 
     # HTTP fetch
     http_latency_ms: float = 0
@@ -165,6 +169,8 @@ class FeedFetchEvent:
     entries_found: int = 0
     entries_added: int = 0
     parse_errors: int = 0
+    upsert_failures: int = 0  # Count of failed entry upserts
+    content_fetched_count: int = 0  # Count of entries where full content was fetched
 
     # === Indexing aggregate (was separate IndexingEvent) ===
     indexing_attempted: int = 0
