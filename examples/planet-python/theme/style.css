@@ -118,14 +118,14 @@ header p {
     padding-top: 20px;
 }
 
-/* Sidebar - Left position */
+/* Sidebar - Left position - #menu in original */
 .sidebar {
     width: 16em;
     flex-shrink: 0;
     order: -1; /* Force left side */
     padding: 0;
     margin: 0;
-    font-size: 100%;
+    font-size: 75%; /* Original #menu font-size: 75% */
 }
 
 .sidebar h2 {
@@ -305,12 +305,12 @@ li.nav-level-three {
     color: black;
 }
 
-/* Main content area */
+/* Main content area - #body-main in original */
 main {
     padding: 0 0.55em 40px 0;
     line-height: 1.4em;
     font-family: Arial, Verdana, Geneva, "Bitstream Vera Sans", Helvetica, sans-serif;
-    margin-left: 2em;
+    margin-left: 3em; /* Original uses margin-left: 19em but we use flex layout */
     flex: 1;
     min-width: 0;
     font-size: 100%;

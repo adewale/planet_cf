@@ -3408,6 +3408,7 @@ THEME_LOGOS = {
   </text>
 </svg>
 """,
+        "url": "/static/logo.svg",
         "width": "211",
         "height": "71",
         "alt": "Python Logo",
@@ -3438,6 +3439,7 @@ THEME_LOGOS = {
   </g>
 </svg>
 """,
+        "url": "/static/logo.svg",
         "width": "112",
         "height": "32",
         "alt": "Mozilla Logo",

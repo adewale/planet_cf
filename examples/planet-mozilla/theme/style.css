@@ -3,8 +3,12 @@
 
 * {
     box-sizing: border-box;
-    margin: 0;
+    line-height: 1.4; /* Original: line-height: 1.4 on * */
     padding: 0;
+}
+
+ul, ol {
+    padding-left: 22px; /* Original: padding-left: 22px */
 }
 
 body {
@@ -53,19 +57,15 @@ h2 {
     font-size: 1.75em;
     font-weight: normal;
     color: #b72822;
-    border-bottom: 1px solid #ccc;
-    margin-left: 0;
-    margin-top: 1em;
-    margin-bottom: 0.5em;
+    margin-bottom: 0; /* Original: margin-bottom: 0 */
 }
 
 h3 {
     font-family: Helvetica, Arial, sans-serif;
     font-size: 120%;
     font-weight: bold;
-    clear: both;
+    margin-top: 10px; /* Original: margin-top: 10px */
     border-bottom: 1px solid #ccc;
-    margin: 0;
 }
 
 h3 a {
@@ -175,6 +175,12 @@ header p {
     display: flex;
     flex-direction: row;
     gap: 20px;
+}
+
+/* Main content wrapper - .main-content in original */
+.main-content {
+    margin-left: 116px; /* Original: margin-left: 116px */
+    margin-right: 260px; /* Original: margin-right: 260px */
 }
 
 /* Main content area - Takes most space, leaves room for sidebar */
@@ -391,13 +397,20 @@ li.nav-level-three {
     font-weight: normal;
 }
 
-/* Articles / Entries */
+/* Articles / Entries - .entry in original */
 article,
-div.entry {
-    margin: 0 0.5em 1em 1em;
-    padding-top: 1em;
-    padding-bottom: 1em;
-    border-bottom: none;
+div.entry,
+.entry {
+    margin-left: 15px; /* Original: margin: 0 0 0 15px via .entry */
+}
+
+/* News styles from original */
+.news .permalink {
+    text-align: right; /* Original: text-align: right */
+}
+
+.news img {
+    max-width: 100% !important; /* Original: max-width: 100% !important */
 }
 
 article:last-child {
