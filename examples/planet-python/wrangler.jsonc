@@ -3,6 +3,20 @@
 // A faithful clone of https://planetpython.org/
 //
 // =============================================================================
+// LITE MODE
+// =============================================================================
+// This config runs in lite mode. Lite mode features:
+// - Simple, read-only feed aggregation
+// - No semantic search (no Vectorize binding)
+// - No admin interface (no OAuth required)
+//
+// To DISABLE lite mode (upgrade to full mode):
+//   1. Change "INSTANCE_MODE": "full" or remove the variable
+//   2. Add vectorize binding (see examples/planet-cloudflare/)
+//   3. Add ai binding (see examples/planet-cloudflare/)
+//   4. Set GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SESSION_SECRET secrets
+//
+// =============================================================================
 // QUICK DEPLOY (Recommended)
 // =============================================================================
 //
@@ -39,7 +53,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "planet-python",
-  "main": "src/main.py",
+  "main": "../../src/main.py",
   "compatibility_date": "2026-01-01",
   "compatibility_flags": [
     "python_workers",
@@ -49,6 +63,7 @@
     "cpu_ms": 60000
   },
   "vars": {
+    "INSTANCE_MODE": "lite",
     "PLANET_ID": "planet-python",
     "PLANET_NAME": "Planet Python",
     "PLANET_DESCRIPTION": "Python community feed aggregator",
@@ -59,7 +74,8 @@
     "RETENTION_DAYS": "90",
     "RETENTION_MAX_ENTRIES_PER_FEED": "100",
     "FEED_TIMEOUT_SECONDS": "60",
-    "HTTP_TIMEOUT_SECONDS": "30"
+    "HTTP_TIMEOUT_SECONDS": "30",
+    "OPML_SOURCE_URL": "https://planetpython.org/opml.xml"
   },
   "observability": {
     "enabled": true,
@@ -69,18 +85,10 @@
     {
       "binding": "DB",
       "database_name": "planet-python-db",
-      "database_id": "YOUR_DATABASE_ID"
+      "database_id": "efef9283-bc40-4b69-8eff-6622a41214b8"
     }
   ],
-  "vectorize": [
-    {
-      "binding": "SEARCH_INDEX",
-      "index_name": "planet-python-entries"
-    }
-  ],
-  "ai": {
-    "binding": "AI"
-  },
+  // Lite mode: vectorize and ai bindings removed (no search functionality)
   "queues": {
     "producers": [
       {

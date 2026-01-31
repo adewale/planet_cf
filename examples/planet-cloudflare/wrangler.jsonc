@@ -1,9 +1,25 @@
 // wrangler.jsonc (Wrangler v4.58.0+, January 2026)
 // Planet CF - Feed Aggregator for Cloudflare Python Workers
+//
+// =============================================================================
+// LITE MODE
+// =============================================================================
+// This config runs in FULL mode with all features enabled.
+//
+// To ENABLE lite mode (disable search and admin):
+//   1. Add "INSTANCE_MODE": "lite" to vars section
+//   2. Remove the entire "vectorize" section
+//   3. Remove the entire "ai" section
+//   4. No OAuth secrets are required in lite mode
+//
+// Lite mode disables:
+//   - Semantic search functionality
+//   - Admin interface and OAuth login
+//   - Embedding generation
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "planetcf",
-  "main": "src/main.py",
+  "main": "../../src/main.py",
   "compatibility_date": "2026-01-01",
   "compatibility_flags": ["python_workers", "python_dedicated_snapshot"],
 

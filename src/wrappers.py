@@ -455,8 +455,11 @@ class SafeEnv:
         self._env = env
         # Wrap each binding with its safe wrapper
         self.DB = SafeD1(env.DB)
-        self.AI = SafeAI(env.AI)
-        self.SEARCH_INDEX = SafeVectorize(env.SEARCH_INDEX)
+        # AI and SEARCH_INDEX are optional (not present in lite mode)
+        ai = getattr(env, "AI", None)
+        self.AI = SafeAI(ai) if ai else None
+        search_index = getattr(env, "SEARCH_INDEX", None)
+        self.SEARCH_INDEX = SafeVectorize(search_index) if search_index else None
         # Queue bindings are optional (not supported in wrangler dev --remote)
         queue = getattr(env, "FEED_QUEUE", None)
         self.FEED_QUEUE = SafeQueue(queue) if queue else None

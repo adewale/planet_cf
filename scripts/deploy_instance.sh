@@ -145,7 +145,7 @@ update_database_id() {
 }
 
 # Step 1: Create D1 database
-echo -e "${YELLOW}Step 1/6: Creating D1 database...${NC}"
+echo -e "${YELLOW}Step 1/7: Creating D1 database...${NC}"
 DB_NAME="${INSTANCE_ID}-db"
 
 # Check if database already exists
@@ -176,7 +176,7 @@ fi
 echo ""
 
 # Step 2: Create Vectorize index (skip in lite mode)
-echo -e "${YELLOW}Step 2/6: Creating Vectorize index...${NC}"
+echo -e "${YELLOW}Step 2/7: Creating Vectorize index...${NC}"
 if [[ "$LITE_MODE" == "true" ]]; then
     echo -e "  ${YELLOW}Skipping Vectorize index (lite mode)${NC}"
 else
@@ -195,7 +195,7 @@ fi
 echo ""
 
 # Step 3: Create queues
-echo -e "${YELLOW}Step 3/6: Creating queues...${NC}"
+echo -e "${YELLOW}Step 3/7: Creating queues...${NC}"
 FEED_QUEUE="${INSTANCE_ID}-feed-queue"
 DLQ="${INSTANCE_ID}-feed-dlq"
 
@@ -212,7 +212,7 @@ done
 echo ""
 
 # Step 4: Set secrets (skip in lite mode)
-echo -e "${YELLOW}Step 4/6: Configuring secrets...${NC}"
+echo -e "${YELLOW}Step 4/7: Configuring secrets...${NC}"
 if [[ "$LITE_MODE" == "true" ]]; then
     echo -e "  ${YELLOW}Skipping secrets (lite mode - no auth required)${NC}"
 elif [[ "$SKIP_SECRETS" == "true" ]]; then
@@ -261,7 +261,7 @@ fi
 echo ""
 
 # Step 5: Run migrations
-echo -e "${YELLOW}Step 5/6: Running database migrations...${NC}"
+echo -e "${YELLOW}Step 5/7: Running database migrations...${NC}"
 MIGRATIONS_DIR="$PROJECT_ROOT/migrations"
 
 if [[ -d "$MIGRATIONS_DIR" ]]; then
@@ -280,8 +280,26 @@ else
 fi
 echo ""
 
-# Step 6: Deploy
-echo -e "${YELLOW}Step 6/6: Deploying worker...${NC}"
+# Step 6: Ensure python_modules symlink exists
+echo -e "${YELLOW}Step 6/7: Setting up python_modules symlink...${NC}"
+INSTANCE_DIR="$PROJECT_ROOT/examples/${INSTANCE_ID}"
+SYMLINK_PATH="$INSTANCE_DIR/python_modules"
+TARGET_PATH="../../python_modules"
+
+if [[ -L "$SYMLINK_PATH" ]]; then
+    echo -e "  ${GREEN}Symlink already exists: python_modules${NC}"
+elif [[ -e "$SYMLINK_PATH" ]]; then
+    echo -e "  ${YELLOW}python_modules exists but is not a symlink - skipping${NC}"
+else
+    ln -s "$TARGET_PATH" "$SYMLINK_PATH" 2>&1 || {
+        echo -e "  ${YELLOW}Warning: Could not create symlink${NC}"
+    }
+    echo -e "  ${GREEN}Created symlink: python_modules -> $TARGET_PATH${NC}"
+fi
+echo ""
+
+# Step 7: Deploy
+echo -e "${YELLOW}Step 7/7: Deploying worker...${NC}"
 npx wrangler deploy --config "$CONFIG_FILE" 2>&1 || {
     echo -e "${RED}Deployment failed${NC}"
     exit 1

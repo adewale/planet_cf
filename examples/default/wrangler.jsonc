@@ -2,11 +2,27 @@
 // Planet CF - Feed Aggregator for Cloudflare Python Workers
 //
 // This is the minimal starting point for a lite mode instance.
-// Lite mode features:
+//
+// =============================================================================
+// LITE MODE
+// =============================================================================
+// This config runs in lite mode. Lite mode features:
 // - Simple, read-only feed aggregation
 // - No semantic search (no Vectorize binding)
 // - No admin interface (no OAuth required)
 // - Fewer Cloudflare resources to provision
+//
+// To ENABLE lite mode (this config already has it enabled):
+//   1. Set "INSTANCE_MODE": "lite" in vars section
+//   2. Remove the "vectorize" section entirely (if present)
+//   3. Remove the "ai" section entirely (if present)
+//   4. No OAuth secrets are required
+//
+// To DISABLE lite mode (upgrade to full mode):
+//   1. Set "INSTANCE_MODE": "full" or remove the variable
+//   2. Add vectorize binding (see examples/planet-cloudflare/)
+//   3. Add ai binding (see examples/planet-cloudflare/)
+//   4. Set GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SESSION_SECRET secrets
 //
 // To upgrade to full mode, copy from examples/planet-cloudflare/
 //
@@ -34,7 +50,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "my-planet",
-  "main": "src/main.py",
+  "main": "../../src/main.py",
   "compatibility_date": "2026-01-01",
   "compatibility_flags": ["python_workers", "python_dedicated_snapshot"],
 
@@ -57,6 +73,11 @@
     "RETENTION_MAX_ENTRIES_PER_FEED": "100",
     "FEED_TIMEOUT_SECONDS": "60",
     "HTTP_TIMEOUT_SECONDS": "30"
+    // Optional: OPML source URL for seeding feeds
+    // "OPML_SOURCE_URL": "https://example.com/opml.xml"
+    // Example OPML sources:
+    //   Planet Python: https://planetpython.org/opml.xml
+    //   Planet Mozilla: https://planet.mozilla.org/opml.xml
   },
 
   // Workers Observability

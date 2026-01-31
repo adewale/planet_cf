@@ -26,6 +26,8 @@ import time
 import httpx
 import pytest
 
+from tests.e2e.conftest import requires_server
+
 # Test configuration
 BASE_URL = os.environ.get("E2E_BASE_URL", "http://localhost:8787")
 
