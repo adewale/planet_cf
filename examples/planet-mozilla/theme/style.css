@@ -1,6 +1,5 @@
-/* Planet Mozilla Theme - Exact recreation of planet.mozilla.org */
-/* Source: https://github.com/mozilla/planet/blob/master/branches/firefox-ux/theme/planet.css-original */
-/* Key features: RIGHT sidebar, #455372 dark header, #039 teal links, square bullets */
+/* Planet Mozilla Theme - EXACT recreation of planet.mozilla.org */
+/* Key features: RIGHT sidebar, #455372 dark header, #148cb5 teal links, square bullets */
 
 * {
     box-sizing: border-box;
@@ -11,10 +10,11 @@
 body {
     font-family: Helvetica, Arial, Verdana, sans-serif;
     font-size: 13px;
-    line-height: 1.6;
+    line-height: 1.4;
     color: #000;
     background: #fff;
-    margin: 15px;
+    margin: 0;
+    padding: 0;
 }
 
 /* Links - Mozilla teal/purple scheme */
@@ -29,7 +29,7 @@ a:visited {
 
 a:hover {
     text-decoration: underline !important;
-    color: blue !important;
+    color: #148cb5 !important;
 }
 
 a:active {
@@ -38,22 +38,19 @@ a:active {
 
 /* Headings */
 h1 {
+    font-family: Helvetica, Arial, sans-serif;
     font-size: 24px;
     font-weight: normal;
     letter-spacing: -2px;
     text-transform: lowercase;
     color: white;
-    background: #455372;
-    padding: 20px;
     margin: 0;
-    -moz-border-radius: 12px;
-    -webkit-border-radius: 12px;
-    border-radius: 12px;
+    padding: 0;
 }
 
 h2 {
     font-family: Georgia, Times, "Times New Roman", serif;
-    font-size: 150%;
+    font-size: 1.75em;
     font-weight: normal;
     color: #b72822;
     border-bottom: 1px solid #ccc;
@@ -63,10 +60,12 @@ h2 {
 }
 
 h3 {
+    font-family: Helvetica, Arial, sans-serif;
     font-size: 120%;
     font-weight: bold;
     clear: both;
     border-bottom: 1px solid #ccc;
+    margin: 0;
 }
 
 h3 a {
@@ -75,9 +74,10 @@ h3 a {
 }
 
 h4 {
+    font-family: Helvetica, Arial, sans-serif;
     font-size: 100%;
     font-weight: bold;
-    margin: 1em 0 0 1em;
+    margin: 0 0 0 15px;
     clear: both;
     border-bottom: 1px solid #ccc;
 }
@@ -107,7 +107,7 @@ h4 {
 }
 
 .mozilla-nav a {
-    color: #039;
+    color: #148cb5;
     text-decoration: none;
 }
 
@@ -117,17 +117,15 @@ h4 {
 
 .mozilla-nav a:hover {
     text-decoration: underline !important;
-    color: blue !important;
+    color: #148cb5 !important;
 }
 
-/* Header - Dark slate blue banner with rounded corners */
+/* Header - Dark slate blue banner */
 header {
     background: #455372;
     padding: 20px;
     border-bottom: none;
-    -moz-border-radius: 12px;
-    -webkit-border-radius: 12px;
-    border-radius: 12px;
+    border-radius: 0;
     margin-bottom: 1em;
 }
 
@@ -186,7 +184,7 @@ main {
     margin-right: 0;
 }
 
-/* Sidebar - RIGHT position, absolute style like original */
+/* Sidebar - RIGHT position */
 .sidebar {
     width: 230px;
     flex-shrink: 0;
@@ -198,6 +196,7 @@ main {
 }
 
 .sidebar h2 {
+    font-family: Helvetica, Arial, sans-serif;
     font-size: 150%;
     font-weight: bold;
     color: black;
@@ -216,14 +215,14 @@ main {
 
 .sidebar-links a {
     margin-right: 10px;
-    color: #039;
+    color: #148cb5;
 }
 
 .sidebar-links a:visited {
     color: #636;
 }
 
-/* Search form */
+/* Search form - Mozilla style with rounded corners */
 .search-form {
     margin-bottom: 1.5em;
     padding: 10px;
@@ -250,8 +249,8 @@ main {
 }
 
 .search-form input:focus {
-    outline: 1px solid #039;
-    border-color: #039;
+    outline: 1px solid #148cb5;
+    border-color: #148cb5;
 }
 
 .search-form button {
@@ -305,7 +304,7 @@ main {
 }
 
 .feeds li a {
-    color: #039;
+    color: #148cb5;
 }
 
 .feeds li a:visited {
@@ -326,12 +325,13 @@ main {
 }
 
 .submission-link a {
-    color: #039;
+    color: #148cb5;
 }
 
 /* Navigation sections */
 .nav-level-one,
 h2.nav-level-one {
+    font-family: Helvetica, Arial, sans-serif;
     font-size: 150%;
     font-weight: bold;
     color: black;
@@ -375,17 +375,19 @@ li.nav-level-three {
 }
 
 .day h2 {
-    font-size: 150%;
+    font-family: Georgia, Times, "Times New Roman", serif;
+    font-size: 1.75em;
     font-weight: normal;
+    color: #b72822;
     border-bottom: 1px solid #ccc;
     margin-bottom: 0.5em;
     padding-bottom: 5px;
 }
 
 .day h2.date {
-    font-family: sans-serif;
-    font-size: 150%;
-    color: #000;
+    font-family: Georgia, Times, "Times New Roman", serif;
+    font-size: 1.75em;
+    color: #b72822;
     font-weight: normal;
 }
 
@@ -403,14 +405,16 @@ article:last-child {
 }
 
 article h3 {
+    font-family: Helvetica, Arial, sans-serif;
     font-size: 120%;
     font-weight: bold;
     margin-bottom: 3px;
     clear: both;
+    border-bottom: 1px solid #ccc;
 }
 
 article h3 a {
-    color: #039;
+    color: #148cb5;
     text-decoration: none;
 }
 
@@ -433,7 +437,7 @@ article header {
     display: block;
 }
 
-/* Author/meta information - Right aligned date */
+/* Author/meta information */
 .meta {
     font-size: 11px;
     color: #666;
@@ -446,7 +450,7 @@ article header {
 }
 
 .meta .author a {
-    color: #039;
+    color: #148cb5;
 }
 
 .meta .date-sep {
@@ -490,7 +494,7 @@ article header {
 }
 
 .content a {
-    color: #039;
+    color: #148cb5;
     text-decoration: none;
 }
 
@@ -500,7 +504,7 @@ article header {
 
 .content a:hover {
     text-decoration: underline !important;
-    color: blue !important;
+    color: #148cb5 !important;
 }
 
 .content ul, .content ol {
@@ -571,10 +575,9 @@ hr {
     width: 50%;
 }
 
-/* Footer - Border top, centered text */
+/* Footer - Dark background, centered text */
 footer,
 #footer {
-    border-top: 1px solid #666;
     margin: 2em 0;
     padding: 1em 0;
     text-align: center;
@@ -584,6 +587,8 @@ footer,
     font-size: 11px;
     color: #999999;
     background-color: #2a2a2a;
+    border-radius: 0;
+    border-top: none;
 }
 
 footer ul,
@@ -603,18 +608,18 @@ footer li,
 
 footer p,
 #footer p {
-    color: #666;
+    color: #999;
     margin: 0.6em 0;
 }
 
 footer a,
 #footer a {
-    color: #666;
+    color: #999;
 }
 
 footer a:hover,
 #footer a:hover {
-    color: #000;
+    color: #ccc;
     text-decoration: underline !important;
 }
 
@@ -638,8 +643,9 @@ footer span a,
 footer kbd {
     font-family: Monaco, Consolas, "Courier New", monospace;
     font-size: 11px;
-    background: #fff;
-    border: 1px solid #ccc;
+    background: #444;
+    color: #ccc;
+    border: 1px solid #666;
     padding: 2px 4px;
     border-radius: 2px;
 }
@@ -792,7 +798,7 @@ footer kbd {
 }
 
 .titles-only h4.entry-title a {
-    color: #039;
+    color: #148cb5;
 }
 
 .titles-only p.entry-meta {

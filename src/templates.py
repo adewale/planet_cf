@@ -1788,7 +1788,7 @@ TEMPLATE_FEEDS_OPML = "feeds.opml"
 # =============================================================================
 
 THEME_CSS = {
-    "planet-python": """/* Planet Python Theme - Exact recreation of planetpython.org */
+    "planet-python": """/* Planet Python Theme - EXACT recreation of planetpython.org */
 /* Source: https://github.com/python/planet/blob/main/static/styles/styles.css */
 /* Key features: LEFT sidebar, Georgia headings, #366D9C blue, minimal styling */
 
@@ -1797,23 +1797,65 @@ THEME_CSS = {
 }
 
 HTML, body {
-    font-family: Arial, Verdana, Geneva, "Bitstream Vera Sans", Helvetica, sans-serif;
-    font-size: 103%;
-    line-height: 1.5;
-    color: #000;
-    background-color: #FFF;
     margin: 0;
     padding: 0;
+    font-family: Arial, Verdana, Geneva, "Bitstream Vera Sans", Helvetica, sans-serif;
+    font-size: 103%;
+    color: #000;
+    background-color: #FFF;
 }
 
-/* Links - Exact Python.org colors */
+IMG {
+    border: 0;
+}
+
+/* Headings - Georgia serif family */
+h1, h2, h3, h4, h5 {
+    font-family: Georgia, "Bitstream Vera Serif", "New York", Palatino, serif;
+    font-weight: normal;
+    line-height: 1em;
+}
+
+h1 {
+    font-size: 160%;
+    color: #234764;
+    margin: 0.7em 0;
+    text-decoration: none;
+}
+
+h1 a {
+    color: #234764;
+    text-decoration: none;
+}
+
+h2 {
+    font-size: 140%;
+    color: #366D9C;
+    margin: 0.7em 0;
+}
+
+h3 {
+    font-size: 135%;
+    font-style: italic;
+    color: #366D9C;
+    margin: 0.4em 0 0 0;
+}
+
+h4 {
+    font-size: 125%;
+    color: #366D9C;
+    margin: 0.4em 0 0 0;
+}
+
+/* Links - Python.org style */
 a:link {
     color: #00A;
-    text-decoration: underline;
+    text-decoration: none;
 }
 
 a:visited {
     color: #551A8B;
+    text-decoration: none;
 }
 
 a:hover {
@@ -1821,46 +1863,16 @@ a:hover {
     text-decoration: underline;
 }
 
-/* Headings - Python.org style with Georgia */
-h1, h2, h3, h4, h5 {
-    font-family: Georgia, "Bitstream Vera Serif", "New York", Palatino, serif;
-    line-height: 1em;
-}
-
-h1 {
-    font-size: 160%;
-    font-weight: normal;
-    color: #234764;
-    margin: 0.7em 0;
-}
-
-h2 {
-    font-size: 140%;
-    font-weight: normal;
-    color: #366D9C;
-    margin-top: 1em;
-    margin-bottom: 0.5em;
-}
-
-h3 {
-    font-size: 135%;
-    font-weight: normal;
-    font-style: italic;
-    color: #366D9C;
-}
-
-h4 {
-    font-size: 125%;
-    font-weight: normal;
-    color: #366D9C;
-}
-
-/* Header - Python.org logo area style */
+/* Logo Header - Exact python.org style */
 header {
+    border: 0;
+    margin: 0;
+    padding: 1px;
+    z-index: 1;
     background-color: #F7F7F7;
+    background-repeat: repeat-x;
     border-bottom: 1px solid #999999;
-    padding: 5px 10px 0 10px;
-    min-height: 84px;
+    height: 84px;
 }
 
 header .logo-link {
@@ -1868,12 +1880,11 @@ header .logo-link {
 }
 
 header .logo {
-    display: block;
-    padding-top: 5px;
-    padding-bottom: 35px;
+    width: 211px;
+    height: 71px;
+    margin-top: 10px;
+    margin-left: 3%;
     border: 0;
-    height: auto;
-    max-width: 100%;
 }
 
 header .header-text {
@@ -1885,41 +1896,56 @@ header p {
     display: none; /* Hide text header - logo only */
 }
 
-/* Container - LEFT sidebar layout like python.org */
+/* Container - LEFT sidebar layout */
 .container {
+    position: relative;
+    width: 93.9%;
+    margin-left: 3.0%;
+    font-size: 75%;
+    min-width: 660px;
     display: flex;
     flex-direction: row;
-    margin: 0;
-    padding: 10px;
-    gap: 20px;
+    padding-top: 20px;
 }
 
-/* Sidebar - Left position, narrow width */
+/* Sidebar - Left position */
 .sidebar {
     width: 16em;
     flex-shrink: 0;
     order: -1; /* Force left side */
-    font-size: 11px;
     padding: 0;
+    margin: 0;
+    font-size: 100%;
 }
 
 .sidebar h2 {
-    font-family: Georgia, "Bitstream Vera Serif", "New York", Palatino, serif;
-    font-size: 12px;
+    font-family: Arial, Verdana, Geneva, "Bitstream Vera Sans", Helvetica, sans-serif;
+    font-size: 77%;
     font-weight: bold;
-    color: #366D9C;
-    margin-top: 1em;
-    margin-bottom: 0.5em;
-    padding: 0;
+    color: #4C5B6B;
+    padding: 0.4em 0 0 1.5em;
+    margin: 0.2em 0 0.3em 0;
     background: none;
     border: none;
     text-transform: none;
 }
 
+.sidebar h2 a {
+    color: #4C5B6B;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+.sidebar h2 a:hover {
+    color: black;
+    text-decoration: underline;
+}
+
 /* Sidebar links (RSS, titles-only) */
 .sidebar-links {
     margin-bottom: 1em;
-    font-size: 11px;
+    padding-left: 1.5em;
+    font-size: 100%;
 }
 
 .sidebar-links a {
@@ -1936,17 +1962,35 @@ header p {
     display: none;
 }
 
-/* Feeds list - Simple bullet list */
+/* Feeds list - Menu style with borders */
 .feeds {
-    list-style: disc;
-    margin: 0 0 0 1.5em;
+    list-style: none;
+    margin: 0;
     padding: 0;
-    font-size: 11px;
+    font-size: 100%;
 }
 
 .feeds li {
-    padding: 2px 0;
-    border: none;
+    display: inline;
+}
+
+.feeds li a {
+    display: block;
+    border: 1px solid #DADADA;
+    padding: 2px 2px 2px 4px;
+    margin: 0 0 4px 1.4em;
+    width: 12em;
+    font-family: Verdana, Geneva, "Bitstream Vera Sans", Helvetica, sans-serif;
+    color: #4B5A6A;
+    background-color: #F5F5F5;
+    text-transform: uppercase;
+    text-decoration: none;
+    font-size: 100%;
+}
+
+.feeds li a:hover {
+    color: black;
+    text-decoration: underline;
 }
 
 /* Remove health indicators - not in original */
@@ -1954,14 +1998,6 @@ header p {
 .feeds li.unhealthy::before {
     display: none;
     content: none;
-}
-
-.feeds li a {
-    color: #00A;
-}
-
-.feeds li a:visited {
-    color: #551A8B;
 }
 
 /* RSS icon in sidebar - hide for authenticity */
@@ -1972,25 +2008,24 @@ header p {
 /* Submission link */
 .submission-link {
     margin-top: 1em;
-    font-size: 11px;
+    padding-left: 1.5em;
+    font-size: 100%;
     border: none;
-    padding: 0;
 }
 
 .submission-link a {
     color: #00A;
 }
 
-/* Navigation sections */
+/* Navigation sections - Level hierarchy */
 .nav-level-one,
 h2.nav-level-one {
-    font-family: Georgia, "Bitstream Vera Serif", serif;
-    font-size: 12px;
+    font-family: Arial, Verdana, Geneva, "Bitstream Vera Sans", Helvetica, sans-serif;
+    font-size: 77%;
     font-weight: bold;
-    color: #366D9C;
-    margin-top: 1.5em;
-    margin-bottom: 0.5em;
-    padding: 0;
+    color: #4C5B6B;
+    padding: 0.4em 0 0 1.5em;
+    margin: 0.2em 0 0.3em 0;
     background: none;
     border: none;
     text-transform: none;
@@ -1999,52 +2034,100 @@ h2.nav-level-one {
 .nav-level-two,
 ul.nav-level-two,
 .related-links {
-    list-style: disc;
-    margin: 0 0 0 1.5em;
+    list-style: none;
+    margin: 0;
     padding: 0;
-    font-size: 11px;
+    margin-bottom: 7px;
 }
 
 .nav-level-two li,
 .related-links li {
-    padding: 2px 0;
-    border: none;
+    display: inline;
+}
+
+.nav-level-two li a,
+.related-links li a {
+    background-color: transparent;
+    display: block;
+    border: 0;
+    border-top: 1px solid #DDD;
+    padding: 0.1em;
+    margin: 0 3em 0px 1.5em;
+    color: #3C4B7B;
+    background: none;
+    width: 11em;
+    font-family: Arial, Verdana, Geneva, "Bitstream Vera Sans", Helvetica, sans-serif;
+    text-transform: none;
+    text-decoration: none;
+}
+
+.nav-level-two li a:hover,
+.related-links li a:hover {
+    text-decoration: underline;
+    color: black;
+}
+
+.nav-level-two li a:visited,
+.related-links li a:visited {
+    color: #4C3B5B;
 }
 
 .nav-level-three,
 li.nav-level-three {
     margin-left: 0;
-    font-size: 11px;
+}
+
+.nav-level-three a {
+    display: block;
+    border: 0;
+    padding: 0.1em;
+    margin: 0 3em 0px 1.8em;
+    padding-left: 1em;
+    color: #5E72A5;
+    background-image: none;
+    width: 10em;
+    font-family: Arial, Verdana, Geneva, "Bitstream Vera Sans", Helvetica, sans-serif;
+    font-size: 95%;
+}
+
+.nav-level-three a:hover {
+    text-decoration: underline;
+    color: black;
 }
 
 /* Main content area */
 main {
+    padding: 0 0.55em 40px 0;
+    line-height: 1.4em;
+    font-family: Arial, Verdana, Geneva, "Bitstream Vera Sans", Helvetica, sans-serif;
+    margin-left: 2em;
     flex: 1;
     min-width: 0;
+    font-size: 100%;
 }
 
-/* Day headers - Georgia blue style */
+/* Day headers */
 .day {
     margin-bottom: 1.5em;
 }
 
 .day h2 {
-    font-size: 14px;
-    font-weight: bold;
+    font-size: 140%;
+    font-weight: normal;
     margin-bottom: 0.5em;
     padding: 0;
     border: none;
 }
 
 .day h2.date {
-    font-family: Georgia, "Bitstream Vera Serif", serif;
+    font-family: Georgia, "Bitstream Vera Serif", "New York", Palatino, serif;
     font-size: 140%;
     color: #366D9C;
-    font-weight: bold;
+    font-weight: normal;
     font-style: normal;
 }
 
-/* Articles - Minimal styling */
+/* Articles */
 article {
     margin-bottom: 1.5em;
     padding-bottom: 1em;
@@ -2052,27 +2135,32 @@ article {
 }
 
 article h3 {
-    font-family: Georgia, "Bitstream Vera Serif", serif;
+    font-family: Georgia, "Bitstream Vera Serif", "New York", Palatino, serif;
     font-size: 135%;
     font-weight: normal;
     font-style: italic;
     color: #366D9C;
-    margin-bottom: 3px;
+    margin: 0.4em 0 0 0;
 }
 
 article h3 a {
     color: #00A;
-    text-decoration: underline;
+    text-decoration: none;
 }
 
 article h3 a:visited {
     color: #551A8B;
 }
 
+article h3 a:hover {
+    text-decoration: underline;
+}
+
 /* Article header reset */
 article header {
     background: transparent;
     border: none;
+    height: auto;
     min-height: auto;
     padding: 0;
     display: block;
@@ -2080,7 +2168,7 @@ article header {
 
 /* Author/meta information */
 .meta {
-    font-size: 11px;
+    font-size: 100%;
     color: #000;
     margin-bottom: 0.5em;
 }
@@ -2100,8 +2188,8 @@ article header {
 
 /* Content area */
 .content {
-    font-size: 12px;
-    line-height: 1.5;
+    font-size: 100%;
+    line-height: 1.4em;
     color: #000;
 }
 
@@ -2117,12 +2205,15 @@ article header {
     max-width: 100%;
     height: auto;
     border: 0;
-    padding-top: 5px;
-    padding-bottom: 35px;
 }
 
-.content a {
+.content a:link {
     color: #00A;
+    text-decoration: none;
+}
+
+.content a:visited {
+    color: #551A8B;
     text-decoration: none;
 }
 
@@ -2130,12 +2221,9 @@ article header {
     text-decoration: underline;
 }
 
-.content a:visited {
-    color: #551A8B;
-}
-
 .content ul, .content ol {
-    margin: 0.5em 0 0.5em 2em;
+    margin-left: 1em;
+    padding-left: 0;
 }
 
 .content li {
@@ -2144,14 +2232,13 @@ article header {
 
 .content code {
     font-family: "Courier New", Courier, monospace;
-    font-size: 12px;
+    font-size: 100%;
 }
 
 .content pre {
     font-family: "Courier New", Courier, monospace;
-    font-size: 11px;
-    background: #f5f5f5;
-    border: 1px solid #DADADA;
+    font-size: 115%;
+    background: #E0E0FF;
     padding: 10px;
     overflow-x: auto;
     margin: 1em 0;
@@ -2163,11 +2250,9 @@ article header {
 }
 
 .content blockquote {
-    margin: 1em 0 1em 2em;
-    padding: 0;
-    font-style: italic;
-    border: none;
-    background: none;
+    margin-left: 1em;
+    padding-left: 1em;
+    border-left: 1px solid #CCC;
 }
 
 .content table {
@@ -2180,36 +2265,37 @@ article header {
     padding: 5px;
 }
 
-/* Footer - Simple text style */
+/* Footer */
 footer {
-    background: #FFF;
+    margin: 3em 0 0 0;
+    padding: 1em 0;
     border-top: 1px dotted #CCC;
-    padding: 10px;
-    margin-top: 2em;
-    text-align: left;
-    font-size: 11px;
+    bottom: 0;
+    font-size: 90%;
+    position: relative;
+    clear: both;
+    background: #FFF;
+    text-align: center;
     color: #000;
 }
 
-footer p {
-    margin-bottom: 5px;
-}
-
-footer p:last-child {
-    margin-bottom: 0;
-}
-
-footer a {
+footer a:visited, footer a:link {
     color: #666;
+    display: inline;
 }
 
-footer a:visited {
-    color: #551A8B;
+footer a:hover {
+    color: #333;
+    display: inline;
+}
+
+footer p {
+    margin: 0.5em 0;
 }
 
 footer kbd {
     font-family: "Courier New", Courier, monospace;
-    font-size: 11px;
+    font-size: 100%;
 }
 
 /* Horizontal rule separators */
@@ -2253,6 +2339,7 @@ hr {
     margin-bottom: 10px;
     padding-bottom: 5px;
     border-bottom: 1px solid #DADADA;
+    font-style: normal;
 }
 
 .shortcuts-panel dl {
@@ -2285,9 +2372,12 @@ hr {
 }
 
 /* Responsive - Stack on small screens */
-@media (max-width: 600px) {
+@media (max-width: 700px) {
     .container {
         flex-direction: column;
+        width: 95%;
+        margin-left: 2.5%;
+        min-width: auto;
     }
 
     .sidebar {
@@ -2298,15 +2388,20 @@ hr {
         padding-top: 1em;
     }
 
+    main {
+        margin-left: 0;
+    }
+
     header .logo {
-        max-width: 200px;
+        max-width: 150px;
+        height: auto;
     }
 }
 
 /* Titles-only page styles */
 .titles-only .view-toggle {
     margin-bottom: 1em;
-    font-size: 11px;
+    padding-left: 1.5em;
 }
 
 .titles-only .day {
@@ -2323,7 +2418,7 @@ hr {
 }
 
 .titles-only h4.entry-title {
-    font-size: 12px;
+    font-size: 100%;
     font-weight: normal;
     margin: 3px 0;
 }
@@ -2333,7 +2428,7 @@ hr {
 }
 
 .titles-only p.entry-meta {
-    font-size: 11px;
+    font-size: 100%;
     color: #000;
     margin: 0 0 0.5em 0;
 }
@@ -2357,9 +2452,8 @@ hr {
     }
 }
 """,
-    "planet-mozilla": """/* Planet Mozilla Theme - Exact recreation of planet.mozilla.org */
-/* Source: https://github.com/mozilla/planet/blob/master/branches/firefox-ux/theme/planet.css-original */
-/* Key features: RIGHT sidebar, #455372 dark header, #039 teal links, square bullets */
+    "planet-mozilla": """/* Planet Mozilla Theme - EXACT recreation of planet.mozilla.org */
+/* Key features: RIGHT sidebar, #455372 dark header, #148cb5 teal links, square bullets */
 
 * {
     box-sizing: border-box;
@@ -2370,10 +2464,11 @@ hr {
 body {
     font-family: Helvetica, Arial, Verdana, sans-serif;
     font-size: 13px;
-    line-height: 1.6;
+    line-height: 1.4;
     color: #000;
     background: #fff;
-    margin: 15px;
+    margin: 0;
+    padding: 0;
 }
 
 /* Links - Mozilla teal/purple scheme */
@@ -2388,7 +2483,7 @@ a:visited {
 
 a:hover {
     text-decoration: underline !important;
-    color: blue !important;
+    color: #148cb5 !important;
 }
 
 a:active {
@@ -2397,22 +2492,19 @@ a:active {
 
 /* Headings */
 h1 {
+    font-family: Helvetica, Arial, sans-serif;
     font-size: 24px;
     font-weight: normal;
     letter-spacing: -2px;
     text-transform: lowercase;
     color: white;
-    background: #455372;
-    padding: 20px;
     margin: 0;
-    -moz-border-radius: 12px;
-    -webkit-border-radius: 12px;
-    border-radius: 12px;
+    padding: 0;
 }
 
 h2 {
     font-family: Georgia, Times, "Times New Roman", serif;
-    font-size: 150%;
+    font-size: 1.75em;
     font-weight: normal;
     color: #b72822;
     border-bottom: 1px solid #ccc;
@@ -2422,10 +2514,12 @@ h2 {
 }
 
 h3 {
+    font-family: Helvetica, Arial, sans-serif;
     font-size: 120%;
     font-weight: bold;
     clear: both;
     border-bottom: 1px solid #ccc;
+    margin: 0;
 }
 
 h3 a {
@@ -2434,9 +2528,10 @@ h3 a {
 }
 
 h4 {
+    font-family: Helvetica, Arial, sans-serif;
     font-size: 100%;
     font-weight: bold;
-    margin: 1em 0 0 1em;
+    margin: 0 0 0 15px;
     clear: both;
     border-bottom: 1px solid #ccc;
 }
@@ -2466,7 +2561,7 @@ h4 {
 }
 
 .mozilla-nav a {
-    color: #039;
+    color: #148cb5;
     text-decoration: none;
 }
 
@@ -2476,17 +2571,15 @@ h4 {
 
 .mozilla-nav a:hover {
     text-decoration: underline !important;
-    color: blue !important;
+    color: #148cb5 !important;
 }
 
-/* Header - Dark slate blue banner with rounded corners */
+/* Header - Dark slate blue banner */
 header {
     background: #455372;
     padding: 20px;
     border-bottom: none;
-    -moz-border-radius: 12px;
-    -webkit-border-radius: 12px;
-    border-radius: 12px;
+    border-radius: 0;
     margin-bottom: 1em;
 }
 
@@ -2545,7 +2638,7 @@ main {
     margin-right: 0;
 }
 
-/* Sidebar - RIGHT position, absolute style like original */
+/* Sidebar - RIGHT position */
 .sidebar {
     width: 230px;
     flex-shrink: 0;
@@ -2557,6 +2650,7 @@ main {
 }
 
 .sidebar h2 {
+    font-family: Helvetica, Arial, sans-serif;
     font-size: 150%;
     font-weight: bold;
     color: black;
@@ -2575,14 +2669,14 @@ main {
 
 .sidebar-links a {
     margin-right: 10px;
-    color: #039;
+    color: #148cb5;
 }
 
 .sidebar-links a:visited {
     color: #636;
 }
 
-/* Search form */
+/* Search form - Mozilla style with rounded corners */
 .search-form {
     margin-bottom: 1.5em;
     padding: 10px;
@@ -2609,8 +2703,8 @@ main {
 }
 
 .search-form input:focus {
-    outline: 1px solid #039;
-    border-color: #039;
+    outline: 1px solid #148cb5;
+    border-color: #148cb5;
 }
 
 .search-form button {
@@ -2664,7 +2758,7 @@ main {
 }
 
 .feeds li a {
-    color: #039;
+    color: #148cb5;
 }
 
 .feeds li a:visited {
@@ -2685,12 +2779,13 @@ main {
 }
 
 .submission-link a {
-    color: #039;
+    color: #148cb5;
 }
 
 /* Navigation sections */
 .nav-level-one,
 h2.nav-level-one {
+    font-family: Helvetica, Arial, sans-serif;
     font-size: 150%;
     font-weight: bold;
     color: black;
@@ -2734,17 +2829,19 @@ li.nav-level-three {
 }
 
 .day h2 {
-    font-size: 150%;
+    font-family: Georgia, Times, "Times New Roman", serif;
+    font-size: 1.75em;
     font-weight: normal;
+    color: #b72822;
     border-bottom: 1px solid #ccc;
     margin-bottom: 0.5em;
     padding-bottom: 5px;
 }
 
 .day h2.date {
-    font-family: sans-serif;
-    font-size: 150%;
-    color: #000;
+    font-family: Georgia, Times, "Times New Roman", serif;
+    font-size: 1.75em;
+    color: #b72822;
     font-weight: normal;
 }
 
@@ -2762,14 +2859,16 @@ article:last-child {
 }
 
 article h3 {
+    font-family: Helvetica, Arial, sans-serif;
     font-size: 120%;
     font-weight: bold;
     margin-bottom: 3px;
     clear: both;
+    border-bottom: 1px solid #ccc;
 }
 
 article h3 a {
-    color: #039;
+    color: #148cb5;
     text-decoration: none;
 }
 
@@ -2792,7 +2891,7 @@ article header {
     display: block;
 }
 
-/* Author/meta information - Right aligned date */
+/* Author/meta information */
 .meta {
     font-size: 11px;
     color: #666;
@@ -2805,7 +2904,7 @@ article header {
 }
 
 .meta .author a {
-    color: #039;
+    color: #148cb5;
 }
 
 .meta .date-sep {
@@ -2849,7 +2948,7 @@ article header {
 }
 
 .content a {
-    color: #039;
+    color: #148cb5;
     text-decoration: none;
 }
 
@@ -2859,7 +2958,7 @@ article header {
 
 .content a:hover {
     text-decoration: underline !important;
-    color: blue !important;
+    color: #148cb5 !important;
 }
 
 .content ul, .content ol {
@@ -2930,10 +3029,9 @@ hr {
     width: 50%;
 }
 
-/* Footer - Border top, centered text */
+/* Footer - Dark background, centered text */
 footer,
 #footer {
-    border-top: 1px solid #666;
     margin: 2em 0;
     padding: 1em 0;
     text-align: center;
@@ -2943,6 +3041,8 @@ footer,
     font-size: 11px;
     color: #999999;
     background-color: #2a2a2a;
+    border-radius: 0;
+    border-top: none;
 }
 
 footer ul,
@@ -2962,18 +3062,18 @@ footer li,
 
 footer p,
 #footer p {
-    color: #666;
+    color: #999;
     margin: 0.6em 0;
 }
 
 footer a,
 #footer a {
-    color: #666;
+    color: #999;
 }
 
 footer a:hover,
 #footer a:hover {
-    color: #000;
+    color: #ccc;
     text-decoration: underline !important;
 }
 
@@ -2997,8 +3097,9 @@ footer span a,
 footer kbd {
     font-family: Monaco, Consolas, "Courier New", monospace;
     font-size: 11px;
-    background: #fff;
-    border: 1px solid #ccc;
+    background: #444;
+    color: #ccc;
+    border: 1px solid #666;
     padding: 2px 4px;
     border-radius: 2px;
 }
@@ -3151,7 +3252,7 @@ footer kbd {
 }
 
 .titles-only h4.entry-title a {
-    color: #039;
+    color: #148cb5;
 }
 
 .titles-only p.entry-meta {
@@ -3307,7 +3408,6 @@ THEME_LOGOS = {
   </text>
 </svg>
 """,
-        "url": "/static/logo.svg",
         "width": "211",
         "height": "71",
         "alt": "Python Logo",
@@ -3338,7 +3438,6 @@ THEME_LOGOS = {
   </g>
 </svg>
 """,
-        "url": "/static/logo.svg",
         "width": "112",
         "height": "32",
         "alt": "Mozilla Logo",
