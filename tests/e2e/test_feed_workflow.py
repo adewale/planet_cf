@@ -20,6 +20,7 @@ import hashlib
 import hmac
 import json
 import os
+import socket
 import time
 
 import httpx
@@ -27,6 +28,25 @@ import pytest
 
 # Test configuration
 BASE_URL = os.environ.get("E2E_BASE_URL", "http://localhost:8787")
+
+
+def _is_server_running(host: str = "localhost", port: int = 8787) -> bool:
+    """Check if server is running on the specified host:port."""
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        result = sock.connect_ex((host, port))
+        sock.close()
+        return result == 0
+    except OSError:
+        return False
+
+
+# Skip marker for tests requiring running server
+requires_server = pytest.mark.skipif(
+    not _is_server_running(),
+    reason=f"Server not running on {BASE_URL}",
+)
 SESSION_SECRET = os.environ.get("E2E_SESSION_SECRET", "test-secret-for-e2e-testing")
 TEST_ADMIN_USERNAME = os.environ.get("E2E_ADMIN_USERNAME", "testadmin")
 
@@ -45,6 +65,7 @@ def create_test_session(username: str = TEST_ADMIN_USERNAME, github_id: int = 12
     return f"session={payload_b64}.{signature}"
 
 
+@requires_server
 class TestPublicEndpoints:
     """Test public endpoints that don't require authentication."""
 
@@ -104,6 +125,7 @@ class TestPublicEndpoints:
         assert response.status_code == 404
 
 
+@requires_server
 class TestAdminEndpoints:
     """Test admin endpoints that require authentication."""
 
@@ -147,6 +169,7 @@ class TestAdminEndpoints:
         assert response.status_code == 400
 
 
+@requires_server
 class TestOAuthFlow:
     """Test OAuth flow endpoints."""
 
