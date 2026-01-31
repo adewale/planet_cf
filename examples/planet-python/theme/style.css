@@ -1,74 +1,76 @@
-/* Planet Python Theme - Faithful recreation of the original planetpython.org */
-/* The original site uses extremely minimal styling - almost plain HTML */
-/* Key features: LEFT sidebar, simple text, minimal decoration */
+/* Planet Python Theme - Exact recreation of planetpython.org */
+/* Source: https://github.com/python/planet/blob/main/static/styles/styles.css */
+/* Key features: LEFT sidebar, Georgia headings, #366D9C blue, minimal styling */
 
 * {
     box-sizing: border-box;
 }
 
-body {
-    font-family: Verdana, Arial, Helvetica, sans-serif;
+HTML, body {
+    font-family: Arial, Verdana, Geneva, "Bitstream Vera Sans", Helvetica, sans-serif;
     font-size: 103%;
     line-height: 1.5;
-    color: #000000;
-    background: #ffffff;
+    color: #000;
+    background-color: #FFF;
     margin: 0;
     padding: 0;
 }
 
-/* Links - Classic blue web links */
-a {
-    color: #0000ee;
+/* Links - Exact Python.org colors */
+a:link {
+    color: #00A;
     text-decoration: underline;
 }
 
 a:visited {
-    color: #551a8b;
+    color: #551A8B;
 }
 
 a:hover {
-    color: #0000ee;
+    color: #00A;
+    text-decoration: underline;
 }
 
-/* Headings */
-h1, h2, h3, h4, h5, h6 {
-    font-weight: bold;
-    margin: 0;
-    padding: 0;
+/* Headings - Python.org style with Georgia */
+h1, h2, h3, h4, h5 {
+    font-family: Georgia, "Bitstream Vera Serif", "New York", Palatino, serif;
+    line-height: 1em;
 }
 
 h1 {
-    font-size: 18px;
+    font-size: 160%;
+    font-weight: normal;
+    color: #234764;
+    margin: 0.7em 0;
 }
 
 h2 {
-    font-family: Georgia, "Bitstream Vera Serif", serif;
-    font-size: 16px;
+    font-size: 140%;
+    font-weight: normal;
     color: #366D9C;
     margin-top: 1em;
     margin-bottom: 0.5em;
 }
 
 h3 {
-    font-family: Georgia, "Bitstream Vera Serif", serif;
-    font-size: 14px;
+    font-size: 135%;
     font-weight: normal;
     font-style: italic;
     color: #366D9C;
 }
 
 h4 {
-    font-family: Georgia, "Bitstream Vera Serif", serif;
-    font-size: 13px;
+    font-size: 125%;
     font-weight: normal;
     color: #366D9C;
 }
 
-/* Header - Simple logo area */
+/* Header - Python.org logo area style */
 header {
-    padding: 5px 10px 0 10px;
-    background: #F7F7F7;
+    background-color: #F7F7F7;
     border-bottom: 1px solid #999999;
+    padding: 5px 10px 0 10px;
+    min-height: 84px;
 }
 
 header .logo-link {
@@ -85,7 +87,7 @@ header .logo {
 }
 
 header .header-text {
-    display: none; /* Original site shows logo only, no text beside it */
+    display: none; /* Original site shows logo only */
 }
 
 header h1,
@@ -93,7 +95,7 @@ header p {
     display: none; /* Hide text header - logo only */
 }
 
-/* Container - LEFT sidebar layout */
+/* Container - LEFT sidebar layout like python.org */
 .container {
     display: flex;
     flex-direction: row;
@@ -102,9 +104,9 @@ header p {
     gap: 20px;
 }
 
-/* Sidebar - Left position */
+/* Sidebar - Left position, narrow width */
 .sidebar {
-    width: 180px;
+    width: 16em;
     flex-shrink: 0;
     order: -1; /* Force left side */
     font-size: 11px;
@@ -112,8 +114,10 @@ header p {
 }
 
 .sidebar h2 {
+    font-family: Georgia, "Bitstream Vera Serif", "New York", Palatino, serif;
     font-size: 12px;
     font-weight: bold;
+    color: #366D9C;
     margin-top: 1em;
     margin-bottom: 0.5em;
     padding: 0;
@@ -122,7 +126,7 @@ header p {
     text-transform: none;
 }
 
-/* Sidebar links (RSS, titles-only, Planet Planet) */
+/* Sidebar links (RSS, titles-only) */
 .sidebar-links {
     margin-bottom: 1em;
     font-size: 11px;
@@ -130,6 +134,11 @@ header p {
 
 .sidebar-links a {
     margin-right: 10px;
+    color: #00A;
+}
+
+.sidebar-links a:visited {
+    color: #551A8B;
 }
 
 /* Search form - hide for authenticity */
@@ -137,7 +146,7 @@ header p {
     display: none;
 }
 
-/* Feeds list - Simple list */
+/* Feeds list - Simple bullet list */
 .feeds {
     list-style: disc;
     margin: 0 0 0 1.5em;
@@ -158,7 +167,11 @@ header p {
 }
 
 .feeds li a {
-    color: #0000ee;
+    color: #00A;
+}
+
+.feeds li a:visited {
+    color: #551A8B;
 }
 
 /* RSS icon in sidebar - hide for authenticity */
@@ -174,11 +187,17 @@ header p {
     padding: 0;
 }
 
+.submission-link a {
+    color: #00A;
+}
+
 /* Navigation sections */
 .nav-level-one,
 h2.nav-level-one {
+    font-family: Georgia, "Bitstream Vera Serif", serif;
     font-size: 12px;
     font-weight: bold;
+    color: #366D9C;
     margin-top: 1.5em;
     margin-bottom: 0.5em;
     padding: 0;
@@ -214,7 +233,7 @@ main {
     min-width: 0;
 }
 
-/* Day headers - Simple date text */
+/* Day headers - Georgia blue style */
 .day {
     margin-bottom: 1.5em;
 }
@@ -231,6 +250,8 @@ main {
     font-family: Georgia, "Bitstream Vera Serif", serif;
     font-size: 140%;
     color: #366D9C;
+    font-weight: bold;
+    font-style: normal;
 }
 
 /* Articles - Minimal styling */
@@ -241,19 +262,21 @@ article {
 }
 
 article h3 {
-    font-size: 13px;
-    font-weight: bold;
-    font-style: normal;
+    font-family: Georgia, "Bitstream Vera Serif", serif;
+    font-size: 135%;
+    font-weight: normal;
+    font-style: italic;
+    color: #366D9C;
     margin-bottom: 3px;
 }
 
 article h3 a {
-    color: #0000ee;
+    color: #00A;
     text-decoration: underline;
 }
 
 article h3 a:visited {
-    color: #551a8b;
+    color: #551A8B;
 }
 
 /* Article header reset */
@@ -268,17 +291,17 @@ article header {
 /* Author/meta information */
 .meta {
     font-size: 11px;
-    color: #000000;
+    color: #000;
     margin-bottom: 0.5em;
 }
 
 .meta .author {
-    color: #000000;
+    color: #000;
     font-weight: normal;
 }
 
 .meta .author a {
-    color: #0000ee;
+    color: #00A;
 }
 
 .meta .date-sep {
@@ -289,7 +312,7 @@ article header {
 .content {
     font-size: 12px;
     line-height: 1.5;
-    color: #000000;
+    color: #000;
 }
 
 .content p {
@@ -304,15 +327,21 @@ article header {
     max-width: 100%;
     height: auto;
     border: 0;
+    padding-top: 5px;
+    padding-bottom: 35px;
 }
 
 .content a {
-    color: #0000ee;
+    color: #00A;
+    text-decoration: none;
+}
+
+.content a:hover {
     text-decoration: underline;
 }
 
 .content a:visited {
-    color: #551a8b;
+    color: #551A8B;
 }
 
 .content ul, .content ol {
@@ -332,7 +361,7 @@ article header {
     font-family: "Courier New", Courier, monospace;
     font-size: 11px;
     background: #f5f5f5;
-    border: 1px solid #cccccc;
+    border: 1px solid #DADADA;
     padding: 10px;
     overflow-x: auto;
     margin: 1em 0;
@@ -357,19 +386,19 @@ article header {
 }
 
 .content th, .content td {
-    border: 1px solid #cccccc;
+    border: 1px solid #DADADA;
     padding: 5px;
 }
 
-/* Footer - Simple text */
+/* Footer - Simple text style */
 footer {
-    background: #ffffff;
-    border-top: 1px solid #cccccc;
+    background: #FFF;
+    border-top: 1px dotted #CCC;
     padding: 10px;
     margin-top: 2em;
     text-align: left;
     font-size: 11px;
-    color: #000000;
+    color: #000;
 }
 
 footer p {
@@ -381,7 +410,11 @@ footer p:last-child {
 }
 
 footer a {
-    color: #0000ee;
+    color: #666;
+}
+
+footer a:visited {
+    color: #551A8B;
 }
 
 footer kbd {
@@ -389,10 +422,10 @@ footer kbd {
     font-size: 11px;
 }
 
-/* Horizontal rule separators (like the original * * *) */
+/* Horizontal rule separators */
 hr {
     border: none;
-    border-top: 1px solid #cccccc;
+    border-top: 1px solid #DADADA;
     margin: 1em 0;
 }
 
@@ -413,8 +446,8 @@ hr {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    background: #ffffff;
-    border: 1px solid #000000;
+    background: #FFF;
+    border: 1px solid #000;
     padding: 15px;
     z-index: 1000;
     min-width: 250px;
@@ -429,7 +462,7 @@ hr {
     font-weight: bold;
     margin-bottom: 10px;
     padding-bottom: 5px;
-    border-bottom: 1px solid #cccccc;
+    border-bottom: 1px solid #DADADA;
 }
 
 .shortcuts-panel dl {
@@ -445,7 +478,7 @@ hr {
 .shortcuts-panel kbd {
     font-family: "Courier New", Courier, monospace;
     background: #f5f5f5;
-    border: 1px solid #cccccc;
+    border: 1px solid #DADADA;
     padding: 2px 5px;
 }
 
@@ -471,7 +504,7 @@ hr {
         width: 100%;
         order: 1;
         margin-top: 2em;
-        border-top: 1px solid #cccccc;
+        border-top: 1px solid #DADADA;
         padding-top: 1em;
     }
 
@@ -491,8 +524,10 @@ hr {
 }
 
 .titles-only h3.post {
-    font-size: 13px;
-    font-weight: bold;
+    font-family: Georgia, "Bitstream Vera Serif", serif;
+    font-size: 135%;
+    font-style: italic;
+    color: #366D9C;
     margin-top: 0.5em;
     margin-bottom: 3px;
 }
@@ -504,12 +539,12 @@ hr {
 }
 
 .titles-only h4.entry-title a {
-    color: #0000ee;
+    color: #00A;
 }
 
 .titles-only p.entry-meta {
     font-size: 11px;
-    color: #000000;
+    color: #000;
     margin: 0 0 0.5em 0;
 }
 

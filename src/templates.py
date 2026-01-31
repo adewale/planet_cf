@@ -27,8 +27,8 @@ _EMBEDDED_TEMPLATES = {
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
     <link rel="stylesheet" href="/static/style.css">
-    <link rel="alternate" type="application/atom+xml" title="{{ planet.name }} Atom Feed" href="/feed.atom">
-    <link rel="alternate" type="application/rss+xml" title="{{ planet.name }} RSS Feed" href="/feed.rss">
+    <link rel="alternate" type="application/atom+xml" title="{{ planet.name }} Atom Feed" href="{{ feed_links.atom or '/feed.atom' }}">
+    <link rel="alternate" type="application/rss+xml" title="{{ planet.name }} RSS Feed" href="{{ feed_links.rss or '/feed.rss' }}">
 </head>
 <body{% if theme == 'planet-mozilla' %} class="theme-mozilla"{% endif %}>
     {% if theme == 'planet-mozilla' %}
@@ -122,7 +122,7 @@ _EMBEDDED_TEMPLATES = {
     </div>
 
     <footer>
-        <p><a href="/feed.atom">Atom</a> · <a href="/feed.rss">RSS</a> · <a href="/feeds.opml">OPML</a></p>
+        <p><a href="{{ feed_links.atom or '/feed.atom' }}">Atom</a> · <a href="{{ feed_links.rss or '/feed.rss' }}">RSS</a> · <a href="{{ feed_links.opml or '/feeds.opml' }}">OPML</a></p>
         <p>{{ footer_text }}{% if show_admin_link %} · <a href="/admin" style="color: #999; font-size: 0.8em;">Admin</a>{% endif %} · <span class="hint">Press <kbd>?</kbd> for shortcuts</span></p>
         <p>Last updated: {{ generated_at }}</p>
     </footer>
@@ -158,8 +158,8 @@ _EMBEDDED_TEMPLATES = {
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
     <link rel="stylesheet" href="/static/style.css">
-    <link rel="alternate" type="application/atom+xml" title="{{ planet.name }} Atom Feed" href="/feed.atom">
-    <link rel="alternate" type="application/rss+xml" title="{{ planet.name }} RSS Feed" href="/feed.rss">
+    <link rel="alternate" type="application/atom+xml" title="{{ planet.name }} Atom Feed" href="{{ feed_links.atom or '/feed.atom' }}">
+    <link rel="alternate" type="application/rss+xml" title="{{ planet.name }} RSS Feed" href="{{ feed_links.rss or '/feed.rss' }}">
 </head>
 <body class="titles-only{% if theme == 'planet-mozilla' %} theme-mozilla{% endif %}">
     {% if theme == 'planet-mozilla' %}
@@ -253,7 +253,7 @@ _EMBEDDED_TEMPLATES = {
     </div>
 
     <footer>
-        <p><a href="/feed.atom">Atom</a> · <a href="/feed.rss">RSS</a> · <a href="/feeds.opml">OPML</a></p>
+        <p><a href="{{ feed_links.atom or '/feed.atom' }}">Atom</a> · <a href="{{ feed_links.rss or '/feed.rss' }}">RSS</a> · <a href="{{ feed_links.opml or '/feeds.opml' }}">OPML</a></p>
         <p>{{ footer_text }}{% if show_admin_link %} · <a href="/admin" style="color: #999; font-size: 0.8em;">Admin</a>{% endif %}</p>
         <p>Last updated: {{ generated_at }}</p>
     </footer>
@@ -718,11 +718,9 @@ _EMBEDDED_TEMPLATES = {
 """,
 }
 
-STATIC_CSS = """/* Default Theme - Modern, clean design with accent colors */
-/* Based on the original Planet CF design */
-
+STATIC_CSS = """/* Planet CF Styles - Generated from templates/style.css */
 :root {
-    /* Theme: Default - Configurable via CSS custom properties */
+    /* Accent color - used sparingly */
     --accent: #f6821f;
     --accent-dark: #e5731a;
     --accent-light: #fff7ed;
@@ -765,13 +763,16 @@ body {
     color: var(--text-primary);
     background: var(--bg-secondary);
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
+/* Headings use bold serif for elegance */
 h1, h2, h3, h4, h5, h6 {
     font-family: 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
     font-weight: 700;
 }
 
+/* UI elements use clean sans-serif */
 .search-form, .sidebar, footer, .meta, button, .day h2 {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
@@ -807,8 +808,64 @@ header p::before {
     color: var(--border-medium);
 }
 
-header a { color: var(--text-primary); text-decoration: none; }
-header a:hover { color: var(--accent); }
+header a {
+    color: var(--text-primary);
+    text-decoration: none;
+}
+
+header a:hover {
+    color: var(--accent);
+}
+
+.search-form {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border-light);
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+}
+
+.search-form input {
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border-light);
+    border-radius: 6px;
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 0.9rem;
+    background: var(--bg-secondary);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.search-form input:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: var(--bg-primary);
+    box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.search-form button {
+    padding: 0.75rem 1rem;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-medium);
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+    width: 100%;
+    transition: all 0.15s ease;
+}
+
+.search-form button:hover {
+    background: var(--bg-secondary);
+    border-color: var(--accent-subtle);
+    color: var(--text-primary);
+}
+
+.search-form button:active {
+    transform: scale(0.98);
+}
 
 .container {
     display: grid;
@@ -841,6 +898,7 @@ article {
     margin-bottom: 1rem;
     box-shadow: var(--shadow-sm);
     transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    scroll-margin-top: 1rem;
 }
 
 article:hover {
@@ -852,6 +910,7 @@ article h3 {
     margin-bottom: 0.625rem;
     font-size: 1.25rem;
     font-weight: 600;
+    letter-spacing: -0.02em;
     line-height: 1.35;
 }
 
@@ -861,7 +920,9 @@ article h3 a {
     transition: color 0.15s ease;
 }
 
-article h3 a:hover { color: var(--accent); }
+article h3 a:hover {
+    color: var(--accent);
+}
 
 article header {
     background: transparent;
@@ -876,11 +937,26 @@ article header {
     margin-bottom: 1rem;
 }
 
-.meta .author { color: var(--text-secondary); font-weight: 500; }
-.meta .date-sep { color: var(--text-muted); margin: 0 0.25rem; }
+.meta .author {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
 
+.meta .date-sep {
+    color: var(--text-muted);
+    margin: 0 0.25rem;
+}
+
+.meta time {
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Content security: prevent foreign content from breaking layout */
 .content {
     overflow-wrap: break-word;
+    word-wrap: break-word;
+    word-break: break-word;
     color: var(--text-secondary);
     font-size: 1.0625rem;
     line-height: 1.85;
@@ -916,6 +992,7 @@ article header {
     padding: 1.25rem;
     border-radius: 8px;
     overflow-x: auto;
+    max-width: 100%;
     margin: 1rem 0;
 }
 
@@ -925,21 +1002,68 @@ article header {
     padding: 0;
 }
 
-.content a {
-    color: var(--accent);
-    text-decoration: none;
-    border-bottom: 1px solid transparent;
-    transition: border-color 0.15s ease;
+.content table {
+    display: block;
+    overflow-x: auto;
+    max-width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    font-size: 0.925rem;
 }
 
-.content a:hover { border-bottom-color: var(--accent); }
+.content th, .content td {
+    border: 1px solid var(--border-light);
+    padding: 0.75rem 1rem;
+    text-align: left;
+}
+
+.content th {
+    background: var(--bg-tertiary);
+    font-weight: 600;
+    color: var(--text-primary);
+}
 
 .content blockquote {
     border-left: 3px solid var(--border-medium);
     margin: 1.25rem 0;
     padding: 0.75rem 1.25rem;
     background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border-radius: 0 6px 6px 0;
     font-style: italic;
+}
+
+.content a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.15s ease;
+    word-break: break-all;
+}
+
+.content a:hover { border-bottom-color: var(--accent); }
+
+.content h1, .content h2, .content h3, .content h4 {
+    color: var(--text-primary);
+    font-weight: 600;
+    margin: 1.5rem 0 0.75rem 0;
+    line-height: 1.3;
+}
+
+.content h1 { font-size: 1.5rem; }
+.content h2 { font-size: 1.3rem; }
+.content h3 { font-size: 1.15rem; }
+.content h4 { font-size: 1rem; }
+
+.content ul, .content ol {
+    margin: 1rem 0;
+    padding-left: 1.5rem;
+}
+
+.content li { margin-bottom: 0.5rem; }
+
+.content iframe, .content object, .content embed {
+    display: none !important;
 }
 
 .sidebar {
@@ -962,75 +1086,54 @@ article header {
     color: var(--text-muted);
 }
 
-.search-form {
-    margin-bottom: 1.5rem;
-    padding-bottom: 1.5rem;
-    border-bottom: 1px solid var(--border-light);
-    display: flex;
-    flex-direction: column;
-    gap: 0.625rem;
-}
-
-.search-form input {
-    padding: 0.75rem 1rem;
-    border: 1px solid var(--border-light);
-    border-radius: 6px;
-    width: 100%;
-    font-size: 0.9rem;
-    background: var(--bg-secondary);
-}
-
-.search-form input:focus {
-    outline: none;
-    border-color: var(--accent);
-    background: var(--bg-primary);
-    box-shadow: 0 0 0 3px var(--accent-light);
-}
-
-.search-form button {
-    padding: 0.75rem 1rem;
-    background: var(--bg-primary);
-    color: var(--text-secondary);
-    border: 1px solid var(--border-medium);
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 600;
-    font-size: 0.9rem;
-}
-
-.search-form button:hover {
-    background: var(--bg-secondary);
-    border-color: var(--accent-subtle);
-}
-
 .feeds { list-style: none; }
+
 .feeds li {
+    display: flex;
+    align-items: center;
     padding: 0.625rem 0;
     border-bottom: 1px solid var(--border-light);
     font-size: 0.925rem;
 }
+
 .feeds li:last-child { border-bottom: none; }
-.feeds li a { color: var(--text-secondary); text-decoration: none; }
+
+.feeds li a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: color 0.15s ease;
+}
+
 .feeds li a:hover { color: var(--accent); }
+
+.feeds li .feed-icon {
+    display: flex;
+    align-items: center;
+    margin-right: 0.5rem;
+}
+
 .feeds li.healthy::before {
     content: '';
-    display: inline-block;
+    flex-shrink: 0;
     width: 6px;
     height: 6px;
-    background: var(--success);
+    background: var(--accent);
     border-radius: 50%;
     margin-right: 0.5rem;
-    vertical-align: middle;
 }
+
+.feeds li.unhealthy a:not(.feed-icon) {
+    border-bottom: 1px dashed var(--text-primary);
+}
+
 .feeds li.unhealthy::before {
     content: '';
-    display: inline-block;
+    flex-shrink: 0;
     width: 6px;
     height: 6px;
     background: var(--error);
     border-radius: 50%;
     margin-right: 0.5rem;
-    vertical-align: middle;
 }
 
 footer {
@@ -1041,15 +1144,312 @@ footer {
     border-top: 1px solid var(--border-light);
 }
 
-footer p { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.5rem; }
-footer a { color: var(--accent); text-decoration: none; }
+footer p {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+}
+
+footer a {
+    color: var(--accent);
+    text-decoration: none;
+    transition: color 0.15s ease;
+}
+
 footer a:hover { color: var(--accent-dark); }
 
+footer .hint {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+footer .hint kbd {
+    display: inline-block;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: 3px;
+    padding: 0.1rem 0.35rem;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.75rem;
+}
+
+/* Search errors */
+.search-error {
+    background: var(--accent-light);
+    border: 1px solid var(--accent-subtle);
+    border-radius: 8px;
+    padding: 1rem 1.5rem;
+    margin-bottom: 1.5rem;
+    color: var(--text-secondary);
+}
+
+.search-error p {
+    margin: 0;
+}
+
+.search-notice {
+    background: #f0f7ff;
+    border: 1px solid #c9e0ff;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+/* Search results */
+.search-results { list-style: none; }
+
+.search-results li {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow 0.2s ease;
+}
+
+.search-results li:hover { box-shadow: var(--shadow-md); }
+
+.search-results h3 {
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+.search-results h3 a {
+    color: var(--text-primary);
+    text-decoration: none;
+    transition: color 0.15s ease;
+}
+
+.search-results h3 a:hover { color: var(--accent); }
+
+/* Admin table styles */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+}
+
+th, td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-light);
+}
+
+th {
+    background: var(--bg-tertiary);
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+button {
+    padding: 0.625rem 1.25rem;
+    background: var(--bg-primary);
+    color: var(--accent);
+    border: 2px solid var(--accent);
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.95rem;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+button:hover {
+    background: var(--accent);
+    color: white;
+}
+
+/* Button variants */
+.btn {
+    padding: 0.625rem 1.25rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.95rem;
+    border: none;
+    transition: opacity 0.15s ease;
+}
+.btn:hover { opacity: 0.9; }
+.btn-sm { padding: 0.375rem 0.75rem; font-size: 0.8rem; }
+.btn-success { background: var(--success); color: white; }
+.btn-danger { background: var(--error); color: white; }
+.btn-warning { background: #f59e0b; color: white; }
+
+/* Keyboard navigation */
+article.selected {
+    outline: 2px solid var(--accent);
+    outline-offset: 4px;
+}
+
+.shortcuts-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+}
+
+.shortcuts-panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--bg-primary);
+    border: 1px solid var(--border-medium);
+    border-radius: 10px;
+    padding: 1.5rem 2rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    min-width: 280px;
+}
+
+.shortcuts-panel h3 {
+    margin: 0 0 1rem 0;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.shortcuts-panel dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.5rem 1rem;
+    margin: 0;
+}
+
+.shortcuts-panel dt {
+    text-align: right;
+}
+
+.shortcuts-panel dd {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.shortcuts-panel kbd {
+    display: inline-block;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-light);
+    border-radius: 4px;
+    padding: 0.15rem 0.5rem;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.8rem;
+    color: var(--text-primary);
+}
+
+.shortcuts-panel .close-btn {
+    margin-top: 1rem;
+    width: 100%;
+    padding: 0.5rem;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-light);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    transition: background 0.15s ease;
+}
+
+.shortcuts-panel .close-btn:hover {
+    background: var(--bg-secondary);
+}
+
+.shortcuts-panel .close-btn:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* Titles-only page styles */
+.titles-only .view-toggle {
+    margin-bottom: 1rem;
+    font-size: 0.9em;
+}
+
+.titles-only .view-toggle a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.titles-only .view-toggle a:hover {
+    text-decoration: underline;
+}
+
+.titles-only .day {
+    margin-bottom: 1rem;
+}
+
+.titles-only .day h2.date {
+    margin-bottom: 0.5em;
+    padding-bottom: 0.25em;
+}
+
+.titles-only .titles-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.titles-only .titles-list li {
+    padding: 0.3em 0;
+    border-bottom: 1px dotted var(--border-light);
+    line-height: 1.4;
+}
+
+.titles-only .titles-list li:last-child {
+    border-bottom: none;
+}
+
+.titles-only .entry-title {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.titles-only .entry-title:hover {
+    text-decoration: underline;
+}
+
+.titles-only .entry-meta {
+    font-size: 0.85em;
+    color: var(--text-secondary);
+    margin-left: 0.5em;
+}
+
+.titles-only .entry-meta .author {
+    color: var(--text-primary);
+}
+
+.titles-only .entry-meta .date-sep {
+    margin: 0 0.25em;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* Responsive */
 @media (max-width: 768px) {
-    header { flex-direction: column; gap: 0.125rem; }
+    header {
+        padding: 0.5rem 1rem;
+        flex-direction: column;
+        gap: 0.125rem;
+    }
+    header h1 { font-size: 1rem; }
+    header p { font-size: 0.75rem; }
     header p::before { display: none; }
-    .container { grid-template-columns: 1fr; }
+    .container {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+        margin: 1.5rem auto;
+    }
     .sidebar { position: static; }
+    .search-form {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .search-form input { width: 100%; }
+    article { padding: 1.25rem; }
 }
 """
 
@@ -1173,1385 +1573,6 @@ KEYBOARD_NAV_JS = """// Keyboard navigation for browsing entries
 # =============================================================================
 # Admin JavaScript (for Workers environment)
 # =============================================================================
-
-# =============================================================================
-# Theme-specific CSS
-# =============================================================================
-
-THEME_CSS_PLANET_PYTHON = """/* Planet Python Theme - Faithful recreation of the original planetpython.org */
-/* The original site uses extremely minimal styling - almost plain HTML */
-/* Key features: LEFT sidebar, simple text, minimal decoration */
-
-* {
-    box-sizing: border-box;
-}
-
-body {
-    font-family: Verdana, Arial, Helvetica, sans-serif;
-    font-size: 103%;
-    line-height: 1.5;
-    color: #000000;
-    background: #ffffff;
-    margin: 0;
-    padding: 0;
-}
-
-/* Links - Classic blue web links */
-a {
-    color: #0000ee;
-    text-decoration: underline;
-}
-
-a:visited {
-    color: #551a8b;
-}
-
-a:hover {
-    color: #0000ee;
-}
-
-/* Headings */
-h1, h2, h3, h4, h5, h6 {
-    font-weight: bold;
-    margin: 0;
-    padding: 0;
-}
-
-h1 {
-    font-size: 18px;
-}
-
-h2 {
-    font-family: Georgia, "Bitstream Vera Serif", serif;
-    font-size: 16px;
-    color: #366D9C;
-    margin-top: 1em;
-    margin-bottom: 0.5em;
-}
-
-h3 {
-    font-family: Georgia, "Bitstream Vera Serif", serif;
-    font-size: 14px;
-    font-weight: normal;
-    font-style: italic;
-    color: #366D9C;
-}
-
-h4 {
-    font-family: Georgia, "Bitstream Vera Serif", serif;
-    font-size: 13px;
-    font-weight: normal;
-    color: #366D9C;
-}
-
-/* Header - Simple logo area */
-header {
-    padding: 5px 10px 0 10px;
-    background: #F7F7F7;
-    border-bottom: 1px solid #999999;
-}
-
-header .logo-link {
-    display: block;
-}
-
-header .logo {
-    display: block;
-    padding-top: 5px;
-    padding-bottom: 35px;
-    border: 0;
-    height: auto;
-    max-width: 100%;
-}
-
-header .header-text {
-    display: none; /* Original site shows logo only, no text beside it */
-}
-
-header h1,
-header p {
-    display: none; /* Hide text header - logo only */
-}
-
-/* Container - LEFT sidebar layout */
-.container {
-    display: flex;
-    flex-direction: row;
-    margin: 0;
-    padding: 10px;
-    gap: 20px;
-}
-
-/* Sidebar - Left position */
-.sidebar {
-    width: 180px;
-    flex-shrink: 0;
-    order: -1; /* Force left side */
-    font-size: 11px;
-    padding: 0;
-}
-
-.sidebar h2 {
-    font-size: 12px;
-    font-weight: bold;
-    margin-top: 1em;
-    margin-bottom: 0.5em;
-    padding: 0;
-    background: none;
-    border: none;
-    text-transform: none;
-}
-
-/* Sidebar links (RSS, titles-only, Planet Planet) */
-.sidebar-links {
-    margin-bottom: 1em;
-    font-size: 11px;
-}
-
-.sidebar-links a {
-    margin-right: 10px;
-}
-
-/* Search form - hide for authenticity */
-.search-form {
-    display: none;
-}
-
-/* Feeds list - Simple list */
-.feeds {
-    list-style: disc;
-    margin: 0 0 0 1.5em;
-    padding: 0;
-    font-size: 11px;
-}
-
-.feeds li {
-    padding: 2px 0;
-    border: none;
-}
-
-/* Remove health indicators - not in original */
-.feeds li.healthy::before,
-.feeds li.unhealthy::before {
-    display: none;
-    content: none;
-}
-
-.feeds li a {
-    color: #0000ee;
-}
-
-/* RSS icon in sidebar - hide for authenticity */
-.feeds li .feed-icon {
-    display: none;
-}
-
-/* Submission link */
-.submission-link {
-    margin-top: 1em;
-    font-size: 11px;
-    border: none;
-    padding: 0;
-}
-
-/* Navigation sections */
-.nav-level-one,
-h2.nav-level-one {
-    font-size: 12px;
-    font-weight: bold;
-    margin-top: 1.5em;
-    margin-bottom: 0.5em;
-    padding: 0;
-    background: none;
-    border: none;
-    text-transform: none;
-}
-
-.nav-level-two,
-ul.nav-level-two,
-.related-links {
-    list-style: disc;
-    margin: 0 0 0 1.5em;
-    padding: 0;
-    font-size: 11px;
-}
-
-.nav-level-two li,
-.related-links li {
-    padding: 2px 0;
-    border: none;
-}
-
-.nav-level-three,
-li.nav-level-three {
-    margin-left: 0;
-    font-size: 11px;
-}
-
-/* Main content area */
-main {
-    flex: 1;
-    min-width: 0;
-}
-
-/* Day headers - Simple date text */
-.day {
-    margin-bottom: 1.5em;
-}
-
-.day h2 {
-    font-size: 14px;
-    font-weight: bold;
-    margin-bottom: 0.5em;
-    padding: 0;
-    border: none;
-}
-
-.day h2.date {
-    font-family: Georgia, "Bitstream Vera Serif", serif;
-    font-size: 140%;
-    color: #366D9C;
-}
-
-/* Articles - Minimal styling */
-article {
-    margin-bottom: 1.5em;
-    padding-bottom: 1em;
-    border-bottom: none;
-}
-
-article h3 {
-    font-size: 13px;
-    font-weight: bold;
-    font-style: normal;
-    margin-bottom: 3px;
-}
-
-article h3 a {
-    color: #0000ee;
-    text-decoration: underline;
-}
-
-article h3 a:visited {
-    color: #551a8b;
-}
-
-/* Article header reset */
-article header {
-    background: transparent;
-    border: none;
-    min-height: auto;
-    padding: 0;
-    display: block;
-}
-
-/* Author/meta information */
-.meta {
-    font-size: 11px;
-    color: #000000;
-    margin-bottom: 0.5em;
-}
-
-.meta .author {
-    color: #000000;
-    font-weight: normal;
-}
-
-.meta .author a {
-    color: #0000ee;
-}
-
-.meta .date-sep {
-    margin: 0 3px;
-}
-
-/* Content area */
-.content {
-    font-size: 12px;
-    line-height: 1.5;
-    color: #000000;
-}
-
-.content p {
-    margin: 0 0 1em 0;
-}
-
-.content p:last-child {
-    margin-bottom: 0;
-}
-
-.content img {
-    max-width: 100%;
-    height: auto;
-    border: 0;
-}
-
-.content a {
-    color: #0000ee;
-    text-decoration: underline;
-}
-
-.content a:visited {
-    color: #551a8b;
-}
-
-.content ul, .content ol {
-    margin: 0.5em 0 0.5em 2em;
-}
-
-.content li {
-    margin-bottom: 0.3em;
-}
-
-.content code {
-    font-family: "Courier New", Courier, monospace;
-    font-size: 12px;
-}
-
-.content pre {
-    font-family: "Courier New", Courier, monospace;
-    font-size: 11px;
-    background: #f5f5f5;
-    border: 1px solid #cccccc;
-    padding: 10px;
-    overflow-x: auto;
-    margin: 1em 0;
-}
-
-.content pre code {
-    background: transparent;
-    padding: 0;
-}
-
-.content blockquote {
-    margin: 1em 0 1em 2em;
-    padding: 0;
-    font-style: italic;
-    border: none;
-    background: none;
-}
-
-.content table {
-    border-collapse: collapse;
-    margin: 1em 0;
-}
-
-.content th, .content td {
-    border: 1px solid #cccccc;
-    padding: 5px;
-}
-
-/* Footer - Simple text */
-footer {
-    background: #ffffff;
-    border-top: 1px solid #cccccc;
-    padding: 10px;
-    margin-top: 2em;
-    text-align: left;
-    font-size: 11px;
-    color: #000000;
-}
-
-footer p {
-    margin-bottom: 5px;
-}
-
-footer p:last-child {
-    margin-bottom: 0;
-}
-
-footer a {
-    color: #0000ee;
-}
-
-footer kbd {
-    font-family: "Courier New", Courier, monospace;
-    font-size: 11px;
-}
-
-/* Horizontal rule separators (like the original * * *) */
-hr {
-    border: none;
-    border-top: 1px solid #cccccc;
-    margin: 1em 0;
-}
-
-/* Keyboard shortcuts panel */
-.shortcuts-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 999;
-}
-
-.shortcuts-backdrop.hidden {
-    display: none;
-}
-
-.shortcuts-panel {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: #ffffff;
-    border: 1px solid #000000;
-    padding: 15px;
-    z-index: 1000;
-    min-width: 250px;
-}
-
-.shortcuts-panel.hidden {
-    display: none;
-}
-
-.shortcuts-panel h3 {
-    font-size: 14px;
-    font-weight: bold;
-    margin-bottom: 10px;
-    padding-bottom: 5px;
-    border-bottom: 1px solid #cccccc;
-}
-
-.shortcuts-panel dl {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 5px 10px;
-}
-
-.shortcuts-panel dt {
-    text-align: right;
-}
-
-.shortcuts-panel kbd {
-    font-family: "Courier New", Courier, monospace;
-    background: #f5f5f5;
-    border: 1px solid #cccccc;
-    padding: 2px 5px;
-}
-
-.shortcuts-panel .close-btn {
-    margin-top: 10px;
-    background: #f5f5f5;
-    border: 1px solid #999999;
-    padding: 5px 10px;
-    cursor: pointer;
-}
-
-.shortcuts-panel .close-btn:hover {
-    background: #e5e5e5;
-}
-
-/* Responsive - Stack on small screens */
-@media (max-width: 600px) {
-    .container {
-        flex-direction: column;
-    }
-
-    .sidebar {
-        width: 100%;
-        order: 1;
-        margin-top: 2em;
-        border-top: 1px solid #cccccc;
-        padding-top: 1em;
-    }
-
-    header .logo {
-        max-width: 200px;
-    }
-}
-
-/* Titles-only page styles */
-.titles-only .view-toggle {
-    margin-bottom: 1em;
-    font-size: 11px;
-}
-
-.titles-only .day {
-    margin-bottom: 1em;
-}
-
-.titles-only h3.post {
-    font-size: 13px;
-    font-weight: bold;
-    margin-top: 0.5em;
-    margin-bottom: 3px;
-}
-
-.titles-only h4.entry-title {
-    font-size: 12px;
-    font-weight: normal;
-    margin: 3px 0;
-}
-
-.titles-only h4.entry-title a {
-    color: #0000ee;
-}
-
-.titles-only p.entry-meta {
-    font-size: 11px;
-    color: #000000;
-    margin: 0 0 0.5em 0;
-}
-
-/* Print styles */
-@media print {
-    .sidebar, .search-form, footer {
-        display: none;
-    }
-
-    .container {
-        display: block;
-    }
-
-    header {
-        border-bottom: 1px solid black;
-    }
-
-    article {
-        page-break-inside: avoid;
-    }
-}
-"""
-
-THEME_CSS_PLANET_MOZILLA = """/* Planet Mozilla Theme - Faithful recreation of planet.mozilla.org */
-/* Key features: Dark header, "Looking For" nav bar, minimal sidebar */
-/* Simple blog aggregator layout with cyan/teal links */
-
-* {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-}
-
-body {
-    font-family: Helvetica, Arial, sans-serif;
-    font-size: 13px;
-    line-height: 1.6;
-    color: #000000;
-    background: #ffffff;
-}
-
-/* Links - Teal/cyan color scheme */
-a {
-    color: #006699;
-    text-decoration: none;
-}
-
-a:visited {
-    color: #660099;
-}
-
-a:hover {
-    color: #006699;
-    text-decoration: underline;
-}
-
-/* Headings */
-h1, h2, h3, h4, h5, h6 {
-    font-weight: bold;
-}
-
-h1 {
-    font-size: 24px;
-}
-
-h2 {
-    font-size: 18px;
-    margin-top: 1em;
-    margin-bottom: 0.5em;
-}
-
-h3 {
-    font-size: 15px;
-}
-
-h4 {
-    font-size: 14px;
-}
-
-/* Mozilla "Looking For" Navigation Bar at top - plain inline text style */
-.mozilla-nav {
-    background: transparent;
-    padding: 8px 15px;
-    font-size: 12px;
-    border-bottom: none;
-}
-
-.mozilla-nav-inner {
-    max-width: 1000px;
-    margin: 0 auto;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-}
-
-.mozilla-nav-label {
-    color: #666666;
-    font-weight: bold;
-}
-
-.mozilla-nav a {
-    color: #006699;
-    text-decoration: none;
-}
-
-.mozilla-nav a:hover {
-    color: #006699;
-    text-decoration: underline;
-}
-
-.mozilla-nav a:visited {
-    color: #660099;
-}
-
-/* Header - Simple dark banner */
-header {
-    background: #000000;
-    padding: 15px 20px;
-    border-bottom: none;
-}
-
-header .logo-link {
-    display: inline-block;
-}
-
-header .logo {
-    height: 30px;
-    width: auto;
-}
-
-header .header-text {
-    display: inline-block;
-    vertical-align: middle;
-    margin-left: 15px;
-}
-
-header h1 {
-    font-size: 22px;
-    font-weight: normal;
-    margin: 0;
-    display: inline;
-}
-
-header h1 a {
-    color: #ffffff;
-    text-decoration: none;
-}
-
-header h1 a:hover {
-    color: #cccccc;
-}
-
-header p {
-    display: none; /* Hide description in header for clean look */
-}
-
-/* Container Layout */
-.container {
-    max-width: 1000px;
-    margin: 0 auto;
-    padding: 20px;
-    display: flex;
-    flex-direction: row;
-    gap: 30px;
-}
-
-/* Main content area - Takes most of the space */
-main {
-    flex: 1;
-    min-width: 0;
-}
-
-/* Sidebar - Right position */
-.sidebar {
-    width: 300px;
-    flex-shrink: 0;
-    order: 1; /* Force right side */
-    font-size: 12px;
-}
-
-.sidebar h2 {
-    font-size: 13px;
-    font-weight: bold;
-    margin-top: 1em;
-    margin-bottom: 0.5em;
-    padding: 0;
-    border: none;
-    background: none;
-    text-transform: none;
-}
-
-/* Sidebar links */
-.sidebar-links {
-    margin-bottom: 1em;
-    font-size: 12px;
-}
-
-.sidebar-links a {
-    margin-right: 10px;
-    color: #006699;
-}
-
-/* Search form */
-.search-form {
-    margin-bottom: 1.5em;
-    padding-bottom: 1em;
-    border-bottom: 1px solid #dddddd;
-}
-
-.search-form .search-label {
-    display: block;
-    font-weight: bold;
-    margin-bottom: 5px;
-    font-size: 12px;
-}
-
-.search-form input {
-    width: 100%;
-    padding: 5px;
-    border: 1px solid #cccccc;
-    font-size: 12px;
-    margin-bottom: 5px;
-}
-
-.search-form input:focus {
-    outline: 1px solid #006699;
-    border-color: #006699;
-}
-
-.search-form button {
-    padding: 5px 10px;
-    background: #f5f5f5;
-    border: 1px solid #cccccc;
-    cursor: pointer;
-    font-size: 11px;
-}
-
-.search-form button:hover {
-    background: #e5e5e5;
-}
-
-/* Feeds list */
-.feeds {
-    list-style: none;
-    font-size: 11px;
-    margin: 0;
-    padding: 0;
-}
-
-.feeds li {
-    padding: 4px 0;
-    border-bottom: 1px solid #eeeeee;
-}
-
-.feeds li:last-child {
-    border-bottom: none;
-}
-
-/* Remove health indicators */
-.feeds li.healthy::before,
-.feeds li.unhealthy::before {
-    display: none;
-    content: none;
-}
-
-.feeds li a {
-    color: #006699;
-}
-
-/* Hide RSS icon for cleaner look */
-.feeds li .feed-icon {
-    display: none;
-}
-
-/* Submission link */
-.submission-link {
-    margin-top: 1em;
-    font-size: 11px;
-    padding: 0;
-    border: none;
-}
-
-/* Navigation sections */
-.nav-level-one,
-h2.nav-level-one {
-    font-size: 13px;
-    font-weight: bold;
-    margin-top: 1.5em;
-    margin-bottom: 0.5em;
-    padding: 0;
-    background: none;
-    border: none;
-    text-transform: none;
-}
-
-.nav-level-two,
-ul.nav-level-two,
-.related-links {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    font-size: 11px;
-}
-
-.nav-level-two li,
-.related-links li {
-    padding: 4px 0;
-    border-bottom: 1px solid #eeeeee;
-}
-
-.nav-level-two li:last-child,
-.related-links li:last-child {
-    border-bottom: none;
-}
-
-.nav-level-three,
-li.nav-level-three {
-    margin-left: 0;
-}
-
-/* Day headers - Date grouping */
-.day {
-    margin-bottom: 2em;
-}
-
-.day h2 {
-    font-size: 16px;
-    font-weight: bold;
-    margin-bottom: 0.75em;
-    padding-bottom: 5px;
-    border-bottom: 1px solid #dddddd;
-}
-
-.day h2.date {
-    font-family: Georgia, Times, serif;
-    font-size: 14px;
-    color: #b72822;
-}
-
-/* Articles */
-article {
-    margin-bottom: 1.5em;
-    padding-bottom: 1.5em;
-    border-bottom: 1px solid #eeeeee;
-}
-
-article:last-child {
-    border-bottom: none;
-}
-
-article h3 {
-    font-size: 15px;
-    font-weight: bold;
-    margin-bottom: 3px;
-}
-
-article h3 a {
-    color: #006699;
-    text-decoration: none;
-}
-
-article h3 a:visited {
-    color: #660099;
-}
-
-article h3 a:hover {
-    text-decoration: underline;
-}
-
-/* Article header reset */
-article header {
-    background: transparent;
-    border: none;
-    min-height: auto;
-    padding: 0;
-    display: block;
-}
-
-/* Author/meta information */
-.meta {
-    font-size: 11px;
-    color: #666666;
-    margin-bottom: 0.5em;
-}
-
-.meta .author {
-    font-weight: bold;
-    color: #333333;
-}
-
-.meta .author a {
-    color: #006699;
-}
-
-.meta .date-sep {
-    margin: 0 5px;
-    color: #999999;
-}
-
-/* Content area */
-.content {
-    font-size: 13px;
-    line-height: 1.6;
-    color: #333333;
-}
-
-.content p {
-    margin: 0 0 1em 0;
-}
-
-.content p:last-child {
-    margin-bottom: 0;
-}
-
-.content img {
-    max-width: 100%;
-    height: auto;
-    margin: 0.5em 0;
-}
-
-.content a {
-    color: #006699;
-    text-decoration: underline;
-}
-
-.content a:visited {
-    color: #660099;
-}
-
-.content ul, .content ol {
-    margin: 0.5em 0 0.5em 2em;
-}
-
-.content li {
-    margin-bottom: 0.3em;
-}
-
-.content code {
-    font-family: Monaco, Consolas, "Courier New", monospace;
-    font-size: 12px;
-    background: #f5f5f5;
-    padding: 2px 4px;
-}
-
-.content pre {
-    font-family: Monaco, Consolas, "Courier New", monospace;
-    font-size: 11px;
-    background: #f5f5f5;
-    border: 1px solid #dddddd;
-    padding: 10px;
-    overflow-x: auto;
-    margin: 1em 0;
-}
-
-.content pre code {
-    background: transparent;
-    padding: 0;
-}
-
-.content blockquote {
-    margin: 1em 0 1em 1em;
-    padding-left: 1em;
-    border-left: 3px solid #cccccc;
-    color: #666666;
-    font-style: italic;
-}
-
-.content table {
-    border-collapse: collapse;
-    margin: 1em 0;
-}
-
-.content th, .content td {
-    border: 1px solid #dddddd;
-    padding: 5px 8px;
-}
-
-.content th {
-    background: #f5f5f5;
-}
-
-/* Footer - Dark background */
-footer {
-    background: #2a2a2a;
-    border-top: 1px solid #333333;
-    padding: 15px 20px;
-    margin-top: 2em;
-    text-align: center;
-    font-size: 11px;
-    color: #cccccc;
-}
-
-footer p {
-    margin-bottom: 5px;
-}
-
-footer p:last-child {
-    margin-bottom: 0;
-}
-
-footer a {
-    color: #66aacc;
-}
-
-footer kbd {
-    font-family: Monaco, Consolas, "Courier New", monospace;
-    font-size: 11px;
-    background: #ffffff;
-    border: 1px solid #cccccc;
-    padding: 2px 4px;
-    border-radius: 2px;
-}
-
-/* Keyboard shortcuts panel */
-.shortcuts-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 999;
-}
-
-.shortcuts-backdrop.hidden {
-    display: none;
-}
-
-.shortcuts-panel {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: #ffffff;
-    border: 1px solid #333333;
-    padding: 20px;
-    z-index: 1000;
-    min-width: 280px;
-    border-radius: 4px;
-    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
-}
-
-.shortcuts-panel.hidden {
-    display: none;
-}
-
-.shortcuts-panel h3 {
-    font-size: 16px;
-    font-weight: bold;
-    margin-bottom: 15px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid #dddddd;
-}
-
-.shortcuts-panel dl {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 8px 15px;
-}
-
-.shortcuts-panel dt {
-    text-align: right;
-}
-
-.shortcuts-panel kbd {
-    font-family: Monaco, Consolas, "Courier New", monospace;
-    font-size: 12px;
-    background: #f5f5f5;
-    border: 1px solid #cccccc;
-    padding: 3px 6px;
-    border-radius: 2px;
-}
-
-.shortcuts-panel .close-btn {
-    margin-top: 15px;
-    background: #006699;
-    color: #ffffff;
-    border: none;
-    padding: 8px 15px;
-    cursor: pointer;
-    border-radius: 3px;
-}
-
-.shortcuts-panel .close-btn:hover {
-    background: #005588;
-}
-
-/* Remove decorative elements from Mozilla header */
-.theme-mozilla header::after,
-.theme-mozilla header::before {
-    display: none;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-    .container {
-        flex-direction: column;
-        padding: 15px;
-    }
-
-    .sidebar {
-        width: 100%;
-        order: 1;
-        margin-top: 2em;
-        padding-top: 1em;
-        border-top: 1px solid #dddddd;
-    }
-
-    .mozilla-nav-inner {
-        justify-content: center;
-    }
-
-    header {
-        padding: 10px 15px;
-        text-align: center;
-    }
-
-    header .header-text {
-        display: block;
-        margin-left: 0;
-        margin-top: 10px;
-    }
-}
-
-@media (max-width: 480px) {
-    .mozilla-nav-label {
-        display: none;
-    }
-
-    header h1 {
-        font-size: 18px;
-    }
-}
-
-/* Titles-only page styles */
-.titles-only .view-toggle {
-    margin-bottom: 1em;
-    font-size: 12px;
-}
-
-.titles-only .day {
-    margin-bottom: 1.5em;
-}
-
-.titles-only h3.post {
-    font-size: 14px;
-    font-weight: bold;
-    margin-top: 0.5em;
-    margin-bottom: 3px;
-}
-
-.titles-only h4.entry-title {
-    font-size: 13px;
-    font-weight: normal;
-    margin: 3px 0;
-}
-
-.titles-only h4.entry-title a {
-    color: #006699;
-}
-
-.titles-only p.entry-meta {
-    font-size: 11px;
-    color: #666666;
-    margin: 0 0 0.5em 0;
-}
-
-/* Print styles */
-@media print {
-    .sidebar, .search-form, footer, .mozilla-nav {
-        display: none;
-    }
-
-    .container {
-        display: block;
-        max-width: none;
-    }
-
-    header {
-        background: white;
-        color: black;
-        border-bottom: 2px solid black;
-    }
-
-    header h1 a {
-        color: black;
-    }
-
-    article {
-        page-break-inside: avoid;
-    }
-
-    a {
-        color: black;
-    }
-}
-"""
-
-# =============================================================================
-# Logo SVG Content
-# =============================================================================
-
-LOGO_PYTHON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 211 71" width="211" height="71">
-  <!-- Official Python Logo - Two intertwined snakes forming a plus shape -->
-  <!-- Colors: Blue #366D9C and Yellow #FFDB4C -->
-  <defs>
-    <linearGradient id="blueGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#5A9FD4"/>
-      <stop offset="100%" style="stop-color:#366D9C"/>
-    </linearGradient>
-    <linearGradient id="yellowGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#FFDB4C"/>
-      <stop offset="100%" style="stop-color:#FFD43B"/>
-    </linearGradient>
-  </defs>
-
-  <!-- Blue snake (top-left, curves down-right) -->
-  <path fill="url(#blueGradient)" d="
-    M35.5 5.5
-    C35.5 2.5 33 0 30 0
-    L15.5 0
-    C7 0 0 7 0 15.5
-    L0 30
-    C0 33 2.5 35.5 5.5 35.5
-    L25 35.5
-    C28 35.5 30.5 38 30.5 41
-    L30.5 50
-    L20 50
-    L20 35.5
-    L5.5 35.5
-    C2.5 35.5 0 33 0 30
-    L0 15.5
-    C0 7 7 0 15.5 0
-    L30 0
-    C33 0 35.5 2.5 35.5 5.5
-    L35.5 20
-    L30.5 20
-    L30.5 5.5
-    C30.5 4 29 2.5 27.5 2.5
-    L15.5 2.5
-    C8.5 2.5 2.5 8.5 2.5 15.5
-    L2.5 27.5
-    C2.5 29 4 30.5 5.5 30.5
-    L25 30.5
-    C30.5 30.5 35.5 35.5 35.5 41
-    L35.5 55
-    L30.5 55
-    L30.5 41
-    C30.5 38 28 35.5 25 35.5
-    L20 35.5
-    L20 50
-    L30.5 50
-    L30.5 41
-    L35.5 41
-    Z
-  " transform="translate(5, 5)"/>
-
-  <!-- Simplified Python logo mark -->
-  <g transform="translate(5, 5)">
-    <!-- Blue half (top) -->
-    <path fill="url(#blueGradient)" d="
-      M30.2 0
-      C18.8 0 17.5 5 17.5 5
-      L17.5 13
-      L30.5 13
-      L30.5 15
-      L11 15
-      C11 15 0 13.8 0 30.5
-      C0 47.2 9.6 46.5 9.6 46.5
-      L15.5 46.5
-      L15.5 38.2
-      C15.5 38.2 15.1 28.5 25 28.5
-      L37.8 28.5
-      C37.8 28.5 47 28.7 47 19.8
-      L47 6.8
-      C47 6.8 48.4 0 30.2 0
-      M22.1 6.5
-      C23.8 6.5 25.2 7.9 25.2 9.6
-      C25.2 11.3 23.8 12.7 22.1 12.7
-      C20.4 12.7 19 11.3 19 9.6
-      C19 7.9 20.4 6.5 22.1 6.5
-    "/>
-
-    <!-- Yellow half (bottom) -->
-    <path fill="url(#yellowGradient)" d="
-      M47.8 15
-      C47.8 15 47 15 47 15
-      L47 23.3
-      C47 23.3 47.4 33 37.5 33
-      L24.7 33
-      C24.7 33 15.5 32.8 15.5 41.7
-      L15.5 54.7
-      C15.5 54.7 14.1 61.5 32.3 61.5
-      C43.7 61.5 45 56.5 45 56.5
-      L45 48.5
-      L32 48.5
-      L32 46.5
-      L51.5 46.5
-      C51.5 46.5 62.5 47.7 62.5 31
-      C62.5 14.3 52.9 15 52.9 15
-      L47.8 15
-      M40.4 55
-      C38.7 55 37.3 53.6 37.3 51.9
-      C37.3 50.2 38.7 48.8 40.4 48.8
-      C42.1 48.8 43.5 50.2 43.5 51.9
-      C43.5 53.6 42.1 55 40.4 55
-    " transform="translate(0, 0)"/>
-  </g>
-
-  <!-- "Python" text -->
-  <text x="80" y="42" font-family="'Source Sans Pro', Arial, sans-serif" font-size="28" font-weight="600" fill="#646464">
-    <tspan fill="#366D9C">Py</tspan><tspan fill="#FFDB4C">thon</tspan>
-  </text>
-</svg>"""
-
-LOGO_MOZILLA_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 32" width="112" height="32">
-  <!-- Mozilla wordmark logo - White on transparent -->
-  <title>Mozilla</title>
-  <g fill="#ffffff">
-    <!-- M -->
-    <path d="M2.5 6.5h5.3l4.2 13.8L16.2 6.5h5.3v19h-3.4V10.9l-4.5 14.6h-3.2L5.9 10.9v14.6H2.5V6.5z"/>
-    <!-- o -->
-    <path d="M25.9 14.8c0-4.6 3.2-7.3 7.2-7.3s7.2 2.7 7.2 7.3v3.9c0 4.6-3.2 7.3-7.2 7.3s-7.2-2.7-7.2-7.3v-3.9zm3.4 4c0 2.5 1.5 4.1 3.8 4.1s3.8-1.6 3.8-4.1v-4.1c0-2.5-1.5-4.1-3.8-4.1s-3.8 1.6-3.8 4.1v4.1z"/>
-    <!-- z -->
-    <path d="M43.5 7.5h12.4v2.7l-8.3 13.5h8.5v2.8H43.2v-2.7l8.3-13.5h-8V7.5z"/>
-    <!-- i -->
-    <path d="M58.8 2.5h3.4v4h-3.4v-4zm0 5h3.4v18h-3.4v-18z"/>
-    <!-- l -->
-    <path d="M66.2 2.5h3.4v23h-3.4v-23z"/>
-    <!-- l -->
-    <path d="M73.6 2.5h3.4v23h-3.4v-23z"/>
-    <!-- a -->
-    <path d="M81 14.5c0-4.5 2.9-7 6.8-7 3.9 0 6.5 2.3 6.5 6.3v11.7h-3.1v-2.2c-.9 1.6-2.5 2.5-4.6 2.5-2.8 0-5-1.7-5-4.7 0-3.1 2.4-4.8 6.1-4.8h3.2v-1c0-2-1.1-3.4-3.4-3.4-2.1 0-3.3 1.2-3.4 3.1H81.1l-.1-1.5zm9.9 3.6h-2.7c-2.1 0-3.3.8-3.3 2.4 0 1.5 1.1 2.4 2.9 2.4 2.4 0 4.1-1.5 4.1-3.9v-.9z"/>
-  </g>
-  <!-- The "://" decoration commonly seen with Mozilla branding -->
-  <g fill="#b72822">
-    <text x="95" y="24" font-family="Georgia, serif" font-size="16" font-weight="bold">://</text>
-  </g>
-</svg>"""
-
-# Theme CSS mapping
-THEME_CSS = {
-    "planet-python": THEME_CSS_PLANET_PYTHON,
-    "planet-mozilla": THEME_CSS_PLANET_MOZILLA,
-    "default": None,  # Uses STATIC_CSS
-}
-
-# Logo mapping
-THEME_LOGOS = {
-    "planet-python": {
-        "svg": LOGO_PYTHON_SVG,
-        "url": "/static/logo.svg",
-        "alt": "Python Logo",
-        "width": "211",
-        "height": "71",
-    },
-    "planet-mozilla": {
-        "svg": LOGO_MOZILLA_SVG,
-        "url": "/static/logo.svg",
-        "alt": "Mozilla Logo",
-        "width": "112",
-        "height": "32",
-    },
-}
 
 ADMIN_JS = """
 // Admin dashboard functionality
@@ -2761,3 +1782,1565 @@ TEMPLATE_ADMIN_LOGIN = "admin/login.html"
 TEMPLATE_FEED_ATOM = "feed.atom.xml"
 TEMPLATE_FEED_RSS = "feed.rss.xml"
 TEMPLATE_FEEDS_OPML = "feeds.opml"
+
+# =============================================================================
+# Theme-specific CSS and Logos (for multi-instance deployments)
+# =============================================================================
+
+THEME_CSS = {
+    "planet-python": """/* Planet Python Theme - Exact recreation of planetpython.org */
+/* Source: https://github.com/python/planet/blob/main/static/styles/styles.css */
+/* Key features: LEFT sidebar, Georgia headings, #366D9C blue, minimal styling */
+
+* {
+    box-sizing: border-box;
+}
+
+HTML, body {
+    font-family: Arial, Verdana, Geneva, "Bitstream Vera Sans", Helvetica, sans-serif;
+    font-size: 103%;
+    line-height: 1.5;
+    color: #000;
+    background-color: #FFF;
+    margin: 0;
+    padding: 0;
+}
+
+/* Links - Exact Python.org colors */
+a:link {
+    color: #00A;
+    text-decoration: underline;
+}
+
+a:visited {
+    color: #551A8B;
+}
+
+a:hover {
+    color: #00A;
+    text-decoration: underline;
+}
+
+/* Headings - Python.org style with Georgia */
+h1, h2, h3, h4, h5 {
+    font-family: Georgia, "Bitstream Vera Serif", "New York", Palatino, serif;
+    line-height: 1em;
+}
+
+h1 {
+    font-size: 160%;
+    font-weight: normal;
+    color: #234764;
+    margin: 0.7em 0;
+}
+
+h2 {
+    font-size: 140%;
+    font-weight: normal;
+    color: #366D9C;
+    margin-top: 1em;
+    margin-bottom: 0.5em;
+}
+
+h3 {
+    font-size: 135%;
+    font-weight: normal;
+    font-style: italic;
+    color: #366D9C;
+}
+
+h4 {
+    font-size: 125%;
+    font-weight: normal;
+    color: #366D9C;
+}
+
+/* Header - Python.org logo area style */
+header {
+    background-color: #F7F7F7;
+    border-bottom: 1px solid #999999;
+    padding: 5px 10px 0 10px;
+    min-height: 84px;
+}
+
+header .logo-link {
+    display: block;
+}
+
+header .logo {
+    display: block;
+    padding-top: 5px;
+    padding-bottom: 35px;
+    border: 0;
+    height: auto;
+    max-width: 100%;
+}
+
+header .header-text {
+    display: none; /* Original site shows logo only */
+}
+
+header h1,
+header p {
+    display: none; /* Hide text header - logo only */
+}
+
+/* Container - LEFT sidebar layout like python.org */
+.container {
+    display: flex;
+    flex-direction: row;
+    margin: 0;
+    padding: 10px;
+    gap: 20px;
+}
+
+/* Sidebar - Left position, narrow width */
+.sidebar {
+    width: 16em;
+    flex-shrink: 0;
+    order: -1; /* Force left side */
+    font-size: 11px;
+    padding: 0;
+}
+
+.sidebar h2 {
+    font-family: Georgia, "Bitstream Vera Serif", "New York", Palatino, serif;
+    font-size: 12px;
+    font-weight: bold;
+    color: #366D9C;
+    margin-top: 1em;
+    margin-bottom: 0.5em;
+    padding: 0;
+    background: none;
+    border: none;
+    text-transform: none;
+}
+
+/* Sidebar links (RSS, titles-only) */
+.sidebar-links {
+    margin-bottom: 1em;
+    font-size: 11px;
+}
+
+.sidebar-links a {
+    margin-right: 10px;
+    color: #00A;
+}
+
+.sidebar-links a:visited {
+    color: #551A8B;
+}
+
+/* Search form - hide for authenticity */
+.search-form {
+    display: none;
+}
+
+/* Feeds list - Simple bullet list */
+.feeds {
+    list-style: disc;
+    margin: 0 0 0 1.5em;
+    padding: 0;
+    font-size: 11px;
+}
+
+.feeds li {
+    padding: 2px 0;
+    border: none;
+}
+
+/* Remove health indicators - not in original */
+.feeds li.healthy::before,
+.feeds li.unhealthy::before {
+    display: none;
+    content: none;
+}
+
+.feeds li a {
+    color: #00A;
+}
+
+.feeds li a:visited {
+    color: #551A8B;
+}
+
+/* RSS icon in sidebar - hide for authenticity */
+.feeds li .feed-icon {
+    display: none;
+}
+
+/* Submission link */
+.submission-link {
+    margin-top: 1em;
+    font-size: 11px;
+    border: none;
+    padding: 0;
+}
+
+.submission-link a {
+    color: #00A;
+}
+
+/* Navigation sections */
+.nav-level-one,
+h2.nav-level-one {
+    font-family: Georgia, "Bitstream Vera Serif", serif;
+    font-size: 12px;
+    font-weight: bold;
+    color: #366D9C;
+    margin-top: 1.5em;
+    margin-bottom: 0.5em;
+    padding: 0;
+    background: none;
+    border: none;
+    text-transform: none;
+}
+
+.nav-level-two,
+ul.nav-level-two,
+.related-links {
+    list-style: disc;
+    margin: 0 0 0 1.5em;
+    padding: 0;
+    font-size: 11px;
+}
+
+.nav-level-two li,
+.related-links li {
+    padding: 2px 0;
+    border: none;
+}
+
+.nav-level-three,
+li.nav-level-three {
+    margin-left: 0;
+    font-size: 11px;
+}
+
+/* Main content area */
+main {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Day headers - Georgia blue style */
+.day {
+    margin-bottom: 1.5em;
+}
+
+.day h2 {
+    font-size: 14px;
+    font-weight: bold;
+    margin-bottom: 0.5em;
+    padding: 0;
+    border: none;
+}
+
+.day h2.date {
+    font-family: Georgia, "Bitstream Vera Serif", serif;
+    font-size: 140%;
+    color: #366D9C;
+    font-weight: bold;
+    font-style: normal;
+}
+
+/* Articles - Minimal styling */
+article {
+    margin-bottom: 1.5em;
+    padding-bottom: 1em;
+    border-bottom: none;
+}
+
+article h3 {
+    font-family: Georgia, "Bitstream Vera Serif", serif;
+    font-size: 135%;
+    font-weight: normal;
+    font-style: italic;
+    color: #366D9C;
+    margin-bottom: 3px;
+}
+
+article h3 a {
+    color: #00A;
+    text-decoration: underline;
+}
+
+article h3 a:visited {
+    color: #551A8B;
+}
+
+/* Article header reset */
+article header {
+    background: transparent;
+    border: none;
+    min-height: auto;
+    padding: 0;
+    display: block;
+}
+
+/* Author/meta information */
+.meta {
+    font-size: 11px;
+    color: #000;
+    margin-bottom: 0.5em;
+}
+
+.meta .author {
+    color: #000;
+    font-weight: normal;
+}
+
+.meta .author a {
+    color: #00A;
+}
+
+.meta .date-sep {
+    margin: 0 3px;
+}
+
+/* Content area */
+.content {
+    font-size: 12px;
+    line-height: 1.5;
+    color: #000;
+}
+
+.content p {
+    margin: 0 0 1em 0;
+}
+
+.content p:last-child {
+    margin-bottom: 0;
+}
+
+.content img {
+    max-width: 100%;
+    height: auto;
+    border: 0;
+    padding-top: 5px;
+    padding-bottom: 35px;
+}
+
+.content a {
+    color: #00A;
+    text-decoration: none;
+}
+
+.content a:hover {
+    text-decoration: underline;
+}
+
+.content a:visited {
+    color: #551A8B;
+}
+
+.content ul, .content ol {
+    margin: 0.5em 0 0.5em 2em;
+}
+
+.content li {
+    margin-bottom: 0.3em;
+}
+
+.content code {
+    font-family: "Courier New", Courier, monospace;
+    font-size: 12px;
+}
+
+.content pre {
+    font-family: "Courier New", Courier, monospace;
+    font-size: 11px;
+    background: #f5f5f5;
+    border: 1px solid #DADADA;
+    padding: 10px;
+    overflow-x: auto;
+    margin: 1em 0;
+}
+
+.content pre code {
+    background: transparent;
+    padding: 0;
+}
+
+.content blockquote {
+    margin: 1em 0 1em 2em;
+    padding: 0;
+    font-style: italic;
+    border: none;
+    background: none;
+}
+
+.content table {
+    border-collapse: collapse;
+    margin: 1em 0;
+}
+
+.content th, .content td {
+    border: 1px solid #DADADA;
+    padding: 5px;
+}
+
+/* Footer - Simple text style */
+footer {
+    background: #FFF;
+    border-top: 1px dotted #CCC;
+    padding: 10px;
+    margin-top: 2em;
+    text-align: left;
+    font-size: 11px;
+    color: #000;
+}
+
+footer p {
+    margin-bottom: 5px;
+}
+
+footer p:last-child {
+    margin-bottom: 0;
+}
+
+footer a {
+    color: #666;
+}
+
+footer a:visited {
+    color: #551A8B;
+}
+
+footer kbd {
+    font-family: "Courier New", Courier, monospace;
+    font-size: 11px;
+}
+
+/* Horizontal rule separators */
+hr {
+    border: none;
+    border-top: 1px solid #DADADA;
+    margin: 1em 0;
+}
+
+/* Keyboard shortcuts panel */
+.shortcuts-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+}
+
+.shortcuts-backdrop.hidden {
+    display: none;
+}
+
+.shortcuts-panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #FFF;
+    border: 1px solid #000;
+    padding: 15px;
+    z-index: 1000;
+    min-width: 250px;
+}
+
+.shortcuts-panel.hidden {
+    display: none;
+}
+
+.shortcuts-panel h3 {
+    font-size: 14px;
+    font-weight: bold;
+    margin-bottom: 10px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #DADADA;
+}
+
+.shortcuts-panel dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 5px 10px;
+}
+
+.shortcuts-panel dt {
+    text-align: right;
+}
+
+.shortcuts-panel kbd {
+    font-family: "Courier New", Courier, monospace;
+    background: #f5f5f5;
+    border: 1px solid #DADADA;
+    padding: 2px 5px;
+}
+
+.shortcuts-panel .close-btn {
+    margin-top: 10px;
+    background: #f5f5f5;
+    border: 1px solid #999999;
+    padding: 5px 10px;
+    cursor: pointer;
+}
+
+.shortcuts-panel .close-btn:hover {
+    background: #e5e5e5;
+}
+
+/* Responsive - Stack on small screens */
+@media (max-width: 600px) {
+    .container {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        width: 100%;
+        order: 1;
+        margin-top: 2em;
+        border-top: 1px solid #DADADA;
+        padding-top: 1em;
+    }
+
+    header .logo {
+        max-width: 200px;
+    }
+}
+
+/* Titles-only page styles */
+.titles-only .view-toggle {
+    margin-bottom: 1em;
+    font-size: 11px;
+}
+
+.titles-only .day {
+    margin-bottom: 1em;
+}
+
+.titles-only h3.post {
+    font-family: Georgia, "Bitstream Vera Serif", serif;
+    font-size: 135%;
+    font-style: italic;
+    color: #366D9C;
+    margin-top: 0.5em;
+    margin-bottom: 3px;
+}
+
+.titles-only h4.entry-title {
+    font-size: 12px;
+    font-weight: normal;
+    margin: 3px 0;
+}
+
+.titles-only h4.entry-title a {
+    color: #00A;
+}
+
+.titles-only p.entry-meta {
+    font-size: 11px;
+    color: #000;
+    margin: 0 0 0.5em 0;
+}
+
+/* Print styles */
+@media print {
+    .sidebar, .search-form, footer {
+        display: none;
+    }
+
+    .container {
+        display: block;
+    }
+
+    header {
+        border-bottom: 1px solid black;
+    }
+
+    article {
+        page-break-inside: avoid;
+    }
+}
+""",
+    "planet-mozilla": """/* Planet Mozilla Theme - Exact recreation of planet.mozilla.org */
+/* Source: https://github.com/mozilla/planet/blob/master/branches/firefox-ux/theme/planet.css-original */
+/* Key features: RIGHT sidebar, #455372 dark header, #039 teal links, square bullets */
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: Helvetica, Arial, Verdana, sans-serif;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #000;
+    background: #fff;
+    margin: 15px;
+}
+
+/* Links - Mozilla teal/purple scheme */
+a:link {
+    color: #148cb5;
+    text-decoration: none;
+}
+
+a:visited {
+    color: #636;
+}
+
+a:hover {
+    text-decoration: underline !important;
+    color: blue !important;
+}
+
+a:active {
+    color: #000;
+}
+
+/* Headings */
+h1 {
+    font-size: 24px;
+    font-weight: normal;
+    letter-spacing: -2px;
+    text-transform: lowercase;
+    color: white;
+    background: #455372;
+    padding: 20px;
+    margin: 0;
+    -moz-border-radius: 12px;
+    -webkit-border-radius: 12px;
+    border-radius: 12px;
+}
+
+h2 {
+    font-family: Georgia, Times, "Times New Roman", serif;
+    font-size: 150%;
+    font-weight: normal;
+    color: #b72822;
+    border-bottom: 1px solid #ccc;
+    margin-left: 0;
+    margin-top: 1em;
+    margin-bottom: 0.5em;
+}
+
+h3 {
+    font-size: 120%;
+    font-weight: bold;
+    clear: both;
+    border-bottom: 1px solid #ccc;
+}
+
+h3 a {
+    text-decoration: none;
+    color: black;
+}
+
+h4 {
+    font-size: 100%;
+    font-weight: bold;
+    margin: 1em 0 0 1em;
+    clear: both;
+    border-bottom: 1px solid #ccc;
+}
+
+/* Mozilla "Looking For" Navigation Bar at top */
+.mozilla-nav {
+    background: transparent;
+    padding: 0 0 10px 0;
+    font-family: "Trebuchet MS", sans-serif;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    border-bottom: none;
+    margin-bottom: 10px;
+}
+
+.mozilla-nav-inner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.mozilla-nav-label {
+    color: #666;
+    font-weight: bold;
+}
+
+.mozilla-nav a {
+    color: #039;
+    text-decoration: none;
+}
+
+.mozilla-nav a:visited {
+    color: #636;
+}
+
+.mozilla-nav a:hover {
+    text-decoration: underline !important;
+    color: blue !important;
+}
+
+/* Header - Dark slate blue banner with rounded corners */
+header {
+    background: #455372;
+    padding: 20px;
+    border-bottom: none;
+    -moz-border-radius: 12px;
+    -webkit-border-radius: 12px;
+    border-radius: 12px;
+    margin-bottom: 1em;
+}
+
+header .logo-link {
+    display: inline-block;
+}
+
+header .logo {
+    height: 30px;
+    width: auto;
+    display: none; /* Original Mozilla doesn't show logo in header */
+}
+
+header .header-text {
+    display: block;
+}
+
+header h1 {
+    font-size: 24px;
+    font-weight: normal;
+    letter-spacing: -2px;
+    text-transform: lowercase;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    display: inline;
+}
+
+header h1 a {
+    color: #fff;
+    text-decoration: none;
+}
+
+header h1 a:hover {
+    color: #ccc;
+    text-decoration: none !important;
+}
+
+header p {
+    display: none; /* Hide description in header */
+}
+
+/* Container Layout - Content with right margin for sidebar */
+.container {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: row;
+    gap: 20px;
+}
+
+/* Main content area - Takes most space, leaves room for sidebar */
+main {
+    flex: 1;
+    min-width: 0;
+    margin-right: 0;
+}
+
+/* Sidebar - RIGHT position, absolute style like original */
+.sidebar {
+    width: 230px;
+    flex-shrink: 0;
+    order: 1; /* Force right side */
+    font-size: 70%;
+    padding-left: 0;
+    padding-right: 0;
+    padding-top: 20px;
+}
+
+.sidebar h2 {
+    font-size: 150%;
+    font-weight: bold;
+    color: black;
+    border-bottom: none;
+    padding-left: 5px;
+    margin-left: 0;
+    margin-top: 0;
+}
+
+/* Sidebar links */
+.sidebar-links {
+    margin-bottom: 1em;
+    font-size: 100%;
+    padding-left: 5px;
+}
+
+.sidebar-links a {
+    margin-right: 10px;
+    color: #039;
+}
+
+.sidebar-links a:visited {
+    color: #636;
+}
+
+/* Search form */
+.search-form {
+    margin-bottom: 1.5em;
+    padding: 10px;
+    margin-left: 20px;
+    background: #e4ecec;
+    -moz-border-radius: 1em;
+    -webkit-border-radius: 1em;
+    border-radius: 1em;
+}
+
+.search-form .search-label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 5px;
+    font-size: 12px;
+}
+
+.search-form input {
+    width: 100%;
+    padding: 5px;
+    border: 1px solid #ccc;
+    font-size: 12px;
+    margin-bottom: 5px;
+}
+
+.search-form input:focus {
+    outline: 1px solid #039;
+    border-color: #039;
+}
+
+.search-form button {
+    padding: 5px 10px;
+    background: #f5f5f5;
+    border: 1px solid #ccc;
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.search-form button:hover {
+    background: #e5e5e5;
+}
+
+/* Sidebar boxes - Mozilla style with rounded corners */
+.sidebar > div,
+.sidebar .sidebar-section {
+    padding: 10px;
+    margin-top: 0;
+    margin-right: 0;
+    margin-left: 20px;
+    margin-bottom: 10px;
+    background: transparent;
+    -moz-border-radius: 1em;
+    -webkit-border-radius: 1em;
+    border-radius: 1em;
+}
+
+/* Feeds list - Square bullets like original */
+.feeds {
+    list-style-type: square;
+    padding-left: 2em;
+    margin-left: 0;
+    font-size: 11px;
+}
+
+.feeds li {
+    padding: 2px 0;
+    border-bottom: none;
+}
+
+.feeds li:hover {
+    color: grey;
+}
+
+/* Remove health indicators */
+.feeds li.healthy::before,
+.feeds li.unhealthy::before {
+    display: none;
+    content: none;
+}
+
+.feeds li a {
+    color: #039;
+}
+
+.feeds li a:visited {
+    color: #636;
+}
+
+/* Hide RSS icon */
+.feeds li .feed-icon {
+    display: none;
+}
+
+/* Submission link */
+.submission-link {
+    margin-top: 1em;
+    font-size: 11px;
+    padding: 0 5px;
+    border: none;
+}
+
+.submission-link a {
+    color: #039;
+}
+
+/* Navigation sections */
+.nav-level-one,
+h2.nav-level-one {
+    font-size: 150%;
+    font-weight: bold;
+    color: black;
+    border-bottom: none;
+    padding-left: 5px;
+    margin-left: 0;
+    margin-top: 1em;
+    margin-bottom: 0.5em;
+    background: none;
+    text-transform: none;
+}
+
+.nav-level-two,
+ul.nav-level-two,
+.related-links {
+    list-style-type: square;
+    padding-left: 2em;
+    margin-left: 0;
+    font-size: 11px;
+}
+
+.nav-level-two li,
+.related-links li {
+    padding: 2px 0;
+    border-bottom: none;
+}
+
+.nav-level-two li:hover,
+.related-links li:hover {
+    color: grey;
+}
+
+.nav-level-three,
+li.nav-level-three {
+    margin-left: 0;
+}
+
+/* Day headers - Date grouping with bottom border */
+.day {
+    margin-bottom: 2em;
+}
+
+.day h2 {
+    font-size: 150%;
+    font-weight: normal;
+    border-bottom: 1px solid #ccc;
+    margin-bottom: 0.5em;
+    padding-bottom: 5px;
+}
+
+.day h2.date {
+    font-family: sans-serif;
+    font-size: 150%;
+    color: #000;
+    font-weight: normal;
+}
+
+/* Articles / Entries */
+article,
+div.entry {
+    margin: 0 0.5em 1em 1em;
+    padding-top: 1em;
+    padding-bottom: 1em;
+    border-bottom: none;
+}
+
+article:last-child {
+    border-bottom: none;
+}
+
+article h3 {
+    font-size: 120%;
+    font-weight: bold;
+    margin-bottom: 3px;
+    clear: both;
+}
+
+article h3 a {
+    color: #039;
+    text-decoration: none;
+}
+
+article h3 a:visited {
+    color: #636;
+}
+
+article h3 a:hover {
+    text-decoration: underline !important;
+}
+
+/* Article header reset */
+article header {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    min-height: auto;
+    padding: 0;
+    margin: 0;
+    display: block;
+}
+
+/* Author/meta information - Right aligned date */
+.meta {
+    font-size: 11px;
+    color: #666;
+    margin-bottom: 0.5em;
+}
+
+.meta .author {
+    font-weight: bold;
+    color: #333;
+}
+
+.meta .author a {
+    color: #039;
+}
+
+.meta .date-sep {
+    margin: 0 5px;
+    color: #999;
+}
+
+.entry .date {
+    margin-top: 0.5em;
+    text-align: right;
+}
+
+/* Content area */
+.content {
+    font-size: 13px;
+    line-height: 1.6;
+    color: #000;
+}
+
+.content p {
+    margin: 0 0 1em 0;
+}
+
+.content p:first-child {
+    margin-top: 0;
+}
+
+.content p:last-child {
+    margin-bottom: 0;
+}
+
+.content img {
+    max-width: 100%;
+    height: auto;
+    margin: 0.5em 0;
+}
+
+.content img.face {
+    float: right;
+    margin-top: -3em;
+}
+
+.content a {
+    color: #039;
+    text-decoration: none;
+}
+
+.content a:visited {
+    color: #636;
+}
+
+.content a:hover {
+    text-decoration: underline !important;
+    color: blue !important;
+}
+
+.content ul, .content ol {
+    margin: 0.5em 0 0.5em 2em;
+}
+
+.content li {
+    margin-bottom: 0.3em;
+}
+
+.content code {
+    font-family: Monaco, Consolas, "Courier New", monospace;
+    font-size: 12px;
+    background: #f5f5f5;
+    padding: 2px 4px;
+}
+
+.content pre {
+    font-family: Monaco, Consolas, "Courier New", monospace;
+    font-size: 11px;
+    background: #f5f5f5;
+    border: 1px solid #ddd;
+    padding: 10px;
+    overflow-x: auto;
+    margin: 1em 0;
+}
+
+.content pre code {
+    background: transparent;
+    padding: 0;
+}
+
+.content blockquote {
+    margin: 1em 0 1em 1em;
+    padding-left: 1em;
+    border-left: 3px solid #ccc;
+    color: #666;
+    font-style: italic;
+}
+
+.content table {
+    border-collapse: collapse;
+    margin: 1em 0;
+}
+
+.content th, .content td {
+    border: 1px solid #ddd;
+    padding: 5px 8px;
+}
+
+.content th {
+    background: #f5f5f5;
+}
+
+video {
+    max-width: 80%;
+    border: 1px solid lightgray;
+    border-radius: 10px;
+}
+
+/* Horizontal rules */
+hr {
+    height: 1px;
+    border: none;
+    color: #ccc;
+    background-color: #ccc;
+    margin: 2em auto;
+    width: 50%;
+}
+
+/* Footer - Border top, centered text */
+footer,
+#footer {
+    border-top: 1px solid #666;
+    margin: 2em 0;
+    padding: 1em 0;
+    text-align: center;
+    clear: both;
+    margin-top: 1em;
+    margin-right: 0;
+    font-size: 11px;
+    color: #999999;
+    background-color: #2a2a2a;
+}
+
+footer ul,
+#footer ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+footer li,
+#footer li {
+    display: inline;
+    padding: 0 20px 0 0;
+    margin: 0;
+    white-space: nowrap;
+}
+
+footer p,
+#footer p {
+    color: #666;
+    margin: 0.6em 0;
+}
+
+footer a,
+#footer a {
+    color: #666;
+}
+
+footer a:hover,
+#footer a:hover {
+    color: #000;
+    text-decoration: underline !important;
+}
+
+footer span, footer a,
+#footer span, #footer a {
+    white-space: nowrap;
+    padding: 0 1em;
+}
+
+footer p span, footer p a,
+#footer p span, #footer p a {
+    white-space: nowrap;
+    padding: 0 0.3em;
+}
+
+footer span a,
+#footer span a {
+    padding: 0;
+}
+
+footer kbd {
+    font-family: Monaco, Consolas, "Courier New", monospace;
+    font-size: 11px;
+    background: #fff;
+    border: 1px solid #ccc;
+    padding: 2px 4px;
+    border-radius: 2px;
+}
+
+/* Keyboard shortcuts panel */
+.shortcuts-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+}
+
+.shortcuts-backdrop.hidden {
+    display: none;
+}
+
+.shortcuts-panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #fff;
+    border: 1px solid #333;
+    padding: 20px;
+    z-index: 1000;
+    min-width: 280px;
+    -moz-border-radius: 12px;
+    -webkit-border-radius: 12px;
+    border-radius: 12px;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+}
+
+.shortcuts-panel.hidden {
+    display: none;
+}
+
+.shortcuts-panel h3 {
+    font-size: 16px;
+    font-weight: bold;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #ddd;
+}
+
+.shortcuts-panel dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px 15px;
+}
+
+.shortcuts-panel dt {
+    text-align: right;
+}
+
+.shortcuts-panel kbd {
+    font-family: Monaco, Consolas, "Courier New", monospace;
+    font-size: 12px;
+    background: #f5f5f5;
+    border: 1px solid #ccc;
+    padding: 3px 6px;
+    border-radius: 2px;
+}
+
+.shortcuts-panel .close-btn {
+    margin-top: 15px;
+    background: #455372;
+    color: #fff;
+    border: none;
+    padding: 8px 15px;
+    cursor: pointer;
+    -moz-border-radius: 6px;
+    -webkit-border-radius: 6px;
+    border-radius: 6px;
+}
+
+.shortcuts-panel .close-btn:hover {
+    background: #374461;
+}
+
+/* Remove decorative elements from Mozilla header */
+.theme-mozilla header::after,
+.theme-mozilla header::before {
+    display: none;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    body {
+        margin: 10px;
+    }
+
+    .container {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        width: 100%;
+        order: 1;
+        margin-top: 2em;
+        padding-top: 1em;
+        border-top: 1px solid #ccc;
+    }
+
+    .sidebar > div,
+    .sidebar .sidebar-section,
+    .search-form {
+        margin-left: 0;
+    }
+
+    .mozilla-nav-inner {
+        justify-content: center;
+    }
+
+    header {
+        text-align: center;
+    }
+}
+
+@media (max-width: 480px) {
+    .mozilla-nav-label {
+        display: none;
+    }
+
+    header h1 {
+        font-size: 18px;
+    }
+}
+
+/* Titles-only page styles */
+.titles-only .view-toggle {
+    margin-bottom: 1em;
+    font-size: 12px;
+}
+
+.titles-only .day {
+    margin-bottom: 1.5em;
+}
+
+.titles-only h3.post {
+    font-size: 120%;
+    font-weight: bold;
+    margin-top: 0.5em;
+    margin-bottom: 3px;
+}
+
+.titles-only h4.entry-title {
+    font-size: 13px;
+    font-weight: normal;
+    margin: 3px 0;
+}
+
+.titles-only h4.entry-title a {
+    color: #039;
+}
+
+.titles-only p.entry-meta {
+    font-size: 11px;
+    color: #666;
+    margin: 0 0 0.5em 0;
+}
+
+/* Print styles */
+@media print {
+    .sidebar, .search-form, footer, .mozilla-nav {
+        display: none;
+    }
+
+    .container {
+        display: block;
+    }
+
+    header {
+        background: white;
+        color: black;
+        border-bottom: 2px solid black;
+        border-radius: 0;
+    }
+
+    header h1, header h1 a {
+        color: black;
+    }
+
+    article {
+        page-break-inside: avoid;
+    }
+
+    a {
+        color: black;
+    }
+}
+""",
+}
+
+THEME_LOGOS = {
+    "planet-python": {
+        "svg": """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 211 71" width="211" height="71">
+  <!-- Official Python Logo - Two intertwined snakes forming a plus shape -->
+  <!-- Colors: Blue #366D9C and Yellow #FFDB4C -->
+  <defs>
+    <linearGradient id="blueGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#5A9FD4"/>
+      <stop offset="100%" style="stop-color:#366D9C"/>
+    </linearGradient>
+    <linearGradient id="yellowGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFDB4C"/>
+      <stop offset="100%" style="stop-color:#FFD43B"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Blue snake (top-left, curves down-right) -->
+  <path fill="url(#blueGradient)" d="
+    M35.5 5.5
+    C35.5 2.5 33 0 30 0
+    L15.5 0
+    C7 0 0 7 0 15.5
+    L0 30
+    C0 33 2.5 35.5 5.5 35.5
+    L25 35.5
+    C28 35.5 30.5 38 30.5 41
+    L30.5 50
+    L20 50
+    L20 35.5
+    L5.5 35.5
+    C2.5 35.5 0 33 0 30
+    L0 15.5
+    C0 7 7 0 15.5 0
+    L30 0
+    C33 0 35.5 2.5 35.5 5.5
+    L35.5 20
+    L30.5 20
+    L30.5 5.5
+    C30.5 4 29 2.5 27.5 2.5
+    L15.5 2.5
+    C8.5 2.5 2.5 8.5 2.5 15.5
+    L2.5 27.5
+    C2.5 29 4 30.5 5.5 30.5
+    L25 30.5
+    C30.5 30.5 35.5 35.5 35.5 41
+    L35.5 55
+    L30.5 55
+    L30.5 41
+    C30.5 38 28 35.5 25 35.5
+    L20 35.5
+    L20 50
+    L30.5 50
+    L30.5 41
+    L35.5 41
+    Z
+  " transform="translate(5, 5)"/>
+
+  <!-- Simplified Python logo mark -->
+  <g transform="translate(5, 5)">
+    <!-- Blue half (top) -->
+    <path fill="url(#blueGradient)" d="
+      M30.2 0
+      C18.8 0 17.5 5 17.5 5
+      L17.5 13
+      L30.5 13
+      L30.5 15
+      L11 15
+      C11 15 0 13.8 0 30.5
+      C0 47.2 9.6 46.5 9.6 46.5
+      L15.5 46.5
+      L15.5 38.2
+      C15.5 38.2 15.1 28.5 25 28.5
+      L37.8 28.5
+      C37.8 28.5 47 28.7 47 19.8
+      L47 6.8
+      C47 6.8 48.4 0 30.2 0
+      M22.1 6.5
+      C23.8 6.5 25.2 7.9 25.2 9.6
+      C25.2 11.3 23.8 12.7 22.1 12.7
+      C20.4 12.7 19 11.3 19 9.6
+      C19 7.9 20.4 6.5 22.1 6.5
+    "/>
+
+    <!-- Yellow half (bottom) -->
+    <path fill="url(#yellowGradient)" d="
+      M47.8 15
+      C47.8 15 47 15 47 15
+      L47 23.3
+      C47 23.3 47.4 33 37.5 33
+      L24.7 33
+      C24.7 33 15.5 32.8 15.5 41.7
+      L15.5 54.7
+      C15.5 54.7 14.1 61.5 32.3 61.5
+      C43.7 61.5 45 56.5 45 56.5
+      L45 48.5
+      L32 48.5
+      L32 46.5
+      L51.5 46.5
+      C51.5 46.5 62.5 47.7 62.5 31
+      C62.5 14.3 52.9 15 52.9 15
+      L47.8 15
+      M40.4 55
+      C38.7 55 37.3 53.6 37.3 51.9
+      C37.3 50.2 38.7 48.8 40.4 48.8
+      C42.1 48.8 43.5 50.2 43.5 51.9
+      C43.5 53.6 42.1 55 40.4 55
+    " transform="translate(0, 0)"/>
+  </g>
+
+  <!-- "Python" text -->
+  <text x="80" y="42" font-family="'Source Sans Pro', Arial, sans-serif" font-size="28" font-weight="600" fill="#646464">
+    <tspan fill="#366D9C">Py</tspan><tspan fill="#FFDB4C">thon</tspan>
+  </text>
+</svg>
+""",
+        "url": "/static/logo.svg",
+        "width": "211",
+        "height": "71",
+        "alt": "Python Logo",
+    },
+    "planet-mozilla": {
+        "svg": """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 32" width="112" height="32">
+  <!-- Mozilla wordmark logo - White on transparent -->
+  <title>Mozilla</title>
+  <g fill="#ffffff">
+    <!-- M -->
+    <path d="M2.5 6.5h5.3l4.2 13.8L16.2 6.5h5.3v19h-3.4V10.9l-4.5 14.6h-3.2L5.9 10.9v14.6H2.5V6.5z"/>
+    <!-- o -->
+    <path d="M25.9 14.8c0-4.6 3.2-7.3 7.2-7.3s7.2 2.7 7.2 7.3v3.9c0 4.6-3.2 7.3-7.2 7.3s-7.2-2.7-7.2-7.3v-3.9zm3.4 4c0 2.5 1.5 4.1 3.8 4.1s3.8-1.6 3.8-4.1v-4.1c0-2.5-1.5-4.1-3.8-4.1s-3.8 1.6-3.8 4.1v4.1z"/>
+    <!-- z -->
+    <path d="M43.5 7.5h12.4v2.7l-8.3 13.5h8.5v2.8H43.2v-2.7l8.3-13.5h-8V7.5z"/>
+    <!-- i -->
+    <path d="M58.8 2.5h3.4v4h-3.4v-4zm0 5h3.4v18h-3.4v-18z"/>
+    <!-- l -->
+    <path d="M66.2 2.5h3.4v23h-3.4v-23z"/>
+    <!-- l -->
+    <path d="M73.6 2.5h3.4v23h-3.4v-23z"/>
+    <!-- a -->
+    <path d="M81 14.5c0-4.5 2.9-7 6.8-7 3.9 0 6.5 2.3 6.5 6.3v11.7h-3.1v-2.2c-.9 1.6-2.5 2.5-4.6 2.5-2.8 0-5-1.7-5-4.7 0-3.1 2.4-4.8 6.1-4.8h3.2v-1c0-2-1.1-3.4-3.4-3.4-2.1 0-3.3 1.2-3.4 3.1H81.1l-.1-1.5zm9.9 3.6h-2.7c-2.1 0-3.3.8-3.3 2.4 0 1.5 1.1 2.4 2.9 2.4 2.4 0 4.1-1.5 4.1-3.9v-.9z"/>
+  </g>
+  <!-- The "://" decoration commonly seen with Mozilla branding -->
+  <g fill="#b72822">
+    <text x="95" y="24" font-family="Georgia, serif" font-size="16" font-weight="bold">://</text>
+  </g>
+</svg>
+""",
+        "url": "/static/logo.svg",
+        "width": "112",
+        "height": "32",
+        "alt": "Mozilla Logo",
+    },
+}

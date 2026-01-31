@@ -1,6 +1,6 @@
-/* Planet Mozilla Theme - Faithful recreation of planet.mozilla.org */
-/* Key features: Dark header, "Looking For" nav bar, minimal sidebar */
-/* Simple blog aggregator layout with cyan/teal links */
+/* Planet Mozilla Theme - Exact recreation of planet.mozilla.org */
+/* Source: https://github.com/mozilla/planet/blob/master/branches/firefox-ux/theme/planet.css-original */
+/* Key features: RIGHT sidebar, #455372 dark header, #039 teal links, square bullets */
 
 * {
     box-sizing: border-box;
@@ -9,62 +9,92 @@
 }
 
 body {
-    font-family: Helvetica, Arial, sans-serif;
+    font-family: Helvetica, Arial, Verdana, sans-serif;
     font-size: 13px;
     line-height: 1.6;
-    color: #000000;
-    background: #ffffff;
+    color: #000;
+    background: #fff;
+    margin: 15px;
 }
 
-/* Links - Teal/cyan color scheme */
-a {
-    color: #006699;
+/* Links - Mozilla teal/purple scheme */
+a:link {
+    color: #148cb5;
     text-decoration: none;
 }
 
 a:visited {
-    color: #660099;
+    color: #636;
 }
 
 a:hover {
-    color: #006699;
-    text-decoration: underline;
+    text-decoration: underline !important;
+    color: blue !important;
+}
+
+a:active {
+    color: #000;
 }
 
 /* Headings */
-h1, h2, h3, h4, h5, h6 {
-    font-weight: bold;
-}
-
 h1 {
     font-size: 24px;
+    font-weight: normal;
+    letter-spacing: -2px;
+    text-transform: lowercase;
+    color: white;
+    background: #455372;
+    padding: 20px;
+    margin: 0;
+    -moz-border-radius: 12px;
+    -webkit-border-radius: 12px;
+    border-radius: 12px;
 }
 
 h2 {
-    font-size: 18px;
+    font-family: Georgia, Times, "Times New Roman", serif;
+    font-size: 150%;
+    font-weight: normal;
+    color: #b72822;
+    border-bottom: 1px solid #ccc;
+    margin-left: 0;
     margin-top: 1em;
     margin-bottom: 0.5em;
 }
 
 h3 {
-    font-size: 15px;
+    font-size: 120%;
+    font-weight: bold;
+    clear: both;
+    border-bottom: 1px solid #ccc;
+}
+
+h3 a {
+    text-decoration: none;
+    color: black;
 }
 
 h4 {
-    font-size: 14px;
+    font-size: 100%;
+    font-weight: bold;
+    margin: 1em 0 0 1em;
+    clear: both;
+    border-bottom: 1px solid #ccc;
 }
 
-/* Mozilla "Looking For" Navigation Bar at top - plain inline text style */
+/* Mozilla "Looking For" Navigation Bar at top */
 .mozilla-nav {
     background: transparent;
-    padding: 8px 15px;
+    padding: 0 0 10px 0;
+    font-family: "Trebuchet MS", sans-serif;
     font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
     border-bottom: none;
+    margin-bottom: 10px;
 }
 
 .mozilla-nav-inner {
-    max-width: 1000px;
-    margin: 0 auto;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -72,29 +102,33 @@ h4 {
 }
 
 .mozilla-nav-label {
-    color: #666666;
+    color: #666;
     font-weight: bold;
 }
 
 .mozilla-nav a {
-    color: #006699;
+    color: #039;
     text-decoration: none;
 }
 
-.mozilla-nav a:hover {
-    color: #006699;
-    text-decoration: underline;
-}
-
 .mozilla-nav a:visited {
-    color: #660099;
+    color: #636;
 }
 
-/* Header - Simple dark banner */
+.mozilla-nav a:hover {
+    text-decoration: underline !important;
+    color: blue !important;
+}
+
+/* Header - Dark slate blue banner with rounded corners */
 header {
-    background: #000000;
-    padding: 15px 20px;
+    background: #455372;
+    padding: 20px;
     border-bottom: none;
+    -moz-border-radius: 12px;
+    -webkit-border-radius: 12px;
+    border-radius: 12px;
+    margin-bottom: 1em;
 }
 
 header .logo-link {
@@ -104,85 +138,100 @@ header .logo-link {
 header .logo {
     height: 30px;
     width: auto;
+    display: none; /* Original Mozilla doesn't show logo in header */
 }
 
 header .header-text {
-    display: inline-block;
-    vertical-align: middle;
-    margin-left: 15px;
+    display: block;
 }
 
 header h1 {
-    font-size: 22px;
+    font-size: 24px;
     font-weight: normal;
+    letter-spacing: -2px;
+    text-transform: lowercase;
     margin: 0;
+    padding: 0;
+    background: transparent;
     display: inline;
 }
 
 header h1 a {
-    color: #ffffff;
+    color: #fff;
     text-decoration: none;
 }
 
 header h1 a:hover {
-    color: #cccccc;
+    color: #ccc;
+    text-decoration: none !important;
 }
 
 header p {
-    display: none; /* Hide description in header for clean look */
+    display: none; /* Hide description in header */
 }
 
-/* Container Layout */
+/* Container Layout - Content with right margin for sidebar */
 .container {
-    max-width: 1000px;
-    margin: 0 auto;
-    padding: 20px;
+    margin: 0;
+    padding: 0;
     display: flex;
     flex-direction: row;
-    gap: 30px;
+    gap: 20px;
 }
 
-/* Main content area - Takes most of the space */
+/* Main content area - Takes most space, leaves room for sidebar */
 main {
     flex: 1;
     min-width: 0;
+    margin-right: 0;
 }
 
-/* Sidebar - Right position */
+/* Sidebar - RIGHT position, absolute style like original */
 .sidebar {
-    width: 300px;
+    width: 230px;
     flex-shrink: 0;
     order: 1; /* Force right side */
-    font-size: 12px;
+    font-size: 70%;
+    padding-left: 0;
+    padding-right: 0;
+    padding-top: 20px;
 }
 
 .sidebar h2 {
-    font-size: 13px;
+    font-size: 150%;
     font-weight: bold;
-    margin-top: 1em;
-    margin-bottom: 0.5em;
-    padding: 0;
-    border: none;
-    background: none;
-    text-transform: none;
+    color: black;
+    border-bottom: none;
+    padding-left: 5px;
+    margin-left: 0;
+    margin-top: 0;
 }
 
 /* Sidebar links */
 .sidebar-links {
     margin-bottom: 1em;
-    font-size: 12px;
+    font-size: 100%;
+    padding-left: 5px;
 }
 
 .sidebar-links a {
     margin-right: 10px;
-    color: #006699;
+    color: #039;
+}
+
+.sidebar-links a:visited {
+    color: #636;
 }
 
 /* Search form */
 .search-form {
     margin-bottom: 1.5em;
-    padding-bottom: 1em;
-    border-bottom: 1px solid #dddddd;
+    padding: 10px;
+    margin-left: 20px;
+    background: #e4ecec;
+    -moz-border-radius: 1em;
+    -webkit-border-radius: 1em;
+    border-radius: 1em;
 }
 
 .search-form .search-label {
@@ -195,20 +244,20 @@ main {
 .search-form input {
     width: 100%;
     padding: 5px;
-    border: 1px solid #cccccc;
+    border: 1px solid #ccc;
     font-size: 12px;
     margin-bottom: 5px;
 }
 
 .search-form input:focus {
-    outline: 1px solid #006699;
-    border-color: #006699;
+    outline: 1px solid #039;
+    border-color: #039;
 }
 
 .search-form button {
     padding: 5px 10px;
     background: #f5f5f5;
-    border: 1px solid #cccccc;
+    border: 1px solid #ccc;
     cursor: pointer;
     font-size: 11px;
 }
@@ -217,21 +266,35 @@ main {
     background: #e5e5e5;
 }
 
-/* Feeds list */
+/* Sidebar boxes - Mozilla style with rounded corners */
+.sidebar > div,
+.sidebar .sidebar-section {
+    padding: 10px;
+    margin-top: 0;
+    margin-right: 0;
+    margin-left: 20px;
+    margin-bottom: 10px;
+    background: transparent;
+    -moz-border-radius: 1em;
+    -webkit-border-radius: 1em;
+    border-radius: 1em;
+}
+
+/* Feeds list - Square bullets like original */
 .feeds {
-    list-style: none;
+    list-style-type: square;
+    padding-left: 2em;
+    margin-left: 0;
     font-size: 11px;
-    margin: 0;
-    padding: 0;
 }
 
 .feeds li {
-    padding: 4px 0;
-    border-bottom: 1px solid #eeeeee;
+    padding: 2px 0;
+    border-bottom: none;
 }
 
-.feeds li:last-child {
-    border-bottom: none;
+.feeds li:hover {
+    color: grey;
 }
 
 /* Remove health indicators */
@@ -242,10 +305,14 @@ main {
 }
 
 .feeds li a {
-    color: #006699;
+    color: #039;
 }
 
-/* Hide RSS icon for cleaner look */
+.feeds li a:visited {
+    color: #636;
+}
+
+/* Hide RSS icon */
 .feeds li .feed-icon {
     display: none;
 }
@@ -254,41 +321,47 @@ main {
 .submission-link {
     margin-top: 1em;
     font-size: 11px;
-    padding: 0;
+    padding: 0 5px;
     border: none;
+}
+
+.submission-link a {
+    color: #039;
 }
 
 /* Navigation sections */
 .nav-level-one,
 h2.nav-level-one {
-    font-size: 13px;
+    font-size: 150%;
     font-weight: bold;
-    margin-top: 1.5em;
+    color: black;
+    border-bottom: none;
+    padding-left: 5px;
+    margin-left: 0;
+    margin-top: 1em;
     margin-bottom: 0.5em;
-    padding: 0;
     background: none;
-    border: none;
     text-transform: none;
 }
 
 .nav-level-two,
 ul.nav-level-two,
 .related-links {
-    list-style: none;
-    margin: 0;
-    padding: 0;
+    list-style-type: square;
+    padding-left: 2em;
+    margin-left: 0;
     font-size: 11px;
 }
 
 .nav-level-two li,
 .related-links li {
-    padding: 4px 0;
-    border-bottom: 1px solid #eeeeee;
+    padding: 2px 0;
+    border-bottom: none;
 }
 
-.nav-level-two li:last-child,
-.related-links li:last-child {
-    border-bottom: none;
+.nav-level-two li:hover,
+.related-links li:hover {
+    color: grey;
 }
 
 .nav-level-three,
@@ -296,30 +369,33 @@ li.nav-level-three {
     margin-left: 0;
 }
 
-/* Day headers - Date grouping */
+/* Day headers - Date grouping with bottom border */
 .day {
     margin-bottom: 2em;
 }
 
 .day h2 {
-    font-size: 16px;
-    font-weight: bold;
-    margin-bottom: 0.75em;
+    font-size: 150%;
+    font-weight: normal;
+    border-bottom: 1px solid #ccc;
+    margin-bottom: 0.5em;
     padding-bottom: 5px;
-    border-bottom: 1px solid #dddddd;
 }
 
 .day h2.date {
-    font-family: Georgia, Times, serif;
-    font-size: 14px;
-    color: #b72822;
+    font-family: sans-serif;
+    font-size: 150%;
+    color: #000;
+    font-weight: normal;
 }
 
-/* Articles */
-article {
-    margin-bottom: 1.5em;
-    padding-bottom: 1.5em;
-    border-bottom: 1px solid #eeeeee;
+/* Articles / Entries */
+article,
+div.entry {
+    margin: 0 0.5em 1em 1em;
+    padding-top: 1em;
+    padding-bottom: 1em;
+    border-bottom: none;
 }
 
 article:last-child {
@@ -327,63 +403,75 @@ article:last-child {
 }
 
 article h3 {
-    font-size: 15px;
+    font-size: 120%;
     font-weight: bold;
     margin-bottom: 3px;
+    clear: both;
 }
 
 article h3 a {
-    color: #006699;
+    color: #039;
     text-decoration: none;
 }
 
 article h3 a:visited {
-    color: #660099;
+    color: #636;
 }
 
 article h3 a:hover {
-    text-decoration: underline;
+    text-decoration: underline !important;
 }
 
 /* Article header reset */
 article header {
     background: transparent;
     border: none;
+    border-radius: 0;
     min-height: auto;
     padding: 0;
+    margin: 0;
     display: block;
 }
 
-/* Author/meta information */
+/* Author/meta information - Right aligned date */
 .meta {
     font-size: 11px;
-    color: #666666;
+    color: #666;
     margin-bottom: 0.5em;
 }
 
 .meta .author {
     font-weight: bold;
-    color: #333333;
+    color: #333;
 }
 
 .meta .author a {
-    color: #006699;
+    color: #039;
 }
 
 .meta .date-sep {
     margin: 0 5px;
-    color: #999999;
+    color: #999;
+}
+
+.entry .date {
+    margin-top: 0.5em;
+    text-align: right;
 }
 
 /* Content area */
 .content {
     font-size: 13px;
     line-height: 1.6;
-    color: #333333;
+    color: #000;
 }
 
 .content p {
     margin: 0 0 1em 0;
+}
+
+.content p:first-child {
+    margin-top: 0;
 }
 
 .content p:last-child {
@@ -396,13 +484,23 @@ article header {
     margin: 0.5em 0;
 }
 
+.content img.face {
+    float: right;
+    margin-top: -3em;
+}
+
 .content a {
-    color: #006699;
-    text-decoration: underline;
+    color: #039;
+    text-decoration: none;
 }
 
 .content a:visited {
-    color: #660099;
+    color: #636;
+}
+
+.content a:hover {
+    text-decoration: underline !important;
+    color: blue !important;
 }
 
 .content ul, .content ol {
@@ -424,7 +522,7 @@ article header {
     font-family: Monaco, Consolas, "Courier New", monospace;
     font-size: 11px;
     background: #f5f5f5;
-    border: 1px solid #dddddd;
+    border: 1px solid #ddd;
     padding: 10px;
     overflow-x: auto;
     margin: 1em 0;
@@ -438,8 +536,8 @@ article header {
 .content blockquote {
     margin: 1em 0 1em 1em;
     padding-left: 1em;
-    border-left: 3px solid #cccccc;
-    color: #666666;
+    border-left: 3px solid #ccc;
+    color: #666;
     font-style: italic;
 }
 
@@ -449,7 +547,7 @@ article header {
 }
 
 .content th, .content td {
-    border: 1px solid #dddddd;
+    border: 1px solid #ddd;
     padding: 5px 8px;
 }
 
@@ -457,34 +555,91 @@ article header {
     background: #f5f5f5;
 }
 
-/* Footer - Dark background */
-footer {
-    background: #2a2a2a;
-    border-top: 1px solid #333333;
-    padding: 15px 20px;
-    margin-top: 2em;
+video {
+    max-width: 80%;
+    border: 1px solid lightgray;
+    border-radius: 10px;
+}
+
+/* Horizontal rules */
+hr {
+    height: 1px;
+    border: none;
+    color: #ccc;
+    background-color: #ccc;
+    margin: 2em auto;
+    width: 50%;
+}
+
+/* Footer - Border top, centered text */
+footer,
+#footer {
+    border-top: 1px solid #666;
+    margin: 2em 0;
+    padding: 1em 0;
     text-align: center;
+    clear: both;
+    margin-top: 1em;
+    margin-right: 0;
     font-size: 11px;
-    color: #cccccc;
+    color: #999999;
+    background-color: #2a2a2a;
 }
 
-footer p {
-    margin-bottom: 5px;
+footer ul,
+#footer ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
 }
 
-footer p:last-child {
-    margin-bottom: 0;
+footer li,
+#footer li {
+    display: inline;
+    padding: 0 20px 0 0;
+    margin: 0;
+    white-space: nowrap;
 }
 
-footer a {
-    color: #66aacc;
+footer p,
+#footer p {
+    color: #666;
+    margin: 0.6em 0;
+}
+
+footer a,
+#footer a {
+    color: #666;
+}
+
+footer a:hover,
+#footer a:hover {
+    color: #000;
+    text-decoration: underline !important;
+}
+
+footer span, footer a,
+#footer span, #footer a {
+    white-space: nowrap;
+    padding: 0 1em;
+}
+
+footer p span, footer p a,
+#footer p span, #footer p a {
+    white-space: nowrap;
+    padding: 0 0.3em;
+}
+
+footer span a,
+#footer span a {
+    padding: 0;
 }
 
 footer kbd {
     font-family: Monaco, Consolas, "Courier New", monospace;
     font-size: 11px;
-    background: #ffffff;
-    border: 1px solid #cccccc;
+    background: #fff;
+    border: 1px solid #ccc;
     padding: 2px 4px;
     border-radius: 2px;
 }
@@ -506,12 +661,14 @@ footer kbd {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    background: #ffffff;
-    border: 1px solid #333333;
+    background: #fff;
+    border: 1px solid #333;
     padding: 20px;
     z-index: 1000;
     min-width: 280px;
-    border-radius: 4px;
+    -moz-border-radius: 12px;
+    -webkit-border-radius: 12px;
+    border-radius: 12px;
     box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
 }
 
@@ -524,7 +681,7 @@ footer kbd {
     font-weight: bold;
     margin-bottom: 15px;
     padding-bottom: 10px;
-    border-bottom: 1px solid #dddddd;
+    border-bottom: 1px solid #ddd;
 }
 
 .shortcuts-panel dl {
@@ -541,23 +698,25 @@ footer kbd {
     font-family: Monaco, Consolas, "Courier New", monospace;
     font-size: 12px;
     background: #f5f5f5;
-    border: 1px solid #cccccc;
+    border: 1px solid #ccc;
     padding: 3px 6px;
     border-radius: 2px;
 }
 
 .shortcuts-panel .close-btn {
     margin-top: 15px;
-    background: #006699;
-    color: #ffffff;
+    background: #455372;
+    color: #fff;
     border: none;
     padding: 8px 15px;
     cursor: pointer;
-    border-radius: 3px;
+    -moz-border-radius: 6px;
+    -webkit-border-radius: 6px;
+    border-radius: 6px;
 }
 
 .shortcuts-panel .close-btn:hover {
-    background: #005588;
+    background: #374461;
 }
 
 /* Remove decorative elements from Mozilla header */
@@ -568,9 +727,12 @@ footer kbd {
 
 /* Responsive */
 @media (max-width: 768px) {
+    body {
+        margin: 10px;
+    }
+
     .container {
         flex-direction: column;
-        padding: 15px;
     }
 
     .sidebar {
@@ -578,7 +740,13 @@ footer kbd {
         order: 1;
         margin-top: 2em;
         padding-top: 1em;
-        border-top: 1px solid #dddddd;
+        border-top: 1px solid #ccc;
+    }
+
+    .sidebar > div,
+    .sidebar .sidebar-section,
+    .search-form {
+        margin-left: 0;
     }
 
     .mozilla-nav-inner {
@@ -586,14 +754,7 @@ footer kbd {
     }
 
     header {
-        padding: 10px 15px;
         text-align: center;
-    }
-
-    header .header-text {
-        display: block;
-        margin-left: 0;
-        margin-top: 10px;
     }
 }
 
@@ -618,7 +779,7 @@ footer kbd {
 }
 
 .titles-only h3.post {
-    font-size: 14px;
+    font-size: 120%;
     font-weight: bold;
     margin-top: 0.5em;
     margin-bottom: 3px;
@@ -631,12 +792,12 @@ footer kbd {
 }
 
 .titles-only h4.entry-title a {
-    color: #006699;
+    color: #039;
 }
 
 .titles-only p.entry-meta {
     font-size: 11px;
-    color: #666666;
+    color: #666;
     margin: 0 0 0.5em 0;
 }
 
@@ -648,16 +809,16 @@ footer kbd {
 
     .container {
         display: block;
-        max-width: none;
     }
 
     header {
         background: white;
         color: black;
         border-bottom: 2px solid black;
+        border-radius: 0;
     }
 
-    header h1 a {
+    header h1, header h1 a {
         color: black;
     }
 

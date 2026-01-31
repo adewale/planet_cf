@@ -66,7 +66,9 @@ def escape_for_python(content: str) -> str:
     return content.replace('"""', r"\"\"\"")
 
 
-def get_theme_css(theme: str | None, example: str | None = None, fallback: bool = True) -> tuple[str, str]:
+def get_theme_css(
+    theme: str | None, example: str | None = None, fallback: bool = True
+) -> tuple[str, str]:
     """Get CSS content for the specified theme or example.
 
     Args:
@@ -88,17 +90,22 @@ def get_theme_css(theme: str | None, example: str | None = None, fallback: bool 
     if example:
         example_css_path = EXAMPLES_DIR / example / "theme" / "style.css"
         if example_css_path.exists():
-            return example_css_path.read_text(encoding="utf-8"), f"examples/{example}/theme/style.css"
+            return example_css_path.read_text(
+                encoding="utf-8"
+            ), f"examples/{example}/theme/style.css"
         else:
             # List available examples for helpful message
-            available_examples = [d.name for d in EXAMPLES_DIR.iterdir()
-                                  if d.is_dir() and (d / "theme" / "style.css").exists()]
+            available_examples = [
+                d.name
+                for d in EXAMPLES_DIR.iterdir()
+                if d.is_dir() and (d / "theme" / "style.css").exists()
+            ]
             if fallback:
                 print(
                     f"Warning: Example '{example}' theme not found at {example_css_path}\n"
                     f"  Available examples with themes: {', '.join(sorted(available_examples))}\n"
                     f"  Falling back to 'default' theme.",
-                    file=sys.stderr
+                    file=sys.stderr,
                 )
             else:
                 raise FileNotFoundError(
@@ -113,7 +120,9 @@ def get_theme_css(theme: str | None, example: str | None = None, fallback: bool 
             return theme_css_path.read_text(encoding="utf-8"), f"themes/{theme}/style.css"
         else:
             # List available themes for helpful message
-            available = [d.name for d in THEMES_DIR.iterdir() if d.is_dir() and (d / "style.css").exists()]
+            available = [
+                d.name for d in THEMES_DIR.iterdir() if d.is_dir() and (d / "style.css").exists()
+            ]
 
             if fallback:
                 # Smart default: Fall back to default theme
@@ -121,11 +130,13 @@ def get_theme_css(theme: str | None, example: str | None = None, fallback: bool 
                     f"Warning: Theme '{theme}' not found at {theme_css_path}\n"
                     f"  Available themes: {', '.join(sorted(available))}\n"
                     f"  Falling back to 'default' theme.",
-                    file=sys.stderr
+                    file=sys.stderr,
                 )
                 default_css_path = THEMES_DIR / "default" / "style.css"
                 if default_css_path.exists():
-                    return default_css_path.read_text(encoding="utf-8"), "themes/default/style.css (fallback)"
+                    return default_css_path.read_text(
+                        encoding="utf-8"
+                    ), "themes/default/style.css (fallback)"
                 # Ultimate fallback: use templates/style.css
                 return read_template(CSS_FILE), "templates/style.css (fallback)"
             else:
@@ -410,7 +421,58 @@ TEMPLATE_ADMIN_LOGIN = "admin/login.html"
 TEMPLATE_FEED_ATOM = "feed.atom.xml"
 TEMPLATE_FEED_RSS = "feed.rss.xml"
 TEMPLATE_FEEDS_OPML = "feeds.opml"
+
+# =============================================================================
+# Theme-specific CSS and Logos (for multi-instance deployments)
+# =============================================================================
+
+THEME_CSS = {
 '''
+
+    # Add theme-specific CSS from examples
+    example_themes = {
+        "planet-python": EXAMPLES_DIR / "planet-python" / "theme" / "style.css",
+        "planet-mozilla": EXAMPLES_DIR / "planet-mozilla" / "theme" / "style.css",
+    }
+    for theme_name, css_path in example_themes.items():
+        if css_path.exists():
+            theme_css_content = css_path.read_text(encoding="utf-8")
+            output += f'    "{theme_name}": """{escape_for_python(theme_css_content)}""",\n'
+
+    output += """}
+
+THEME_LOGOS = {
+"""
+
+    # Add theme-specific logos from examples
+    logo_configs = {
+        "planet-python": {
+            "svg_path": EXAMPLES_DIR / "planet-python" / "static" / "python-logo.svg",
+            "width": "211",
+            "height": "71",
+            "alt": "Python Logo",
+        },
+        "planet-mozilla": {
+            "svg_path": EXAMPLES_DIR / "planet-mozilla" / "static" / "mozilla-logo.svg",
+            "width": "112",
+            "height": "32",
+            "alt": "Mozilla Logo",
+        },
+    }
+    for theme_name, config in logo_configs.items():
+        svg_path = config["svg_path"]
+        if svg_path.exists():
+            svg_content = svg_path.read_text(encoding="utf-8")
+            output += f'''    "{theme_name}": {{
+        "svg": """{escape_for_python(svg_content)}""",
+        "width": "{config["width"]}",
+        "height": "{config["height"]}",
+        "alt": "{config["alt"]}",
+    }},
+'''
+
+    output += """}
+"""
 
     # Write output
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -424,20 +486,22 @@ def list_available_themes() -> list[str]:
     """Return list of available theme names."""
     if not THEMES_DIR.exists():
         return []
-    return sorted([
-        d.name for d in THEMES_DIR.iterdir()
-        if d.is_dir() and (d / "style.css").exists()
-    ])
+    return sorted(
+        [d.name for d in THEMES_DIR.iterdir() if d.is_dir() and (d / "style.css").exists()]
+    )
 
 
 def list_available_examples() -> list[str]:
     """Return list of available example names with themes."""
     if not EXAMPLES_DIR.exists():
         return []
-    return sorted([
-        d.name for d in EXAMPLES_DIR.iterdir()
-        if d.is_dir() and (d / "theme" / "style.css").exists()
-    ])
+    return sorted(
+        [
+            d.name
+            for d in EXAMPLES_DIR.iterdir()
+            if d.is_dir() and (d / "theme" / "style.css").exists()
+        ]
+    )
 
 
 def main():
@@ -473,12 +537,14 @@ Examples:
 """,
     )
     parser.add_argument(
-        "--theme", "-t",
+        "--theme",
+        "-t",
         metavar="NAME",
         help=theme_help,
     )
     parser.add_argument(
-        "--example", "-e",
+        "--example",
+        "-e",
         metavar="NAME",
         help=example_help,
     )
