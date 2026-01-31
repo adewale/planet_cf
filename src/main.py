@@ -32,7 +32,6 @@ from instance_config import is_lite_mode as check_lite_mode
 from models import BleachSanitizer
 from oauth_handler import GitHubOAuthHandler, extract_oauth_state_from_cookies
 from observability import (
-    AdminActionEvent,
     FeedFetchEvent,
     RequestEvent,
     SchedulerEvent,
@@ -156,9 +155,6 @@ FALLBACK_ENTRIES_LIMIT = 50  # Show 50 most recent entries if date range is empt
 
 # HTML sanitizer instance (uses settings from types.py)
 _sanitizer = BleachSanitizer()
-
-# Constants for content limits
-SUMMARY_MAX_LENGTH = 500
 
 # Cloud metadata endpoints to block (SSRF protection)
 BLOCKED_METADATA_IPS = {
@@ -510,31 +506,6 @@ class Default(WorkerEntrypoint):
             "worker_version": worker_version,
             "deployment_environment": getattr(self.env, "DEPLOYMENT_ENVIRONMENT", None) or "",
         }
-
-    def _create_admin_event(
-        self, admin: dict[str, Any], action: str, target_type: str
-    ) -> AdminActionEvent:
-        """Create an admin action event with common fields populated.
-
-        This reduces boilerplate in admin handlers by centralizing event creation.
-
-        Args:
-            admin: Admin user dict with github_username and id
-            action: The action being performed (e.g., "add_feed", "remove_feed")
-            target_type: The type of target (e.g., "feed", "search_index")
-
-        Returns:
-            AdminActionEvent with common fields populated
-        """
-        deployment = self._get_deployment_context()
-        return AdminActionEvent(
-            admin_username=admin.get("github_username", ""),
-            admin_id=admin.get("id", 0),
-            action=action,
-            target_type=target_type,
-            worker_version=deployment["worker_version"],
-            deployment_environment=deployment["deployment_environment"],
-        )
 
     def _get_feed_timeout(self) -> int:
         """Get feed timeout from environment, default 60 seconds."""
