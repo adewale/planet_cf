@@ -98,4 +98,4 @@ fi
 
 - wrangler: 4.58.0+
 - Python Workers compatibility flag: `python_workers`
-- Tested: 2026-01-13
+- Tested: 2026-01-30

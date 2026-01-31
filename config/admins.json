@@ -3,6 +3,11 @@
     {
       "github_username": "adewale",
       "display_name": "Adewale Oshineye"
+    },
+    {
+      "github_username": "testadmin",
+      "display_name": "Test Admin",
+      "test_only": true
     }
   ]
 }

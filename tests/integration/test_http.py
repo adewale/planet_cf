@@ -264,10 +264,12 @@ def _create_signed_session(env, username="testadmin", github_id=12345):
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="Requires HTTP mocking - feed validation makes real network requests")
 async def test_admin_add_feed_via_post(mock_env_with_admins):
     """Admin should be able to add a feed via POST."""
+    from unittest.mock import AsyncMock, patch
+
     from src.main import PlanetCF
+    from src.wrappers import HttpResponse
 
     worker = PlanetCF()
     worker.env = mock_env_with_admins
@@ -275,19 +277,49 @@ async def test_admin_add_feed_via_post(mock_env_with_admins):
     # Create signed session cookie
     session_cookie = _create_signed_session(mock_env_with_admins)
 
-    # POST to add a feed
-    request = MockRequest(
-        url="https://planetcf.com/admin/feeds",
-        method="POST",
-        cookies=session_cookie,
-        form_data={"url": "https://boristane.com/rss.xml", "title": "Boris Tane"},
+    # Mock RSS feed response for validation
+    mock_rss_content = """<?xml version="1.0" encoding="UTF-8"?>
+    <rss version="2.0">
+        <channel>
+            <title>Boris Tane</title>
+            <link>https://boristane.com</link>
+            <description>Blog posts</description>
+            <item>
+                <title>Test Post</title>
+                <link>https://boristane.com/post1</link>
+                <description>Test content</description>
+                <pubDate>Mon, 01 Jan 2026 00:00:00 GMT</pubDate>
+            </item>
+        </channel>
+    </rss>"""
+
+    mock_response = HttpResponse(
+        status_code=200,
+        headers={"content-type": "application/rss+xml"},
+        text=mock_rss_content,
+        final_url="https://boristane.com/rss.xml",
     )
 
-    response = await worker.fetch(request)
+    # Patch safe_http_fetch to return mock RSS feed
+    with patch("src.main.safe_http_fetch", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = mock_response
 
-    # Should redirect back to admin on success
-    assert response.status == 302, f"Expected 302 redirect, got {response.status}"
-    assert response.headers.get("Location") == "/admin"
+        # POST to add a feed
+        request = MockRequest(
+            url="https://planetcf.com/admin/feeds",
+            method="POST",
+            cookies=session_cookie,
+            form_data={"url": "https://boristane.com/rss.xml", "title": "Boris Tane"},
+        )
+
+        response = await worker.fetch(request)
+
+        # Should redirect back to admin on success
+        assert response.status == 302, f"Expected 302 redirect, got {response.status}"
+        assert response.headers.get("Location") == "/admin"
+
+        # Verify the feed URL was fetched for validation
+        mock_fetch.assert_called()
 
 
 @pytest.mark.asyncio

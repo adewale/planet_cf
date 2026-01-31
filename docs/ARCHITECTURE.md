@@ -54,7 +54,7 @@ Browser Request
       │ (cache miss)
       ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  1. Query D1 for entries (last 30 days, max 100/feed)           │
+│  1. Query D1 for entries (last 90 days, max 100/feed)           │
 │  2. Query D1 for active feeds                                    │
 │  3. Render Jinja2 template                                       │
 │  4. Return HTML/XML with cache headers                           │
@@ -172,6 +172,7 @@ CREATE TABLE entries (
     summary TEXT,
     content TEXT,
     published_at TEXT,
+    first_seen TEXT DEFAULT CURRENT_TIMESTAMP,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(feed_id, guid)
@@ -272,7 +273,7 @@ that shields business logic from JavaScript specifics:
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Boundary Layer Components** (defined in `main.py`):
+**Boundary Layer Components** (defined in `src/wrappers.py`):
 
 | Component | Wraps | Auto-converts |
 |-----------|-------|---------------|
@@ -372,8 +373,9 @@ Static files are served from `/static/*` routes:
 - `/static/style.css` - Main stylesheet
 - `/static/admin.js` - Admin dashboard JavaScript
 
-These are embedded in the Python code (not separate files) for Workers compatibility.
-In production, consider using Cloudflare Pages or R2 for static assets.
+Templates (HTML) are embedded in `src/templates.py` at build time (Workers has no filesystem).
+Static files (CSS, JS) exist as separate files in the `static/` directory and are served
+by the Worker at runtime. In production, consider using Cloudflare Pages or R2 for static assets.
 
 ## Security Measures
 
@@ -498,7 +500,7 @@ planet_cf/
 │   ├── integration/     # Integration tests (require wrangler dev)
 │   ├── e2e/             # End-to-end tests (production-like)
 │   └── mocks/           # Mock implementations for testing
-├── wrangler.toml        # Cloudflare Workers configuration
+├── wrangler.jsonc       # Cloudflare Workers configuration
 ├── pyproject.toml       # Python project configuration
 └── ARCHITECTURE.md      # This file
 ```

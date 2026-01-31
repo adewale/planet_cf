@@ -494,12 +494,12 @@ SELECT id FROM entries_to_delete;
 
 ## 5. Type Definitions
 
-Leverage Python's type system for safety, documentation, and IDE support. All types are defined in `src/types.py` and imported where needed.
+Leverage Python's type system for safety, documentation, and IDE support. All types are defined in `src/models.py` and imported where needed.
 
 ### 5.1 Semantic Type Aliases
 
 ```python
-# src/types.py
+# src/models.py
 from typing import NewType, Literal
 
 # Semantic IDs - prevent mixing up feed_id and entry_id
@@ -524,7 +524,7 @@ ContentType = Literal["html", "atom", "rss", "opml"]
 ### 5.2 Domain Models
 
 ```python
-# src/types.py (continued)
+# src/models.py (continued)
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from typing import Self
@@ -621,7 +621,7 @@ class ParsedEntry:
 ### 5.3 D1 Row Types
 
 ```python
-# src/types.py (continued)
+# src/models.py (continued)
 from typing import TypedDict, NotRequired
 
 class FeedRow(TypedDict):
@@ -632,8 +632,8 @@ class FeedRow(TypedDict):
     site_url: NotRequired[str | None]
     is_active: int  # SQLite boolean
     consecutive_failures: int
-    last_etag: NotRequired[str | None]
-    last_modified_header: NotRequired[str | None]
+    etag: NotRequired[str | None]
+    last_modified: NotRequired[str | None]
     last_success_at: NotRequired[str | None]
     last_error_at: NotRequired[str | None]
     last_error_message: NotRequired[str | None]
@@ -672,7 +672,7 @@ class AdminRow(TypedDict):
 ### 5.4 Result Type for Error Handling
 
 ```python
-# src/types.py (continued)
+# src/models.py (continued)
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 from enum import Enum, auto
@@ -719,7 +719,7 @@ class FetchError(Enum):
 ### 5.5 Protocol for Testability
 
 ```python
-# src/types.py (continued)
+# src/models.py (continued)
 from typing import Protocol
 
 class ContentSanitizer(Protocol):
@@ -729,15 +729,22 @@ class ContentSanitizer(Protocol):
 class BleachSanitizer:
     """Production sanitizer using bleach."""
     ALLOWED_TAGS = [
-        "a", "abbr", "acronym", "b", "blockquote", "code", "em",
-        "i", "li", "ol", "p", "pre", "strong", "ul", "h1", "h2",
-        "h3", "h4", "h5", "h6", "br", "hr", "img", "figure", "figcaption",
+        "a", "abbr", "acronym", "b", "blockquote", "br", "code", "div", "em",
+        "figure", "figcaption", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i",
+        "img", "li", "ol", "p", "pre", "span", "strong", "table", "tbody", "td",
+        "th", "thead", "tr", "ul",
     ]
     ALLOWED_ATTRS = {
-        "a": ["href", "title"],
-        "img": ["src", "alt", "title"],
+        "a": ["href", "title", "rel", "target"],
+        "img": ["src", "alt", "title", "width", "height", "loading"],
         "abbr": ["title"],
         "acronym": ["title"],
+        "code": ["class"],
+        "div": ["class"],
+        "figure": ["class"],
+        "figcaption": ["class"],
+        "pre": ["class", "data-language"],
+        "span": ["class"],
     }
 
     def clean(self, html: str) -> str:
@@ -1439,7 +1446,7 @@ class PlanetCF(WorkerEntrypoint):
         # Apply retention policy first (delete old entries and their vectors)
         await self._apply_retention_policy()
 
-        # Query entries (last 30 days, max 100 per feed)
+        # Query entries (last 90 days, max 100 per feed)
         entries_result = await self.env.DB.prepare("""
             WITH ranked AS (
                 SELECT
@@ -1449,7 +1456,7 @@ class PlanetCF(WorkerEntrypoint):
                     ROW_NUMBER() OVER (PARTITION BY e.feed_id ORDER BY e.published_at DESC) as rn
                 FROM entries e
                 JOIN feeds f ON e.feed_id = f.id
-                WHERE e.published_at >= datetime('now', '-30 days')
+                WHERE e.published_at >= datetime('now', '-90 days')
                 AND f.is_active = 1
             )
             SELECT * FROM ranked WHERE rn <= 100
@@ -1497,7 +1504,7 @@ class PlanetCF(WorkerEntrypoint):
         return html
 
     async def _apply_retention_policy(self):
-        """Delete entries older than 30 days or beyond 100 per feed, and clean up vectors."""
+        """Delete entries older than 90 days or beyond 100 per feed, and clean up vectors."""
 
         # Get IDs of entries to delete
         to_delete = await self.env.DB.prepare("""
@@ -1515,7 +1522,7 @@ class PlanetCF(WorkerEntrypoint):
             entries_to_delete AS (
                 SELECT id FROM ranked_entries
                 WHERE rn > 100
-                OR published_at < datetime('now', '-30 days')
+                OR published_at < datetime('now', '-90 days')
             )
             SELECT id FROM entries_to_delete
         """).all()
@@ -2560,7 +2567,7 @@ Comprehensive testing ensures the implementation matches this specification. Use
 tests/
 ├── conftest.py              # Shared fixtures
 ├── unit/
-│   ├── test_types.py        # Domain model tests
+│   ├── test_models.py        # Domain model tests
 │   ├── test_parsing.py      # Feed parsing tests
 │   ├── test_sanitization.py # XSS prevention tests
 │   ├── test_security.py     # URL validation, SSRF tests
@@ -2770,7 +2777,7 @@ class SessionFactory:
 #### 9.5.4 Unit Tests: Domain Models
 
 ```python
-# tests/unit/test_types.py
+# tests/unit/test_models.py
 import pytest
 import json
 import time
@@ -3540,7 +3547,7 @@ jobs:
 
 | Component | Minimum Coverage | Critical Paths |
 |-----------|-----------------|----------------|
-| `src/types.py` | 95% | All dataclasses, Result type |
+| `src/models.py` | 95% | All dataclasses, Result type |
 | `src/main.py` (security) | 100% | `_is_safe_url`, `_sanitize_html`, `_verify_signed_cookie` |
 | `src/main.py` (parsing) | 90% | `ParsedEntry.from_feedparser` |
 | `src/main.py` (HTTP) | 80% | Route handlers, error responses |
