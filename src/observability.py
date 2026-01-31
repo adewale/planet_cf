@@ -505,7 +505,7 @@ def log_op(event_type: str, **kwargs: Any) -> None:
     """
     event = {
         "event_type": event_type,
-        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "timestamp": get_iso_timestamp(),
         **kwargs,
     }
     logger.info(json.dumps(event))
@@ -525,7 +525,7 @@ def log_error(event_type: str, exception: Exception, **kwargs: Any) -> None:
     """
     event = {
         "event_type": event_type,
-        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "timestamp": get_iso_timestamp(),
         "error_type": type(exception).__name__,
         "error": truncate_error(exception),
         **kwargs,

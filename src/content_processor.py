@@ -7,6 +7,7 @@ the content processing logic from feed entries:
 - Parse published date from various formats
 - Generate stable GUID
 - Truncate summary to max length
+- Strip illegal XML control characters (at the lowest layer)
 
 Usage:
     processor = EntryContentProcessor(entry, feed_id=1)
@@ -23,6 +24,8 @@ import hashlib
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+
+from xml_sanitizer import strip_xml_control_chars
 
 # Constants
 SUMMARY_MAX_LENGTH = 500
@@ -107,21 +110,25 @@ class EntryContentProcessor:
         3. Empty string
 
         Returns:
-            Extracted content string (may contain HTML)
+            Extracted content string (may contain HTML), with illegal XML
+            control characters stripped at this lowest layer.
         """
+        content = ""
+
         # Check for content array (common in Atom feeds)
         entry_content = self.entry.get("content")
         if entry_content and isinstance(entry_content, list) and len(entry_content) > 0:
             first_content = entry_content[0]
             if isinstance(first_content, dict):
-                return first_content.get("value", "")
-            return str(first_content)
-
+                content = first_content.get("value", "")
+            else:
+                content = str(first_content)
         # Fall back to summary
-        if self.entry.get("summary"):
-            return self.entry.get("summary", "")
+        elif self.entry.get("summary"):
+            content = self.entry.get("summary", "")
 
-        return ""
+        # Strip illegal XML control characters at the lowest layer
+        return strip_xml_control_chars(content)
 
     def parse_published_date(self) -> str | None:
         """Parse the publication date from the entry.
@@ -151,9 +158,12 @@ class EntryContentProcessor:
             max_length: Maximum length for summary
 
         Returns:
-            Truncated summary with ellipsis if needed
+            Truncated summary with ellipsis if needed, with illegal XML
+            control characters stripped.
         """
         raw_summary = self.entry.get("summary") or ""
+        # Strip illegal XML control characters
+        raw_summary = strip_xml_control_chars(raw_summary)
         if len(raw_summary) > max_length:
             return raw_summary[: max_length - 3] + "..."
         return raw_summary
@@ -161,13 +171,18 @@ class EntryContentProcessor:
     def process(self) -> ProcessedEntry:
         """Process the entry and return all extracted fields.
 
+        All text fields are sanitized to strip illegal XML control characters.
+
         Returns:
             ProcessedEntry with all processed fields
         """
+        # Sanitize title - strip illegal XML control characters
+        title = strip_xml_control_chars(self.entry.get("title", ""))
+
         return ProcessedEntry(
             guid=self.generate_guid(),
             url=self.entry.get("link"),
-            title=self.entry.get("title", ""),
+            title=title,
             content=self.extract_content(),
             summary=self.truncate_summary(),
             author=self.entry.get("author"),
