@@ -51,6 +51,8 @@ from templates import (
     TEMPLATE_INDEX,
     TEMPLATE_SEARCH,
     TEMPLATE_TITLES,
+    THEME_CSS,
+    THEME_LOGOS,
     render_template,
 )
 from wrappers import (
@@ -1769,6 +1771,27 @@ class Default(WorkerEntrypoint):
         # Check if running in lite mode (no search, no auth)
         is_lite = check_lite_mode(self.env)
 
+        # Get footer text from config
+        footer_template = getattr(self.env, "FOOTER_TEXT", None) or "Powered by {name}"
+        footer_text = footer_template.format(name=planet["name"])
+
+        # Check if admin link should be shown (not in lite mode by default)
+        show_admin_link_raw = getattr(self.env, "SHOW_ADMIN_LINK", None)
+        show_admin_link = (show_admin_link_raw or "true").lower() == "true" and not is_lite
+
+        # Get logo configuration for the theme
+        logo = self._get_logo_config()
+
+        # Build feed links for sidebar
+        feed_links = {
+            "rss": "/feed.rss",
+            "titles_only": "/titles",
+            "planet_planet": None,  # Not implemented
+        }
+
+        # Get theme for conditional template rendering
+        theme = getattr(self.env, "THEME", None) or "default"
+
         with Timer() as render_timer:
             html = render_template(
                 template,
@@ -1777,6 +1800,11 @@ class Default(WorkerEntrypoint):
                 feeds=feeds,
                 generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
                 is_lite_mode=is_lite,
+                logo=logo,
+                footer_text=footer_text,
+                show_admin_link=show_admin_link,
+                feed_links=feed_links,
+                theme=theme,
             )
 
         # Populate remaining generation metrics
@@ -2501,10 +2529,49 @@ class Default(WorkerEntrypoint):
                     "Cache-Control": "public, max-age=86400",
                 },
             )
+        if path == "/static/logo.svg":
+            svg = self._get_logo_svg()
+            if svg:
+                return Response(
+                    svg,
+                    headers={
+                        "Content-Type": "image/svg+xml",
+                        "Cache-Control": "public, max-age=86400",
+                    },
+                )
         return _json_error("Not Found", status=404)
 
+    def _get_logo_svg(self) -> str | None:
+        """Return logo SVG based on THEME environment variable."""
+        theme = getattr(self.env, "THEME", None) or "default"
+        logo_config = THEME_LOGOS.get(theme)
+        if logo_config:
+            return logo_config.get("svg")
+        return None
+
+    def _get_logo_config(self) -> dict | None:
+        """Return logo configuration dict for template rendering."""
+        theme = getattr(self.env, "THEME", None) or "default"
+        logo_config = THEME_LOGOS.get(theme)
+        if logo_config:
+            return {
+                "url": logo_config["url"],
+                "alt": logo_config["alt"],
+                "width": logo_config["width"],
+                "height": logo_config["height"],
+            }
+        return None
+
     def _get_default_css(self) -> str:
-        """Return default CSS styling from templates module."""
+        """Return CSS styling based on THEME environment variable.
+
+        Supports instance-specific themes (planet-python, planet-mozilla)
+        with fallback to default STATIC_CSS.
+        """
+        theme = getattr(self.env, "THEME", None) or "default"
+        theme_css = THEME_CSS.get(theme)
+        if theme_css:
+            return theme_css
         return STATIC_CSS
 
     def _get_admin_js(self) -> str:
