@@ -29,6 +29,7 @@ from workers import Response, WorkerEntrypoint
 from admin_context import admin_action_context
 from content_processor import EntryContentProcessor
 from instance_config import is_lite_mode as check_lite_mode
+from xml_sanitizer import strip_xml_control_chars
 from models import BleachSanitizer
 from oauth_handler import GitHubOAuthHandler, extract_oauth_state_from_cookies
 from observability import (
@@ -48,6 +49,7 @@ from templates import (
     TEMPLATE_ADMIN_ERROR,
     TEMPLATE_ADMIN_LOGIN,
     TEMPLATE_FEED_ATOM,
+    TEMPLATE_FEED_HEALTH,
     TEMPLATE_FEED_RSS,
     TEMPLATE_FEEDS_OPML,
     TEMPLATE_INDEX,
@@ -885,7 +887,7 @@ class Default(WorkerEntrypoint):
         if final_url != url:
             # Note: We can't distinguish redirect types with fetch API
             # Treat any redirect as potentially permanent
-            await self._update_feed_url(feed_id, final_url)
+            await self._update_feed_url(feed_id, final_url, old_url=url)
             _log_op("feed_url_updated", old_url=url, new_url=final_url)
 
         # Check for HTTP errors
@@ -1109,6 +1111,19 @@ class Default(WorkerEntrypoint):
         result = _to_py_safe(result_raw)
         entry_id = result.get("id") if result else None
 
+        # Update feed's last_entry_at when a new entry is successfully added
+        if entry_id:
+            await (
+                self.env.DB.prepare("""
+                UPDATE feeds SET
+                    last_entry_at = COALESCE(?, CURRENT_TIMESTAMP),
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """)
+                .bind(published_at, feed_id)
+                .run()
+            )
+
         # Index for semantic search (may fail in local dev - Vectorize not supported)
         # Capture stats for aggregation on FeedFetchEvent
         indexing_stats = None
@@ -1328,8 +1343,27 @@ class Default(WorkerEntrypoint):
                 reason="Too many consecutive failures",
             )
 
-    async def _update_feed_url(self, feed_id: int, new_url: str) -> None:
-        """Update feed URL after permanent redirect."""
+    async def _update_feed_url(
+        self, feed_id: int, new_url: str, old_url: str | None = None
+    ) -> None:
+        """Update feed URL after permanent redirect.
+
+        Also logs the URL change to the audit_log table for tracking.
+
+        Args:
+            feed_id: ID of the feed to update
+            new_url: The new URL to set
+            old_url: The previous URL (for audit logging). If not provided,
+                     will be fetched from the database.
+        """
+        # If old_url not provided, fetch it from database for audit logging
+        if old_url is None:
+            result = await self.env.DB.prepare(
+                "SELECT url FROM feeds WHERE id = ?"
+            ).bind(feed_id).first()
+            old_url = result.get("url") if result else None
+
+        # Update the feed URL
         await (
             self.env.DB.prepare("""
             UPDATE feeds SET
@@ -1338,6 +1372,18 @@ class Default(WorkerEntrypoint):
             WHERE id = ?
         """)
             .bind(new_url, feed_id)
+            .run()
+        )
+
+        # Log to audit_log for tracking URL changes
+        # For auto-updates (not triggered by admin), use system user
+        details = json.dumps({"old_url": old_url, "new_url": new_url})
+        await (
+            self.env.DB.prepare("""
+            INSERT INTO audit_log (admin_id, action, target_type, target_id, details)
+            VALUES (?, ?, ?, ?, ?)
+        """)
+            .bind(0, "url_updated", "feed", feed_id, details)
             .run()
         )
 
@@ -2096,14 +2142,15 @@ class Default(WorkerEntrypoint):
     def _generate_atom_feed(self, planet: dict[str, str], entries: list[dict[str, Any]]) -> str:
         """Generate Atom 1.0 feed XML using template."""
         # Prepare entries with defaults for template
+        # Strip illegal XML control characters as defense-in-depth for existing data
         template_entries = [
             {
-                "title": e.get("title", ""),
+                "title": strip_xml_control_chars(e.get("title", "")),
                 "url": e.get("url", ""),
                 "guid": e.get("guid", e.get("url", "")),
                 "published_at": e.get("published_at", ""),
-                "author": e.get("author", e.get("feed_title", "")),
-                "content": e.get("content", ""),
+                "author": strip_xml_control_chars(e.get("author", e.get("feed_title", ""))),
+                "content": strip_xml_control_chars(e.get("content", "")),
             }
             for e in entries
         ]
@@ -2117,16 +2164,20 @@ class Default(WorkerEntrypoint):
     def _generate_rss_feed(self, planet: dict[str, str], entries: list[dict[str, Any]]) -> str:
         """Generate RSS 2.0 feed XML using template."""
         # Prepare entries with CDATA-safe content
+        # Strip illegal XML control characters as defense-in-depth for existing data
         template_entries = [
             {
-                "title": e.get("title", ""),
+                "title": strip_xml_control_chars(e.get("title", "")),
                 "url": e.get("url", ""),
                 "guid": e.get("guid", e.get("url", "")),
                 "published_at": e.get("published_at", ""),
-                "author": e.get("author", ""),
+                "author": strip_xml_control_chars(e.get("author", "")),
                 # Escape ]]> in CDATA to prevent breakout attacks (Issue 2.1)
                 # Content is already HTML-sanitized, but ensure CDATA boundaries are safe
-                "content_cdata": e.get("content", "").replace("]]>", "]]]]><![CDATA[>"),
+                # Also strip illegal XML control chars for defense-in-depth
+                "content_cdata": strip_xml_control_chars(e.get("content", "")).replace(
+                    "]]>", "]]]]><![CDATA[>"
+                ),
             }
             for e in entries
         ]
@@ -2574,6 +2625,9 @@ class Default(WorkerEntrypoint):
 
         if path == "/admin/audit" and method == "GET":
             return await self._view_audit_log()
+
+        if path == "/admin/health" and method == "GET":
+            return await self._view_feed_health()
 
         if path == "/admin/reindex" and method == "POST":
             return await self._reindex_all_entries(admin)
@@ -3150,6 +3204,68 @@ class Default(WorkerEntrypoint):
                 "has_more": len(entries) == limit,
             }
         )
+
+    async def _view_feed_health(self) -> Response:
+        """View feed health dashboard with statistics.
+
+        Shows all feeds with their health information including:
+        - Last successful fetch time
+        - Last new entry date
+        - Consecutive failures count
+        - Active/inactive status
+        """
+        # Query all feeds with health information
+        result = await self.env.DB.prepare("""
+            SELECT
+                f.id,
+                f.url,
+                f.title,
+                f.site_url,
+                f.last_fetch_at,
+                f.last_success_at,
+                f.last_entry_at,
+                f.fetch_error,
+                f.consecutive_failures,
+                f.is_active,
+                f.created_at,
+                (SELECT COUNT(*) FROM entries e WHERE e.feed_id = f.id) as entry_count
+            FROM feeds f
+            ORDER BY
+                CASE
+                    WHEN f.is_active = 0 THEN 3
+                    WHEN f.consecutive_failures >= 3 THEN 1
+                    WHEN f.consecutive_failures > 0 THEN 2
+                    ELSE 4
+                END,
+                f.consecutive_failures DESC,
+                f.title
+        """).all()
+
+        feeds = feed_rows_from_d1(result.results)
+
+        # Calculate health status for each feed
+        for feed in feeds:
+            if not feed.get("is_active"):
+                feed["health_status"] = "inactive"
+            elif feed.get("consecutive_failures", 0) >= 3:
+                feed["health_status"] = "failing"
+            elif feed.get("consecutive_failures", 0) > 0:
+                feed["health_status"] = "warning"
+            else:
+                feed["health_status"] = "healthy"
+
+        planet = self._get_planet_config()
+        html = render_template(
+            TEMPLATE_FEED_HEALTH,
+            planet=planet,
+            feeds=feeds,
+            total_feeds=len(feeds),
+            healthy_count=sum(1 for f in feeds if f.get("health_status") == "healthy"),
+            warning_count=sum(1 for f in feeds if f.get("health_status") == "warning"),
+            failing_count=sum(1 for f in feeds if f.get("health_status") == "failing"),
+            inactive_count=sum(1 for f in feeds if f.get("health_status") == "inactive"),
+        )
+        return _html_response(html, cache_max_age=0)
 
     async def _reindex_all_entries(self, admin: dict[str, Any]) -> Response:
         """Re-index all entries in Vectorize for search.
