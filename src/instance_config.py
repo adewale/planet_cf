@@ -104,12 +104,3 @@ def is_lite_mode(env: SafeEnv) -> bool:
     return mode == "lite"
 
 
-# =============================================================================
-# OAuth URL Constants (GitHub)
-# =============================================================================
-# These constants are used for GitHub OAuth authentication.
-# Currently only GitHub is supported as an OAuth provider.
-
-GITHUB_OAUTH_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
-GITHUB_OAUTH_TOKEN_URL = "https://github.com/login/oauth/access_token"  # noqa: S105
-GITHUB_USER_INFO_URL = "https://api.github.com/user"
