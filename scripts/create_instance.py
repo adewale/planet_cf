@@ -18,7 +18,6 @@ For full automated provisioning, you'll need wrangler CLI installed.
 
 import argparse
 import json
-import os
 import re
 import subprocess
 import sys
@@ -57,6 +56,26 @@ def create_instance_config(
     # Create theme and static subdirectories
     (instance_dir / "theme").mkdir(exist_ok=True)
     (instance_dir / "static").mkdir(exist_ok=True)
+    # Create assets directory for ASSETS binding
+    (instance_dir / "assets").mkdir(exist_ok=True)
+
+    # In lite mode, create a starter feeds.opml file
+    if lite_mode:
+        feeds_opml = instance_dir / "assets" / "feeds.opml"
+        if not feeds_opml.exists():
+            feeds_opml.write_text(f"""<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>{name} Feeds</title>
+    <ownerName>{owner_name}</ownerName>
+    <ownerEmail>{owner_email}</ownerEmail>
+  </head>
+  <body>
+    <!-- Add your feeds here -->
+    <!-- Example: <outline type="rss" text="Blog Name" xmlUrl="https://example.com/feed.xml"/> -->
+  </body>
+</opml>
+""")
 
     mode = "lite" if lite_mode else "full"
     search_enabled = "false" if lite_mode else "true"
@@ -251,13 +270,13 @@ def generate_wrangler_config(
             ],
         },
         "triggers": {"crons": ["0 * * * *"]},
+        # Assets binding for serving static files
+        "assets": {"directory": "./assets/", "binding": "ASSETS"},
     }
 
     # Add Vectorize and AI bindings only in full mode
     if not lite_mode:
-        config["vectorize"] = [
-            {"binding": "SEARCH_INDEX", "index_name": f"{instance_id}-entries"}
-        ]
+        config["vectorize"] = [{"binding": "SEARCH_INDEX", "index_name": f"{instance_id}-entries"}]
         config["ai"] = {"binding": "AI"}
 
     # Write as JSONC with comments
@@ -426,8 +445,7 @@ def validate_wrangler_config(instance_id: str) -> dict:
         )
     else:
         warnings.append(
-            "Lite mode: No OAuth secrets required. "
-            "Admin and search features are disabled."
+            "Lite mode: No OAuth secrets required. Admin and search features are disabled."
         )
 
     return {
@@ -459,16 +477,16 @@ def provision_cloudflare_resources(
 
     if not auto_provision:
         print("\n📋 Manual provisioning steps:")
-        print(f"\n  # 1. Create D1 database")
+        print("\n  # 1. Create D1 database")
         print(f"  npx wrangler d1 create {instance_id}-db")
         if not lite_mode:
-            print(f"\n  # 2. Create Vectorize index")
+            print("\n  # 2. Create Vectorize index")
             print(
                 f"  npx wrangler vectorize create {instance_id}-entries --dimensions 768 --metric cosine"
             )
             step_num = 3
         else:
-            print(f"\n  # (Skipping Vectorize index - lite mode)")
+            print("\n  # (Skipping Vectorize index - lite mode)")
             step_num = 2
         print(f"\n  # {step_num}. Create queues")
         print(f"  npx wrangler queues create {instance_id}-feed-queue")
@@ -487,7 +505,7 @@ def provision_cloudflare_resources(
             )
             step_num += 1
         else:
-            print(f"\n  # (Skipping secrets - lite mode, no auth required)")
+            print("\n  # (Skipping secrets - lite mode, no auth required)")
         print(f"\n  # {step_num}. Run migrations")
         print(
             f"  npx wrangler d1 execute {instance_id}-db --file migrations/001_initial.sql --config examples/{instance_id}/wrangler.jsonc"
@@ -520,9 +538,9 @@ def provision_cloudflare_resources(
             if update_config:
                 update_wrangler_config_database_id(instance_id, resources["database_id"])
 
-            print(f"    ✓ Database created successfully")
+            print("    ✓ Database created successfully")
         else:
-            print(f"    ✓ Database created (could not extract ID from output)")
+            print("    ✓ Database created (could not extract ID from output)")
             print(f"    Output: {output_text[:200]}...")
     else:
         print(f"    ✗ Failed to create database: {result.stderr}")
@@ -544,7 +562,7 @@ def provision_cloudflare_resources(
         )
         if result.returncode == 0:
             resources["vectorize_index"] = f"{instance_id}-entries"
-            print(f"    ✓ Vectorize index created")
+            print("    ✓ Vectorize index created")
         else:
             print(f"    ✗ Failed to create Vectorize index: {result.stderr}")
     else:
@@ -703,6 +721,7 @@ Modes:
             sys.exit(1)
 
         import shutil
+
         print(f"📋 Copying from examples/{args.from_example}/ to examples/{args.id}/...")
         shutil.copytree(source_dir, target_dir)
 
@@ -724,7 +743,7 @@ Modes:
             print(f"  Updated config.yaml with instance ID: {args.id}")
 
         print(f"\n✅ Created examples/{args.id}/ from {args.from_example}")
-        print(f"\nNext steps:")
+        print("\nNext steps:")
         print(f"  1. Edit examples/{args.id}/config.yaml to customize your instance")
         print(f"  2. Edit examples/{args.id}/wrangler.jsonc to update environment variables")
         print(f"  3. Deploy: ./scripts/deploy_instance.sh {args.id}")
@@ -810,15 +829,11 @@ Modes:
     print(f"\n✓ Created wrangler config: {wrangler_path.relative_to(PROJECT_ROOT)}")
 
     # Provision or print instructions (this may update wrangler config with database_id)
-    resources = provision_cloudflare_resources(
-        args.id, args.auto_provision, lite_mode=args.lite
-    )
+    resources = provision_cloudflare_resources(args.id, args.auto_provision, lite_mode=args.lite)
 
     database_id = resources.get("database_id")
     if not database_id:
-        print(
-            f"\n⚠️  Update database_id in {wrangler_path.name} after creating the D1 database"
-        )
+        print(f"\n⚠️  Update database_id in {wrangler_path.name} after creating the D1 database")
 
     print("\n✅ Instance created successfully!")
 
@@ -839,15 +854,15 @@ Modes:
         sys.exit(result.returncode)
 
     # Print next steps for manual deployment
-    print(f"\nNext steps:")
+    print("\nNext steps:")
     print(f"  1. Edit {config_path.relative_to(PROJECT_ROOT)} to configure admins")
     if not args.auto_provision:
-        print(f"\n  Option A: One-command deployment (recommended)")
+        print("\n  Option A: One-command deployment (recommended)")
         print(f"    ./scripts/deploy_instance.sh {args.id}")
-        print(f"\n  Option B: Manual steps (see wrangler config file for details)")
+        print("\n  Option B: Manual steps (see wrangler config file for details)")
         print(f"    npx wrangler deploy --config {wrangler_path.name}")
     else:
-        print(f"  2. Set secrets (see provisioning steps above)")
+        print("  2. Set secrets (see provisioning steps above)")
         print(
             f"  3. Run migrations: npx wrangler d1 execute {args.id}-db "
             f"--remote --file migrations/001_initial.sql --config {wrangler_path.name}"
@@ -855,7 +870,7 @@ Modes:
         print(f"  4. Deploy: npx wrangler deploy --config {wrangler_path.name}")
 
     # Run validation at end
-    print(f"\n📋 Configuration validation:")
+    print("\n📋 Configuration validation:")
     validation_result = validate_wrangler_config(args.id)
     if validation_result["valid"]:
         print("   ✓ Configuration is valid")

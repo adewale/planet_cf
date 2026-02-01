@@ -1,18 +1,24 @@
 #!/usr/bin/env python3
 """Seed feeds from an OPML file into a D1 database.
 
-This script fetches an OPML file from a URL, parses it to extract feed URLs,
-and inserts them into a D1 database using wrangler.
+This script reads an OPML file (from URL or local file), parses it to extract
+feed URLs, and inserts them into a D1 database using wrangler.
 
 Usage:
+    # Using local file (lite mode - recommended):
+    uv run python scripts/seed_feeds_from_opml.py --config examples/planet-python/wrangler.jsonc
+
     # Using URL directly:
     uv run python scripts/seed_feeds_from_opml.py --url https://planetpython.org/opml.xml --db planet-python-db
 
-    # Using wrangler config (reads OPML_SOURCE_URL from config):
-    uv run python scripts/seed_feeds_from_opml.py --config examples/planet-python/wrangler.jsonc
+    # Using local file directly:
+    uv run python scripts/seed_feeds_from_opml.py --file examples/planet-python/assets/feeds.opml --db planet-python-db
 
     # Dry run (don't insert, just show feeds):
-    uv run python scripts/seed_feeds_from_opml.py --url https://planetpython.org/opml.xml --db planet-python-db --dry-run
+    uv run python scripts/seed_feeds_from_opml.py --config examples/planet-python/wrangler.jsonc --dry-run
+
+In lite mode (INSTANCE_MODE=lite in config), the script reads from assets/feeds.opml
+instead of OPML_SOURCE_URL. This allows version-controlled feed management.
 
 Requirements:
     - wrangler CLI installed and authenticated
@@ -27,6 +33,16 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import Request, urlopen
+
+
+def read_opml_file(file_path: str) -> str:
+    """Read OPML content from a local file."""
+    path = Path(file_path)
+    if not path.exists():
+        print(f"Error: OPML file not found: {file_path}", file=sys.stderr)
+        sys.exit(1)
+    print(f"Reading OPML from: {file_path}")
+    return path.read_text(encoding="utf-8")
 
 
 def fetch_opml(url: str) -> str:
@@ -110,10 +126,14 @@ def strip_jsonc_comments(content: str) -> str:
     return "".join(result)
 
 
-def read_wrangler_config(config_path: str) -> tuple[str, str]:
-    """Read database name and OPML URL from wrangler config.
+def read_wrangler_config(config_path: str) -> tuple[str, str | None, str | None]:
+    """Read database name and OPML source from wrangler config.
 
-    Returns (database_name, opml_url) tuple.
+    In lite mode, returns path to local assets/feeds.opml file.
+    In full mode, returns OPML_SOURCE_URL.
+
+    Returns (database_name, opml_url, opml_file) tuple.
+    One of opml_url or opml_file will be set, the other None.
     """
     path = Path(config_path)
     if not path.exists():
@@ -143,13 +163,27 @@ def read_wrangler_config(config_path: str) -> tuple[str, str]:
         print("Error: Could not find D1 database name in config", file=sys.stderr)
         sys.exit(1)
 
-    # Extract OPML source URL
+    # Check if lite mode - use local OPML file from assets
+    instance_mode = config.get("vars", {}).get("INSTANCE_MODE", "full")
+    if instance_mode == "lite":
+        # In lite mode, use local assets/feeds.opml
+        config_dir = path.parent
+        local_opml = config_dir / "assets" / "feeds.opml"
+        if local_opml.exists():
+            print(f"Lite mode: using local OPML from {local_opml}")
+            return db_name, None, str(local_opml)
+        else:
+            print(f"Warning: Lite mode but {local_opml} not found", file=sys.stderr)
+            # Fall through to OPML_SOURCE_URL
+
+    # Full mode or fallback: use OPML_SOURCE_URL
     opml_url = config.get("vars", {}).get("OPML_SOURCE_URL")
     if not opml_url:
         print("Error: OPML_SOURCE_URL not found in config vars", file=sys.stderr)
+        print("For lite mode, create assets/feeds.opml in the example directory", file=sys.stderr)
         sys.exit(1)
 
-    return db_name, opml_url
+    return db_name, opml_url, None
 
 
 def insert_feeds(
@@ -262,11 +296,14 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+    # Using wrangler config (auto-detects lite mode):
+    python scripts/seed_feeds_from_opml.py --config examples/planet-python/wrangler.jsonc
+
+    # Using local file directly:
+    python scripts/seed_feeds_from_opml.py --file examples/planet-python/assets/feeds.opml --db planet-python-db
+
     # Using URL directly:
     python scripts/seed_feeds_from_opml.py --url https://planetpython.org/opml.xml --db planet-python-db
-
-    # Using wrangler config:
-    python scripts/seed_feeds_from_opml.py --config examples/planet-python/wrangler.jsonc
 
     # Dry run:
     python scripts/seed_feeds_from_opml.py --config examples/planet-python/wrangler.jsonc --dry-run
@@ -274,10 +311,9 @@ Examples:
     )
 
     parser.add_argument("--url", help="URL of the OPML file to fetch")
+    parser.add_argument("--file", help="Path to local OPML file")
     parser.add_argument("--db", help="Name of the D1 database")
-    parser.add_argument(
-        "--config", help="Path to wrangler config file (reads OPML_SOURCE_URL and database name)"
-    )
+    parser.add_argument("--config", help="Path to wrangler config file (auto-detects lite mode)")
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -287,24 +323,34 @@ Examples:
     args = parser.parse_args()
 
     # Determine source of configuration
+    opml_url = None
+    opml_file = None
+
     if args.config:
-        db_name, opml_url = read_wrangler_config(args.config)
+        db_name, opml_url, opml_file = read_wrangler_config(args.config)
         config_path = args.config
+    elif args.file and args.db:
+        opml_file = args.file
+        db_name = args.db
+        config_path = None
     elif args.url and args.db:
         opml_url = args.url
         db_name = args.db
         config_path = None
     else:
-        parser.error("Either --config OR both --url and --db are required")
+        parser.error("Either --config, OR --file and --db, OR --url and --db are required")
 
     print(f"Database: {db_name}")
-    print(f"OPML URL: {opml_url}")
+    if opml_file:
+        print(f"OPML File: {opml_file}")
+    else:
+        print(f"OPML URL: {opml_url}")
     if args.dry_run:
         print("Mode: DRY RUN")
     print()
 
-    # Fetch and parse OPML
-    opml_content = fetch_opml(opml_url)
+    # Read or fetch OPML
+    opml_content = read_opml_file(opml_file) if opml_file else fetch_opml(opml_url)
     feeds = parse_opml(opml_content)
 
     if not feeds:

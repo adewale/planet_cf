@@ -1,0 +1,218 @@
+<?xml version="1.0"?>
+<opml version="1.1">
+  <head>
+    <title>Planet Mozilla</title>
+    <dateModified>Sun, 01 Feb 2026 20:59:03 GMT</dateModified>
+    <ownerName>Planet Mozilla Module Team</ownerName>
+    <ownerEmail>planet@mozilla.org</ownerEmail>
+  </head>
+  <body>
+    <outline type="rss" text="Neil Deakin" title="Neil's Place" xmlUrl="https://enndeakin.wordpress.com/feed/"/>
+    <outline type="rss" text="Daniel Glazman" title="" xmlUrl="http://glazman.org/weblog/dotclear/?feed/planetmoz"/>
+    <outline type="rss" text="Mitchell Baker" title="Mitchell Baker" xmlUrl="https://mitchellbaker.net/feed/atom/"/>
+    <outline type="rss" text="L. David Baron" title="David Baron's Weblog" xmlUrl="https://dbaron.org/log/rss1"/>
+    <outline type="rss" text="Brian Birtles" title="Brian Birtles&#x2019; Blog" xmlUrl="https://birtles.blog/feed.xml"/>
+    <outline type="rss" text="Myk Melez" title="Mozilla &#x2013; Mykzilla" xmlUrl="https://mykzilla.org/category/mozilla/feed/"/>
+    <outline type="rss" text="Dietrich Ayala" title="mozilla &#x2013; dietrich.ayala" xmlUrl="https://autonome.wordpress.com/category/mozilla/feed/"/>
+    <outline type="rss" text="Pascal Chevrel" title="Carnet de notes - Mot-cl&#xE9; - InEnglish" xmlUrl="https://www.chevrel.org/carnet/?feed/tag/InEnglish/atom"/>
+    <outline type="rss" text="David Humphrey" title="" xmlUrl=""/>
+    <outline type="rss" text="Robert Helmer" title="" xmlUrl=""/>
+    <outline type="rss" text="Justin Dolske" title="PlanetMozilla &#x2013; Dolske's blog" xmlUrl="https://dolske.wordpress.com/category/planetmozilla/feed/"/>
+    <outline type="rss" text="Michael Kaply" title="Mike's Musings" xmlUrl="https://mike.kaply.com/feed/"/>
+    <outline type="rss" text="Robert Kaiser" title="" xmlUrl=""/>
+    <outline type="rss" text="Wladimir Palant" title="Almost Secure" xmlUrl="https://palant.info/pmo.xml"/>
+    <outline type="rss" text="Dave Townsend" title="mozilla on Oxymoronical" xmlUrl="https://www.oxymoronical.com/blog/category/technical/mozilla/feed/index.xml"/>
+    <outline type="rss" text="Al Billings" title="" xmlUrl=""/>
+    <outline type="rss" text="Wil Clouser" title="all night diner" xmlUrl="https://micropipes.com/feed/by_tag/Mozilla.xml"/>
+    <outline type="rss" text="Henrik Skupin" title="Mozilla &#x2013; hskupin.info" xmlUrl="https://www.hskupin.info/category/mozilla/feed/"/>
+    <outline type="rss" text="Gijs Kruitbosch" title="Mozilla &#x2013; Use Tables!" xmlUrl="https://www.gijsk.com/blog/category/mozilla/feed/"/>
+    <outline type="rss" text="Ted Mielczarek" title="Ted's Mozilla Blog" xmlUrl="https://blog.mozilla.org/ted/feed/"/>
+    <outline type="rss" text="Ben Hearsum" title="Ben Hearsum" xmlUrl="https://hearsum.ca/rss.xml"/>
+    <outline type="rss" text="Zibi Braniecki" title="planet.m.o &#x2013; stream of bytes" xmlUrl="https://diary.braniecki.net/tag/planetmo/feed/"/>
+    <outline type="rss" text="Carsten Book" title="Tomcat's Blog" xmlUrl="https://blog.mozilla.org/tomcat/feed/"/>
+    <outline type="rss" text="Mark Banner" title="Mozilla &#x2013; Standard8's Blog" xmlUrl="https://www.thebanners.uk/standard8/category/mozilla/feed/"/>
+    <outline type="rss" text="Andrew Sutherland" title="visophyte: shiny? shiny." xmlUrl="https://www.visophyte.org/blog/feed/"/>
+    <outline type="rss" text="Giorgio Maone" title="Mozilla &#x2013; hackademix.net" xmlUrl="https://hackademix.net/category/mozilla/feed/"/>
+    <outline type="rss" text="Les Orchard" title="Tag: mozilla - blog.lmorchard.com" xmlUrl="https://blog.lmorchard.com/index.rss"/>
+    <outline type="rss" text="Jan Odvarko" title="Planet Mozilla &#x2013; Software is hard" xmlUrl="http://www.softwareishard.com/blog/category/planet-mozilla/feed/"/>
+    <outline type="rss" text="Jeff Walden" title="Where's Walden?" xmlUrl="https://whereswalden.com/feed/atom/"/>
+    <outline type="rss" text="Chris Pearce" title="Thundering Herd" xmlUrl="https://www.blogger.com/feeds/5537325711190185140/posts/default/-/mozilla"/>
+    <outline type="rss" text="Jeff Muizelaar" title="Jeff Muizelaar" xmlUrl="https://www.blogger.com/feeds/1386948037384435441/posts/default"/>
+    <outline type="rss" text="Aki Sasaki" title="aki" xmlUrl="https://escapewindow.dreamwidth.org/data/rss?tag=mozilla"/>
+    <outline type="rss" text="Nicholas Nethercote" title="Nicholas Nethercote" xmlUrl="https://blog.mozilla.org/nnethercote/feed/atom/"/>
+    <outline type="rss" text="Daniel Holbert" title="The Holbert Report" xmlUrl="http://www.blogger.com/feeds/5541414252435605845/posts/default/-/mozilla"/>
+    <outline type="rss" text="Gary Kwong" title="Mozilla &#x2013; It's a Wonderful Life" xmlUrl="https://garykwong.wordpress.com/category/mozilla/feed/"/>
+    <outline type="rss" text="Ludovic Hirlimann" title="Pens&#xE9;es" xmlUrl="https://www.blogger.com/feeds/19749110/posts/default/-/mozilla"/>
+    <outline type="rss" text="Francesco Lodolo" title="planet &#x2013; Yet Another Tech Blog" xmlUrl="https://www.yetanothertechblog.com/category/planet/feed/"/>
+    <outline type="rss" text="Joel Maher" title="3.1415926535897932384626433&#x2026;" xmlUrl="https://elvis314.wordpress.com/feed/"/>
+    <outline type="rss" text="Henri Sivonen" title="Henri Sivonen&#x2019;s pages (Mozilla-only edition)" xmlUrl="https://hsivonen.fi/feed/mozilla/"/>
+    <outline type="rss" text="Bobby Holley" title="bholley" xmlUrl="http://bholley.net/feed.xml"/>
+    <outline type="rss" text="Markus Stange" title="planet &#x2013; Markus Stange&#x2019;s Blog" xmlUrl="https://markusstange.wordpress.com/tag/planet/feed/"/>
+    <outline type="rss" text="Jonathan Watt" title="Jonathan Watt" xmlUrl="https://jwatt.org/rss.xml"/>
+    <outline type="rss" text="Luis Villa" title="mozilla &#x2013; Luis Villa: Open Tech and Policy" xmlUrl="https://lu.is/category/mozilla/feed/"/>
+    <outline type="rss" text="Marco Bonardo" title="Marco Bonardo - Mozilla" xmlUrl="http://mak77.github.io/feed.xml"/>
+    <outline type="rss" text="Blake Winton" title="Blog-O! (Posts about mozilla)" xmlUrl="https://bwinton.github.io/weblog.latte.ca/tags/mozilla.xml"/>
+    <outline type="rss" text="Matt Brubeck" title="Matt Brubeck" xmlUrl="https://limpet.net/mbrubeck/atom.xml"/>
+    <outline type="rss" text="Mike Hommey" title="p.m.o &#x2013; glandium.org" xmlUrl="https://glandium.org/blog/?feed=rss2&amp;cat=25&amp;tag=en"/>
+    <outline type="rss" text="Nick Thomas" title="Mozilla &#x2013; F'tang F'tang" xmlUrl="https://ftangftang.wordpress.com/category/mozilla/feed/"/>
+    <outline type="rss" text="Fr&#xE9;d&#xE9;ric Wang" title="Fr&#xE9;d&#xE9;ric Wang" xmlUrl="https://frederic-wang.fr/feeds/atom.xml"/>
+    <outline type="rss" text="Tantek &#xC7;elik" title="Tantek &#xC7;elik" xmlUrl="https://tantek.com/updates.atom?ot=article"/>
+    <outline type="rss" text="Tarek Ziad&#xE9;" title="Tarek Ziad&#xE9;" xmlUrl="https://tarekziade.github.io/feed.xml"/>
+    <outline type="rss" text="Dustin J. Mitchell" title="Code Vigorous - Mozilla" xmlUrl="http://code.v.igoro.us/feed.mozilla.xml"/>
+    <outline type="rss" text="Steve Fink" title="planet &#x2013; sfink @ Mozilla" xmlUrl="https://blog.mozilla.org/sfink/tag/planet/feed/"/>
+    <outline type="rss" text="David Burns" title="Blogs on David Burns - AutomatedTester" xmlUrl="https://www.theautomatedtester.co.uk/blog/index.xml"/>
+    <outline type="rss" text="Julian Seward" title="Julian Seward's blog" xmlUrl="https://blog.mozilla.org/jseward/feed/"/>
+    <outline type="rss" text="Jim Blandy" title="Mozilla &#x2013; It Could Be So Much Better" xmlUrl="https://itcouldbesomuchbetter.wordpress.com/category/mozilla/feed/"/>
+    <outline type="rss" text="Allen Wirfs-Brock" title="Allen Wirfs-Brock" xmlUrl="https://wirfs-brock.com/allen/feed"/>
+    <outline type="rss" text="Mike Conley" title="Mozilla &#x2013; A Blog by Mike Conley" xmlUrl="https://mikeconley.ca/blog/category/mozilla-2/feed/"/>
+    <outline type="rss" text="Patrick McManus" title="Bits Up!" xmlUrl="https://www.blogger.com/feeds/8147202175434463396/posts/default/-/firefox"/>
+    <outline type="rss" text="Dave Hunt" title="Dave Hunt, Automationeer" xmlUrl="http://davehunt.co.uk/feed.xml"/>
+    <outline type="rss" text="Tim Taubert" title="Tim Taubert" xmlUrl="https://timtaubert.de/atom.xml"/>
+    <outline type="rss" text="Luke Wagner" title="Mozilla &#x2013; Luke Wagner's Blog" xmlUrl="https://blog.mozilla.org/luke/category/mozilla/feed/"/>
+    <outline type="rss" text="Jared Wein" title="planet-mozilla &#x2013; JAWS" xmlUrl="https://msujaws.wordpress.com/tag/planet-mozilla/feed/"/>
+    <outline type="rss" text="Byron Jones" title="mozilla &#x2013; glob blog" xmlUrl="https://globau.wordpress.com/category/mozilla/feed/"/>
+    <outline type="rss" text="William Lachance" title="William Lachance's Log: Posts tagged 'Mozilla'" xmlUrl="https://wrla.ch/feeds/Mozilla.rss.xml"/>
+    <outline type="rss" text="Nathan Froyd" title="Nathan's Blog" xmlUrl="https://blog.mozilla.org/nfroyd/feed/"/>
+    <outline type="rss" text="David Teller" title="Mozilla on Il y a du th&#xE9; renvers&#xE9; au bord de la table, by David &quot;Yoric&quot; Teller" xmlUrl="https://yoric.github.io/categories/mozilla/index.xml"/>
+    <outline type="rss" text="Jim Chen" title="" xmlUrl=""/>
+    <outline type="rss" text="Joe Walker" title="" xmlUrl="https://incompleteness.me/blog/atom.xml"/>
+    <outline type="rss" text="Eitan Isaacson" title="monotonous.org" xmlUrl="https://blog.monotonous.org/feed/atom/index.xml"/>
+    <outline type="rss" text="Andrew Halberstadt" title="Mozilla on Hunting the Shmoo" xmlUrl="https://ahal.ca/tags/mozilla/index.xml"/>
+    <outline type="rss" text="Tom Schuster" title="javascript.reverse()" xmlUrl="https://javascript-reverse.tumblr.com/tagged/mozilla/rss"/>
+    <outline type="rss" text="Alexander Surkov" title="Alex's blog" xmlUrl="https://www.blogger.com/feeds/564396784419613484/posts/default"/>
+    <outline type="rss" text="Alexandre Poirot" title="Techno Barje" xmlUrl="http://techno-barje.fr/feed/pm.xml"/>
+    <outline type="rss" text="Rub&#xE9;n Mart&#xED;n" title="Mozilla (en) &#x2013; El Rinc&#xF3;n del T&#xED;o Nuke" xmlUrl="https://www.nukeador.com/tag/mozilla-en/feed/"/>
+    <outline type="rss" text="Niko Matsakis" title="baby steps" xmlUrl="https://smallcultfollowing.com/babysteps/atom.xml"/>
+    <outline type="rss" text="Panos Astithas" title="Past Midnight" xmlUrl="http://www.blogger.com/feeds/486398466531826618/posts/default?redirect=false"/>
+    <outline type="rss" text="Josh Matthews" title="Dysfunctional Programming" xmlUrl="https://www.joshmatthews.net/blog/feed/"/>
+    <outline type="rss" text="David Camp" title="Mozilla &#x2013; dave camp" xmlUrl="https://campd.wordpress.com/category/mozilla/feed/"/>
+    <outline type="rss" text="Kartikaya Gupta" title="staktrace.com Blog" xmlUrl="https://staktrace.com/spout/getrss.php?posts&amp;tag=mozilla"/>
+    <outline type="rss" text="Will Kahn-Greene" title="Will's Blog (Posts about mozilla)" xmlUrl="https://bluesock.org/~willkg/blog/tag/mozilla.xml"/>
+    <outline type="rss" text="Gregory Szorc" title="Gregory Szorc's Digital Home" xmlUrl="http://gregoryszorc.com/blog/feed/atom/"/>
+    <outline type="rss" text="Fran&#xE7;ois Marier" title="pages tagged mozilla" xmlUrl="https://feeding.cloud.geek.nz/tags/mozilla/index.rss"/>
+    <outline type="rss" text="Kim Moir" title="mozilla &#x2013; Built to Run" xmlUrl="https://kimmoir.blog/category/mozilla/feed/"/>
+    <outline type="rss" text="Patrick Cloke" title="Patrick Cloke" xmlUrl="https://patrick.cloke.us/feeds/rss.xml"/>
+    <outline type="rss" text="Chris Peterson" title="" xmlUrl=""/>
+    <outline type="rss" text="David Weir (satdav)" title="Mozilla &#x2013; satdavmozilla" xmlUrl="https://satdavmozilla.wordpress.com/category/mozilla/feed/"/>
+    <outline type="rss" text="Ian Bicking" title="Ian Bicking: a blog - mozilla" xmlUrl="https://ianbicking.org/feeds/mozilla.atom.xml"/>
+    <outline type="rss" text="Matthew Noorenberghe" title="Mozilla" xmlUrl="https://matthew.noorenberghe.com/tags/mozilla/feed"/>
+    <outline type="rss" text="Tanvi Vyas" title="Tanvi Vyas" xmlUrl="https://blog.mozilla.org/tanvi/feed/"/>
+    <outline type="rss" text="Aaron Klotz" title="Category: mozilla | Aaron Klotz's Software Blog" xmlUrl="https://dblohm7.ca/blog/categories/mozilla/atom.xml"/>
+    <outline type="rss" text="Selena Deckelmann" title="" xmlUrl="https://www.chesnok.com/daily/feed/"/>
+    <outline type="rss" text="Liz Henry" title="planetmozilla &#x2013; Composite" xmlUrl="https://bookmaniac.org/category/planetmozilla/feed/"/>
+    <outline type="rss" text="Honza Bambas" title="mozilla archives - mayhemer's blog" xmlUrl="https://www.janbambas.cz/tag/mozilla/feed/"/>
+    <outline type="rss" text="Nick Fitzgerald" title="Nick Fitzgerald" xmlUrl="http://fitzgeraldnick.com/feed.xml"/>
+    <outline type="rss" text="Karl Dubost" title="otsukare" xmlUrl="https://www.otsukare.info/feeds/atom.xml"/>
+    <outline type="rss" text="Pete Moore" title="Collected thoughts" xmlUrl="http://petemoore.tumblr.com/rss"/>
+    <outline type="rss" text="Julien Vehent" title="Quelques digressions sous GPL" xmlUrl="http://10.11.0.1:8001/index.php?feed/atom"/>
+    <outline type="rss" text="Mark Reid" title="Mark @ Mozilla" xmlUrl="http://mreid-moz.github.io/atom.xml"/>
+    <outline type="rss" text="Paul McLanahan" title="Mozilla on pmac.io" xmlUrl="https://pmac.io/tags/mozilla/index.xml"/>
+    <outline type="rss" text="Bill McCloskey" title="Bill McCloskey's Blog" xmlUrl="https://billmccloskey.wordpress.com/feed/"/>
+    <outline type="rss" text="Florian Qu&#xE8;ze" title="Florian Qu&#xE8;ze - Mozilla" xmlUrl="http://blog.queze.net/feed/category/Mozilla/rss2"/>
+    <outline type="rss" text="Jan de Mooij" title="Jan de Mooij" xmlUrl="https://jandemooij.nl/feed.xml"/>
+    <outline type="rss" text="Daniel Stenberg" title="Mozilla &#x2013; daniel.haxx.se" xmlUrl="https://daniel.haxx.se/blog/category/mozilla/feed/"/>
+    <outline type="rss" text="Sylvestre Ledru" title="Sylvestre's blog - Cat&#xE9;gorie: &quot;Mozilla&quot;" xmlUrl="https://sylvestre.ledru.info/blog/?tempskin=_rss2"/>
+    <outline type="rss" text="Manish Goregaokar" title="Category: Mozilla | In Pursuit of Laziness" xmlUrl="http://manishearth.github.io/blog/categories/mozilla/atom.xml"/>
+    <outline type="rss" text="Kevin Brosnan" title="Mozilla &#x2013; kevin brosnan dot com" xmlUrl="https://www.kevinbrosnan.com/category/mozilla/feed/"/>
+    <outline type="rss" text="Botond Ballo" title="mozilla &#x2013; There's Waldo!" xmlUrl="https://botondballo.wordpress.com/tag/mozilla/feed/"/>
+    <outline type="rss" text="Adam Stevenson" title="Adam Stevenson's Blog" xmlUrl="http://bornawesome.com/adam/rss.xml"/>
+    <outline type="rss" text="Mozilla WebDev Community" title="Mozilla Web Development" xmlUrl="https://blog.mozilla.org/webdev/feed/"/>
+    <outline type="rss" text="Mozilla Privacy Blog" title="Open Policy &amp; Advocacy" xmlUrl="https://blog.mozilla.org/netpolicy/feed/"/>
+    <outline type="rss" text="Anthony Ricaud" title="Anthony Ricaud - Mot-cl&#xE9; - mozilla" xmlUrl="https://ricaud.me/blog/feed/tag/mozilla/atom"/>
+    <outline type="rss" text="Maja Frydrychowicz" title="err &amp;err - mozilla" xmlUrl="https://www.erranderr.com/blog/feeds/mozilla.atom.xml"/>
+    <outline type="rss" text="Mozilla Open Policy &amp; Advocacy Blog" title="Open Policy &amp; Advocacy" xmlUrl="https://blog.mozilla.org/netpolicy/feed/"/>
+    <outline type="rss" text="Adblock Plus" title="Adblock Plus and (a little) more - mozilla" xmlUrl="http://blog.adblockplus.org/atom/?category=mozilla"/>
+    <outline type="rss" text="Mozilla Release Management Team" title="Release Management Blog" xmlUrl="https://release.mozilla.org/feed.xml"/>
+    <outline type="rss" text="Mike Taylor" title="Mike Taylr Dot Com Web Log" xmlUrl="https://miketaylr.com/posts/rss.xml"/>
+    <outline type="rss" text="Thunderbird Blog" title="The Thunderbird Blog" xmlUrl="https://blog.thunderbird.net/feed/"/>
+    <outline type="rss" text="Nick Alexander" title="@ncalexander" xmlUrl="https://www.ncalexander.net/blog/feeds/mozilla.atom.xml"/>
+    <outline type="rss" text="Cameron Kaiser" title="TenFourFox Development" xmlUrl="https://tenfourfox.blogspot.com/feeds/posts/default?alt=rss"/>
+    <outline type="rss" text="Hannes Verschore" title="Mozilla &#x2013; H4writer" xmlUrl="https://h4writer.com/category/mozilla/feed/"/>
+    <outline type="rss" text="Stuart Colville" title="mozilla - Muffin Research Labs" xmlUrl="https://muffinresearch.co.uk/tag/mozilla/rss/"/>
+    <outline type="rss" text="The Mozilla Blog" title="The Mozilla Blog" xmlUrl="https://blog.mozilla.org/feed/"/>
+    <outline type="rss" text="This Week In Rust" title="This Week in Rust" xmlUrl="https://this-week-in-rust.org/atom.xml"/>
+    <outline type="rss" text="The Servo Blog" title="Servo Blog" xmlUrl="https://servo.org/blog/feed.xml"/>
+    <outline type="rss" text="The Rust Programming Language Blog" title="Rust Blog" xmlUrl="https://blog.rust-lang.org/feed.xml"/>
+    <outline type="rss" text="JavaScript at Mozilla" title="JavaScript" xmlUrl="https://blog.mozilla.org/javascript/feed/"/>
+    <outline type="rss" text="Mozilla Addons Blog" title="Mozilla Add-ons Community Blog" xmlUrl="https://blog.mozilla.org/addons/feed/"/>
+    <outline type="rss" text="Mozilla Security Blog" title="Mozilla Security Blog" xmlUrl="https://blog.mozilla.org/security/feed/"/>
+    <outline type="rss" text="Mozilla Cloud Services Blog" title="Mozilla Services" xmlUrl="https://blog.mozilla.org/services/feed/"/>
+    <outline type="rss" text="About:Community" title="about:community" xmlUrl="https://blog.mozilla.org/community/feed/"/>
+    <outline type="rss" text="Julien Pag&#xE8;s" title="Mozilla &#x2013; parkouss's blog" xmlUrl="https://parkouss.wordpress.com/feed/?tag=Mozilla"/>
+    <outline type="rss" text="Support.Mozilla.Org" title="The Mozilla Support Blog" xmlUrl="https://blog.mozilla.org/sumo/feed/"/>
+    <outline type="rss" text="Emma Humphries" title="Funky Little D&#xE6;mons" xmlUrl="https://emceeaich.dreamwidth.org/data/atom"/>
+    <outline type="rss" text="Chris H-C" title="mozilla &#x2013; chuttenblog" xmlUrl="https://chuttenblog.wordpress.com/category/mozilla/feed/"/>
+    <outline type="rss" text="Benjamin Bouvier" title="Benjamin Bouvier's world - mozilla" xmlUrl="https://blog.benj.me/tag/mozilla.rss"/>
+    <outline type="rss" text="J.C. Jones" title="Insufficient.Coffee" xmlUrl="https://insufficient.coffee/feed/by_tag/mozilla.xml"/>
+    <outline type="rss" text="Eric Rahm" title="mozilla &#x2013; Eric Rahm" xmlUrl="https://erahm.org/category/mozilla/feed/"/>
+    <outline type="rss" text="Jared Hirsch" title="" xmlUrl=""/>
+    <outline type="rss" text="Project Tofino" title="Project Tofino - Medium" xmlUrl="https://medium.com/feed/project-tofino"/>
+    <outline type="rss" text="Firefox UX" title="Firefox UX" xmlUrl="https://blog.mozilla.org/ux/feed/"/>
+    <outline type="rss" text="Shing Lyu" title="Shing Lyu - Articles" xmlUrl="https://shinglyu.com/feed-mozilla.xml"/>
+    <outline type="rss" text="Anjana Vakil" title="Anjana Sofia Vakil" xmlUrl="http://anjana.dev/feed.xml"/>
+    <outline type="rss" text="Firefox Nightly" title="Firefox Nightly News" xmlUrl="https://blog.nightly.mozilla.org/feed/"/>
+    <outline type="rss" text="Mozilla Open Innovation Team" title="Mozilla Open Innovation - Medium" xmlUrl="https://medium.com/feed/mozilla-open-innovation"/>
+    <outline type="rss" text="Alessio Placitelli" title="Mozilla on NOT Dexter's Lab" xmlUrl="https://www.a2p.it/categories/mozilla/index.xml"/>
+    <outline type="rss" text="Mozilla Localization (L10N)" title="Planet &#x2013; Mozilla L10N" xmlUrl="https://blog.mozilla.org/l10n/category/planet/feed/"/>
+    <outline type="rss" text="Mozilla Open Design Blog" title="Mozilla Open Design" xmlUrl="https://blog.mozilla.org/opendesign/feed/"/>
+    <outline type="rss" text="David Bryant" title="Stories by David Bryant on Medium" xmlUrl="https://medium.com/@david_bryant/feed"/>
+    <outline type="rss" text="Mark Mayo" title="Stories by Mark Mayo on Medium" xmlUrl="https://medium.com/@mmayo/feed"/>
+    <outline type="rss" text="Ryan Harter" title="blog.harterrt.com - mozilla" xmlUrl="http://blog.harterrt.com/feeds/mozilla.rss.xml"/>
+    <outline type="rss" text="Mozilla Future Releases Blog" title="Future Releases" xmlUrl="https://blog.mozilla.org/futurereleases/feed/"/>
+    <outline type="rss" text="Mozilla Marketing Engineering &amp; Ops Blog" title="Mozilla Marketing Engineering &amp; Operations" xmlUrl="https://mozilla.github.io/meao/atom.xml"/>
+    <outline type="rss" text="Sam Foster" title="Occasional notes / Sam Foster &#x2022; Posts by &quot;mozilla&quot; tag" xmlUrl="https://www.sam-i-am.com/blog/tag/mozilla/atom.xml"/>
+    <outline type="rss" text="Dennis Schubert" title="Dennis Schubert - Blog: mozilla" xmlUrl="https://overengineer.dev/blog/feeds/mozilla.xml"/>
+    <outline type="rss" text="Andrzej Hunt" title="Mozilla &#x2013; Andrzej Hunt" xmlUrl="https://www.ahunt.org/category/mozilla/feed/"/>
+    <outline type="rss" text="Anne van Kesteren" title="Anne&#x2019;s Blog" xmlUrl="https://annevankesteren.nl/feeds/weblog"/>
+    <outline type="rss" text="Georg Fritzsche" title="Georg Fritzsche - Medium" xmlUrl="https://medium.com/feed/georg-fritzsche"/>
+    <outline type="rss" text="Bryce Van Dyk" title="Mozilla - Bryce Van Dyk" xmlUrl="https://www.brycevandyk.com/tag/mozilla/rss/"/>
+    <outline type="rss" text="Hacks.Mozilla.Org" title="Mozilla Hacks &#x2013; the Web developer blog" xmlUrl="https://hacks.mozilla.org/feed/"/>
+    <outline type="rss" text="Marco Castelluccio" title="Marco Castelluccio" xmlUrl="https://marco-c.github.io/feed.xml"/>
+    <outline type="rss" text="Firefox Test Pilot" title="Firefox Test Pilot - Medium" xmlUrl="https://medium.com/feed/firefox-test-pilot"/>
+    <outline type="rss" text="Princi Vershwal" title="Stories by Princi Vershwal on Medium" xmlUrl="https://medium.com/@vershwal/feed"/>
+    <outline type="rss" text="Andreas Farre" title="mozilla - farre's blog" xmlUrl="https://farre.github.io/blog/rss/mozilla.xml"/>
+    <outline type="rss" text="IRL (podcast)" title="IRL: Online Life is Real Life" xmlUrl="https://feeds.mozilla-podcasts.org/irl"/>
+    <outline type="rss" text="Onno Ekker" title="Planet &#x2013; oeekker&#x2019;s blog" xmlUrl="https://oeekker.wordpress.com/category/planet/feed/"/>
+    <outline type="rss" text="Mozilla GFX" title="Mozilla Gfx Team Blog" xmlUrl="https://mozillagfx.wordpress.com/feed/"/>
+    <outline type="rss" text="Firefox Browser Architecture" title="Mozilla Browser Architecture Newsletters" xmlUrl="https://mozilla.github.io/firefox-browser-architecture/newsletters.xml"/>
+    <outline type="rss" text="Jean-Marc Valin" title="" xmlUrl=""/>
+    <outline type="rss" text="Chris Ilias" title="Mozilla &#x2013; Chris Ilias" xmlUrl="https://ilias.ca/blog/category/mozilla/feed/"/>
+    <outline type="rss" text="Martin Giger" title="Mozilla Archives - Humanoids beLog" xmlUrl="https://humanoids.be/log/category/software/freeware/opensource/mozilla/feed/?lang=en_us"/>
+    <outline type="rss" text="John Ford" title="John Ford" xmlUrl="http://blog.johnford.org/feeds/posts/default/-/mozilla?alt=rss"/>
+    <outline type="rss" text="Thunderbird Blog" title="" xmlUrl=""/>
+    <outline type="rss" text="Michael Droettboom" title="Boom! Michael Droettboom's blog - mozilla" xmlUrl="https://droettboom.com/feeds/mozilla.atom.xml"/>
+    <outline type="rss" text="Firefox Test Engineering" title="" xmlUrl=""/>
+    <outline type="rss" text="Cameron McCormack" title="Cameron McCormack" xmlUrl="https://mcc.id.au/feed-planet-mozilla"/>
+    <outline type="rss" text="Paul Bone" title="Paul Bone" xmlUrl="https://paul.bone.id.au/blog-planet-mozilla.xml"/>
+    <outline type="rss" text="Jesse McCrosky" title="Mozilla Planet &#x2013; Wrong, but useful" xmlUrl="https://wrongbutuseful.com/tag/mozilla-planet/feed/"/>
+    <outline type="rss" text="Jan-Erik Rediger" title="fnordig - posts tagged with 'mozilla'" xmlUrl="https://fnordig.de/tagged/mozilla.xml"/>
+    <outline type="rss" text="Nika Layzell" title="Nika's Box - mozilla" xmlUrl="https://mystor.github.io/feeds/tags/mozilla.atom.xml"/>
+    <outline type="rss" text="Paul Adenot" title="" xmlUrl=""/>
+    <outline type="rss" text="The Talospace Project" title="Talospace" xmlUrl="https://www.talospace.com/feeds/posts/default/-/Firefox/?alt=rss"/>
+    <outline type="rss" text="Frederik Braun" title="Frederik Braun" xmlUrl="https://frederik-braun.com/feeds/all.rss.xml"/>
+    <outline type="rss" text="Spidermonkey Development Blog" title="SpiderMonkey JavaScript/WebAssembly Engine" xmlUrl="https://spidermonkey.dev/feed.xml"/>
+    <outline type="rss" text="Beatriz Rizental" title="- Mozilla" xmlUrl="https://brizental.github.io/feed.mozilla.xml"/>
+    <outline type="rss" text="Jeff Klukas" title="mozilla on Jeff Klukas" xmlUrl="https://jeff.klukas.net/tags/mozilla/index.xml"/>
+    <outline type="rss" text="Data@Mozilla" title="Data@Mozilla" xmlUrl="https://blog.mozilla.org/data/feed/"/>
+    <outline type="rss" text="Mozilla Accessibility" title="Mozilla Accessibility" xmlUrl="https://blog.mozilla.org/accessibility/feed/"/>
+    <outline type="rss" text="Tiger Oakes" title="Planet Mozilla | Tiger Oakes" xmlUrl="https://tigeroakes.com/posts/tags/planet-mozilla/index.xml"/>
+    <outline type="rss" text="Mozilla Performance Blog" title="Mozilla Performance" xmlUrl="https://blog.mozilla.org/performance/feed/"/>
+    <outline type="rss" text="Raphael Pierzina" title="Mozilla on Raphael Aurich" xmlUrl="https://hackebrot.gitlab.io/tags/mozilla/index.xml"/>
+    <outline type="rss" text="Firefox Application Security Team" title="Attack &amp; Defense" xmlUrl="https://attackanddefense.dev/feed.xml"/>
+    <outline type="rss" text="Martin Thompson" title="Low Entropy" xmlUrl="https://lowentropy.net/feed/feed.xml"/>
+    <outline type="rss" text="Firefox Add-on Reviews" title="Firefox Add-ons Blog" xmlUrl="https://addons.mozilla.org/blog/feed.xml"/>
+    <outline type="rss" text="Lauren Zugai" title="DEV Community: Lauren Zugai" xmlUrl="https://dev.to/feed/lzoog"/>
+    <outline type="rss" text="Jody Heavener" title="DEV Community: Jody Heavener" xmlUrl="https://dev.to/feed/jody"/>
+    <outline type="rss" text="William Durand" title="Mozilla // William Durand" xmlUrl="https://williamdurand.fr/mozilla.xml"/>
+    <outline type="rss" text="Firefox Developer Experience" title="Firefox Developer Experience" xmlUrl="https://fxdx.dev/feed/"/>
+    <outline type="rss" text="Mozilla Necko Blog" title="Necko Blog" xmlUrl="https://mozilla-necko.github.io/feed.xml"/>
+    <outline type="rss" text="Matthew Gaudet" title="Tech Blog - Matthew Gaudet" xmlUrl="https://www.mgaudet.ca/technical/category/Mozilla?format=rss"/>
+    <outline type="rss" text="Serge Guelton" title="Pythran stories - mozilla" xmlUrl="http://serge-sans-paille.github.io/pythran-stories/feeds/mozilla.atom.xml"/>
+    <outline type="rss" text="Mozilla Data YouTube Channel" title="Mozilla Data" xmlUrl="http://www.youtube.com/feeds/videos.xml?channel_id=UCS1zp4AVNvykWzPC-vB_Daw"/>
+    <outline type="rss" text="Olivier Mehani" title="Mozilla - Narf" xmlUrl="https://blog.narf.ssji.net/category/mozilla/feed/"/>
+    <outline type="rss" text="Jonathan Almeida" title="Jonathan Almeida - mozilla" xmlUrl="https://jonalmeida.com/tags/mozilla/atom.xml"/>
+    <outline type="rss" text="Firefox Tooling Announcements" title="Firefox Tooling Announcements - Mozilla Discourse" xmlUrl="https://discourse.mozilla.org/c/firefox-tooling-announcements/521.rss"/>
+    <outline type="rss" text="Advancing WebRTC" title="Advancing WebRTC" xmlUrl="https://blog.mozilla.org/webrtc/feed/"/>
+    <outline type="rss" text="Firefox hacking in Fedora" title="Martin Stransky's Blog" xmlUrl="https://mastransky.wordpress.com/feed/"/>
+  </body>
+</opml>

@@ -1,0 +1,574 @@
+<?xml version="1.0"?>
+<opml version="1.1">
+	<head>
+		<title>Planet Python</title>
+		<dateCreated>Sun, 01 Feb 2026 21:44:06 +0000</dateCreated>
+		<dateModified>Sun, 01 Feb 2026 21:44:06 +0000</dateModified>
+		<ownerName>Python Software Foundation</ownerName>
+		<ownerEmail>planet@python.org</ownerEmail>
+	</head>
+
+	<body>
+		<outline text="&quot;Menno's Musings&quot;" xmlUrl="http://freshfoo.com/blog/index.atom"/>
+		<outline text="&quot;Michael J.T. O'Kelly&quot;" xmlUrl="http://mjtokelly.blogspot.com/feeds/posts/default/-/Python"/>
+		<outline text="&quot;Michael Kennedy's Thoughts on Technology&quot;" xmlUrl="https://mkennedy.codes/tags/python/index.xml"/>
+		<outline text="&quot;Morphex's Blogologue&quot;" xmlUrl="http://blogologue.com/atom.xml?category=1470141490X3"/>
+		<outline text="&quot;Speno's Pythonic Avocado&quot;" xmlUrl="http://speno.blogspot.com/atom.xml"/>
+		<outline text="&quot;William's Journal&quot;" xmlUrl="https://william-os4y.livejournal.com/data/atom/"/>
+		<outline text="2degrees" xmlUrl="http://dev.2degreesnetwork.com/feeds/posts/default/-/python"/>
+		<outline text="A. Jesse Jiryu Davis" xmlUrl="https://emptysqua.re/blog/category/python/index.xml"/>
+		<outline text="ABlog for Sphinx" xmlUrl="http://ablog.readthedocs.org/blog/atom.xml"/>
+		<outline text="Aahz" xmlUrl="http://www.artima.com/weblogs/feeds/bloggers/aahz.rss"/>
+		<outline text="Abhijeet Pal" xmlUrl="https://djangocentral.com/feed/"/>
+		<outline text="Abu Ashraf Masnun" xmlUrl="http://masnun.rocks/tags/python/index.xml"/>
+		<outline text="Adam Pletcher" xmlUrl="http://techarttiki.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Adrarsh Divakaran" xmlUrl="https://blog.adarshd.dev/feed.xml"/>
+		<outline text="Agendaless Consulting" xmlUrl="https://agendaless.com/blog/index.atom?category=python"/>
+		<outline text="Ahmed Bouchefra" xmlUrl="https://efficientcoder.net/python/feed.xml"/>
+		<outline text="Al-Ahmadgaid Asaad" xmlUrl="http://alstatr.blogspot.com/feeds/posts/default/-/Python"/>
+		<outline text="Alec Munro" xmlUrl="http://alecmunro.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Alex Grönholm" xmlUrl="http://alextechrants.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Alex Morozov" xmlUrl="http://morozov.ca/feeds/tag-python.atom.xml"/>
+		<outline text="Alexander Limi" xmlUrl="http://feeds.limi.net/on-python"/>
+		<outline text="Alexandre Conrad" xmlUrl="http://www.alexconrad.org/feeds/posts/default/-/python"/>
+		<outline text="Alexandre Vassalotti" xmlUrl="https://peadrop.com/blog/category/python/feed/"/>
+		<outline text="Alexey Evseev" xmlUrl="https://feeds.feedburner.com/en_lexevorg"/>
+		<outline text="Allison Kaptur" xmlUrl="http://akaptur.com/blog/categories/python/atom.xml"/>
+		<outline text="Amjith Ramanujam" xmlUrl="https://amjith.com/tags/python/index.xml"/>
+		<outline text="AmvTek" xmlUrl="https://www.amvtek.com/blog/feeds/tags/python.atom.xml"/>
+		<outline text="Anarcat" xmlUrl="https://anarc.at/tag/python-planet/index.rss"/>
+		<outline text="Anatoly Techtonik" xmlUrl="http://techtonik.rainforce.org/feeds/posts/default/-/python"/>
+		<outline text="Andre Roberge" xmlUrl="https://aroberge.blogspot.com/feeds/posts/default?alt=atom"/>
+		<outline text="Andrea Grandi" xmlUrl="https://www.andreagrandi.it/feeds/python.rss.xml"/>
+		<outline text="Andrew Dalke" xmlUrl="http://dalkescientific.com/writings/diary/diary-rss.xml"/>
+		<outline text="Andriy Kornatskyy" xmlUrl="http://mindref.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Andy Dustman" xmlUrl="http://mysql-python.blogspot.com/feeds/posts/default"/>
+		<outline text="Andy R. Terrel" xmlUrl="http://andy.terrel.us/feeds/python-tag.rss.xml"/>
+		<outline text="Anna Martelli Ravenscroft" xmlUrl="http://annaraven.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Anthony Baxter" xmlUrl="http://codingweasel.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Anton Belyaev" xmlUrl="http://kpoxit.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Anton Bobrov" xmlUrl="http://bobrochel.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Antonio Cuni" xmlUrl="https://antocuni.eu/feed_rss_updated.xml"/>
+		<outline text="Anwesha Das" xmlUrl="https://anweshadas.in/tag/python/rss/"/>
+		<outline text="Ari Lamstein" xmlUrl="https://arilamstein.com/tag/Python/feed/"/>
+		<outline text="Armin Ronacher" xmlUrl="https://lucumr.pocoo.org/feed.atom"/>
+		<outline text="Artem Golubin" xmlUrl="https://rushter.com/blog/feed/pyplanet.xml"/>
+		<outline text="Artem Rys" xmlUrl="https://medium.com/feed/python4you"/>
+		<outline text="Ashish Vidyarthi" xmlUrl="http://pyfunc.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Astro Code School" xmlUrl="http://astrocodeschool.com/feeds/all.rss.xml"/>
+		<outline text="Automating OSINT" xmlUrl="http://automatingosint.com/blog/category/python/feed/"/>
+		<outline text="Awesome Python Applications" xmlUrl="https://raw.githubusercontent.com/mahmoud/awesome-python-applications/master/atom.xml"/>
+		<outline text="Baiju Muthukadan" xmlUrl="http://baijum.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Bajusz Tamás" xmlUrl="http://gbtami.github.io/feed.python.xml"/>
+		<outline text="BeDjango" xmlUrl="https://www.bedjango.com/planet/feed/"/>
+		<outline text="Ben Bass" xmlUrl="http://blog.codedstructure.net/feeds/posts/default/-/python"/>
+		<outline text="Ben Cook" xmlUrl="https://sparrow.dev/feed/atom/"/>
+		<outline text="Ben Rousch" xmlUrl="http://clusterbleep.net/blog/category/python/feed/"/>
+		<outline text="Benjamin Peterson" xmlUrl="http://pybites.blogspot.com/feeds/posts/default"/>
+		<outline text="Benji York" xmlUrl="http://benjiyork.com/blog/atom.xml"/>
+		<outline text="Bertrand Mathieu" xmlUrl="http://zebert.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Bhavin Gandhi" xmlUrl="https://geeksocket.in/tags/python/index.xml"/>
+		<outline text="Bhishan Bhandari" xmlUrl="https://feeds.feedburner.com/thetaranights"/>
+		<outline text="BioPython News" xmlUrl="http://news.open-bio.org/news/category/obf-projects/biopython/feed/atom/"/>
+		<outline text="Bit of Cheese" xmlUrl="http://bitofcheese.blogspot.com/feeds/posts/default"/>
+		<outline text="Bojan Mihelac" xmlUrl="https://code.informatikamihelac.com/feeds/categories/django/"/>
+		<outline text="Brandon Rhodes" xmlUrl="https://rhodesmill.org/brandon/category/python/feed/"/>
+		<outline text="BreadcrumbsCollector" xmlUrl="https://breadcrumbscollector.tech/category/python/feed/"/>
+		<outline text="Brendan Scott" xmlUrl="https://python4dads.wordpress.com/feed/"/>
+		<outline text="Brett Cannon" xmlUrl="https://snarky.ca/rss/"/>
+		<outline text="Brian Okken" xmlUrl="https://pythontest.com/posts/index.xml"/>
+		<outline text="Bruno Oliveira" xmlUrl="http://www.nicoddemus.dev/tag/python/atom.xml"/>
+		<outline text="Bruno Ponne / Coding The Past" xmlUrl="https://www.codingthepast.com/feed_python_planet.xml"/>
+		<outline text="Bruno Rocha" xmlUrl="http://brunorocha.org/tag/pythonplanet.atom"/>
+		<outline text="Caktus Consulting Group" xmlUrl="https://www.caktusgroup.com/tags/python/index.xml"/>
+		<outline text="Calvin Cheng" xmlUrl="https://calvinx.com/category/code/python/feed/"/>
+		<outline text="Calvin Spealman" xmlUrl="http://techblog.ironfroggy.com/feeds/posts/default/-/programming"/>
+		<outline text="Carl Chenet" xmlUrl="http://carlchenet.com/category/planetpython/feed/"/>
+		<outline text="Carl Düvel" xmlUrl="https://carl.duevel.online/tags/python/index.xml"/>
+		<outline text="Carl Trachte" xmlUrl="http://pyright.blogspot.com/feeds/posts/default?alt=rss"/>
+		<outline text="Carlos Eduardo de Paula" xmlUrl="http://themindcaster.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Casey Duncan" xmlUrl="http://eatthedots.blogspot.com/feeds/posts/default"/>
+		<outline text="Catherine Devlin" xmlUrl="http://catherinedevlin.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Ching-Hwa Yu" xmlUrl="https://chinghwayu.com/category/python/feed/"/>
+		<outline text="Chris Hager" xmlUrl="https://www.metachris.dev/tags/python/index.xml"/>
+		<outline text="Chris Miles" xmlUrl="http://chris-miles-writes-python.blogspot.com/feeds/posts/default?alt=rss"/>
+		<outline text="Chris Mitchell" xmlUrl="http://pyinformatics.blogspot.com/feeds/posts/default"/>
+		<outline text="Chris Moffitt" xmlUrl="https://pbpython.com/feeds/all.atom.xml"/>
+		<outline text="Chris Rose" xmlUrl="https://offby1.website/feeds/tag-python.atom.xml"/>
+		<outline text="Chris Warrick" xmlUrl="https://feeds.feedburner.com/ChrisWarrickPython"/>
+		<outline text="Christian Heimes" xmlUrl="http://lipyrary.blogspot.com/feeds/posts/default"/>
+		<outline text="Christian Ledermann" xmlUrl="https://dev.to/feed/ldrscke.rss"/>
+		<outline text="Christian Scholz" xmlUrl="http://feeds.feedburner.com/mrtopf-python"/>
+		<outline text="Christoph Schiessl" xmlUrl="https://bugfactory.io/articles-on-python/feed.xml"/>
+		<outline text="Christoph Zwerschke" xmlUrl="https://cito.github.io/tags/python/index.xml"/>
+		<outline text="CodeGrades" xmlUrl="https://blog.codegrades.com/feed.xml"/>
+		<outline text="CodeSnipers" xmlUrl="http://codesnipers.com/?q=taxonomy/term/16/0/feed"/>
+		<outline text="CodersLegacy" xmlUrl="https://coderslegacy.com/category/python/feed/"/>
+		<outline text="Coding Diet" xmlUrl="http://allanderek.github.io/categories/python.xml"/>
+		<outline text="Corey Gallon" xmlUrl="https://gallon.me/tag/python/feed/"/>
+		<outline text="Corey Goldberg" xmlUrl="https://feeds.feedburner.com/goldblog/python"/>
+		<outline text="Cormoran Project" xmlUrl="https://feeds.feedburner.com/cormoran-project"/>
+		<outline text="Cross-Platform Command Line Tools" xmlUrl="https://feeds2.feedburner.com/portablecommandline"/>
+		<outline text="CubicWeb" xmlUrl="https://feeds.feedburner.com/cubicweborg"/>
+		<outline text="Curtis Miller" xmlUrl="https://ntguardian.wordpress.com/category/python/feed/"/>
+		<outline text="DSPIllustrations.com" xmlUrl="http://dspillustrations.com/static/dspillustrations.rss.xml"/>
+		<outline text="DaPythonista" xmlUrl="https://www.dapythonista.com/feed/rdf/"/>
+		<outline text="Daily Tech Video (Python)" xmlUrl="https://dailytechvideo.com/category/python/feed/"/>
+		<outline text="Dallas Fort Worth Pythoneers" xmlUrl="http://dfwpython.blogspot.com/feeds/posts/default"/>
+		<outline text="Dan Crosta" xmlUrl="https://late.am/python.feed.xml"/>
+		<outline text="Dan Stromberg" xmlUrl="http://strombrg.blogspot.com/feeds/posts/default/-/Python"/>
+		<outline text="Dan Yeaw" xmlUrl="http://dan.yeaw.me/categories/python.xml"/>
+		<outline text="Daniel Bader" xmlUrl="http://dbader.org/blog/tags/python/rss"/>
+		<outline text="Daniel Nouri" xmlUrl="https://danielnouri.org/notes/category/python/feed/index.xml"/>
+		<outline text="Daniel Roy Greenfeld" xmlUrl="https://daniel.feldroy.com/feeds/python.atom.xml"/>
+		<outline text="Data Community DC" xmlUrl="http://www.datacommunitydc.org/blog?format=RSS&amp;tag=python"/>
+		<outline text="Data School" xmlUrl="https://www.dataschool.io/tag/python/rss/"/>
+		<outline text="DataWars.io" xmlUrl="https://www.datawars.io/articles/rss.xml"/>
+		<outline text="Dave Beazley" xmlUrl="http://dabeaz.blogspot.com/feeds/posts/default"/>
+		<outline text="David Amos" xmlUrl="https://davidamos.dev/tag/python/rss/"/>
+		<outline text="David Caron" xmlUrl="https://davidcaron.dev/feeds/tags/python.atom.xml"/>
+		<outline text="David Goodger" xmlUrl="http://www.artima.com/weblogs/feeds/bloggers/goodger.rss"/>
+		<outline text="David Lindelof" xmlUrl="https://davidlindelof.com/category/python/feed/"/>
+		<outline text="David MacIver" xmlUrl="https://www.drmaciver.com/category/python/feed/"/>
+		<outline text="David Malcolm" xmlUrl="https://dmalcolm.livejournal.com/data/atom?tag=python"/>
+		<outline text="David Szotten" xmlUrl="http://www.szotten.com/david/feeds/python.atom.xml"/>
+		<outline text="Davide Moro" xmlUrl="http://davidemoro.blogspot.com/feeds/posts/default/-/planetpython"/>
+		<outline text="Davy Mitchell" xmlUrl="https://feeds2.feedburner.com/Daftpython"/>
+		<outline text="Davy Wybiral" xmlUrl="https://davywybiral.blogspot.com/feeds/posts/default"/>
+		<outline text="Declassed Art" xmlUrl="https://declassed.art/en/feed/python.xml"/>
+		<outline text="Denis Kurov" xmlUrl="http://makkalot-opensource.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Django Weblog" xmlUrl="http://www.djangoproject.com/rss/weblog/"/>
+		<outline text="Djangostars" xmlUrl="https://djangostars.com/blog/category/python/feed/"/>
+		<outline text="Doing Math with Python" xmlUrl="https://doingmathwithpython.github.io/feeds/all.atom.xml"/>
+		<outline text="Doug Hellmann" xmlUrl="https://feeds.feedburner.com/doughellmann/python"/>
+		<outline text="Dougal Matthews" xmlUrl="https://www.dougalmatthews.com/feeds/python.atom.xml"/>
+		<outline text="Duncan McGreggor" xmlUrl="http://oubiwann.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Ed Crewe" xmlUrl="http://edcrewe.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Edward K. Ream" xmlUrl="http://edreamleo.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Eli Bendersky" xmlUrl="http://eli.thegreenplace.net/feeds/python.atom.xml"/>
+		<outline text="Eniram Ltd." xmlUrl="http://eniramltd.github.io/devblog/rss/categories/python.xml"/>
+		<outline text="Eray Özkural (examachine)" xmlUrl="https://examachine.net/blog/category/python/feed/"/>
+		<outline text="Erik Marsja" xmlUrl="https://www.marsja.se/category/python/feed/"/>
+		<outline text="Etienne Desautels" xmlUrl="http://etienned.github.io/categories/python.xml"/>
+		<outline text="EuroPython" xmlUrl="https://blog.europython.eu/rss/"/>
+		<outline text="EuroPython Society" xmlUrl="https://www.europython-society.org/rss/"/>
+		<outline text="Evennia" xmlUrl="http://evennia.blogspot.com/feeds/posts/default"/>
+		<outline text="Everyday Superpowers" xmlUrl="https://everydaysuperpowers.dev/feed/python/"/>
+		<outline text="Fabio Zadrozny" xmlUrl="https://feeds.feedburner.com/blogspot/pydev"/>
+		<outline text="Filip Wasilewski" xmlUrl="http://en.ig.ma/notebook/feeds/atom/tag/python.xml"/>
+		<outline text="Filipe Saraiva" xmlUrl="https://blog.filipesaraiva.info/?feed=rss2&amp;tag=planet-python"/>
+		<outline text="First Institute of Reliable Software" xmlUrl="https://first.institute/en/rss/python/"/>
+		<outline text="Flavio Coelho" xmlUrl="https://feeds.feedburner.com/PythonInScience"/>
+		<outline text="Flavio Percoco" xmlUrl="http://blog.flaper87.com/feeds/python.atom.xml"/>
+		<outline text="Floris Bruynooghe" xmlUrl="http://blog.devork.be/feeds/posts/default/-/python"/>
+		<outline text="Frank Wierzbicki" xmlUrl="http://fwierzbicki.blogspot.com/atom.xml"/>
+		<outline text="François Dion" xmlUrl="http://raspberry-python.blogspot.com/feeds/posts/default/-/english/python"/>
+		<outline text="François Marier" xmlUrl="https://feeding.cloud.geek.nz/tags/python/index.rss"/>
+		<outline text="Frederik Rietdijk" xmlUrl="https://www.fridh.nl/tag/python.atom.xml"/>
+		<outline text="From Python Import Podcast" xmlUrl="https://www.frompythonimportpodcast.com/feed/"/>
+		<outline text="Full Stack Python" xmlUrl="https://www.fullstackpython.com/feeds/all.atom.xml"/>
+		<outline text="Ga&amp;#235;l Varoquaux" xmlUrl="https://gael-varoquaux.info/feeds/programming.atom.xml"/>
+		<outline text="Georges Dubus" xmlUrl="https://compiletoi.net/tag/python/rss/"/>
+		<outline text="Ghaandee on IT" xmlUrl="http://ghaandeeonit.tumblr.com/rss"/>
+		<outline text="Giampaolo Rodola" xmlUrl="https://gmpy.dev/feeds/atom.tag.python.xml"/>
+		<outline text="Giulio Fidente" xmlUrl="http://giuliofidente.com/feeds/tag/python.atom.xml"/>
+		<outline text="Glenn Franxman" xmlUrl="http://hackermojo.com/mt-static/tagged/python.rdf"/>
+		<outline text="Glyph Lefkowitz" xmlUrl="http://glyph.twistedmatrix.com/feeds/posts/default"/>
+		<outline text="Go Deh" xmlUrl="https://feeds.feedburner.com/GoDeh"/>
+		<outline text="Gocept Weblog" xmlUrl="https://blog.gocept.com/tag/python/feed/atom/"/>
+		<outline text="Godson Gera" xmlUrl="http://blog.godson.in/feeds/posts/default/-/Python"/>
+		<outline text="Graeme Cross" xmlUrl="http://www.curiousvenn.com/category/python/feed/"/>
+		<outline text="Graham Dumpleton" xmlUrl="https://grahamdumpleton.me/feed.xml"/>
+		<outline text="Graham Wheeler" xmlUrl="https://www.grahamwheeler.com/categories/python.xml"/>
+		<outline text="Grant Baillie" xmlUrl="http://defrobnication.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Grant Rettke" xmlUrl="https://www.wisdomandwonder.com/tag/python/feed"/>
+		<outline text="Greg Taylor" xmlUrl="http://gc-taylor.com/?format=rss&amp;category=Python"/>
+		<outline text="Grig Gheorghiu" xmlUrl="http://agiletesting.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Grzegorz Śliwiński" xmlUrl="https://fizyk.dev/tags/python.xml"/>
+		<outline text="Guido van Rossum" xmlUrl="http://neopythonic.blogspot.com/feeds/posts/default"/>
+		<outline text="Gustavo Narea" xmlUrl="https://gustavonarea.net/blog/tags/python/feed/"/>
+		<outline text="Gustavo Niemeyer" xmlUrl="http://blog.labix.org/tag/python/feed"/>
+		<outline text="Gökhan Sever" xmlUrl="http://pycloud.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Hernan Grecco" xmlUrl="http://python-in-the-lab.blogspot.de//feeds/posts/default/-/Python"/>
+		<outline text="Hilary Mason" xmlUrl="http://www.hilarymason.com/tag/python/feed/"/>
+		<outline text="Holger Krekel" xmlUrl="https://holgerkrekel.net/feed/atom/"/>
+		<outline text="Holger Peters" xmlUrl="https://www.holger-peters.de/feeds/python.atom.xml"/>
+		<outline text="HoloViz" xmlUrl="https://blog.holoviz.org/index.xml"/>
+		<outline text="Hugo van Kemenade" xmlUrl="https://hugovk.dev/tags/python/index.xml"/>
+		<outline text="Humberto Rocha" xmlUrl="https://humberto.io/tags/python/index.xml"/>
+		<outline text="Hynek Schlawack" xmlUrl="https://hynek.me/feed-python.xml"/>
+		<outline text="Ian Ozsvald" xmlUrl="https://ianozsvald.com/category/python/feed/atom/"/>
+		<outline text="Ilian Iliev" xmlUrl="http://www.ilian.io/feed/?tag=python"/>
+		<outline text="Import Python" xmlUrl="https://importpython.com/blog/feed/"/>
+		<outline text="Inspired Python" xmlUrl="https://www.inspiredpython.com/feed"/>
+		<outline text="Ionel Cristian Maries" xmlUrl="https://blog.ionelmc.ro/feeds/python.rss.xml"/>
+		<outline text="IronPython-URLs" xmlUrl="https://feeds.feedburner.com/IronpythonUrls"/>
+		<outline text="IslandT" xmlUrl="https://islandtropicaman.com/wp/category/python/feed/"/>
+		<outline text="Israel Fruchter" xmlUrl="https://fruch.github.io/feed.python.xml"/>
+		<outline text="Itamar Turner Trauring" xmlUrl="https://codewithoutrules.com/python-atom.xml"/>
+		<outline text="Ivan Velichko" xmlUrl="https://iximiuz.com/feed-python.atom"/>
+		<outline text="J. Pablo Fernández" xmlUrl="https://pablofernandez.tech/tag/python/feed/"/>
+		<outline text="Jack Diederich" xmlUrl="http://jackdied.blogspot.com/feeds/posts/default"/>
+		<outline text="Jacob Perkins" xmlUrl="https://streamhacker.com/category/python/feed/"/>
+		<outline text="Jahongir Rahmonov" xmlUrl="https://rahmonov.me/feeds/python.atom.xml"/>
+		<outline text="Jaime Buelta" xmlUrl="https://wrongsideofmemphis.com/feed/atom/?tag=english%20python"/>
+		<outline text="Jamal Moir" xmlUrl="https://datadependence.com/tag/python/feed/"/>
+		<outline text="James Bennett" xmlUrl="https://www.b-list.org/feeds/entries/"/>
+		<outline text="Janusworx" xmlUrl="https://janusworx.com/tags/planetpython/index.xml"/>
+		<outline text="Jarrod Millman" xmlUrl="http://blog.jarrodmillman.com/feeds/posts/default/-/python"/>
+		<outline text="Jean-Paul Calderone" xmlUrl="http://as.ynchrono.us/feeds/posts/default/-/python"/>
+		<outline text="Jeff Bisbee" xmlUrl="http://jbisbee.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Jeff Bradberry" xmlUrl="http://jeffbradberry.com/feeds/python.atom.xml"/>
+		<outline text="Jeff Hinrichs" xmlUrl="http://inre.dundeemt.com/category/python/feed/"/>
+		<outline text="Jeff Shell" xmlUrl="http://griddlenoise.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Jeremy Epstein" xmlUrl="https://greenash.net.au/thoughts/topics/python/rss/"/>
+		<outline text="Jeremy Hylton" xmlUrl="https://feeds2.feedburner.com/JeremyHyltonInconceivable"/>
+		<outline text="Jim Fulton" xmlUrl="http://www.blogger.com/feeds/6330681631629046724/posts/default"/>
+		<outline text="Joe Abbate" xmlUrl="http://pyrseas.wordpress.com/tag/python/feed/atom/"/>
+		<outline text="Joe Pitz" xmlUrl="http://feeds.feedburner.com/JoePitz-TechnologyBlogPython"/>
+		<outline text="Johan Dahlin" xmlUrl="https://blogs.gnome.org/johan/category/python/feed/atom/"/>
+		<outline text="John Burns" xmlUrl="http://clouddbs.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="John Cook" xmlUrl="http://www.johndcook.com/blog/category/python/feed/"/>
+		<outline text="John Jacobsen" xmlUrl="http://eigenhombre.com/feed.python.xml"/>
+		<outline text="John Ludhi/nbshare.io" xmlUrl="https://www.nbshare.io/feeds/all.atom.xml"/>
+		<outline text="Jon Parise" xmlUrl="https://www.indelible.org/feeds/ink/python.xml"/>
+		<outline text="Jonathan Ellis" xmlUrl="http://spyced.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Jonathan Harrington" xmlUrl="https://feeds.feedburner.com/JonathansPythonBlog"/>
+		<outline text="Jonathan Hartley" xmlUrl="https://www.tartley.com/categories/python.xml"/>
+		<outline text="Jonathan Street" xmlUrl="https://jonathanstreet.com/blog/tag/python/atom/"/>
+		<outline text="Jorgen Schäfer" xmlUrl="http://blog.jorgenschaefer.de/feeds/posts/default/-/Python"/>
+		<outline text="Juan Manuel Contreras" xmlUrl="https://pythonmonopoly.wordpress.com/feed/"/>
+		<outline text="Julien Danjou" xmlUrl="https://julien.danjou.info/tag/python/rss/"/>
+		<outline text="Julien Tayon" xmlUrl="https://beauty-of-imagination.blogspot.fr/feeds/posts/default/-/python"/>
+		<outline text="Juri Pakaste" xmlUrl="https://juripakaste.fi/rss.xml"/>
+		<outline text="Just a little Python" xmlUrl="https://feeds.feedburner.com/JustALittlePython"/>
+		<outline text="Justin Mayer" xmlUrl="https://feeds.hackercodex.com/feeds/python"/>
+		<outline text="Kai Lautaportti" xmlUrl="https://lautaportti.wordpress.com/feed/atom/"/>
+		<outline text="Karim Elghamrawy" xmlUrl="https://www.afternerd.com/blog/tag/python/feed/"/>
+		<outline text="Kay Hayen" xmlUrl="http://nuitka.net/categories/Python.xml"/>
+		<outline text="Kay Schluehr" xmlUrl="http://fiber-space.de/wordpress/category/python/feed/"/>
+		<outline text="Kelly Yancey" xmlUrl="http://kbyanc.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Kevin Renskers" xmlUrl="https://www.loopwerk.io/articles/tag/python/feed.xml"/>
+		<outline text="Kodnito" xmlUrl="https://kodnito.com/python/rss/"/>
+		<outline text="Kogan Dev" xmlUrl="https://devblog.kogan.com/?category=Django&amp;format=rss"/>
+		<outline text="Konrad Delong" xmlUrl="https://feeds.feedburner.com/KonradBlog"/>
+		<outline text="Koodaamo" xmlUrl="https://koodaamo.wordpress.com/category/python/feed/"/>
+		<outline text="Kristján Valur Jónsson" xmlUrl="https://cosmicpercolator.com/category/python/feed/atom/"/>
+		<outline text="Kriti Godey" xmlUrl="http://blog.kritigodey.com/tag/python/rss"/>
+		<outline text="Kulbir Saini" xmlUrl="https://gofedora.com/archives/category/python/feed/"/>
+		<outline text="Kumar McMillan" xmlUrl="http://farmdev.com/feeds/thoughts/on/3/python/"/>
+		<outline text="Kumar Vipin Yadav" xmlUrl="https://vipin711.wordpress.com/category/python/feed/"/>
+		<outline text="Kushal Das" xmlUrl="http://kushaldas.in/categories/python.xml"/>
+		<outline text="Károly Nagy" xmlUrl="http://charlesnagy.info/category/it/python/feed"/>
+		<outline text="LAAC Technology" xmlUrl="https://www.laac.dev/tags/python/index.xml"/>
+		<outline text="Laurent Szyster" xmlUrl="http://laurentszyster.be/blog/feed/"/>
+		<outline text="Leigh Honeywell" xmlUrl="https://hypatia.ca/tag/python/feed/"/>
+		<outline text="Lennart Regebro" xmlUrl="https://regebro.wordpress.com/category/python/feed/atom/"/>
+		<outline text="Leonhard Vogt" xmlUrl="https://leovt.wordpress.com/category/python/feed/atom/"/>
+		<outline text="Lintel Technologies" xmlUrl="https://blog.lintel.in/tag/python/feed/"/>
+		<outline text="Linux Stans" xmlUrl="https://linuxstans.com/tag/python/feed/"/>
+		<outline text="ListenData" xmlUrl="https://www.listendata.com/feeds/posts/default/-/Python"/>
+		<outline text="Logilab" xmlUrl="https://feeds.feedburner.com/logilaborg_en"/>
+		<outline text="Low Kian Seong" xmlUrl="https://blog.lowkster.com/feeds/posts/default"/>
+		<outline text="Luca Botti" xmlUrl="http://codingandlinux.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Lucas Cimon" xmlUrl="https://chezsoi.org/shaarli/?do=atom&amp;searchtags=python+FromPelican"/>
+		<outline text="Ludovic Gasc" xmlUrl="http://blog.gmludo.eu/feeds/posts/default/-/python"/>
+		<outline text="Ludvig Ericson" xmlUrl="https://blog.sendapatch.se/index.rss"/>
+		<outline text="Luke Plant" xmlUrl="https://lukeplant.me.uk/blog/categories/python.xml"/>
+		<outline text="Maciej Fijalkowsk" xmlUrl="http://lostinjit.blogspot.com/feeds/posts/default"/>
+		<outline text="Made With Mu" xmlUrl="https://madewith.mu/feed.xml"/>
+		<outline text="Mahmoud Hashemi" xmlUrl="https://sedimental.org/tagged/python/atom.xml"/>
+		<outline text="Malthe Borch" xmlUrl="https://maltheborch.com/rss?tags=python"/>
+		<outline text="Marc Richter" xmlUrl="https://www.marc-richter.info/category/python/planet-python-articles/feed/"/>
+		<outline text="Marc-André Lemburg" xmlUrl="https://www.malemburg.com/rss"/>
+		<outline text="Marcos Dione" xmlUrl="https://www.grulic.org.ar/~mdione/glob/categories/python.xml"/>
+		<outline text="Mariatta" xmlUrl="https://mariatta.ca/tags/python/index.xml"/>
+		<outline text="Marius Gedminas" xmlUrl="https://mg.pov.lt/blog/index.xml"/>
+		<outline text="Mark Dufour" xmlUrl="http://shed-skin.blogspot.com/feeds/posts/default"/>
+		<outline text="Mark McLoughlin" xmlUrl="https://blogs.gnome.org/markmc/category/python/feed/"/>
+		<outline text="Mark McMahon" xmlUrl="http://pywinauto.blogspot.com/atom.xml"/>
+		<outline text="Martijn Pieters" xmlUrl="https://feeds.feedburner.com/zopatista/python"/>
+		<outline text="Martin Fitzpatrick" xmlUrl="https://www.martinfitzpatrick.dev/feeds/python.tag.atom.xml"/>
+		<outline text="Mats Kindahl" xmlUrl="http://mysqlmusings.blogspot.se/feeds/posts/default/-/python"/>
+		<outline text="Matt Layman" xmlUrl="https://www.mattlayman.com/categories/python/index.xml"/>
+		<outline text="Matthew Rocklin" xmlUrl="https://matthewrocklin.com/blog/feed.python.xml"/>
+		<outline text="Matthew Rollings" xmlUrl="https://stealthcopter.com/blog/tag/python/feed/"/>
+		<outline text="Matthew Wilson" xmlUrl="http://blog.tplus1.com/index.php/category/python/feed"/>
+		<outline text="Matthew Wright" xmlUrl="https://www.wrighters.io/category/python/feed/"/>
+		<outline text="Mattias Brändström" xmlUrl="http://copypasteprogrammer.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Mauveweb" xmlUrl="http://mauveweb.co.uk/rss.xml"/>
+		<outline text="Michael Becker" xmlUrl="http://beckerfuffle.com/blog/categories/python/atom.xml"/>
+		<outline text="Michael Droettboom" xmlUrl="https://droettboom.com/feeds/all.atom.xml"/>
+		<outline text="Michael Foord" xmlUrl="https://agileabstractions.com/feed.xml"/>
+		<outline text="Michael Nelson" xmlUrl="https://micknelson.wordpress.com/category/python/feed/atom/"/>
+		<outline text="Michal Kwiatkowski" xmlUrl="https://mousebender.wordpress.com/feed/atom/"/>
+		<outline text="Michał Bultrowicz" xmlUrl="https://bultrowicz.com/blog/tag/python/atom.xml"/>
+		<outline text="Michele Simionato" xmlUrl="http://www.artima.com/weblogs/feeds/bloggers/micheles.rss"/>
+		<outline text="Michy Alice" xmlUrl="http://www.firsttimeprogrammer.blogspot.com/feeds/posts/default/-/python?alt=rss"/>
+		<outline text="Mike C. Fletcher" xmlUrl="http://blog.vrplumber.com/b/feeds/categories/snaking/"/>
+		<outline text="Mike Driscoll" xmlUrl="https://www.blog.pythonlibrary.org/feed/"/>
+		<outline text="Mike Müller" xmlUrl="http://python-academy.blogspot.com/feeds/posts/default"/>
+		<outline text="Mikhail Korobov" xmlUrl="http://kmike.ru/feeds/tags/planet-python.atom.xml"/>
+		<outline text="Mikko Ohtamaa" xmlUrl="http://opensourcehacker.com/category/python/feed/"/>
+		<outline text="Mirek Długosz" xmlUrl="https://mirekdlugosz.com/blog/feeds/planet-python.atom.xml"/>
+		<outline text="Mitchell Garnaat" xmlUrl="http://www.elastician.com/feeds/posts/default"/>
+		<outline text="Mitya Sirenef" xmlUrl="http://pythonbyexample.blogspot.com/feeds/posts/default/"/>
+		<outline text="Montreal Python User Group" xmlUrl="http://montrealpython.com/feed/"/>
+		<outline text="Moshe Zadka" xmlUrl="https://orbifold.xyz/feeds/all.atom.xml"/>
+		<outline text="Moya Project" xmlUrl="https://www.moyaproject.com/blog/feed/"/>
+		<outline text="Mozilla Web Development" xmlUrl="https://blog.mozilla.org/webdev/category/python-2/feed/"/>
+		<outline text="Muharem Hrnjadovic" xmlUrl="https://muharem.wordpress.com/feed/atom/"/>
+		<outline text="Mycli" xmlUrl="https://www.mycli.net/feeds/tag.python.rss.xml"/>
+		<outline text="Nadav Samet" xmlUrl="http://www.thesamet.com/blog/tags/python/feed/"/>
+		<outline text="Naomi Ceder" xmlUrl="https://learnpython.wordpress.com/feed/atom/"/>
+		<outline text="Natan Zabkar" xmlUrl="http://www.natan.termitnjak.net/blog/category/python/feed/atom/index.xml"/>
+		<outline text="Ned Batchelder" xmlUrl="https://nedbatchelder.com/blog/planetpython.xml"/>
+		<outline text="Neil Schemenauer" xmlUrl="http://python.ca/nas/log/rss-python.xml"/>
+		<outline text="Nick Coghlan" xmlUrl="https://www.curiousefficiency.org/categories/python.xml"/>
+		<outline text="Nick Craig-Wood" xmlUrl="http://www.craig-wood.com/nick/articles/category/python/feed/atom/index.xml"/>
+		<outline text="Nick Efford" xmlUrl="http://blog.efford.org/tag/feeds/python.atom.xml"/>
+		<outline text="Nick Janetakis" xmlUrl="http://nickjanetakis.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Nicola Iarocci" xmlUrl="https://nicolaiarocci.com/tags/python/index.xml"/>
+		<outline text="Nicolas Dumazet" xmlUrl="https://nicdumz.fr/blog/category/python/feed/index.xml"/>
+		<outline text="Nicolas Paris" xmlUrl="http://www.nicosphere.net/tag/python-en/feed/"/>
+		<outline text="Nigel Babu" xmlUrl="https://nigelb.me/category/python/feed"/>
+		<outline text="Nikola" xmlUrl="https://feeds.feedburner.com/getnikola/QBjz"/>
+		<outline text="Nikolaos Diamantis" xmlUrl="https://nikos7am.com/index.xml"/>
+		<outline text="Not Invented Here" xmlUrl="https://dev.nextthought.com/blog/categories/python.atom"/>
+		<outline text="Nsukami Patrick" xmlUrl="https://nskm.xyz/tags/python/index.xml"/>
+		<outline text="Obey the Testing Goat" xmlUrl="http://www.obeythetestinggoat.com/feeds/all.atom.xml"/>
+		<outline text="Ofosos" xmlUrl="https://ofosos.org/tag/python/rss/"/>
+		<outline text="Omaha Python Users Group" xmlUrl="http://www.omahapython.org/blog/feed"/>
+		<outline text="Ond&amp;#345;ej &amp;#268;ert&amp;iacute;k" xmlUrl="http://ondrejcertik.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Paolo Melchiorre" xmlUrl="https://www.paulox.net/feed/python.xml"/>
+		<outline text="Pathwright" xmlUrl="http://s3.amazonaws.com/blog.pathwright.com/feeds/tag.Python.atom.xml"/>
+		<outline text="Patrice Neff" xmlUrl="https://weblog.patrice.ch/tags/Python.atom"/>
+		<outline text="Patrick Altman" xmlUrl="https://wedgworth.dev/tag/python/rss/"/>
+		<outline text="Patrick Kennedy" xmlUrl="http://www.patricksoftwareblog.com/tag/python/feed/"/>
+		<outline text="Patrick Müller" xmlUrl="https://patrickm.de/tag/python/rss/"/>
+		<outline text="Paul Everitt" xmlUrl="https://pauleveritt.wordpress.com/feed/atom/"/>
+		<outline text="Paul Harrison" xmlUrl="http://www.logarithmic.net/pfh?action=atom;hasname=1;name=gcgmgpghfpgdgpgegf"/>
+		<outline text="Paul Redman" xmlUrl="https://codebright.wordpress.com/category/python/feed/atom/"/>
+		<outline text="Paweł Fertyk" xmlUrl="https://pfertyk.me/feeds/python.atom.xml"/>
+		<outline text="Pedro Lima" xmlUrl="http://pedro.valelima.com/blog/feed/tag/python/"/>
+		<outline text="Peter Bengtsson" xmlUrl="https://www.peterbe.com/oc-Python/rss.xml"/>
+		<outline text="Peter Eisentraut" xmlUrl="http://petereisentraut.blogspot.com/feeds/posts/default/-/Python/"/>
+		<outline text="Peter Fankhänel" xmlUrl="https://neovox.advancedmagic.de/?feed=rss2&amp;cat=6"/>
+		<outline text="Peter Harkins" xmlUrl="https://push.cx/tag/python/feed"/>
+		<outline text="Peter Hoffmann" xmlUrl="http://peter-hoffmann.com/feed/atom-python.xml"/>
+		<outline text="Phil Hassey" xmlUrl="https://www.philhassey.com/blog/category/python/feed/"/>
+		<outline text="Philip Jenvey" xmlUrl="http://dunderboss.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Philipp von Weitershausen" xmlUrl="http://philikon.wordpress.com/category/python/feed/atom/"/>
+		<outline text="Philippe Normand" xmlUrl="https://base-art.net/Articles/rss.xml"/>
+		<outline text="Phillip J. Eby" xmlUrl="https://feeds.feedburner.com/pje-on-programming"/>
+		<outline text="Podcast.__init__" xmlUrl="https://www.pythonpodcast.com/feed/mp3/"/>
+		<outline text="Polyglot.Ninja()" xmlUrl="https://masnun.com/category/python/feed/"/>
+		<outline text="Possbility and Probability" xmlUrl="https://blog.ironboundsoftware.com/category/python/feed.xml"/>
+		<outline text="Pradeep Gowda" xmlUrl="https://feeds.feedburner.com/btbytes_python"/>
+		<outline text="Pranav Pandey" xmlUrl="http://www.flicker-technical.blogspot.fr/feeds/posts/default/-/Python"/>
+		<outline text="Praveen Gollakota" xmlUrl="https://feeds.feedburner.com/shutupandship_python"/>
+		<outline text="Programiz" xmlUrl="https://www.programiz.com/python-programming/rss.xml"/>
+		<outline text="Programming Ideas With Jake" xmlUrl="https://programmingideaswithjake.wordpress.com/category/python/feed/rdf/"/>
+		<outline text="Przemysław Kołodziejczyk" xmlUrl="https://eshlox.net/tags/python/index.xml"/>
+		<outline text="PyATL Bytecode" xmlUrl="https://pyatl.dev/blog/feed/latest/"/>
+		<outline text="PyBites" xmlUrl="https://pybit.es/feed/"/>
+		<outline text="PyCharm" xmlUrl="https://feeds.feedburner.com/Pycharm"/>
+		<outline text="PyCoder’s Weekly" xmlUrl="https://pycoders.com/feed/planetpython"/>
+		<outline text="PyCon" xmlUrl="https://feeds.feedburner.com/PyCon"/>
+		<outline text="PyPodcats" xmlUrl="https://pypodcats.live/episodes/index.xml"/>
+		<outline text="PyPy" xmlUrl="https://pypy.org/rss.xml"/>
+		<outline text="PyTennessee" xmlUrl="https://pytennessee.tumblr.com/rss"/>
+		<outline text="Python 4 Kids" xmlUrl="https://python4kids.brendanscott.com/feed/atom/"/>
+		<outline text="Python 411 Podcast" xmlUrl="http://www.awaretek.com/python/index.xml"/>
+		<outline text="Python Advocacy" xmlUrl="http://python-advocacy.blogspot.com/atom.xml"/>
+		<outline text="Python Anywhere" xmlUrl="https://blog.pythonanywhere.com/index.xml"/>
+		<outline text="Python Bytes" xmlUrl="https://pythonbytes.fm/episodes/rss"/>
+		<outline text="Python Celery - Weekly Celery Tutorials and How-tos" xmlUrl="https://www.distributedpython.com/feed.xml"/>
+		<outline text="Python Circle" xmlUrl="https://pythoncircle.com/feed/"/>
+		<outline text="Python Data" xmlUrl="https://pythondata.com/feed/"/>
+		<outline text="Python Diary" xmlUrl="http://www.pythondiary.com/blog.xml"/>
+		<outline text="Python Docs Editorial Board" xmlUrl="https://python.github.io/editorial-board/index.xml"/>
+		<outline text="Python Does What?!" xmlUrl="https://www.pythondoeswhat.com/feeds/posts/default"/>
+		<outline text="Python Engineering at Microsoft" xmlUrl="https://devblogs.microsoft.com/python/feed/"/>
+		<outline text="Python GUIs" xmlUrl="https://www.pythonguis.com/feeds/all.atom.xml"/>
+		<outline text="Python Insider" xmlUrl="https://feeds.feedburner.com/PythonInsider"/>
+		<outline text="Python Morsels" xmlUrl="https://www.pythonmorsels.com/topics/feed/"/>
+		<outline text="Python People" xmlUrl="https://pythonpeople.fm/rss"/>
+		<outline text="Python Piedmont Triad User Group" xmlUrl="http://www.pyptug.org/feeds/posts/default/"/>
+		<outline text="Python Pool" xmlUrl="https://www.pythonpool.com/feed/"/>
+		<outline text="Python Software Foundation" xmlUrl="https://pyfound.blogspot.com/feeds/posts/default"/>
+		<outline text="Python Sweetness" xmlUrl="https://sweetness.hmmz.org/feeds/python.rss.xml"/>
+		<outline text="Python User Groups" xmlUrl="http://python-groups.blogspot.com/feeds/posts/default"/>
+		<outline text="Python for Beginners" xmlUrl="https://www.pythonforbeginners.com/feed"/>
+		<outline text="Python on Karan" xmlUrl="http://python-karan.blogspot.in//feeds/posts/default"/>
+		<outline text="Python with Myo" xmlUrl="https://developerblog.myo.com/tag/python/rss/"/>
+		<outline text="Python(x,y) News" xmlUrl="http://pythonxynews.blogspot.com/feeds/posts/default"/>
+		<outline text="PythonClub - A Brazilian collaborative blog about Python" xmlUrl="https://pythonclub.com.br/feeds/all.atom.xml"/>
+		<outline text="PythonDebugging.com" xmlUrl="http://pythondebugging.com/category/python/feed.xml"/>
+		<outline text="Pythonicity" xmlUrl="https://coady.github.io/index.xml"/>
+		<outline text="Pythonology" xmlUrl="http://pythonology.blogspot.com/atom.xml"/>
+		<outline text="Python⇒Speed" xmlUrl="https://pythonspeed.com/atom.xml"/>
+		<outline text="Péter Szabó" xmlUrl="http://ptspts.blogspot.com/feeds/posts/default/-/planet-python"/>
+		<outline text="Péter Zsoldos" xmlUrl="http://blog.zsoldosp.eu/category/python/feed/"/>
+		<outline text="Quansight Labs Blog" xmlUrl="https://labs.quansight.org/rss.xml"/>
+		<outline text="R David Murray" xmlUrl="http://www.bitdance.com/blog/rss.xml"/>
+		<outline text="RMOTR" xmlUrl="https://blog.rmotr.com/feed/tagged/python"/>
+		<outline text="Ralph Bean" xmlUrl="http://threebean.org/blog/category/python/feed/atom/index.xml"/>
+		<outline text="Ram Rachum" xmlUrl="https://blog.ram.rachum.com/tagged/planetpython/rss"/>
+		<outline text="Randell Benavidez" xmlUrl="https://blog.randell.ph/tag/python/feed/atom/"/>
+		<outline text="Randle Taylor" xmlUrl="http://randlet.com/blog/python/rss.xml"/>
+		<outline text="Randy Zwitch" xmlUrl="https://randyzwitch.com/tag/python/feed/"/>
+		<outline text="Raymond Hettinger" xmlUrl="https://rhettinger.wordpress.com/feed/atom/"/>
+		<outline text="Read the Docs" xmlUrl="http://blog.readthedocs.com/archive/tag/python/atom.xml"/>
+		<outline text="Real Python" xmlUrl="https://realpython.com/atom.xml"/>
+		<outline text="Red Hat Developers" xmlUrl="https://developers.redhat.com/blog/category/python/feed/atom/"/>
+		<outline text="Rene Dudfield" xmlUrl="http://renesd.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Reuven Lerner" xmlUrl="https://lerner.co.il/category/python/feed/"/>
+		<outline text="Richard Tew" xmlUrl="http://posted-stuff.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Richard Wall" xmlUrl="http://blog.the-moon.net/feeds/posts/default/-/python"/>
+		<outline text="Rickard Lindberg" xmlUrl="http://rickardlindberg.me/tags/python/rss.xml"/>
+		<outline text="Rishi Maker" xmlUrl="https://cmlzagk.github.io/feeds/python.atom.xml"/>
+		<outline text="Rob Galanakis" xmlUrl="https://www.robg3d.com/tag/python/feed/atom/"/>
+		<outline text="Robert Collins" xmlUrl="https://rbtcollins.wordpress.com/tag/python/feed/atom/"/>
+		<outline text="Robert Zaremba" xmlUrl="http://blog.zaremba.ch/rss-python.html"/>
+		<outline text="Robin Parmar" xmlUrl="https://www.theatreofnoise.com/feeds/posts/default/-/dev"/>
+		<outline text="Robin Wilson" xmlUrl="https://blog.rtwilson.com/category/programming-2/python/feed/"/>
+		<outline text="Rodrigo Araúj" xmlUrl="https://linil.wordpress.com/feed/atom/"/>
+		<outline text="Rodrigo Girão Serrão" xmlUrl="https://mathspp.com/blog/tags/python.rss"/>
+		<outline text="RoseHosting Blog" xmlUrl="https://www.rosehosting.com/blog/tag/python/feed/"/>
+		<outline text="Ruslan Spivak" xmlUrl="https://ruslanspivak.com/feeds/all.atom.xml"/>
+		<outline text="Ryan Cox" xmlUrl="http://www.asciiarmor.com/tagged/python/rss"/>
+		<outline text="S. Lott" xmlUrl="https://slott-softwarearchitect.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="S. R. Krishnan" xmlUrl="https://pyhelper.wordpress.com/feed/"/>
+		<outline text="SDJournal" xmlUrl="http://www.sdjournal.com/archives/categories/languages/python/rss.xml"/>
+		<outline text="SPE Weblog" xmlUrl="http://pythonide.blogspot.com/feeds/posts/default"/>
+		<outline text="STX Next" xmlUrl="https://www.stxnext.com/blog/tag/python/rss.xml"/>
+		<outline text="Salim Fadhley" xmlUrl="http://feeds.feedburner.com/sfpy"/>
+		<outline text="Sandipan Dey" xmlUrl="https://sandipanweb.wordpress.com/category/python/feed/"/>
+		<outline text="Sandro Tosi" xmlUrl="http://sandrotosi.blogspot.com/feeds/posts/default/-/Python"/>
+		<outline text="Sean McGrath" xmlUrl="http://seanmcgrath.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Sebastian Pölsterl" xmlUrl="https://k-d-w.org/tags/python/index.xml"/>
+		<outline text="Sebastian Witowski" xmlUrl="https://switowski.com/python.feed.xml"/>
+		<outline text="Selena Deckelmann" xmlUrl="http://www.chesnok.com/daily/category/python/feed/"/>
+		<outline text="Senthil Kumaran" xmlUrl="https://feeds.feedburner.com/phoe6pythonfeeds"/>
+		<outline text="Seth Michael Larson" xmlUrl="https://sethmlarson.dev/feed"/>
+		<outline text="Shannon -jj Behrens" xmlUrl="https://www.jjinux.com/feeds/posts/default/-/python"/>
+		<outline text="ShiningPanda" xmlUrl="http://shiningpanda.com/feeds/all.atom.xml"/>
+		<outline text="Simeon Franklin" xmlUrl="http://simeonfranklin.com/feeds/python/"/>
+		<outline text="Simeon Visser" xmlUrl="https://feeds.feedburner.com/simeon_visser_python"/>
+		<outline text="Simon" xmlUrl="https://aboutsimon.com/blog/feed.python.xml"/>
+		<outline text="Simon Brunning" xmlUrl="http://www.brunningonline.net/simon/blog/index-P.xml"/>
+		<outline text="Simon Wittber" xmlUrl="http://entitycrisis.blogspot.com/feeds/posts/default/-/Python"/>
+		<outline text="Simple is Better Than Complex" xmlUrl="https://simpleisbetterthancomplex.com/feed.xml"/>
+		<outline text="SoftFormance" xmlUrl="https://www.softformance.com/feed/?tag=python"/>
+		<outline text="Speed Matters" xmlUrl="https://brmmm3.github.io/feed.xml"/>
+		<outline text="Spike ekipS" xmlUrl="https://spikeekips.tumblr.com/tagged/python/rss"/>
+		<outline text="Spyder IDE" xmlUrl="https://www.spyder-ide.org/blog/feed.xml"/>
+		<outline text="Stack Abuse" xmlUrl="https://stackabuse.com/tag/python/rss/"/>
+		<outline text="Stanislas Morbieu" xmlUrl="https://smorbieu.gitlab.io/feeds/tag_python.atom.xml"/>
+		<outline text="Starzel.de" xmlUrl="https://www.starzel.de/blog/starzel-de-python-blog/RSS"/>
+		<outline text="Stefan Behnel" xmlUrl="http://blog.behnel.de/index.php?feed=rss2&amp;cat=22"/>
+		<outline text="Stefan Scherfke" xmlUrl="https://stefan.sofa-rockers.org/feeds/python"/>
+		<outline text="Stefanie Molin" xmlUrl="https://stefaniemolin.com/feeds/Python-atom.xml"/>
+		<outline text="Stein Magnus Jodal" xmlUrl="https://jod.al/tags/python/atom.xml"/>
+		<outline text="Stephen Ferg" xmlUrl="https://pythonconquerstheuniverse.wordpress.com/feed/atom/"/>
+		<outline text="Steve Holden" xmlUrl="http://holdenweb.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Steven Klass" xmlUrl="http://rh0dium.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Stuart Gordon Reid" xmlUrl="http://www.turingfinance.com/category/python/feed/"/>
+		<outline text="Stéphane Wirtel" xmlUrl="https://wirtel.be/tags/python/index.xml"/>
+		<outline text="Sumana Harihareswara - Cogito, Ergo Sumana" xmlUrl="https://www.harihareswara.net/rss/python/"/>
+		<outline text="Suresh Dasari/Tutlane.com" xmlUrl="https://www.tutlane.com/pythonfeed.xml"/>
+		<outline text="Swisscom ICT" xmlUrl="https://ict.swisscom.ch/feed/?post_type=cubetech_post&amp;cubetech_keyword=Python"/>
+		<outline text="Talk Python Blog" xmlUrl="https://talkpython.fm/blog/posts/index.xml"/>
+		<outline text="Talk Python to Me" xmlUrl="https://talkpython.fm/episodes/rss"/>
+		<outline text="Taylor Edmiston" xmlUrl="https://blog.tedmiston.com/tag/python/rss/"/>
+		<outline text="TechBeamers Python" xmlUrl="https://techbeamers.com/python-programming-tutorials/feed/"/>
+		<outline text="Techiediaries - Django" xmlUrl="https://www.techiediaries.com/tag/django/index.xml"/>
+		<outline text="Terri Oda" xmlUrl="https://terriko.dreamwidth.org:443/data/rss?tag=python"/>
+		<outline text="Terry Jones" xmlUrl="https://terry.fluidinfo.com/category/python/feed/atom/"/>
+		<outline text="Test and Code" xmlUrl="https://pythontest.com/testandcode_feed.xml"/>
+		<outline text="TestDriven.io" xmlUrl="https://testdriven.io/blog/topics/django/feed.xml"/>
+		<outline text="The Data Scientist" xmlUrl="http://www.thedatascientist.de/category/python/feed/"/>
+		<outline text="The Digital Cat" xmlUrl="https://www.thedigitalcatonline.com/categories/python/atom.xml"/>
+		<outline text="The Lunar Cowboy" xmlUrl="https://lunarcowboy.com/feeds/python.atom.xml"/>
+		<outline text="The No Title® Tech Blog" xmlUrl="https://no-title.victordomingos.com/feeds/python_rss.xml"/>
+		<outline text="The Occasional Occurrence" xmlUrl="http://blog.dowski.com/category/python/feed/"/>
+		<outline text="The Open Sourcerer" xmlUrl="https://fortintam.com/blog/category/planet-python/feed/"/>
+		<outline text="The Parcon Blog" xmlUrl="http://blog.parcon.opengroove.org/feeds/posts/default"/>
+		<outline text="The Python Coding Blog" xmlUrl="https://thepythoncodingbook.com/feed/"/>
+		<outline text="The Python Coding Stack" xmlUrl="https://www.thepythoncodingstack.com/feed"/>
+		<outline text="The Python Papers" xmlUrl="http://pythonpapers.blogspot.com/atom.xml"/>
+		<outline text="The Python Show" xmlUrl="https://www.pythonshow.com/feed"/>
+		<outline text="The Three of Wands" xmlUrl="https://threeofwands.com/tag/python/rss/"/>
+		<outline text="Thibauld Nion" xmlUrl="http://www.tibonihoo.net/en/tag/python.xml"/>
+		<outline text="ThisHosting.Rocks" xmlUrl="https://thishosting.rocks/tag/python/feed/"/>
+		<outline text="Thomas Guest" xmlUrl="http://feeds.wordaligned.org/wordaligned/python"/>
+		<outline text="Thomas Vander Stichele" xmlUrl="http://thomas.apestaart.org/log/?feed=rss2&amp;cat=22"/>
+		<outline text="Tibo Beijen" xmlUrl="https://www.tibobeijen.nl/tags/python/index.xml"/>
+		<outline text="Tim Arnold / reachtim" xmlUrl="https://reachtim.com/feeds/python.atom.xml"/>
+		<outline text="Tim Gilbert" xmlUrl="https://timgilbert.wordpress.com/category/python/feed/atom/"/>
+		<outline text="Tim Knapp" xmlUrl="https://feeds.feedburner.com/duffyd"/>
+		<outline text="Tim Lesher" xmlUrl="https://www.timlesher.com/feeds/posts/default/-/python"/>
+		<outline text="Tobias Ivarsson" xmlUrl="https://feeds.feedburner.com/thobe/wardrobe"/>
+		<outline text="Tom Christie" xmlUrl="https://thewebhaswon.wordpress.com/category/python/feed/atom/"/>
+		<outline text="Tomasz Ducin" xmlUrl="http://www.sys-exit.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Tomaž Muraus" xmlUrl="https://www.tomaz.me/tags/python.xml"/>
+		<outline text="Tomer Filiba" xmlUrl="https://tomerfiliba.com/blog/python-atom.xml"/>
+		<outline text="Tony Breyal" xmlUrl="https://tonybreyal.wordpress.com/category/python/feed/atom/"/>
+		<outline text="Toshio Kuratomi" xmlUrl="https://anonbadger.wordpress.com/tag/python/feed/atom/"/>
+		<outline text="Travis Oliphant" xmlUrl="http://technicaldiscovery.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Trey Hunner" xmlUrl="https://treyhunner.com/python.xml"/>
+		<outline text="Tryton News" xmlUrl="https://discuss.tryton.org/c/news/25.rss"/>
+		<outline text="Turnkey Linux" xmlUrl="https://www.turnkeylinux.org/taxonomy/term/103/0/feed"/>
+		<outline text="Twisted Matrix Labs" xmlUrl="http://feeds.feedburner.com/TwistedMatrixLaboratories"/>
+		<outline text="TypeThePipe" xmlUrl="https://typethepipe.com/categories/python/index.xml"/>
+		<outline text="V.S. Babu" xmlUrl="http://vsbabu.org/mt/index.rdf"/>
+		<outline text="Varun Nischal" xmlUrl="https://prayogshala.wordpress.com/category/scripting/python/feed/atom/"/>
+		<outline text="Vasudev Ram" xmlUrl="http://jugad2.blogspot.co.uk/feeds/posts/default/-/python"/>
+		<outline text="Vinay Sajip" xmlUrl="http://pymolurus.blogspot.com/feeds/posts/default"/>
+		<outline text="Vinay Sajip (Logging)" xmlUrl="http://plumberjack.blogspot.com/feeds/posts/default"/>
+		<outline text="Vinayak Mehta" xmlUrl="https://vinayak.io/feed/tag/python/rss.xml"/>
+		<outline text="Virgil Dupras" xmlUrl="http://www.hardcoded.net/articles/rss_python.xml"/>
+		<outline text="Vladimir Perić" xmlUrl="https://vperic.blogspot.com/feeds/posts/default/-/Twisted"/>
+		<outline text="Wayne Witzel" xmlUrl="http://pieceofpy.com/category/python/feed/atom/index.xml"/>
+		<outline text="Weekly Python Chat" xmlUrl="http://www.weeklypython.chat/feed/"/>
+		<outline text="Weekly Python StackOverflow Report" xmlUrl="http://python-weekly.blogspot.com/feeds/posts/default?alt=rss"/>
+		<outline text="Wes Mason" xmlUrl="http://1stvamp.org/tag/python/atom/"/>
+		<outline text="Wesley Chun" xmlUrl="http://wescpy.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Will Kahn-Greene" xmlUrl="https://bluesock.org/~willkg/blog/tag/python.xml"/>
+		<outline text="Will McGugan" xmlUrl="https://www.willmcgugan.com/blog/tech/feeds/posts/"/>
+		<outline text="Will Pierce" xmlUrl="http://willpython.blogspot.com/feeds/posts/default"/>
+		<outline text="William Minchin" xmlUrl="https://blog.minchin.ca/feeds/label.python.atom.xml"/>
+		<outline text="William Reade" xmlUrl="http://foolish-assertions.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="Wing Tips" xmlUrl="http://wingware.com/blog/rss&amp;noheader=1"/>
+		<outline text="Wingware" xmlUrl="http://wingware.com/news/rss&amp;noheader=1"/>
+		<outline text="Wyatt Baldwin" xmlUrl="https://wyattbaldwin.com/categories/planet-python/rss.xml"/>
+		<outline text="Yaniv Aknin" xmlUrl="https://tech.blog.aknin.name/tag/python/feed/atom/"/>
+		<outline text="Yann Larrivée" xmlUrl="http://www.ylarrivee.com/tag/python/feed/"/>
+		<outline text="Yuval Greenfield" xmlUrl="https://uberpython.wordpress.com/tag/python/feed/atom/"/>
+		<outline text="Zaki Akhmad" xmlUrl="http://za.github.io/feed.python.xml"/>
+		<outline text="Zato Blog" xmlUrl="https://zato.io/blog/rss.xml"/>
+		<outline text="Zero to Mastery" xmlUrl="https://zerotomastery.io/rss/python-rss.xml"/>
+		<outline text="Zero-with-Dot (Oleg Żero)" xmlUrl="https://zerowithdot.com/feed.xml"/>
+		<outline text="ZeroDB" xmlUrl="https://medium.com/feed/@ZeroDB_"/>
+		<outline text="bottlepy-dev" xmlUrl="http://blog.bottlepy.org/feeds/all.atom.xml"/>
+		<outline text="codeboje" xmlUrl="https://feeds.feedburner.com/codeboje_python"/>
+		<outline text="death and gravity" xmlUrl="https://death.andgravity.com/_feed/index/_tags/python.xml"/>
+		<outline text="eGenix.com" xmlUrl="https://www.egenix.com/company/news/rss2"/>
+		<outline text="hypothesis.works articles" xmlUrl="https://hypothesis.works/articles/python/feed/"/>
+		<outline text="kdev-python" xmlUrl="http://scummos.blogspot.com/feeds/posts/default/-/kdev-python"/>
+		<outline text="meejah.ca" xmlUrl="https://meejah.ca/planetpython.xml"/>
+		<outline text="nl-project" xmlUrl="http://nl-project.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="pgcli" xmlUrl="https://www.pgcli.com/feeds/tag.python.atom.xml"/>
+		<outline text="py.CheckIO" xmlUrl="https://py.checkio.org/blog/special-rss/"/>
+		<outline text="pygame" xmlUrl="https://www.pygame.org/news/feed/atom"/>
+		<outline text="pythonwise" xmlUrl="http://www.pythonwise.blogspot.com/feeds/posts/default/-/python"/>
+		<outline text="qutebrowser development blog" xmlUrl="https://blog.qutebrowser.org/feeds/tag-pyplanet.rss.xml"/>
+		<outline text="saaj/recollection" xmlUrl="https://recollection.saaj.me/tag/python.xml"/>
+		<outline text="scikit-learn" xmlUrl="https://blog.scikit-learn.org/feed.xml"/>
+		<outline text="testmon" xmlUrl="https://www.testmon.org/index.xml"/>
+		<outline text="tryexceptpass" xmlUrl="https://tryexceptpass.org/index.xml"/>
+		<outline text="Éric Araujo" xmlUrl="https://wokslog.wordpress.com/tag/python/feed/atom/"/>
+		<outline text="Łukasz Langa" xmlUrl="https://lukasz.langa.pl/python/atom.xml"/>
+	</body>
+</opml>

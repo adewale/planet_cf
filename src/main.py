@@ -1472,7 +1472,12 @@ class Default(WorkerEntrypoint):
 
                 elif path == "/feeds.opml":
                     event.route = "/feeds.opml"
-                    response = await self._export_opml()
+                    if check_lite_mode(self.env):
+                        # In lite mode, serve static OPML from assets
+                        response = await self.env.ASSETS.fetch(request)
+                    else:
+                        # In full mode, generate OPML from database
+                        response = await self._export_opml()
                     event.content_type = "opml"
                     event.cache_status = "cacheable"
 
