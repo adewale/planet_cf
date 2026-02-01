@@ -450,14 +450,14 @@ THEME_LOGOS = {
     logo_configs = {
         "planet-python": {
             "svg_path": EXAMPLES_DIR / "planet-python" / "static" / "python-logo.svg",
-            "url": "/static/logo.gif",  # Actual downloaded logo
+            "url": "/static/images/python-logo.gif",  # Original path from planetpython.org
             "width": "211",
             "height": "71",
             "alt": "Planet Python",
         },
         "planet-mozilla": {
             "svg_path": EXAMPLES_DIR / "planet-mozilla" / "static" / "mozilla-logo.svg",
-            "url": "/static/logo.png",  # Actual downloaded logo
+            "url": "/static/img/logo.png",  # Original path from planet.mozilla.org
             "width": "222",
             "height": "44",
             "alt": "Planet Mozilla",

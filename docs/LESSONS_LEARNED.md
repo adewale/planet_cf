@@ -502,3 +502,66 @@ async def test_semantic_search_returns_results(client):
 | Search misses exact matches | Rank exact title matches first (score 1.0) |
 | Mock tests pass, prod fails | Add E2E tests against real infrastructure |
 | Query longer than title | Use bidirectional matching (title in query) |
+
+---
+
+## 17. Visual Fidelity: Converting Planet/Venus Sites
+
+When converting an existing Planet or Venus website to PlanetCF, achieving 100% visual fidelity requires systematic attention to detail.
+
+### The Problem
+
+We initially achieved only 67-79% pixel match when comparing our converted sites to originals. The gap was caused by:
+- Using recreated SVG logos instead of original GIF/PNG files
+- Substituting solid colors for background images
+- Different template text ("Last updated:" vs "Last update:")
+- Wrong sidebar positions (right instead of left)
+- Missing related-sites sections
+
+### The Solution: Systematic Conversion
+
+**Use the converter tool:**
+```bash
+pip install requests beautifulsoup4
+python scripts/convert_planet.py https://planetpython.org/ --name planet-python
+```
+
+**Key principles:**
+
+1. **Reuse original assets exactly** - Don't recreate logos, download the originals
+2. **Serve assets at original paths** - `/static/images/python-logo.gif` not `/static/logo.svg`
+3. **Use original CSS** - Download and adapt, don't rewrite
+4. **Match template text exactly** - "Last update:" not "Last updated:"
+5. **Verify with visual comparison** - Screenshot and pixel-diff
+
+### Checklist for 100% Fidelity
+
+- [ ] HTTP 200 on main page
+- [ ] HTTP 200 on all static assets (logo, CSS, images)
+- [ ] Logo is EXACT same file (not recreated)
+- [ ] Background images served (header-bg.jpg, footer.jpg)
+- [ ] CSS colors match exactly
+- [ ] Fonts match (same font-family, size, weight)
+- [ ] Sidebar position matches (left/right/none)
+- [ ] Related sites sections present
+- [ ] Template text matches ("Last update:", date format)
+- [ ] Visual comparison of structural elements > 95%
+
+### Tools Created
+
+| Tool | Purpose |
+|------|---------|
+| `scripts/convert_planet.py` | Converts Planet/Venus sites to PlanetCF |
+| `scripts/visual_compare.py` | Screenshot-based visual comparison |
+
+### Quick Reference: Visual Fidelity Gotchas
+
+| Issue | Solution |
+|-------|----------|
+| Low pixel match (67-79%) | Dynamic content differs - compare structure only |
+| Logo looks different | Use original file, don't recreate |
+| Missing backgrounds | Download and serve original images |
+| Wrong sidebar position | Check CSS for `order: -1` (left) or `order: 1` (right) |
+| Template text differs | Extract exact text from original |
+| THEME_LOGOS KeyError | Must include `url` key in config |
+| HTTP 500 after deploy | Verify assets actually load, check error logs |

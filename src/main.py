@@ -2544,8 +2544,17 @@ class Default(WorkerEntrypoint):
                         "Cache-Control": "public, max-age=86400",
                     },
                 )
-        # Serve theme-specific logo images
-        if path == "/static/logo.gif" or path == "/static/logo.png":
+        # Serve theme-specific logo images at original paths for visual fidelity
+        # Planet Python: /static/images/python-logo.gif
+        # Planet Mozilla: /static/img/logo.png
+        # Also support legacy paths for backwards compatibility
+        logo_paths = [
+            "/static/images/python-logo.gif",
+            "/static/img/logo.png",
+            "/static/logo.gif",  # Legacy
+            "/static/logo.png",  # Legacy
+        ]
+        if path in logo_paths:
             theme = getattr(self.env, "THEME", None) or "default"
             assets = THEME_ASSETS.get(theme)
             if assets and "logo" in assets:
@@ -2560,8 +2569,13 @@ class Default(WorkerEntrypoint):
                         import base64
 
                         image_data = base64.b64decode(b64_data)
+                        # Use js.Uint8Array for proper binary data transfer to JavaScript Response
+                        from js import Uint8Array
+                        from pyodide.ffi import to_js
+
+                        js_array = Uint8Array.new(to_js(image_data))
                         return Response(
-                            image_data,
+                            js_array,
                             headers={
                                 "Content-Type": content_type,
                                 "Cache-Control": "public, max-age=86400",
