@@ -124,7 +124,7 @@ _EMBEDDED_TEMPLATES = {
     <footer>
         <p><a href="{{ feed_links.atom or '/feed.atom' }}">Atom</a> · <a href="{{ feed_links.rss or '/feed.rss' }}">RSS</a> · <a href="{{ feed_links.opml or '/feeds.opml' }}">OPML</a></p>
         <p>{{ footer_text }}{% if show_admin_link %} · <a href="/admin" style="color: #999; font-size: 0.8em;">Admin</a>{% endif %} · <span class="hint">Press <kbd>?</kbd> for shortcuts</span></p>
-        <p>Last updated: {{ generated_at }}</p>
+        <p>Last update: {{ generated_at }}</p>
     </footer>
 
     <!-- Keyboard shortcuts help panel -->
@@ -255,7 +255,7 @@ _EMBEDDED_TEMPLATES = {
     <footer>
         <p><a href="{{ feed_links.atom or '/feed.atom' }}">Atom</a> · <a href="{{ feed_links.rss or '/feed.rss' }}">RSS</a> · <a href="{{ feed_links.opml or '/feeds.opml' }}">OPML</a></p>
         <p>{{ footer_text }}{% if show_admin_link %} · <a href="/admin" style="color: #999; font-size: 0.8em;">Admin</a>{% endif %}</p>
-        <p>Last updated: {{ generated_at }}</p>
+        <p>Last update: {{ generated_at }}</p>
     </footer>
 </body>
 </html>

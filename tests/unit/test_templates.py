@@ -33,6 +33,7 @@ class TestRenderTemplate:
             entries_by_date={},
             feeds=[],
             generated_at="2026-01-01T00:00:00Z",
+            feed_links={"atom": "/feed.atom", "rss": "/feed.rss", "opml": "/feeds.opml"},
         )
         assert "Test Planet" in html
         assert "<!doctype html>" in html.lower()
@@ -151,6 +152,7 @@ class TestTemplateXSSPrevention:
             entries_by_date={},
             feeds=[],
             generated_at="2026-01-01T00:00:00Z",
+            feed_links={"atom": "/feed.atom", "rss": "/feed.rss", "opml": "/feeds.opml"},
         )
         # Check that the XSS payload is escaped (not that there are no script tags,
         # since we have a legitimate inline script for keyboard navigation)
@@ -195,6 +197,7 @@ class TestTemplateEmptyEntries:
             entries_by_date={},
             feeds=[],
             generated_at="2026-01-01T00:00:00Z",
+            feed_links={"atom": "/feed.atom", "rss": "/feed.rss", "opml": "/feeds.opml"},
         )
         assert "No entries yet" in html
 

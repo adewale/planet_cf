@@ -1802,7 +1802,7 @@ class Default(WorkerEntrypoint):
                 planet=planet,
                 entries_by_date=entries_by_date,
                 feeds=feeds,
-                generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+                generated_at=datetime.now(timezone.utc).strftime("%B %d, %Y %I:%M %p UTC"),
                 is_lite_mode=is_lite,
                 logo=logo,
                 footer_text=footer_text,
