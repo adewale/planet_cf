@@ -29,7 +29,7 @@
         <div class="main-content">
             <p><a href="/">View full content</a></p>
 {% for date, day_entries in entries_by_date.items() %}
-            <h2><time datetime="{{ date }}">{{ date }}</time></h2>
+            <h2><time datetime="{{ date }}">{{ date_labels[date] }}</time></h2>
 {% for entry in day_entries %}
             <article class="news">
                 <h3><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}" title="{{ entry.display_author }}">{{ entry.display_author or 'Unknown' }}</a> — <a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
@@ -46,6 +46,7 @@
                 <ul>
                     <li><a href="{{ feed_links.atom or '/feed.atom' }}">Atom</a></li>
                     <li><a href="{{ feed_links.rss or '/feed.rss' }}">RSS 2.0</a></li>
+                    <li><a href="{{ feed_links.rss10 or '/feed.rss10' }}">RSS 1.0</a></li>
                 </ul>
                 <ul>
                     <li class="opml"><a href="{{ feed_links.opml or '/feeds.opml' }}">OPML</a></li>

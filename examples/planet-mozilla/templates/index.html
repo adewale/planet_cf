@@ -6,11 +6,15 @@
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <meta name="generator" content="PlanetCF"/>
-    <meta name="description" content="{{ planet.description or 'Aggregated updates from the community.' }}"/>
+    <meta name="description" content="Follow the pulse of the Mozilla project. Aggregated updates from the developers, designers, and volunteers building a better internet."/>
     <meta property="og:site_name" content="{{ planet.name }}"/>
     <meta property="og:title" content="{{ planet.name }}"/>
-    <meta property="og:description" content="{{ planet.description or 'Aggregated updates from the community.' }}"/>
+    <meta property="og:description" content="Follow the pulse of the Mozilla project. Aggregated updates from the developers, designers, and volunteers building a better internet."/>
+    <meta property="og:image" content="{{ planet.link }}/static/img/planet_banner.png"/>
     <meta name="twitter:card" content="summary_large_image"/>
+    <meta name="twitter:creator" content="@mozilla"/>
+    <meta property="twitter:title" content="{{ planet.name }}"/>
+    <meta property="twitter:image" content="{{ planet.link }}/static/img/planet_banner.png"/>
     <link href="/static/style.css" rel="stylesheet" type="text/css"/>
     <link href="/static/favicon.ico" rel="shortcut icon" type="image/png"/>
     <link rel="alternate" href="{{ feed_links.atom or '/feed.atom' }}" title="{{ planet.name }}" type="application/atom+xml"/>
@@ -34,7 +38,7 @@
     <div class="main-container">
         <div class="main-content">
 {% for date, day_entries in entries_by_date.items() %}
-            <h2><time datetime="{{ date }}">{{ date }}</time></h2>
+            <h2><time datetime="{{ date }}">{{ date_labels[date] }}</time></h2>
 {% for entry in day_entries %}
             <article class="news">
                 <h3><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}" title="{{ entry.display_author }}">{{ entry.display_author or 'Unknown' }}</a> — <a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
@@ -61,6 +65,7 @@
                 <ul>
                     <li><a href="{{ feed_links.atom or '/feed.atom' }}">Atom</a></li>
                     <li><a href="{{ feed_links.rss or '/feed.rss' }}">RSS 2.0</a></li>
+                    <li><a href="{{ feed_links.rss10 or '/feed.rss10' }}">RSS 1.0</a></li>
                 </ul>
                 <p></p>
                 <p>Subscription list:</p>

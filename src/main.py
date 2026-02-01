@@ -22,7 +22,7 @@ from typing import Any, TypeAlias
 from urllib.parse import parse_qs, urlparse
 
 import feedparser
-from workers import Response, WorkerEntrypoint
+from workers import Request, Response, WorkerEntrypoint
 
 from instance_config import is_lite_mode as check_lite_mode
 from models import BleachSanitizer
@@ -47,11 +47,11 @@ from templates import (
     TEMPLATE_ADMIN_LOGIN,
     TEMPLATE_FEED_ATOM,
     TEMPLATE_FEED_RSS,
+    TEMPLATE_FEED_RSS10,
     TEMPLATE_FEEDS_OPML,
     TEMPLATE_INDEX,
     TEMPLATE_SEARCH,
     TEMPLATE_TITLES,
-    THEME_ASSETS,
     THEME_CSS,
     THEME_LOGOS,
     render_template,
@@ -1464,6 +1464,12 @@ class Default(WorkerEntrypoint):
                     event.content_type = "rss"
                     event.cache_status = "cacheable"
 
+                elif path == "/feed.rss10":
+                    event.route = "/feed.rss10"
+                    response = await self._serve_rss10()
+                    event.content_type = "rss10"
+                    event.cache_status = "cacheable"
+
                 elif path == "/feeds.opml":
                     event.route = "/feeds.opml"
                     response = await self._export_opml()
@@ -1483,7 +1489,7 @@ class Default(WorkerEntrypoint):
 
                 elif path.startswith("/static/"):
                     event.route = "/static/*"
-                    response = await self._serve_static(path)
+                    response = await self._serve_static(request, path)
                     event.content_type = "static"
                     event.cache_status = "cacheable"
 
@@ -1721,15 +1727,17 @@ class Default(WorkerEntrypoint):
         # Fall back to first_seen only if published_at is missing
         # This ensures entries appear under their true publication date
         entries_by_date = {}
+        date_labels = {}  # Maps ISO date (YYYY-MM-DD) to display label
         for entry in entries:
             # Prefer published_at for accurate grouping, fall back to first_seen
             group_date = entry.get("published_at") or entry.get("first_seen") or ""
             date_str = group_date[:10] if group_date else "Unknown"  # YYYY-MM-DD
 
-            # Convert to absolute date label (e.g., "January 15, 2026")
-            date_label = self._format_date_label(date_str)
-            if date_label not in entries_by_date:
-                entries_by_date[date_label] = []
+            # Store both ISO date (for datetime attribute) and display label
+            if date_str not in date_labels:
+                date_labels[date_str] = self._format_date_label(date_str)
+            if date_str not in entries_by_date:
+                entries_by_date[date_str] = []
 
             # Add display date (same as group date for consistency)
             if date_str and date_str != "Unknown":
@@ -1747,23 +1755,15 @@ class Default(WorkerEntrypoint):
                 entry.get("author"), entry.get("feed_title")
             )
 
-            entries_by_date[date_label].append(entry)
+            entries_by_date[date_str].append(entry)
 
         # Sort entries within each day by published_at (newest first)
-        for date_label in entries_by_date:
-            entries_by_date[date_label].sort(
-                key=lambda e: e.get("published_at") or "", reverse=True
-            )
+        for date_key in entries_by_date:
+            entries_by_date[date_key].sort(key=lambda e: e.get("published_at") or "", reverse=True)
 
         # Sort date groups by date (most recent first)
-        # Extract YYYY-MM-DD from entries to sort properly
-        def get_sort_date(date_label_and_entries: tuple[str, list[dict[str, Any]]]) -> str:
-            entries_list = date_label_and_entries[1]
-            if entries_list:
-                return entries_list[0].get("published_at") or ""
-            return ""
-
-        entries_by_date = dict(sorted(entries_by_date.items(), key=get_sort_date, reverse=True))
+        # Since keys are now YYYY-MM-DD, we can sort directly by key
+        entries_by_date = dict(sorted(entries_by_date.items(), key=lambda x: x[0], reverse=True))
 
         for feed in feeds:
             feed["last_success_at_relative"] = self._relative_time(feed["last_success_at"])
@@ -1785,7 +1785,10 @@ class Default(WorkerEntrypoint):
 
         # Build feed links for sidebar
         feed_links = {
+            "atom": "/feed.atom",
             "rss": "/feed.rss",
+            "rss10": "/feed.rss10",
+            "opml": "/feeds.opml",
             "titles_only": "/titles",
             "planet_planet": None,  # Not implemented
         }
@@ -1799,8 +1802,10 @@ class Default(WorkerEntrypoint):
         with Timer() as render_timer:
             html = render_template(
                 template,
+                theme=theme,
                 planet=planet,
                 entries_by_date=entries_by_date,
+                date_labels=date_labels,
                 feeds=feeds,
                 generated_at=datetime.now(timezone.utc).strftime("%B %d, %Y %I:%M %p UTC"),
                 is_lite_mode=is_lite,
@@ -1808,7 +1813,6 @@ class Default(WorkerEntrypoint):
                 footer_text=footer_text,
                 show_admin_link=show_admin_link,
                 feed_links=feed_links,
-                theme=theme,
                 related_sites=related_sites,
             )
 
@@ -1979,6 +1983,13 @@ class Default(WorkerEntrypoint):
         rss = self._generate_rss_feed(planet, entries)
         return _feed_response(rss, "application/rss+xml")
 
+    async def _serve_rss10(self) -> Response:
+        """Generate and serve RSS 1.0 (RDF) feed on-demand."""
+        entries = await self._get_recent_entries(50)
+        planet = self._get_planet_config()
+        rss10 = self._generate_rss10_feed(planet, entries)
+        return _feed_response(rss10, "application/rdf+xml")
+
     async def _get_recent_entries(self, limit: int) -> list[dict[str, Any]]:
         """Query recent entries for feeds."""
         result = (
@@ -2139,6 +2150,39 @@ class Default(WorkerEntrypoint):
             last_build_date=datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000"),
         )
 
+    def _generate_rss10_feed(self, planet: dict[str, str], entries: list[dict[str, Any]]) -> str:
+        """Generate RSS 1.0 (RDF) feed XML using template.
+
+        RSS 1.0 is RDF-based, different from RSS 2.0's XML structure.
+        Used for compatibility with older feed readers and Planet Mozilla.
+        """
+
+        # Truncate content for RSS 1.0 description (typically shorter)
+        def truncate_content(content: str, max_len: int = 500) -> str:
+            if len(content) <= max_len:
+                return content
+            return content[:max_len].rsplit(" ", 1)[0] + "..."
+
+        template_entries = [
+            {
+                "title": e.get("title", ""),
+                "url": e.get("url", ""),
+                "published_at_iso": e.get("published_at", "").replace(" ", "T") + "Z"
+                if e.get("published_at")
+                else "",
+                "author": e.get("author", e.get("feed_title", "")),
+                "content_truncated": truncate_content(
+                    e.get("content", "").replace("]]>", "]]]]><![CDATA[>")
+                ),
+            }
+            for e in entries
+        ]
+        return render_template(
+            TEMPLATE_FEED_RSS10,
+            planet=planet,
+            entries=template_entries,
+        )
+
     async def _export_opml(self) -> Response:
         """Export all active feeds as OPML using template."""
         feeds_result = await self.env.DB.prepare("""
@@ -2214,6 +2258,9 @@ class Default(WorkerEntrypoint):
             event.search_query = query[:200]
             event.search_query_length = len(query)
 
+        # Get theme for template selection
+        theme = getattr(self.env, "THEME", None) or "default"
+
         if not query or len(query) < 2:
             if event:
                 event.outcome = "error"
@@ -2223,6 +2270,7 @@ class Default(WorkerEntrypoint):
             planet = self._get_planet_config()
             html = render_template(
                 TEMPLATE_SEARCH,
+                theme=theme,
                 planet=planet,
                 query=query,
                 results=[],
@@ -2238,6 +2286,7 @@ class Default(WorkerEntrypoint):
             planet = self._get_planet_config()
             html = render_template(
                 TEMPLATE_SEARCH,
+                theme=theme,
                 planet=planet,
                 query=query[:50] + "...",
                 results=[],
@@ -2390,7 +2439,9 @@ class Default(WorkerEntrypoint):
             if event:
                 event.search_results_total = 0
             planet = self._get_planet_config()
-            html = render_template(TEMPLATE_SEARCH, planet=planet, query=query, results=[])
+            html = render_template(
+                TEMPLATE_SEARCH, theme=theme, planet=planet, query=query, results=[]
+            )
             return _html_response(html, cache_max_age=0)
 
         # 4. Build entry map for lookups
@@ -2495,6 +2546,7 @@ class Default(WorkerEntrypoint):
         planet = self._get_planet_config()
         html = render_template(
             TEMPLATE_SEARCH,
+            theme=theme,
             planet=planet,
             query=query,
             results=sorted_results,
@@ -2503,121 +2555,14 @@ class Default(WorkerEntrypoint):
         )
         return _html_response(html, cache_max_age=0)
 
-    async def _serve_static(self, path: str) -> Response:
-        """Serve static files."""
-        # In production, static files would be served via assets binding
-        # For now, serve CSS and JS inline
-        if path == "/static/style.css":
-            css = self._get_default_css()
-            return Response(
-                css,
-                headers={
-                    "Content-Type": "text/css",
-                    "Cache-Control": "public, max-age=86400",
-                },
-            )
-        if path == "/static/admin.js":
-            js = self._get_admin_js()
-            return Response(
-                js,
-                headers={
-                    "Content-Type": "application/javascript",
-                    "Cache-Control": "public, max-age=86400",
-                },
-            )
-        if path == "/static/keyboard-nav.js":
-            js = self._get_keyboard_nav_js()
-            return Response(
-                js,
-                headers={
-                    "Content-Type": "application/javascript",
-                    "Cache-Control": "public, max-age=86400",
-                },
-            )
-        if path == "/static/logo.svg":
-            svg = self._get_logo_svg()
-            if svg:
-                return Response(
-                    svg,
-                    headers={
-                        "Content-Type": "image/svg+xml",
-                        "Cache-Control": "public, max-age=86400",
-                    },
-                )
-        # Serve theme-specific logo images at original paths for visual fidelity
-        # Planet Python: /static/images/python-logo.gif
-        # Planet Mozilla: /static/img/logo.png
-        # Also support legacy paths for backwards compatibility
-        logo_paths = [
-            "/static/images/python-logo.gif",
-            "/static/img/logo.png",
-            "/static/logo.gif",  # Legacy
-            "/static/logo.png",  # Legacy
-        ]
-        if path in logo_paths:
-            theme = getattr(self.env, "THEME", None) or "default"
-            assets = THEME_ASSETS.get(theme)
-            if assets and "logo" in assets:
-                logo_data = assets["logo"]
-                # Parse data URI: data:image/type;base64,DATA
-                if logo_data.startswith("data:"):
-                    parts = logo_data.split(",", 1)
-                    if len(parts) == 2:
-                        header, b64_data = parts
-                        # Extract content type (e.g., image/gif or image/png)
-                        content_type = header.split(";")[0].replace("data:", "")
-                        import base64
+    async def _serve_static(self, request: Request, path: str) -> Response:
+        """Serve static files via Cloudflare's ASSETS binding.
 
-                        image_data = base64.b64decode(b64_data)
-                        # Use js.Uint8Array for proper binary data transfer to JavaScript Response
-                        from js import Uint8Array
-                        from pyodide.ffi import to_js
-
-                        js_array = Uint8Array.new(to_js(image_data))
-                        return Response(
-                            js_array,
-                            headers={
-                                "Content-Type": content_type,
-                                "Cache-Control": "public, max-age=86400",
-                            },
-                        )
-
-        # Serve theme-specific background images for visual fidelity
-        # Map paths to asset keys in THEME_ASSETS
-        image_asset_map = {
-            "/static/img/header-bg.jpg": "header_bg",
-            "/static/img/header-dino.jpg": "header_dino",
-            "/static/img/footer.jpg": "footer_bg",
-            "/static/img/background.jpg": "background",
-        }
-        if path in image_asset_map:
-            theme = getattr(self.env, "THEME", None) or "default"
-            assets = THEME_ASSETS.get(theme)
-            asset_key = image_asset_map[path]
-            if assets and asset_key in assets:
-                asset_data = assets[asset_key]
-                # Parse data URI: data:image/type;base64,DATA
-                if asset_data.startswith("data:"):
-                    parts = asset_data.split(",", 1)
-                    if len(parts) == 2:
-                        header, b64_data = parts
-                        content_type = header.split(";")[0].replace("data:", "")
-                        import base64
-
-                        image_data = base64.b64decode(b64_data)
-                        from js import Uint8Array
-                        from pyodide.ffi import to_js
-
-                        js_array = Uint8Array.new(to_js(image_data))
-                        return Response(
-                            js_array,
-                            headers={
-                                "Content-Type": content_type,
-                                "Cache-Control": "public, max-age=86400",
-                            },
-                        )
-
-        return _json_error("Not Found", status=404)
+        Static assets are served directly from the assets/ directory configured
+        in wrangler.jsonc. This uses Cloudflare's native asset serving with
+        automatic caching and optimization.
+        """
+        return await self.env.ASSETS.fetch(request)
 
     def _get_logo_svg(self) -> str | None:
         """Return logo SVG based on THEME environment variable."""

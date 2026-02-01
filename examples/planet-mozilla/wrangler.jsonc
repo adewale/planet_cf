@@ -55,6 +55,10 @@
   "name": "planet-mozilla",
   "main": "../../src/main.py",
   "compatibility_date": "2026-01-01",
+  "assets": {
+    "directory": "./assets/",
+    "binding": "ASSETS"
+  },
   "compatibility_flags": [
     "python_workers",
     "python_dedicated_snapshot"

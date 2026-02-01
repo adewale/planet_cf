@@ -56,6 +56,7 @@ ADMIN_TEMPLATE_FILES = [
 SHARED_TEMPLATE_FILES = [
     "feed.atom.xml",
     "feed.rss.xml",
+    "feed.rss10.xml",
     "feeds.opml",
 ]
 
@@ -167,7 +168,6 @@ def build_templates(theme: str | None = None, example: str | None = None):
         example: Optional example name. If provided, CSS is loaded from
                examples/<name>/theme/style.css first.
     """
-    import base64
 
     # Read all templates organized by theme
     themed_templates: dict[str, dict[str, str]] = {}
@@ -524,6 +524,7 @@ TEMPLATE_ADMIN_ERROR = "admin/error.html"
 TEMPLATE_ADMIN_LOGIN = "admin/login.html"
 TEMPLATE_FEED_ATOM = "feed.atom.xml"
 TEMPLATE_FEED_RSS = "feed.rss.xml"
+TEMPLATE_FEED_RSS10 = "feed.rss10.xml"
 TEMPLATE_FEEDS_OPML = "feeds.opml"
 
 # =============================================================================
@@ -583,66 +584,9 @@ THEME_LOGOS = {
 
     output += """}
 
-# Embedded theme assets as base64 data URIs for visual fidelity
-THEME_ASSETS = {
-"""
-    # Add theme-specific assets from examples (base64 encoded images)
-
-    asset_configs = {
-        "planet-python": {
-            "logo": {
-                "path": EXAMPLES_DIR / "planet-python" / "static" / "images" / "python-logo.gif",
-                "mime": "image/gif",
-            },
-        },
-        "planet-mozilla": {
-            "logo": {
-                "path": EXAMPLES_DIR / "planet-mozilla" / "static" / "img" / "logo.png",
-                "mime": "image/png",
-            },
-            "header_bg": {
-                "path": EXAMPLES_DIR / "planet-mozilla" / "static" / "img" / "header-bg.jpg",
-                "mime": "image/jpeg",
-            },
-            "header_dino": {
-                "path": EXAMPLES_DIR / "planet-mozilla" / "static" / "img" / "header-dino.jpg",
-                "mime": "image/jpeg",
-            },
-            "footer_bg": {
-                "path": EXAMPLES_DIR / "planet-mozilla" / "static" / "img" / "footer.jpg",
-                "mime": "image/jpeg",
-            },
-            "background": {
-                "path": EXAMPLES_DIR / "planet-mozilla" / "static" / "img" / "background.jpg",
-                "mime": "image/jpeg",
-            },
-            "feed_icon": {
-                "path": EXAMPLES_DIR / "planet-mozilla" / "static" / "img" / "feed-icon.png",
-                "mime": "image/png",
-            },
-            "bullet": {
-                "path": EXAMPLES_DIR / "planet-mozilla" / "static" / "img" / "bullet_utility.png",
-                "mime": "image/png",
-            },
-            "world": {
-                "path": EXAMPLES_DIR / "planet-mozilla" / "static" / "img" / "world.png",
-                "mime": "image/png",
-            },
-        },
-    }
-
-    for theme_name, assets in asset_configs.items():
-        output += f'    "{theme_name}": {{\n'
-        for asset_name, asset_info in assets.items():
-            path = asset_info["path"]
-            mime = asset_info["mime"]
-            if path.exists():
-                with open(path, "rb") as f:
-                    b64_data = base64.b64encode(f.read()).decode()
-                output += f'        "{asset_name}": "data:{mime};base64,{b64_data}",\n'
-        output += "    },\n"
-
-    output += """}
+# Static assets are served via Cloudflare's ASSETS binding.
+# Each example has an assets/ directory configured in wrangler.jsonc.
+THEME_ASSETS = {}
 """
 
     # Write output
