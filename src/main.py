@@ -51,6 +51,7 @@ from templates import (
     TEMPLATE_INDEX,
     TEMPLATE_SEARCH,
     TEMPLATE_TITLES,
+    THEME_ASSETS,
     THEME_CSS,
     THEME_LOGOS,
     render_template,
@@ -1792,6 +1793,9 @@ class Default(WorkerEntrypoint):
         # Get theme for conditional template rendering
         theme = getattr(self.env, "THEME", None) or "default"
 
+        # Get theme-specific related sites for sidebar
+        related_sites = self._get_related_sites()
+
         with Timer() as render_timer:
             html = render_template(
                 template,
@@ -1805,6 +1809,7 @@ class Default(WorkerEntrypoint):
                 show_admin_link=show_admin_link,
                 feed_links=feed_links,
                 theme=theme,
+                related_sites=related_sites,
             )
 
         # Populate remaining generation metrics
@@ -2539,6 +2544,29 @@ class Default(WorkerEntrypoint):
                         "Cache-Control": "public, max-age=86400",
                     },
                 )
+        # Serve theme-specific logo images
+        if path == "/static/logo.gif" or path == "/static/logo.png":
+            theme = getattr(self.env, "THEME", None) or "default"
+            assets = THEME_ASSETS.get(theme)
+            if assets and "logo" in assets:
+                logo_data = assets["logo"]
+                # Parse data URI: data:image/type;base64,DATA
+                if logo_data.startswith("data:"):
+                    parts = logo_data.split(",", 1)
+                    if len(parts) == 2:
+                        header, b64_data = parts
+                        # Extract content type (e.g., image/gif or image/png)
+                        content_type = header.split(";")[0].replace("data:", "")
+                        import base64
+
+                        image_data = base64.b64decode(b64_data)
+                        return Response(
+                            image_data,
+                            headers={
+                                "Content-Type": content_type,
+                                "Cache-Control": "public, max-age=86400",
+                            },
+                        )
         return _json_error("Not Found", status=404)
 
     def _get_logo_svg(self) -> str | None:
@@ -2561,6 +2589,77 @@ class Default(WorkerEntrypoint):
                 "height": logo_config["height"],
             }
         return None
+
+    def _get_related_sites(self) -> list[dict] | None:
+        """Return theme-specific related sites for sidebar rendering.
+
+        These extra sidebar sections match the original planet sites for
+        visual fidelity.
+        """
+        theme = getattr(self.env, "THEME", None) or "default"
+
+        # Theme-specific sidebar sections for visual fidelity
+        # Planet Python sections match original: https://planetpython.org/
+        related_sites_by_theme = {
+            "planet-python": [
+                {
+                    "title": "Other Python Planets",
+                    "links": [
+                        {
+                            "name": "Python Summer of Code",
+                            "url": "http://terri.toybox.ca/python-soc/",
+                        },
+                        {"name": "Planet Python Francophone", "url": "http://www.afpy.org/planet/"},
+                        {"name": "Planet Python Argentina", "url": "http://planeta.python.org.ar/"},
+                        {"name": "Planet Python Brasil", "url": "http://planet.python.org.br/"},
+                        {"name": "Planet Python Poland", "url": "http://pl.python.org/planeta/"},
+                    ],
+                },
+                {
+                    "title": "Python Libraries",
+                    "links": [
+                        {"name": "OLPC", "url": "http://planet.laptop.org/"},
+                        {"name": "PySoy", "url": "http://planet.pysoy.org/"},
+                        {"name": "SciPy", "url": "http://planet.scipy.org/"},
+                        {"name": "SymPy", "url": "http://planet.sympy.org/"},
+                        {"name": "Twisted", "url": "http://planet.twistedmatrix.com/"},
+                    ],
+                },
+                {
+                    "title": "Python/Web Planets",
+                    "links": [
+                        {"name": "CherryPy", "url": "http://planet.cherrypy.org/"},
+                        {
+                            "name": "Django Community",
+                            "url": "http://www.djangoproject.com/community/",
+                        },
+                        {"name": "Plone", "url": "http://planet.plone.org/"},
+                        {"name": "Turbogears", "url": "http://planet.turbogears.org/"},
+                    ],
+                },
+                {
+                    "title": "Other Languages",
+                    "links": [
+                        {"name": "Haskell", "url": "http://planet.haskell.org/"},
+                        {"name": "Lisp", "url": "http://planet.lisp.org/"},
+                        {"name": "Parrot", "url": "http://planet.parrotcode.org/"},
+                        {"name": "Perl", "url": "http://planet.perl.org/"},
+                        {"name": "Ruby", "url": "http://planetruby.0x42.net/"},
+                    ],
+                },
+                {
+                    "title": "Databases",
+                    "links": [
+                        {"name": "MySQL", "url": "http://www.planetmysql.org/"},
+                        {"name": "PostgreSQL", "url": "http://planet.postgresql.org/"},
+                    ],
+                },
+            ],
+            # Planet Mozilla has no sidebar in original - return None
+            "planet-mozilla": None,
+        }
+
+        return related_sites_by_theme.get(theme)
 
     def _get_default_css(self) -> str:
         """Return CSS styling based on THEME environment variable.

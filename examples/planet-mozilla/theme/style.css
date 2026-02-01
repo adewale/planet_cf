@@ -190,15 +190,9 @@ main {
     margin-right: 0;
 }
 
-/* Sidebar - RIGHT position */
+/* Sidebar - HIDDEN for Mozilla (original has no sidebar) */
 .sidebar {
-    width: 230px;
-    flex-shrink: 0;
-    order: 1; /* Force right side */
-    font-size: 70%;
-    padding-left: 0;
-    padding-right: 0;
-    padding-top: 20px;
+    display: none; /* Original Planet Mozilla has single-column layout */
 }
 
 .sidebar h2 {

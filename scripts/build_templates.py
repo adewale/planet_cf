@@ -445,31 +445,91 @@ THEME_LOGOS = {
 """
 
     # Add theme-specific logos from examples
+    # For visual fidelity, we use actual downloaded images (served via THEME_ASSETS)
+    # but also keep SVG fallback for legacy support
     logo_configs = {
         "planet-python": {
             "svg_path": EXAMPLES_DIR / "planet-python" / "static" / "python-logo.svg",
+            "url": "/static/logo.gif",  # Actual downloaded logo
             "width": "211",
             "height": "71",
-            "alt": "Python Logo",
+            "alt": "Planet Python",
         },
         "planet-mozilla": {
             "svg_path": EXAMPLES_DIR / "planet-mozilla" / "static" / "mozilla-logo.svg",
-            "width": "112",
-            "height": "32",
-            "alt": "Mozilla Logo",
+            "url": "/static/logo.png",  # Actual downloaded logo
+            "width": "222",
+            "height": "44",
+            "alt": "Planet Mozilla",
         },
     }
     for theme_name, config in logo_configs.items():
         svg_path = config["svg_path"]
+        svg_content = ""
         if svg_path.exists():
             svg_content = svg_path.read_text(encoding="utf-8")
-            output += f'''    "{theme_name}": {{
-        "svg": """{escape_for_python(svg_content)}""",
+        output += f'''    "{theme_name}": {{
+        "url": "{config["url"]}",
         "width": "{config["width"]}",
         "height": "{config["height"]}",
         "alt": "{config["alt"]}",
+        "svg": """{escape_for_python(svg_content)}""",
     }},
 '''
+
+    output += """}
+
+# Embedded theme assets as base64 data URIs for visual fidelity
+THEME_ASSETS = {
+"""
+    # Add theme-specific assets from examples (base64 encoded images)
+    import base64
+
+    asset_configs = {
+        "planet-python": {
+            "logo": {
+                "path": EXAMPLES_DIR / "planet-python" / "static" / "images" / "python-logo.gif",
+                "mime": "image/gif",
+            },
+        },
+        "planet-mozilla": {
+            "logo": {
+                "path": EXAMPLES_DIR / "planet-mozilla" / "static" / "img" / "logo.png",
+                "mime": "image/png",
+            },
+            "header_bg": {
+                "path": EXAMPLES_DIR / "planet-mozilla" / "static" / "img" / "header-bg.jpg",
+                "mime": "image/jpeg",
+            },
+            "header_dino": {
+                "path": EXAMPLES_DIR / "planet-mozilla" / "static" / "img" / "header-dino.jpg",
+                "mime": "image/jpeg",
+            },
+            "feed_icon": {
+                "path": EXAMPLES_DIR / "planet-mozilla" / "static" / "img" / "feed-icon.png",
+                "mime": "image/png",
+            },
+            "bullet": {
+                "path": EXAMPLES_DIR / "planet-mozilla" / "static" / "img" / "bullet_utility.png",
+                "mime": "image/png",
+            },
+            "world": {
+                "path": EXAMPLES_DIR / "planet-mozilla" / "static" / "img" / "world.png",
+                "mime": "image/png",
+            },
+        },
+    }
+
+    for theme_name, assets in asset_configs.items():
+        output += f'    "{theme_name}": {{\n'
+        for asset_name, asset_info in assets.items():
+            path = asset_info["path"]
+            mime = asset_info["mime"]
+            if path.exists():
+                with open(path, "rb") as f:
+                    b64_data = base64.b64encode(f.read()).decode()
+                output += f'        "{asset_name}": "data:{mime};base64,{b64_data}",\n'
+        output += "    },\n"
 
     output += """}
 """
