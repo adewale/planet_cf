@@ -2590,7 +2590,7 @@ header .logo-link {
 header .logo {
     height: 30px;
     width: auto;
-    display: none; /* Original Mozilla doesn't show logo in header */
+
 }
 
 header .header-text {
