@@ -2581,6 +2581,42 @@ class Default(WorkerEntrypoint):
                                 "Cache-Control": "public, max-age=86400",
                             },
                         )
+
+        # Serve theme-specific background images for visual fidelity
+        # Map paths to asset keys in THEME_ASSETS
+        image_asset_map = {
+            "/static/img/header-bg.jpg": "header_bg",
+            "/static/img/header-dino.jpg": "header_dino",
+            "/static/img/footer.jpg": "footer_bg",
+            "/static/img/background.jpg": "background",
+        }
+        if path in image_asset_map:
+            theme = getattr(self.env, "THEME", None) or "default"
+            assets = THEME_ASSETS.get(theme)
+            asset_key = image_asset_map[path]
+            if assets and asset_key in assets:
+                asset_data = assets[asset_key]
+                # Parse data URI: data:image/type;base64,DATA
+                if asset_data.startswith("data:"):
+                    parts = asset_data.split(",", 1)
+                    if len(parts) == 2:
+                        header, b64_data = parts
+                        content_type = header.split(";")[0].replace("data:", "")
+                        import base64
+
+                        image_data = base64.b64decode(b64_data)
+                        from js import Uint8Array
+                        from pyodide.ffi import to_js
+
+                        js_array = Uint8Array.new(to_js(image_data))
+                        return Response(
+                            js_array,
+                            headers={
+                                "Content-Type": content_type,
+                                "Cache-Control": "public, max-age=86400",
+                            },
+                        )
+
         return _json_error("Not Found", status=404)
 
     def _get_logo_svg(self) -> str | None:

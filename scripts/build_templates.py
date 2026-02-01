@@ -505,6 +505,14 @@ THEME_ASSETS = {
                 "path": EXAMPLES_DIR / "planet-mozilla" / "static" / "img" / "header-dino.jpg",
                 "mime": "image/jpeg",
             },
+            "footer_bg": {
+                "path": EXAMPLES_DIR / "planet-mozilla" / "static" / "img" / "footer.jpg",
+                "mime": "image/jpeg",
+            },
+            "background": {
+                "path": EXAMPLES_DIR / "planet-mozilla" / "static" / "img" / "background.jpg",
+                "mime": "image/jpeg",
+            },
             "feed_icon": {
                 "path": EXAMPLES_DIR / "planet-mozilla" / "static" / "img" / "feed-icon.png",
                 "mime": "image/png",

@@ -52,3 +52,4 @@ node_modules/
 # Hypothesis testing
 .hypothesis/
 .dev.vars
+visual_comparison_output/

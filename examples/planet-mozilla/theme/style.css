@@ -16,7 +16,7 @@ body {
     font-size: 13px;
     line-height: 1.4;
     color: #000;
-    background: #fff;
+    background: #fff url('/static/img/background.jpg') no-repeat -95px top;
     margin: 0;
     padding: 0;
 }
@@ -120,9 +120,9 @@ h4 {
     color: #148cb5 !important;
 }
 
-/* Header - Dark slate blue banner */
+/* Header - Dark slate blue banner with background image */
 header {
-    background: #455372;
+    background: #455372 url('/static/img/header-bg.jpg') repeat-x;
     padding: 20px;
     border-bottom: none;
     border-radius: 0;
@@ -582,7 +582,7 @@ hr {
     width: 50%;
 }
 
-/* Footer - Dark background, centered text */
+/* Footer - Dark background with texture, centered text */
 footer,
 #footer {
     margin: 2em 0;
@@ -593,7 +593,7 @@ footer,
     margin-right: 0;
     font-size: 11px;
     color: #999999;
-    background-color: #2a2a2a;
+    background: #2a2a2a url('/static/img/footer.jpg') repeat-x;
     border-radius: 0;
     border-top: none;
 }
