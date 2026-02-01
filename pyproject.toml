@@ -42,6 +42,13 @@ dev = [
     "ruff>=0.4.0",
 ]
 
+tools = [
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+    "playwright>=1.40.0",
+    "pillow>=10.0.0",
+]
+
 # Cloudflare Python Workers development dependencies
 [dependency-groups]
 workers = [
