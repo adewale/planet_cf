@@ -7,6 +7,7 @@ Template loading and rendering utilities for Planet CF.
 This module provides:
 - A shared Jinja2 Environment for rendering templates
 - Embedded templates for Workers environment compatibility
+- Per-theme template support with fallback chain
 - Helper functions for common rendering patterns
 """
 
@@ -15,9 +16,13 @@ from jinja2 import BaseLoader, Environment, TemplateNotFound
 # =============================================================================
 # Embedded Templates (for Workers environment)
 # =============================================================================
+# Structure:
+#   _EMBEDDED_TEMPLATES[theme_name][template_name] = template_content
+#   _EMBEDDED_TEMPLATES["_shared"][template_name] = shared_template_content
 
 _EMBEDDED_TEMPLATES = {
-    "index.html": """<!DOCTYPE html>
+    "default": {
+        "index.html": """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -30,19 +35,7 @@ _EMBEDDED_TEMPLATES = {
     <link rel="alternate" type="application/atom+xml" title="{{ planet.name }} Atom Feed" href="{{ feed_links.atom or '/feed.atom' }}">
     <link rel="alternate" type="application/rss+xml" title="{{ planet.name }} RSS Feed" href="{{ feed_links.rss or '/feed.rss' }}">
 </head>
-<body{% if theme == 'planet-mozilla' %} class="theme-mozilla"{% endif %}>
-    {% if theme == 'planet-mozilla' %}
-    <nav class="mozilla-nav" aria-label="Mozilla corporate navigation">
-        <div class="mozilla-nav-inner">
-            <span class="mozilla-nav-label">Looking For:</span>
-            <a href="https://www.mozilla.org/">mozilla.org</a>
-            <a href="https://wiki.mozilla.org/">Wiki</a>
-            <a href="https://developer.mozilla.org/">Developer Center</a>
-            <a href="https://www.mozilla.org/firefox/">Firefox</a>
-            <a href="https://www.thunderbird.net/">Thunderbird</a>
-        </div>
-    </nav>
-    {% endif %}
+<body>
     <header>
         {% if logo %}
         <a href="/" class="logo-link">
@@ -148,7 +141,7 @@ _EMBEDDED_TEMPLATES = {
 </body>
 </html>
 """,
-    "titles.html": """<!DOCTYPE html>
+        "titles.html": """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -161,19 +154,7 @@ _EMBEDDED_TEMPLATES = {
     <link rel="alternate" type="application/atom+xml" title="{{ planet.name }} Atom Feed" href="{{ feed_links.atom or '/feed.atom' }}">
     <link rel="alternate" type="application/rss+xml" title="{{ planet.name }} RSS Feed" href="{{ feed_links.rss or '/feed.rss' }}">
 </head>
-<body class="titles-only{% if theme == 'planet-mozilla' %} theme-mozilla{% endif %}">
-    {% if theme == 'planet-mozilla' %}
-    <nav class="mozilla-nav" aria-label="Mozilla corporate navigation">
-        <div class="mozilla-nav-inner">
-            <span class="mozilla-nav-label">Looking For:</span>
-            <a href="https://www.mozilla.org/">mozilla.org</a>
-            <a href="https://wiki.mozilla.org/">Wiki</a>
-            <a href="https://developer.mozilla.org/">Developer Center</a>
-            <a href="https://www.mozilla.org/firefox/">Firefox</a>
-            <a href="https://www.thunderbird.net/">Thunderbird</a>
-        </div>
-    </nav>
-    {% endif %}
+<body class="titles-only">
     <header>
         {% if logo %}
         <a href="/" class="logo-link">
@@ -260,7 +241,7 @@ _EMBEDDED_TEMPLATES = {
 </body>
 </html>
 """,
-    "search.html": """<!DOCTYPE html>
+        "search.html": """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -313,11 +294,11 @@ _EMBEDDED_TEMPLATES = {
         </aside>
     </div>
 
-    <footer><p><a href="/">Back to Planet CF</a></p></footer>
+    <footer><p><a href="/">Back to {{ planet.name }}</a></p></footer>
 </body>
 </html>
 """,
-    "admin/dashboard.html": """<!DOCTYPE html>
+        "admin/dashboard.html": """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -502,7 +483,7 @@ _EMBEDDED_TEMPLATES = {
 </body>
 </html>
 """,
-    "admin/error.html": """<!DOCTYPE html>
+        "admin/error.html": """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -589,7 +570,7 @@ _EMBEDDED_TEMPLATES = {
 </body>
 </html>
 """,
-    "admin/login.html": """<!DOCTYPE html>
+        "admin/login.html": """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -659,7 +640,557 @@ _EMBEDDED_TEMPLATES = {
 </body>
 </html>
 """,
-    "feed.atom.xml": """<?xml version="1.0" encoding="UTF-8"?>
+    },
+    "planet-python": {
+        "index.html": """<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>{{ planet.name }}</title>
+    <link rel="stylesheet" type="text/css" href="/static/style.css" />
+    <link rel="alternate" type="application/atom+xml" title="{{ planet.name }} Atom Feed" href="{{ feed_links.atom or '/feed.atom' }}" />
+    <link rel="alternate" type="application/rss+xml" title="{{ planet.name }} RSS Feed" href="{{ feed_links.rss or '/feed.rss' }}" />
+    <link rel="icon" href="/static/favicon.ico" sizes="32x32" />
+</head>
+<body>
+    <!-- Logo -->
+    <h1 id="logoheader">
+        <a href="/" id="logolink" accesskey="1">
+            {% if logo %}
+            <img id="logo" src="{{ logo.url }}" alt="{{ logo.alt }}" />
+            {% else %}
+            {{ planet.name }}
+            {% endif %}
+        </a>
+    </h1>
+
+    <div id="content-body">
+        <div id="body-main">
+            <h1 class="pageheading">{{ planet.name }}</h1>
+            <p>Last update: {{ generated_at }}</p>
+
+            {% for date, day_entries in entries_by_date.items() %}
+            <h2>{{ date }}</h2>
+            {% set current_author = namespace(value='') %}
+            {% for entry in day_entries %}
+                {% if entry.display_author != current_author.value %}
+                    {% set current_author.value = entry.display_author %}
+            <hr /><h3 class="post"><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}" title="{{ entry.display_author }}">{{ entry.display_author or 'Unknown' }}</a></h3>
+                {% endif %}
+            <h4><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h4>
+            <div class="content">{{ entry.content | safe }}</div>
+            {% endfor %}
+            {% else %}
+            <p>No entries yet.</p>
+            {% endfor %}
+        </div>
+
+        <div id="left-hand-navigation">
+            <div id="menu">
+                <ul class="level-one">
+                    <li>
+                        <ul class="level-two">
+                            <li><a href="{{ feed_links.rss or '/feed.rss' }}">RSS feed</a></li>
+                            {% if feed_links.titles_only %}<li><a href="{{ feed_links.titles_only }}">Titles Only</a></li>{% endif %}
+                        </ul>
+                    </li>
+                </ul>
+
+                {% if related_sites %}
+                {% for section in related_sites %}
+                <h4>{{ section.title }}</h4>
+                <ul class="level-two">
+                    {% for link in section.links %}
+                    <li><a href="{{ link.url }}">{{ link.name }}</a></li>
+                    {% endfor %}
+                </ul>
+                {% endfor %}
+                {% endif %}
+
+                <h4><a href="{{ feed_links.opml or '/feeds.opml' }}">Subscriptions</a></h4>
+                <ul class="level-two">
+                    {% for feed in feeds %}
+                    <li><a href="{{ feed.site_url or feed.url or '#' }}" title="{{ feed.title }}">{{ feed.title or 'Untitled' }}</a></li>
+                    {% else %}
+                    <li>No feeds configured</li>
+                    {% endfor %}
+                </ul>
+
+                {% if submission %}
+                <p style="margin-left: 1.5em;"><a href="{{ submission.url }}">{{ submission.text }}</a></p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div id="footer">
+        <p>
+            <a href="{{ feed_links.atom or '/feed.atom' }}">Atom</a> |
+            <a href="{{ feed_links.rss or '/feed.rss' }}">RSS</a> |
+            <a href="{{ feed_links.opml or '/feeds.opml' }}">OPML</a>
+        </p>
+        <p>{{ footer_text }}{% if show_admin_link %} | <a href="/admin">Admin</a>{% endif %}</p>
+    </div>
+
+    <!-- Keyboard shortcuts help panel -->
+    <div class="shortcuts-backdrop hidden" id="shortcuts-backdrop"></div>
+    <div class="shortcuts-panel hidden" id="shortcuts-panel" role="dialog" aria-labelledby="shortcuts-title" aria-modal="true">
+        <h3 id="shortcuts-title">Keyboard Shortcuts</h3>
+        <dl>
+            <dt><kbd>j</kbd></dt>
+            <dd>Next entry</dd>
+            <dt><kbd>k</kbd></dt>
+            <dd>Previous entry</dd>
+            <dt><kbd>?</kbd></dt>
+            <dd>Toggle this help</dd>
+            <dt><kbd>Esc</kbd></dt>
+            <dd>Close help</dd>
+        </dl>
+        <button type="button" class="close-btn" id="close-shortcuts">Close</button>
+    </div>
+
+    <script src="/static/keyboard-nav.js"></script>
+</body>
+</html>
+""",
+        "titles.html": """<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>{{ planet.name }} - Titles Only</title>
+    <link rel="stylesheet" type="text/css" href="/static/style.css" />
+    <link rel="alternate" type="application/atom+xml" title="{{ planet.name }} Atom Feed" href="{{ feed_links.atom or '/feed.atom' }}" />
+    <link rel="alternate" type="application/rss+xml" title="{{ planet.name }} RSS Feed" href="{{ feed_links.rss or '/feed.rss' }}" />
+    <link rel="icon" href="/static/favicon.ico" sizes="32x32" />
+</head>
+<body>
+    <!-- Logo -->
+    <h1 id="logoheader">
+        <a href="/" id="logolink" accesskey="1">
+            {% if logo %}
+            <img id="logo" src="{{ logo.url }}" alt="{{ logo.alt }}" />
+            {% else %}
+            {{ planet.name }}
+            {% endif %}
+        </a>
+    </h1>
+
+    <div id="content-body">
+        <div id="body-main">
+            <h1 class="pageheading">{{ planet.name }} - Titles Only</h1>
+            <p><a href="/">View full content</a></p>
+
+            {% for date, day_entries in entries_by_date.items() %}
+            <h2>{{ date }}</h2>
+            {% set current_author = namespace(value='') %}
+            {% for entry in day_entries %}
+                {% if entry.display_author != current_author.value %}
+                    {% set current_author.value = entry.display_author %}
+            <h3 class="post"><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}">{{ entry.display_author or 'Unknown' }}</a></h3>
+                {% endif %}
+            <h4><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h4>
+            <p><em>{% if entry.display_author %}by {{ entry.display_author }} at {% endif %}{{ entry.published_at_display }}</em></p>
+            {% endfor %}
+            {% else %}
+            <p>No entries yet.</p>
+            {% endfor %}
+        </div>
+
+        <div id="left-hand-navigation">
+            <div id="menu">
+                <ul class="level-one">
+                    <li>
+                        <ul class="level-two">
+                            <li><a href="{{ feed_links.rss or '/feed.rss' }}">RSS feed</a></li>
+                            <li><a href="/">Full content</a></li>
+                        </ul>
+                    </li>
+                </ul>
+
+                <h4><a href="{{ feed_links.opml or '/feeds.opml' }}">Subscriptions</a></h4>
+                <ul class="level-two">
+                    {% for feed in feeds %}
+                    <li><a href="{{ feed.site_url or feed.url or '#' }}">{{ feed.title or 'Untitled' }}</a></li>
+                    {% else %}
+                    <li>No feeds configured</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div id="footer">
+        <p>
+            <a href="{{ feed_links.atom or '/feed.atom' }}">Atom</a> |
+            <a href="{{ feed_links.rss or '/feed.rss' }}">RSS</a> |
+            <a href="{{ feed_links.opml or '/feeds.opml' }}">OPML</a>
+        </p>
+        <p>{{ footer_text }}{% if show_admin_link %} | <a href="/admin">Admin</a>{% endif %}</p>
+        <p>Last updated: {{ generated_at }}</p>
+    </div>
+</body>
+</html>
+""",
+        "search.html": """<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>Search Results - {{ planet.name }}</title>
+    <link rel="stylesheet" type="text/css" href="/static/style.css" />
+    <link rel="icon" href="/static/favicon.ico" sizes="32x32" />
+</head>
+<body>
+    <!-- Logo -->
+    <h1 id="logoheader">
+        <a href="/" id="logolink" accesskey="1">
+            {% if logo %}
+            <img id="logo" src="{{ logo.url }}" alt="{{ logo.alt }}" />
+            {% else %}
+            {{ planet.name }}
+            {% endif %}
+        </a>
+    </h1>
+
+    <div id="content-body">
+        <div id="body-main">
+            <h1 class="pageheading">Search Results</h1>
+            {% if error %}
+            <div class="search-error">
+                <p>{{ error }}</p>
+            </div>
+            {% else %}
+            <h2>Results for "{{ query }}"</h2>
+            {% if words_truncated %}
+            <p><em>Note: Your search was limited to the first {{ max_search_words }} words.</em></p>
+            {% endif %}
+            {% if results %}
+            <ul>
+                {% for entry in results %}
+                <li>
+                    <h4><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h4>
+                    <p><em>by {{ entry.display_author }}</em></p>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p>No results found for "{{ query }}"</p>
+            {% endif %}
+            {% endif %}
+        </div>
+
+        <div id="left-hand-navigation">
+            <div id="menu">
+                <form action="/search" method="get">
+                    <p style="margin-left: 1.5em;">
+                        <input type="text" name="q" value="{{ query }}" style="width: 10em;" />
+                        <input type="submit" value="Search" />
+                    </p>
+                </form>
+                <p style="margin-left: 1.5em;"><a href="/">Back to home</a></p>
+            </div>
+        </div>
+    </div>
+
+    <div id="footer">
+        <p><a href="/">Back to {{ planet.name }}</a></p>
+    </div>
+</body>
+</html>
+""",
+    },
+    "planet-mozilla": {
+        "index.html": """<?xml version="1.0"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>{{ planet.name }}</title>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <meta name="description" content="{{ planet.description }}"/>
+    <link href="/static/style.css" rel="stylesheet" type="text/css"/>
+    <link href="/static/favicon.ico" rel="shortcut icon" type="image/x-icon"/>
+    <link rel="alternate" href="{{ feed_links.atom or '/feed.atom' }}" title="{{ planet.name }}" type="application/atom+xml"/>
+</head>
+<body>
+    <div id="utility">
+        <p><strong>Looking For</strong></p>
+        <ul>
+            <li><a href="https://www.mozilla.org/">mozilla.org</a></li>
+            <li><a href="https://wiki.mozilla.org/">Wiki</a></li>
+            <li><a href="https://developer.mozilla.org/">Developer Center</a></li>
+            <li><a href="https://www.mozilla.org/firefox/">Firefox</a></li>
+            <li><a href="https://www.thunderbird.net/">Thunderbird</a></li>
+        </ul>
+    </div>
+
+    <div id="header">
+        <div id="dino">
+            <h1><a href="/" title="Back to home page">{{ planet.name }}</a></h1>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="main-content">
+            {% for date, day_entries in entries_by_date.items() %}
+            <h2><time datetime="{{ date }}">{{ date }}</time></h2>
+            {% for entry in day_entries %}
+            <article class="news {{ entry.display_author | lower | replace(' ', '-') }}">
+                <h3><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}" title="{{ entry.display_author }}">{{ entry.display_author or 'Unknown' }}</a> — <a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
+                <div class="entry">
+                    <div class="content">{{ entry.content | safe }}</div>
+                </div>
+                <div class="permalink"><a href="{{ entry.url or '#' }}">by {{ entry.display_author }} at <time datetime="{{ entry.published_at }}" title="GMT">{{ entry.published_at_display }}</time></a></div>
+            </article>
+            {% endfor %}
+            {% else %}
+            <p>No entries yet.</p>
+            {% endfor %}
+        </div>
+
+        <div class="sidebar-content">
+            <div class="disclaimer">
+                <h2>{{ planet.name }}</h2>
+                <p>Collected here are the most recent blog posts from the community.
+                   The content here is unfiltered and uncensored, and represents the views of individual community members.</p>
+            </div>
+
+            <div class="feeds">
+                <h2>Subscribe to Planet</h2>
+                <p>Feeds:</p>
+                <ul>
+                    <li><a href="{{ feed_links.atom or '/feed.atom' }}">Atom</a></li>
+                    <li><a href="{{ feed_links.rss or '/feed.rss' }}">RSS 2.0</a></li>
+                </ul>
+                <p>Subscription list:</p>
+                <ul>
+                    <li class="opml"><a href="{{ feed_links.opml or '/feeds.opml' }}">OPML</a></li>
+                </ul>
+                <p>Last update: <time datetime="{{ generated_at }}" title="GMT">{{ generated_at }}</time></p>
+            </div>
+
+            <div class="main">
+                {% if related_sites %}
+                {% for section in related_sites %}
+                <h2>{{ section.title }}</h2>
+                <ul class="planets">
+                    {% for link in section.links %}
+                    <li><a href="{{ link.url }}">{{ link.name }}</a></li>
+                    {% endfor %}
+                </ul>
+                {% endfor %}
+                {% endif %}
+
+                {% if not is_lite_mode %}
+                <div id="sidebar">
+                    <h2>Search</h2>
+                    <form action="/search" method="GET" class="search-form">
+                        <input name="q" type="search" placeholder="Search..."/>
+                        <button type="submit">Search</button>
+                    </form>
+                </div>
+                {% endif %}
+
+                <h2>Subscriptions</h2>
+                <ul class="subscriptions">
+                    {% for feed in feeds %}
+                    <li><a href="{{ feed.site_url or feed.url or '#' }}" title="{{ feed.title }}">{{ feed.title or 'Untitled' }}</a></li>
+                    {% else %}
+                    <li>No feeds configured</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div id="footer">
+        <div id="footer-content">
+            <p>
+                {{ footer_text }}
+                {% if show_admin_link %} | <a href="/admin">Admin</a>{% endif %}
+            </p>
+        </div>
+    </div>
+
+    <!-- Keyboard shortcuts help panel -->
+    <div class="shortcuts-backdrop hidden" id="shortcuts-backdrop"></div>
+    <div class="shortcuts-panel hidden" id="shortcuts-panel" role="dialog" aria-labelledby="shortcuts-title" aria-modal="true">
+        <h3 id="shortcuts-title">Keyboard Shortcuts</h3>
+        <dl>
+            <dt><kbd>j</kbd></dt>
+            <dd>Next entry</dd>
+            <dt><kbd>k</kbd></dt>
+            <dd>Previous entry</dd>
+            <dt><kbd>?</kbd></dt>
+            <dd>Toggle this help</dd>
+            <dt><kbd>Esc</kbd></dt>
+            <dd>Close help</dd>
+        </dl>
+        <button type="button" class="close-btn" id="close-shortcuts">Close</button>
+    </div>
+
+    <script src="/static/keyboard-nav.js"></script>
+</body>
+</html>
+""",
+        "titles.html": """<?xml version="1.0"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>{{ planet.name }} - Titles Only</title>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <link href="/static/style.css" rel="stylesheet" type="text/css"/>
+    <link href="/static/favicon.ico" rel="shortcut icon" type="image/x-icon"/>
+    <link rel="alternate" href="{{ feed_links.atom or '/feed.atom' }}" title="{{ planet.name }}" type="application/atom+xml"/>
+</head>
+<body>
+    <div id="utility">
+        <p><strong>Looking For</strong></p>
+        <ul>
+            <li><a href="https://www.mozilla.org/">mozilla.org</a></li>
+            <li><a href="https://wiki.mozilla.org/">Wiki</a></li>
+            <li><a href="https://developer.mozilla.org/">Developer Center</a></li>
+            <li><a href="https://www.mozilla.org/firefox/">Firefox</a></li>
+            <li><a href="https://www.thunderbird.net/">Thunderbird</a></li>
+        </ul>
+    </div>
+
+    <div id="header">
+        <div id="dino">
+            <h1><a href="/" title="Back to home page">{{ planet.name }}</a></h1>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="main-content">
+            <p><a href="/">View full content</a></p>
+
+            {% for date, day_entries in entries_by_date.items() %}
+            <h2><time datetime="{{ date }}">{{ date }}</time></h2>
+            {% set current_author = namespace(value='') %}
+            {% for entry in day_entries %}
+                {% if entry.display_author != current_author.value %}
+                    {% set current_author.value = entry.display_author %}
+            <h3><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}">{{ entry.display_author or 'Unknown' }}</a></h3>
+                {% endif %}
+            <h4><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h4>
+            <p><em>{% if entry.display_author %}by {{ entry.display_author }} at {% endif %}{{ entry.published_at_display }}</em></p>
+            {% endfor %}
+            {% else %}
+            <p>No entries yet.</p>
+            {% endfor %}
+        </div>
+
+        <div class="sidebar-content">
+            <div class="feeds">
+                <h2>Subscribe to Planet</h2>
+                <ul>
+                    <li><a href="{{ feed_links.atom or '/feed.atom' }}">Atom</a></li>
+                    <li><a href="{{ feed_links.rss or '/feed.rss' }}">RSS 2.0</a></li>
+                    <li class="opml"><a href="{{ feed_links.opml or '/feeds.opml' }}">OPML</a></li>
+                </ul>
+            </div>
+
+            <div class="main">
+                <h2>Subscriptions</h2>
+                <ul class="planets">
+                    {% for feed in feeds %}
+                    <li><a href="{{ feed.site_url or feed.url or '#' }}">{{ feed.title or 'Untitled' }}</a></li>
+                    {% else %}
+                    <li>No feeds configured</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div id="footer">
+        <div id="footer-content">
+            <p>{{ footer_text }}{% if show_admin_link %} | <a href="/admin">Admin</a>{% endif %}</p>
+            <p>Last updated: {{ generated_at }}</p>
+        </div>
+    </div>
+</body>
+</html>
+""",
+        "search.html": """<?xml version="1.0"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>Search Results - {{ planet.name }}</title>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <link href="/static/style.css" rel="stylesheet" type="text/css"/>
+    <link href="/static/favicon.ico" rel="shortcut icon" type="image/x-icon"/>
+</head>
+<body>
+    <div id="utility">
+        <p><strong>Looking For</strong></p>
+        <ul>
+            <li><a href="https://www.mozilla.org/">mozilla.org</a></li>
+            <li><a href="https://wiki.mozilla.org/">Wiki</a></li>
+            <li><a href="https://developer.mozilla.org/">Developer Center</a></li>
+            <li><a href="https://www.mozilla.org/firefox/">Firefox</a></li>
+            <li><a href="https://www.thunderbird.net/">Thunderbird</a></li>
+        </ul>
+    </div>
+
+    <div id="header">
+        <div id="dino">
+            <h1><a href="/" title="Back to home page">{{ planet.name }}</a></h1>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="main-content">
+            <h2>Search Results</h2>
+            {% if error %}
+            <div class="search-error" style="background: #fee; padding: 1em; border-radius: 0.5em; margin: 1em 0;">
+                <p>{{ error }}</p>
+            </div>
+            {% else %}
+            <h3>Results for "{{ query }}"</h3>
+            {% if words_truncated %}
+            <p style="font-size: 11px; color: #666;">Note: Your search was limited to the first {{ max_search_words }} words.</p>
+            {% endif %}
+            {% if results %}
+            <div class="entry">
+                {% for entry in results %}
+                <article class="news">
+                    <h4><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h4>
+                    <p style="font-size: 11px; color: #666; margin-left: 15px;">by {{ entry.display_author }}</p>
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p>No results found for "{{ query }}"</p>
+            {% endif %}
+            {% endif %}
+        </div>
+
+        <div class="sidebar-content">
+            <div class="main">
+                <form action="/search" method="GET" class="search-form">
+                    <label><strong>Search</strong></label>
+                    <input type="search" name="q" value="{{ query }}" placeholder="Search entries..."/>
+                    <button type="submit">Search</button>
+                </form>
+                <p><a href="/">Back to home</a></p>
+            </div>
+        </div>
+    </div>
+
+    <div id="footer">
+        <div id="footer-content">
+            <p><a href="/">Back to {{ planet.name }}</a></p>
+        </div>
+    </div>
+</body>
+</html>
+""",
+    },
+    "_shared": {
+        "feed.atom.xml": """<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
   <title>{{ planet.name | e }}</title>
   <subtitle>{{ planet.description | e }}</subtitle>
@@ -679,7 +1210,7 @@ _EMBEDDED_TEMPLATES = {
 {% endfor %}
 </feed>
 """,
-    "feed.rss.xml": """<?xml version="1.0" encoding="UTF-8"?>
+        "feed.rss.xml": """<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>{{ planet.name | e }}</title>
@@ -700,7 +1231,7 @@ _EMBEDDED_TEMPLATES = {
   </channel>
 </rss>
 """,
-    "feeds.opml": """<?xml version="1.0" encoding="UTF-8"?>
+        "feeds.opml": """<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
   <head>
     <title>{{ planet.name }} Subscriptions</title>
@@ -716,6 +1247,7 @@ _EMBEDDED_TEMPLATES = {
   </body>
 </opml>
 """,
+    },
 }
 
 STATIC_CSS = """/* Planet CF Styles - Generated from templates/style.css */
@@ -1753,22 +2285,78 @@ function rebuildSearchIndex() {
 
 
 class EmbeddedLoader(BaseLoader):
-    """Jinja2 loader that loads templates from embedded strings."""
+    """Jinja2 loader that loads templates from embedded strings with theme fallback."""
+
+    def __init__(self, theme: str = "default"):
+        """Initialize loader with a theme.
+
+        Args:
+            theme: Theme name to use for template lookup.
+                   Falls back to "default" then "_shared".
+        """
+        self.theme = theme
 
     def get_source(self, environment, template):
-        if template in _EMBEDDED_TEMPLATES:
-            source = _EMBEDDED_TEMPLATES[template]
-            return source, template, lambda: True
+        """Get template source with fallback chain.
+
+        Lookup order:
+          1. _EMBEDDED_TEMPLATES[theme][template]
+          2. _EMBEDDED_TEMPLATES["default"][template]
+          3. _EMBEDDED_TEMPLATES["_shared"][template]
+        """
+        # Try theme-specific template
+        if self.theme in _EMBEDDED_TEMPLATES and template in _EMBEDDED_TEMPLATES[self.theme]:
+            source = _EMBEDDED_TEMPLATES[self.theme][template]
+            return source, f"{self.theme}/{template}", lambda: True
+
+        # Fall back to default theme
+        if (
+            self.theme != "default"
+            and "default" in _EMBEDDED_TEMPLATES
+            and template in _EMBEDDED_TEMPLATES["default"]
+        ):
+            source = _EMBEDDED_TEMPLATES["default"][template]
+            return source, f"default/{template}", lambda: True
+
+        # Fall back to shared templates
+        if "_shared" in _EMBEDDED_TEMPLATES and template in _EMBEDDED_TEMPLATES["_shared"]:
+            source = _EMBEDDED_TEMPLATES["_shared"][template]
+            return source, f"_shared/{template}", lambda: True
+
         raise TemplateNotFound(template)
 
 
-# Shared Jinja2 environment
-_jinja_env = Environment(loader=EmbeddedLoader(), autoescape=True)
+# Cache of Jinja2 environments per theme
+_jinja_envs: dict[str, Environment] = {}
 
 
-def render_template(name: str, **context) -> str:
-    """Render a template with the given context."""
-    template = _jinja_env.get_template(name)
+def get_jinja_env(theme: str = "default") -> Environment:
+    """Get or create a Jinja2 environment for the given theme.
+
+    Args:
+        theme: Theme name (e.g., "planet-python", "planet-mozilla", "default")
+
+    Returns:
+        Configured Jinja2 Environment with theme-aware template loader.
+    """
+    if theme not in _jinja_envs:
+        _jinja_envs[theme] = Environment(loader=EmbeddedLoader(theme), autoescape=True)
+    return _jinja_envs[theme]
+
+
+def render_template(name: str, theme: str = "default", **context) -> str:
+    """Render a template with the given context.
+
+    Args:
+        name: Template name (e.g., "index.html", "admin/dashboard.html")
+        theme: Theme to use for template lookup (default: "default")
+        **context: Template context variables
+
+    Returns:
+        Rendered template as string.
+    """
+    env = get_jinja_env(theme)
+    template = env.get_template(name)
     return template.render(**context)
 
 
@@ -1788,1514 +2376,777 @@ TEMPLATE_FEEDS_OPML = "feeds.opml"
 # =============================================================================
 
 THEME_CSS = {
-    "planet-python": """/* Planet Python Theme - EXACT recreation of planetpython.org */
-/* Source: https://github.com/python/planet/blob/main/static/styles/styles.css */
-/* Key features: LEFT sidebar, Georgia headings, #366D9C blue, minimal styling */
+    "planet-python": """/* Planet Python Theme - Using ORIGINAL selectors from planetpython.org */
+/* Source: https://planetpython.org/static/styles/styles.css */
 
-* {
-    box-sizing: border-box;
-}
-
-HTML, body {
-    margin: 0;
-    padding: 0;
-    font-family: Arial, Verdana, Geneva, "Bitstream Vera Sans", Helvetica, sans-serif;
-    font-size: 103%;
-    color: #000;
-    background-color: #FFF;
+/* Main Styles for HTML Elements */
+HTML, BODY {
+  margin: 0;
+  padding: 0;
+  font-family: Arial, Verdana, Geneva, "Bitstream Vera Sans", Helvetica, sans-serif;
+  font-size: 103%;
+  color: #000;
+  background-color: #FFF;
 }
 
 IMG {
-    border: 0;
+  border: 0;
 }
 
-/* Headings - Georgia serif family */
-h1, h2, h3, h4, h5 {
-    font-family: Georgia, "Bitstream Vera Serif", "New York", Palatino, serif;
-    font-weight: normal;
-    line-height: 1em;
+H1, H2, H3, H4, H5 {
+  font-family: Georgia, "Bitstream Vera Serif", "New York", Palatino, serif;
+  font-weight: normal;
+  line-height: 1em;
 }
 
-h1 {
-    font-size: 160%;
-    color: #234764;
-    margin: 0.7em 0;
-    text-decoration: none;
+H1 {
+  font-size: 160%;
+  color: #234764;
+  margin: 0.7em 0 0.7em 0;
+  text-decoration: none;
 }
 
-h1 a {
-    color: #234764;
-    text-decoration: none;
+H1 A {
+  color: #234764;
+  text-decoration: none;
 }
 
-h2 {
-    font-size: 140%;
-    color: #366D9C;
-    margin: 0.7em 0;
+H2 {
+  font-size: 140%;
+  color: #366D9C;
+  margin: 0.7em 0 0.7em 0;
 }
 
-h3 {
-    font-size: 135%;
-    font-style: italic;
-    color: #366D9C;
-    margin: 0.4em 0 0 0;
+H3 {
+  font-size: 135%;
+  font-style: italic;
+  color: #366D9C;
+  margin: 0.4em 0 0.0em 0;
 }
 
-h4 {
-    font-size: 125%;
-    color: #366D9C;
-    margin: 0.4em 0 0 0;
+H4 {
+  font-size: 125%;
+  color: #366D9C;
+  margin: 0.4em 0 0.0em 0;
 }
 
-/* Links - Python.org style */
+/* Links */
 a:link {
-    color: #00A;
-    text-decoration: none;
+  color: #00A;
+  text-decoration: none;
 }
 
 a:visited {
-    color: #551A8B;
-    text-decoration: none;
+  color: #551A8B;
+  text-decoration: none;
 }
 
 a:hover {
-    color: #00A;
-    text-decoration: underline;
+  color: #00A;
+  text-decoration: underline;
 }
 
-/* Logo Header - Exact python.org style */
-header {
-    border: 0;
-    margin: 0;
-    padding: 1px;
-    z-index: 1;
-    background-color: #F7F7F7;
-    background-repeat: repeat-x;
-    border-bottom: 1px solid #999999;
-    height: 84px;
+/* Logo Header - ORIGINAL selector */
+#logoheader {
+  border: 0;
+  margin: 0;
+  padding: 1px;
+  z-index: 1;
+  background-color: #F7F7F7;
+  background-repeat: repeat-x;
+  border-bottom: 1px solid #999999;
+  height: 84px;
 }
 
-header .logo-link {
-    display: block;
+#logo {
+  width: 211px;
+  height: 71px;
+  margin-top: 10px;
+  margin-left: 3%;
 }
 
-header .logo {
-    width: 211px;
-    height: 71px;
-    margin-top: 10px;
-    margin-left: 3%;
-    border: 0;
+/* Main content section - ORIGINAL selectors */
+#content-body {
+  position: absolute;
+  left: 0;
+  top: 63px;
+  width: 93.9%;
+  z-index: 0;
+  font-size: 75%;
+  margin-left: 3.0%;
+  min-width: 660px;
 }
 
-header .header-text {
-    display: none; /* Original site shows logo only */
+#body-main {
+  padding: 0 0.55em 40px 0.0em;
+  line-height: 1.4em;
+  font-family: Arial, Verdana, Geneva, "Bitstream Vera Sans", Helvetica, sans-serif;
+  margin-left: 19em;
+  font-size: 100%;
 }
 
-header h1,
-header p {
-    display: none; /* Hide text header - logo only */
+/* Left Hand Navigation - ORIGINAL selectors */
+#left-hand-navigation {
+  position: absolute;
+  left: 3%;
+  z-index: 1;
+  top: 110px;
 }
 
-/* Container - LEFT sidebar layout */
-.container {
-    position: relative;
-    width: 93.9%;
-    margin-left: 3.0%;
-    font-size: 75%;
-    min-width: 660px;
-    display: flex;
-    flex-direction: row;
-    padding-top: 20px;
+#menu {
+  padding: 0;
+  margin-bottom: 5px;
+  width: 16em;
+  font-size: 75%;
 }
 
-/* Sidebar - Left position - #menu in original */
-.sidebar {
-    width: 16em;
-    flex-shrink: 0;
-    order: -1; /* Force left side */
-    padding: 0;
-    margin: 0;
-    font-size: 75%; /* Original #menu font-size: 75% */
+#menu ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 
-.sidebar h2 {
-    font-family: Arial, Verdana, Geneva, "Bitstream Vera Sans", Helvetica, sans-serif;
-    font-size: 77%;
-    font-weight: bold;
-    color: #4C5B6B;
-    padding: 0.4em 0 0 1.5em;
-    margin: 0.2em 0 0.3em 0;
-    background: none;
-    border: none;
-    text-transform: none;
+#menu li {
+  display: inline;
 }
 
-.sidebar h2 a {
-    color: #4C5B6B;
-    text-decoration: none;
-    font-weight: bold;
+#menu ul.level-one a {
+  display: block;
+  border: 1px solid #DADADA;
+  padding: 2px 2px 2px 4px;
+  margin: 0 0 4px 1.4em;
+  width: 12em;
+  font-family: Verdana, Geneva, "Bitstream Vera Sans", Helvetica, sans-serif;
+  color: #4B5A6A;
+  background-color: #F5F5F5;
+  text-transform: uppercase;
+  text-decoration: none;
 }
 
-.sidebar h2 a:hover {
-    color: black;
-    text-decoration: underline;
+#menu ul.level-one a:hover {
+  color: black;
+  text-decoration: underline;
 }
 
-/* Sidebar links (RSS, titles-only) */
-.sidebar-links {
-    margin-bottom: 1em;
-    padding-left: 1.5em;
-    font-size: 100%;
+#menu ul.level-two li:first-child a {
+  border-top: 0;
 }
 
-.sidebar-links a {
-    margin-right: 10px;
-    color: #00A;
+#menu ul.level-two a {
+  background-image: none;
+  background-color: transparent;
+  display: block;
+  border: 0;
+  border-top: 1px solid #DDD;
+  padding: 0.1em;
+  margin: 0 3em 0px 1.5em;
+  color: #3C4B7B;
+  background: none;
+  width: 11em;
+  font-family: Arial, Verdana, Geneva, "Bitstream Vera Sans", Helvetica, sans-serif;
+  text-transform: none;
+  text-decoration: none;
 }
 
-.sidebar-links a:visited {
-    color: #551A8B;
+#menu ul.level-two a:hover {
+  text-decoration: underline;
+  color: black;
 }
 
-/* Search form - hide for authenticity */
-.search-form {
-    display: none;
+#menu ul.level-two a:visited {
+  color: #4C3B5B;
 }
 
-/* Feeds list - Menu style with borders */
-.feeds {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    font-size: 100%;
+#menu h4 {
+  font-family: Arial, Verdana, Geneva, "Bitstream Vera Sans", Helvetica, sans-serif;
+  font-size: 77%;
+  font-weight: bold;
+  color: #4C5B6B;
+  padding: 0.4em 0 0 1.5em;
+  margin: 0.2em 0 0.3em 0;
+  background: none;
+  border: none;
+  text-transform: none;
 }
 
-.feeds li {
-    display: inline;
+#menu h4 a {
+  color: #4C5B6B;
+  text-decoration: none;
+  font-weight: bold;
 }
 
-.feeds li a {
-    display: block;
-    border: 1px solid #DADADA;
-    padding: 2px 2px 2px 4px;
-    margin: 0 0 4px 1.4em;
-    width: 12em;
-    font-family: Verdana, Geneva, "Bitstream Vera Sans", Helvetica, sans-serif;
-    color: #4B5A6A;
-    background-color: #F5F5F5;
-    text-transform: uppercase;
-    text-decoration: none;
-    font-size: 100%;
+#menu h4 a:hover {
+  color: black;
+  text-decoration: underline;
 }
 
-.feeds li a:hover {
-    color: black;
-    text-decoration: underline;
+/* Page heading */
+.pageheading {
+  font-size: 145%;
 }
 
-/* Remove health indicators - not in original */
-.feeds li.healthy::before,
-.feeds li.unhealthy::before {
-    display: none;
-    content: none;
+/* Post styles */
+h3.post a {
+  color: #00A;
+  text-decoration: none;
 }
 
-/* RSS icon in sidebar - hide for authenticity */
-.feeds li .feed-icon {
-    display: none;
+h3.post a:visited {
+  color: #551A8B;
 }
 
-/* Submission link */
-.submission-link {
-    margin-top: 1em;
-    padding-left: 1.5em;
-    font-size: 100%;
-    border: none;
-}
-
-.submission-link a {
-    color: #00A;
-}
-
-/* Navigation sections - Level hierarchy */
-.nav-level-one,
-h2.nav-level-one {
-    font-family: Arial, Verdana, Geneva, "Bitstream Vera Sans", Helvetica, sans-serif;
-    font-size: 77%;
-    font-weight: bold;
-    color: #4C5B6B;
-    padding: 0.4em 0 0 1.5em;
-    margin: 0.2em 0 0.3em 0;
-    background: none;
-    border: none;
-    text-transform: none;
-}
-
-.nav-level-two,
-ul.nav-level-two,
-.related-links {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    margin-bottom: 7px;
-}
-
-.nav-level-two li,
-.related-links li {
-    display: inline;
-}
-
-.nav-level-two li a,
-.related-links li a {
-    background-color: transparent;
-    display: block;
-    border: 0;
-    border-top: 1px solid #DDD;
-    padding: 0.1em;
-    margin: 0 3em 0px 1.5em;
-    color: #3C4B7B;
-    background: none;
-    width: 11em;
-    font-family: Arial, Verdana, Geneva, "Bitstream Vera Sans", Helvetica, sans-serif;
-    text-transform: none;
-    text-decoration: none;
-}
-
-.nav-level-two li a:hover,
-.related-links li a:hover {
-    text-decoration: underline;
-    color: black;
-}
-
-.nav-level-two li a:visited,
-.related-links li a:visited {
-    color: #4C3B5B;
-}
-
-.nav-level-three,
-li.nav-level-three {
-    margin-left: 0;
-}
-
-.nav-level-three a {
-    display: block;
-    border: 0;
-    padding: 0.1em;
-    margin: 0 3em 0px 1.8em;
-    padding-left: 1em;
-    color: #5E72A5;
-    background-image: none;
-    width: 10em;
-    font-family: Arial, Verdana, Geneva, "Bitstream Vera Sans", Helvetica, sans-serif;
-    font-size: 95%;
-}
-
-.nav-level-three a:hover {
-    text-decoration: underline;
-    color: black;
-}
-
-/* Main content area - #body-main in original */
-main {
-    padding: 0 0.55em 40px 0;
-    line-height: 1.4em;
-    font-family: Arial, Verdana, Geneva, "Bitstream Vera Sans", Helvetica, sans-serif;
-    margin-left: 3em; /* Original uses margin-left: 19em but we use flex layout */
-    flex: 1;
-    min-width: 0;
-    font-size: 100%;
-}
-
-/* Day headers */
-.day {
-    margin-bottom: 1.5em;
-}
-
-.day h2 {
-    font-size: 140%;
-    font-weight: normal;
-    margin-bottom: 0.5em;
-    padding: 0;
-    border: none;
-}
-
-.day h2.date {
-    font-family: Georgia, "Bitstream Vera Serif", "New York", Palatino, serif;
-    font-size: 140%;
-    color: #366D9C;
-    font-weight: normal;
-    font-style: normal;
-}
-
-/* Articles */
-article {
-    margin-bottom: 1.5em;
-    padding-bottom: 1em;
-    border-bottom: none;
-}
-
-article h3 {
-    font-family: Georgia, "Bitstream Vera Serif", "New York", Palatino, serif;
-    font-size: 135%;
-    font-weight: normal;
-    font-style: italic;
-    color: #366D9C;
-    margin: 0.4em 0 0 0;
-}
-
-article h3 a {
-    color: #00A;
-    text-decoration: none;
-}
-
-article h3 a:visited {
-    color: #551A8B;
-}
-
-article h3 a:hover {
-    text-decoration: underline;
-}
-
-/* Article header reset */
-article header {
-    background: transparent;
-    border: none;
-    height: auto;
-    min-height: auto;
-    padding: 0;
-    display: block;
-}
-
-/* Author/meta information */
-.meta {
-    font-size: 100%;
-    color: #000;
-    margin-bottom: 0.5em;
-}
-
-.meta .author {
-    color: #000;
-    font-weight: normal;
-}
-
-.meta .author a {
-    color: #00A;
-}
-
-.meta .date-sep {
-    margin: 0 3px;
-}
-
-/* Content area */
-.content {
-    font-size: 100%;
-    line-height: 1.4em;
-    color: #000;
-}
-
-.content p {
-    margin: 0 0 1em 0;
-}
-
-.content p:last-child {
-    margin-bottom: 0;
-}
-
-.content img {
-    max-width: 100%;
-    height: auto;
-    border: 0;
-}
-
-.content a:link {
-    color: #00A;
-    text-decoration: none;
-}
-
-.content a:visited {
-    color: #551A8B;
-    text-decoration: none;
-}
-
-.content a:hover {
-    text-decoration: underline;
-}
-
-.content ul, .content ol {
-    margin-left: 1em;
-    padding-left: 0;
-}
-
-.content li {
-    margin-bottom: 0.3em;
-}
-
-.content code {
-    font-family: "Courier New", Courier, monospace;
-    font-size: 100%;
-}
-
-.content pre {
-    font-family: "Courier New", Courier, monospace;
-    font-size: 115%;
-    background: #E0E0FF;
-    padding: 10px;
-    overflow-x: auto;
-    margin: 1em 0;
-}
-
-.content pre code {
-    background: transparent;
-    padding: 0;
-}
-
-.content blockquote {
-    margin-left: 1em;
-    padding-left: 1em;
-    border-left: 1px solid #CCC;
-}
-
-.content table {
-    border-collapse: collapse;
-    margin: 1em 0;
-}
-
-.content th, .content td {
-    border: 1px solid #DADADA;
-    padding: 5px;
+h3.post a:hover {
+  text-decoration: underline;
 }
 
 /* Footer */
-footer {
-    margin: 3em 0 0 0;
-    padding: 1em 0;
-    border-top: 1px dotted #CCC;
-    bottom: 0;
-    font-size: 90%;
-    position: relative;
-    clear: both;
-    background: #FFF;
-    text-align: center;
-    color: #000;
+#footer {
+  margin: 3em 0 0 0;
+  padding: 1em 0;
+  border-top: 1px dotted #CCC;
+  bottom: 0;
+  font-size: 90%;
+  position: relative;
+  clear: both;
+  background: #FFF;
+  text-align: center;
+  color: #000;
 }
 
-footer a:visited, footer a:link {
-    color: #666;
-    display: inline;
+#footer a:visited, #footer a:link {
+  color: #666;
+  display: inline;
 }
 
-footer a:hover {
-    color: #333;
-    display: inline;
+#footer a:hover {
+  color: #333;
+  display: inline;
 }
 
-footer p {
-    margin: 0.5em 0;
+#footer p {
+  margin: 0.5em 0;
 }
 
-footer kbd {
-    font-family: "Courier New", Courier, monospace;
-    font-size: 100%;
-}
-
-/* Horizontal rule separators */
+/* Horizontal rule */
 hr {
-    border: none;
-    border-top: 1px solid #DADADA;
-    margin: 1em 0;
+  border: none;
+  border-top: 1px solid #DADADA;
+  margin: 1em 0;
 }
 
-/* Keyboard shortcuts panel */
-.shortcuts-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 999;
-}
-
-.shortcuts-backdrop.hidden {
-    display: none;
-}
-
-.shortcuts-panel {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: #FFF;
-    border: 1px solid #000;
-    padding: 15px;
-    z-index: 1000;
-    min-width: 250px;
-}
-
-.shortcuts-panel.hidden {
-    display: none;
-}
-
-.shortcuts-panel h3 {
-    font-size: 14px;
-    font-weight: bold;
-    margin-bottom: 10px;
-    padding-bottom: 5px;
-    border-bottom: 1px solid #DADADA;
-    font-style: normal;
-}
-
-.shortcuts-panel dl {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 5px 10px;
-}
-
-.shortcuts-panel dt {
-    text-align: right;
-}
-
-.shortcuts-panel kbd {
-    font-family: "Courier New", Courier, monospace;
-    background: #f5f5f5;
-    border: 1px solid #DADADA;
-    padding: 2px 5px;
-}
-
-.shortcuts-panel .close-btn {
-    margin-top: 10px;
-    background: #f5f5f5;
-    border: 1px solid #999999;
-    padding: 5px 10px;
-    cursor: pointer;
-}
-
-.shortcuts-panel .close-btn:hover {
-    background: #e5e5e5;
-}
-
-/* Responsive - Stack on small screens */
-@media (max-width: 700px) {
-    .container {
-        flex-direction: column;
-        width: 95%;
-        margin-left: 2.5%;
-        min-width: auto;
-    }
-
-    .sidebar {
-        width: 100%;
-        order: 1;
-        margin-top: 2em;
-        border-top: 1px solid #DADADA;
-        padding-top: 1em;
-    }
-
-    main {
-        margin-left: 0;
-    }
-
-    header .logo {
-        max-width: 150px;
-        height: auto;
-    }
-}
-
-/* Titles-only page styles */
-.titles-only .view-toggle {
-    margin-bottom: 1em;
-    padding-left: 1.5em;
-}
-
-.titles-only .day {
-    margin-bottom: 1em;
-}
-
-.titles-only h3.post {
-    font-family: Georgia, "Bitstream Vera Serif", serif;
-    font-size: 135%;
-    font-style: italic;
-    color: #366D9C;
-    margin-top: 0.5em;
-    margin-bottom: 3px;
-}
-
-.titles-only h4.entry-title {
-    font-size: 100%;
-    font-weight: normal;
-    margin: 3px 0;
-}
-
-.titles-only h4.entry-title a {
-    color: #00A;
-}
-
-.titles-only p.entry-meta {
-    font-size: 100%;
-    color: #000;
-    margin: 0 0 0.5em 0;
-}
-
-/* Print styles */
-@media print {
-    .sidebar, .search-form, footer {
-        display: none;
-    }
-
-    .container {
-        display: block;
-    }
-
-    header {
-        border-bottom: 1px solid black;
-    }
-
-    article {
-        page-break-inside: avoid;
-    }
-}
-""",
-    "planet-mozilla": """/* Planet Mozilla Theme - EXACT recreation of planet.mozilla.org */
-/* Key features: RIGHT sidebar, #455372 dark header, #148cb5 teal links, square bullets */
-
-* {
-    box-sizing: border-box;
-    line-height: 1.4; /* Original: line-height: 1.4 on * */
-    padding: 0;
-}
-
-ul, ol {
-    padding-left: 22px; /* Original: padding-left: 22px */
-}
-
-body {
-    font-family: Helvetica, Arial, Verdana, sans-serif;
-    font-size: 13px;
-    line-height: 1.4;
-    color: #000;
-    background: #fff url('/static/img/background.jpg') no-repeat -95px top;
-    margin: 0;
-    padding: 0;
-}
-
-/* Links - Mozilla teal/purple scheme */
-a:link {
-    color: #148cb5;
-    text-decoration: none;
-}
-
-a:visited {
-    color: #636;
-}
-
-a:hover {
-    text-decoration: underline !important;
-    color: #148cb5 !important;
-}
-
-a:active {
-    color: #000;
-}
-
-/* Headings */
-h1 {
-    font-family: Helvetica, Arial, sans-serif;
-    font-size: 24px;
-    font-weight: normal;
-    letter-spacing: -2px;
-    text-transform: lowercase;
-    color: white;
-    margin: 0;
-    padding: 0;
-}
-
-h2 {
-    font-family: Georgia, Times, "Times New Roman", serif;
-    font-size: 1.75em;
-    font-weight: normal;
-    color: #b72822;
-    margin-bottom: 0; /* Original: margin-bottom: 0 */
-}
-
-h3 {
-    font-family: Helvetica, Arial, sans-serif;
-    font-size: 120%;
-    font-weight: bold;
-    margin-top: 10px; /* Original: margin-top: 10px */
-    border-bottom: 1px solid #ccc;
-}
-
-h3 a {
-    text-decoration: none;
-    color: black;
-}
-
-h4 {
-    font-family: Helvetica, Arial, sans-serif;
-    font-size: 100%;
-    font-weight: bold;
-    margin: 0 0 0 15px;
-    clear: both;
-    border-bottom: 1px solid #ccc;
-}
-
-/* Mozilla "Looking For" Navigation Bar at top */
-.mozilla-nav {
-    background: transparent;
-    padding: 0 0 10px 0;
-    font-family: "Trebuchet MS", sans-serif;
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    border-bottom: none;
-    margin-bottom: 10px;
-}
-
-.mozilla-nav-inner {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-}
-
-.mozilla-nav-label {
-    color: #666;
-    font-weight: bold;
-}
-
-.mozilla-nav a {
-    color: #148cb5;
-    text-decoration: none;
-}
-
-.mozilla-nav a:visited {
-    color: #636;
-}
-
-.mozilla-nav a:hover {
-    text-decoration: underline !important;
-    color: #148cb5 !important;
-}
-
-/* Header - Dark slate blue banner with background image */
-header {
-    background: #455372 url('/static/img/header-bg.jpg') repeat-x;
-    padding: 20px;
-    border-bottom: none;
-    border-radius: 0;
-    margin-bottom: 1em;
-}
-
-header .logo-link {
-    display: inline-block;
-}
-
-header .logo {
-    height: 30px;
-    width: auto;
-
-}
-
-header .header-text {
-    display: block;
-}
-
-header h1 {
-    font-size: 24px;
-    font-weight: normal;
-    letter-spacing: -2px;
-    text-transform: lowercase;
-    margin: 0;
-    padding: 0;
-    background: transparent;
-    display: inline;
-}
-
-header h1 a {
-    color: #fff;
-    text-decoration: none;
-}
-
-header h1 a:hover {
-    color: #ccc;
-    text-decoration: none !important;
-}
-
-header p {
-    display: none; /* Hide description in header */
-}
-
-/* Container Layout - Content with right margin for sidebar */
-.container {
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: row;
-    gap: 20px;
-}
-
-/* Main content wrapper - .main-content in original */
-.main-content {
-    margin-left: 116px; /* Original: margin-left: 116px */
-    margin-right: 260px; /* Original: margin-right: 260px */
-}
-
-/* Main content area - Takes most space, leaves room for sidebar */
-main {
-    flex: 1;
-    min-width: 0;
-    margin-right: 0;
-}
-
-/* Sidebar - HIDDEN for Mozilla (original has no sidebar) */
-.sidebar {
-    display: none; /* Original Planet Mozilla has single-column layout */
-}
-
-.sidebar h2 {
-    font-family: Helvetica, Arial, sans-serif;
-    font-size: 150%;
-    font-weight: bold;
-    color: black;
-    border-bottom: none;
-    padding-left: 5px;
-    margin-left: 0;
-    margin-top: 0;
-}
-
-/* Sidebar links */
-.sidebar-links {
-    margin-bottom: 1em;
-    font-size: 100%;
-    padding-left: 5px;
-}
-
-.sidebar-links a {
-    margin-right: 10px;
-    color: #148cb5;
-}
-
-.sidebar-links a:visited {
-    color: #636;
-}
-
-/* Search form - Mozilla style with rounded corners */
-.search-form {
-    margin-bottom: 1.5em;
-    padding: 10px;
-    margin-left: 20px;
-    background: #e4ecec;
-    -moz-border-radius: 1em;
-    -webkit-border-radius: 1em;
-    border-radius: 1em;
-}
-
-.search-form .search-label {
-    display: block;
-    font-weight: bold;
-    margin-bottom: 5px;
-    font-size: 12px;
-}
-
-.search-form input {
-    width: 100%;
-    padding: 5px;
-    border: 1px solid #ccc;
-    font-size: 12px;
-    margin-bottom: 5px;
-}
-
-.search-form input:focus {
-    outline: 1px solid #148cb5;
-    border-color: #148cb5;
-}
-
-.search-form button {
-    padding: 5px 10px;
-    background: #f5f5f5;
-    border: 1px solid #ccc;
-    cursor: pointer;
-    font-size: 11px;
-}
-
-.search-form button:hover {
-    background: #e5e5e5;
-}
-
-/* Sidebar boxes - Mozilla style with rounded corners */
-.sidebar > div,
-.sidebar .sidebar-section {
-    padding: 10px;
-    margin-top: 0;
-    margin-right: 0;
-    margin-left: 20px;
-    margin-bottom: 10px;
-    background: transparent;
-    -moz-border-radius: 1em;
-    -webkit-border-radius: 1em;
-    border-radius: 1em;
-}
-
-/* Feeds list - Square bullets like original */
-.feeds {
-    list-style-type: square;
-    padding-left: 2em;
-    margin-left: 0;
-    font-size: 11px;
-}
-
-.feeds li {
-    padding: 2px 0;
-    border-bottom: none;
-}
-
-.feeds li:hover {
-    color: grey;
-}
-
-/* Remove health indicators */
-.feeds li.healthy::before,
-.feeds li.unhealthy::before {
-    display: none;
-    content: none;
-}
-
-.feeds li a {
-    color: #148cb5;
-}
-
-.feeds li a:visited {
-    color: #636;
-}
-
-/* Hide RSS icon */
-.feeds li .feed-icon {
-    display: none;
-}
-
-/* Submission link */
-.submission-link {
-    margin-top: 1em;
-    font-size: 11px;
-    padding: 0 5px;
-    border: none;
-}
-
-.submission-link a {
-    color: #148cb5;
-}
-
-/* Navigation sections */
-.nav-level-one,
-h2.nav-level-one {
-    font-family: Helvetica, Arial, sans-serif;
-    font-size: 150%;
-    font-weight: bold;
-    color: black;
-    border-bottom: none;
-    padding-left: 5px;
-    margin-left: 0;
-    margin-top: 1em;
-    margin-bottom: 0.5em;
-    background: none;
-    text-transform: none;
-}
-
-.nav-level-two,
-ul.nav-level-two,
-.related-links {
-    list-style-type: square;
-    padding-left: 2em;
-    margin-left: 0;
-    font-size: 11px;
-}
-
-.nav-level-two li,
-.related-links li {
-    padding: 2px 0;
-    border-bottom: none;
-}
-
-.nav-level-two li:hover,
-.related-links li:hover {
-    color: grey;
-}
-
-.nav-level-three,
-li.nav-level-three {
-    margin-left: 0;
-}
-
-/* Day headers - Date grouping with bottom border */
-.day {
-    margin-bottom: 2em;
-}
-
-.day h2 {
-    font-family: Georgia, Times, "Times New Roman", serif;
-    font-size: 1.75em;
-    font-weight: normal;
-    color: #b72822;
-    border-bottom: 1px solid #ccc;
-    margin-bottom: 0.5em;
-    padding-bottom: 5px;
-}
-
-.day h2.date {
-    font-family: Georgia, Times, "Times New Roman", serif;
-    font-size: 1.75em;
-    color: #b72822;
-    font-weight: normal;
-}
-
-/* Articles / Entries - .entry in original */
-article,
-div.entry,
-.entry {
-    margin-left: 15px; /* Original: margin: 0 0 0 15px via .entry */
-}
-
-/* News styles from original */
-.news .permalink {
-    text-align: right; /* Original: text-align: right */
-}
-
-.news img {
-    max-width: 100% !important; /* Original: max-width: 100% !important */
-}
-
-article:last-child {
-    border-bottom: none;
-}
-
-article h3 {
-    font-family: Helvetica, Arial, sans-serif;
-    font-size: 120%;
-    font-weight: bold;
-    margin-bottom: 3px;
-    clear: both;
-    border-bottom: 1px solid #ccc;
-}
-
-article h3 a {
-    color: #148cb5;
-    text-decoration: none;
-}
-
-article h3 a:visited {
-    color: #636;
-}
-
-article h3 a:hover {
-    text-decoration: underline !important;
-}
-
-/* Article header reset */
-article header {
-    background: transparent;
-    border: none;
-    border-radius: 0;
-    min-height: auto;
-    padding: 0;
-    margin: 0;
-    display: block;
-}
-
-/* Author/meta information */
-.meta {
-    font-size: 11px;
-    color: #666;
-    margin-bottom: 0.5em;
-}
-
-.meta .author {
-    font-weight: bold;
-    color: #333;
-}
-
-.meta .author a {
-    color: #148cb5;
-}
-
-.meta .date-sep {
-    margin: 0 5px;
-    color: #999;
-}
-
-.entry .date {
-    margin-top: 0.5em;
-    text-align: right;
-}
-
-/* Content area */
+/* Content styles */
 .content {
-    font-size: 13px;
-    line-height: 1.6;
-    color: #000;
-}
-
-.content p {
-    margin: 0 0 1em 0;
-}
-
-.content p:first-child {
-    margin-top: 0;
-}
-
-.content p:last-child {
-    margin-bottom: 0;
+  font-size: 100%;
+  line-height: 1.4em;
 }
 
 .content img {
-    max-width: 100%;
-    height: auto;
-    margin: 0.5em 0;
-}
-
-.content img.face {
-    float: right;
-    margin-top: -3em;
-}
-
-.content a {
-    color: #148cb5;
-    text-decoration: none;
-}
-
-.content a:visited {
-    color: #636;
-}
-
-.content a:hover {
-    text-decoration: underline !important;
-    color: #148cb5 !important;
-}
-
-.content ul, .content ol {
-    margin: 0.5em 0 0.5em 2em;
-}
-
-.content li {
-    margin-bottom: 0.3em;
-}
-
-.content code {
-    font-family: Monaco, Consolas, "Courier New", monospace;
-    font-size: 12px;
-    background: #f5f5f5;
-    padding: 2px 4px;
+  max-width: 100%;
+  height: auto;
+  border: 0;
 }
 
 .content pre {
-    font-family: Monaco, Consolas, "Courier New", monospace;
-    font-size: 11px;
-    background: #f5f5f5;
-    border: 1px solid #ddd;
-    padding: 10px;
-    overflow-x: auto;
-    margin: 1em 0;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 115%;
+  background: #E0E0FF;
+  padding: 10px;
+  overflow-x: auto;
+  margin: 1em 0;
 }
 
-.content pre code {
-    background: transparent;
-    padding: 0;
+.content code {
+  font-family: "Courier New", Courier, monospace;
 }
 
 .content blockquote {
-    margin: 1em 0 1em 1em;
-    padding-left: 1em;
-    border-left: 3px solid #ccc;
-    color: #666;
-    font-style: italic;
-}
-
-.content table {
-    border-collapse: collapse;
-    margin: 1em 0;
-}
-
-.content th, .content td {
-    border: 1px solid #ddd;
-    padding: 5px 8px;
-}
-
-.content th {
-    background: #f5f5f5;
-}
-
-video {
-    max-width: 80%;
-    border: 1px solid lightgray;
-    border-radius: 10px;
-}
-
-/* Horizontal rules */
-hr {
-    height: 1px;
-    border: none;
-    color: #ccc;
-    background-color: #ccc;
-    margin: 2em auto;
-    width: 50%;
-}
-
-/* Footer - Dark background with texture, centered text */
-footer,
-#footer {
-    margin: 2em 0;
-    padding: 1em 0;
-    text-align: center;
-    clear: both;
-    margin-top: 1em;
-    margin-right: 0;
-    font-size: 11px;
-    color: #999999;
-    background: #2a2a2a url('/static/img/footer.jpg') repeat-x;
-    border-radius: 0;
-    border-top: none;
-}
-
-footer ul,
-#footer ul {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-}
-
-footer li,
-#footer li {
-    display: inline;
-    padding: 0 20px 0 0;
-    margin: 0;
-    white-space: nowrap;
-}
-
-footer p,
-#footer p {
-    color: #999;
-    margin: 0.6em 0;
-}
-
-footer a,
-#footer a {
-    color: #999;
-}
-
-footer a:hover,
-#footer a:hover {
-    color: #ccc;
-    text-decoration: underline !important;
-}
-
-footer span, footer a,
-#footer span, #footer a {
-    white-space: nowrap;
-    padding: 0 1em;
-}
-
-footer p span, footer p a,
-#footer p span, #footer p a {
-    white-space: nowrap;
-    padding: 0 0.3em;
-}
-
-footer span a,
-#footer span a {
-    padding: 0;
-}
-
-footer kbd {
-    font-family: Monaco, Consolas, "Courier New", monospace;
-    font-size: 11px;
-    background: #444;
-    color: #ccc;
-    border: 1px solid #666;
-    padding: 2px 4px;
-    border-radius: 2px;
+  margin-left: 1em;
+  padding-left: 1em;
+  border-left: 1px solid #CCC;
 }
 
 /* Keyboard shortcuts panel */
 .shortcuts-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 999;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
 }
 
 .shortcuts-backdrop.hidden {
-    display: none;
+  display: none;
 }
 
 .shortcuts-panel {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: #fff;
-    border: 1px solid #333;
-    padding: 20px;
-    z-index: 1000;
-    min-width: 280px;
-    -moz-border-radius: 12px;
-    -webkit-border-radius: 12px;
-    border-radius: 12px;
-    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #FFF;
+  border: 1px solid #000;
+  padding: 15px;
+  z-index: 1000;
+  min-width: 250px;
 }
 
 .shortcuts-panel.hidden {
-    display: none;
+  display: none;
 }
 
 .shortcuts-panel h3 {
-    font-size: 16px;
-    font-weight: bold;
-    margin-bottom: 15px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid #ddd;
+  font-size: 14px;
+  font-weight: bold;
+  margin-bottom: 10px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #DADADA;
+  font-style: normal;
 }
 
 .shortcuts-panel dl {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 8px 15px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 5px 10px;
 }
 
 .shortcuts-panel dt {
-    text-align: right;
+  text-align: right;
 }
 
 .shortcuts-panel kbd {
-    font-family: Monaco, Consolas, "Courier New", monospace;
-    font-size: 12px;
-    background: #f5f5f5;
-    border: 1px solid #ccc;
-    padding: 3px 6px;
-    border-radius: 2px;
+  font-family: "Courier New", Courier, monospace;
+  background: #f5f5f5;
+  border: 1px solid #DADADA;
+  padding: 2px 5px;
 }
 
 .shortcuts-panel .close-btn {
-    margin-top: 15px;
-    background: #455372;
-    color: #fff;
-    border: none;
-    padding: 8px 15px;
-    cursor: pointer;
-    -moz-border-radius: 6px;
-    -webkit-border-radius: 6px;
-    border-radius: 6px;
+  margin-top: 10px;
+  background: #f5f5f5;
+  border: 1px solid #999999;
+  padding: 5px 10px;
+  cursor: pointer;
 }
 
 .shortcuts-panel .close-btn:hover {
-    background: #374461;
-}
-
-/* Remove decorative elements from Mozilla header */
-.theme-mozilla header::after,
-.theme-mozilla header::before {
-    display: none;
+  background: #e5e5e5;
 }
 
 /* Responsive */
-@media (max-width: 768px) {
-    body {
-        margin: 10px;
-    }
+@media (max-width: 700px) {
+  #content-body {
+    position: relative;
+    top: 0;
+    width: 95%;
+    margin-left: 2.5%;
+    min-width: auto;
+  }
 
-    .container {
-        flex-direction: column;
-    }
+  #left-hand-navigation {
+    position: relative;
+    left: 0;
+    top: 0;
+  }
 
-    .sidebar {
-        width: 100%;
-        order: 1;
-        margin-top: 2em;
-        padding-top: 1em;
-        border-top: 1px solid #ccc;
-    }
+  #body-main {
+    margin-left: 0;
+  }
 
-    .sidebar > div,
-    .sidebar .sidebar-section,
-    .search-form {
-        margin-left: 0;
-    }
-
-    .mozilla-nav-inner {
-        justify-content: center;
-    }
-
-    header {
-        text-align: center;
-    }
-}
-
-@media (max-width: 480px) {
-    .mozilla-nav-label {
-        display: none;
-    }
-
-    header h1 {
-        font-size: 18px;
-    }
-}
-
-/* Titles-only page styles */
-.titles-only .view-toggle {
-    margin-bottom: 1em;
-    font-size: 12px;
-}
-
-.titles-only .day {
-    margin-bottom: 1.5em;
-}
-
-.titles-only h3.post {
-    font-size: 120%;
-    font-weight: bold;
-    margin-top: 0.5em;
-    margin-bottom: 3px;
-}
-
-.titles-only h4.entry-title {
-    font-size: 13px;
-    font-weight: normal;
-    margin: 3px 0;
-}
-
-.titles-only h4.entry-title a {
-    color: #148cb5;
-}
-
-.titles-only p.entry-meta {
-    font-size: 11px;
-    color: #666;
-    margin: 0 0 0.5em 0;
+  #logo {
+    max-width: 150px;
+    height: auto;
+  }
 }
 
 /* Print styles */
 @media print {
-    .sidebar, .search-form, footer, .mozilla-nav {
-        display: none;
-    }
+  #left-hand-navigation, #footer {
+    display: none;
+  }
 
-    .container {
-        display: block;
-    }
+  #content-body {
+    position: relative;
+  }
 
-    header {
-        background: white;
-        color: black;
-        border-bottom: 2px solid black;
-        border-radius: 0;
-    }
+  #body-main {
+    margin-left: 0;
+  }
+}
+""",
+    "planet-mozilla": """/* Planet Mozilla Theme - Using ORIGINAL selectors from planet.mozilla.org */
+/* Source: https://planet.mozilla.org/planet.css */
 
-    header h1, header h1 a {
-        color: black;
-    }
+* {
+  line-height: 1.4;
+  padding: 0;
+}
 
-    article {
-        page-break-inside: avoid;
-    }
+ul, ol {
+  padding-left: 22px;
+}
 
-    a {
-        color: black;
-    }
+body {
+  margin: 0;
+  padding: 0;
+  font-family: Helvetica, Arial, Verdana, sans-serif;
+  background: #fff url('/static/img/background.jpg') no-repeat scroll -95px top;
+  color: #000;
+}
+
+a {
+  color: #148cb5;
+  text-decoration: none;
+}
+
+a:hover {
+  color: #148cb5;
+  text-decoration: underline;
+}
+
+a:visited {
+  color: #636;
+}
+
+/* Header - ORIGINAL selectors */
+#header {
+  height: 101px;
+  background: url('/static/img/header-bg.jpg');
+}
+
+#header #dino {
+  background: url('/static/img/header-dino.jpg') no-repeat;
+  height: 101px;
+  width: 300px;
+}
+
+#header h1 {
+  padding: 0;
+  margin: 0;
+  background: transparent url('/static/img/logo.png') no-repeat 20px 35px;
+  z-index: 1;
+  height: 101px;
+}
+
+#header h1 a {
+  display: block;
+  text-indent: -9999px;
+  background: transparent url('/static/img/logo.png') no-repeat 20px 35px;
+  overflow: hidden;
+  width: 265px;
+  height: 101px;
+}
+
+/* Utility nav - ORIGINAL selectors */
+#utility {
+  font-family: "Trebuchet MS", sans-serif;
+  font-size: 62.5%;
+  margin: 0.8em 0 0.7em 30px;
+  text-align: right;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 3px 30px 0 0;
+}
+
+#utility * {
+  display: inline;
+}
+
+#utility p {
+  margin-right: -20px;
+}
+
+#utility strong {
+  color: #000;
+  font-size: 11px;
+}
+
+#utility ul {
+  margin-left: 10px;
+}
+
+#utility li {
+  background: transparent url('/static/img/bullet_utility.png') no-repeat 4px center;
+  padding-left: 16px;
+  font-size: 11px;
+}
+
+#utility li:first-child {
+  background: none;
+  padding: 0;
+}
+
+/* Main container - ORIGINAL selectors */
+.main-container {
+  display: flex;
+  gap: 16px;
+  margin: 0 auto;
+  max-width: 1200px;
+}
+
+.main-content {
+  flex-grow: 1;
+  max-width: 900px;
+}
+
+/* Headings */
+h2 {
+  font-family: Georgia, Times, "Times New Roman", serif;
+  font-weight: normal;
+  font-size: 1.75em;
+  color: #b72822;
+  margin-bottom: 0;
+}
+
+h3 {
+  margin-top: 10px;
+  border-bottom: 1px solid #ccc;
+}
+
+h3 a {
+  color: black;
+}
+
+h4 {
+  margin: 0 0 0 15px;
+  border-bottom: 1px solid #ccc;
+}
+
+h4 a {
+  color: black;
+}
+
+/* Entry styles */
+.entry {
+  margin-left: 15px;
+}
+
+.news .permalink {
+  text-align: right;
+}
+
+.news img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Footer - ORIGINAL selectors */
+#footer {
+  background-image: url('/static/img/footer.jpg');
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+#footer-content {
+  padding-top: 100px;
+}
+
+#footer-content p {
+  text-align: center;
+  padding: 5px;
+  background-color: #2a2a2a;
+  color: #999999;
+  font-size: 0.9em;
+}
+
+#footer-content a {
+  color: #999999;
+}
+
+#footer-content a:hover {
+  color: #ccc;
+}
+
+/* Sidebar - ORIGINAL selectors */
+.sidebar-content {
+  max-width: 300px;
+  font-size: 70%;
+}
+
+.sidebar-content .feeds,
+.sidebar-content .disclaimer {
+  padding-left: 15px;
+}
+
+.sidebar-content .feeds p {
+  padding: 0;
+  margin: 5px 0 0 0;
+}
+
+.sidebar-content .feeds ul {
+  padding-left: 10px;
+}
+
+.sidebar-content .feeds li {
+  margin: 0;
+  padding: 0px;
+  display: inline;
+}
+
+.sidebar-content .feeds li {
+  background-image: url('/static/img/feed-icon.png');
+  background-repeat: no-repeat;
+  background-position: 0 50%;
+  padding: 3px 10px 3px 15px;
+  margin: .4em 0;
+}
+
+.sidebar-content .feeds li.opml {
+  background-image: url('/static/img/opml-icon.png');
+  background-repeat: no-repeat;
+  background-position: 0 50%;
+  padding: 3px 10px 3px 15px;
+  margin: .4em 0;
+}
+
+.sidebar-content .main {
+  padding: 15px 0 0 15px;
+}
+
+.sidebar-content .main ul.planets {
+  list-style-image: url('/static/img/world.png');
+  padding-left: 35px;
+}
+
+.sidebar-content .main ul.planets li {
+  font-size: 1.3em;
+}
+
+.sidebar-content h2 {
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 1.2em;
+  font-weight: bold;
+  color: black;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+}
+
+/* Search form */
+.search-form {
+  background: #e4ecec;
+  padding: 10px;
+  border-radius: 1em;
+  margin-bottom: 1em;
+}
+
+.search-form label {
+  display: block;
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.search-form input[type="search"] {
+  width: 100%;
+  padding: 5px;
+  margin: 5px 0;
+  border: 1px solid #ccc;
+}
+
+.search-form button {
+  padding: 5px 10px;
+}
+
+/* Video styles */
+video {
+  max-width: 80%;
+  border: 1px solid lightgray;
+  border-radius: 10px;
+}
+
+/* Keyboard shortcuts panel */
+.shortcuts-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+}
+
+.shortcuts-backdrop.hidden {
+  display: none;
+}
+
+.shortcuts-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  border: 1px solid #333;
+  padding: 20px;
+  z-index: 1000;
+  min-width: 280px;
+  border-radius: 12px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+}
+
+.shortcuts-panel.hidden {
+  display: none;
+}
+
+.shortcuts-panel h3 {
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #ddd;
+}
+
+.shortcuts-panel dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 15px;
+}
+
+.shortcuts-panel dt {
+  text-align: right;
+}
+
+.shortcuts-panel kbd {
+  font-family: Monaco, Consolas, "Courier New", monospace;
+  font-size: 12px;
+  background: #f5f5f5;
+  border: 1px solid #ccc;
+  padding: 3px 6px;
+  border-radius: 2px;
+}
+
+.shortcuts-panel .close-btn {
+  margin-top: 15px;
+  background: #455372;
+  color: #fff;
+  border: none;
+  padding: 8px 15px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.shortcuts-panel .close-btn:hover {
+  background: #374461;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .main-container {
+    flex-direction: column;
+    margin: 16px;
+  }
+  .main-content,
+  .sidebar-content {
+    min-width: 100%;
+    max-width: 100%;
+  }
+}
+
+/* Print styles */
+@media print {
+  #utility, .sidebar-content, #footer {
+    display: none;
+  }
+  .main-container {
+    display: block;
+  }
+  #header {
+    background: white;
+  }
 }
 """,
 }

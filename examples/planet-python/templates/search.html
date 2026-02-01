@@ -1,0 +1,65 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>Search Results - {{ planet.name }}</title>
+    <link rel="stylesheet" type="text/css" href="/static/style.css" />
+    <link rel="icon" href="/static/favicon.ico" sizes="32x32" />
+</head>
+<body>
+    <!-- Logo -->
+    <h1 id="logoheader">
+        <a href="/" id="logolink" accesskey="1">
+            {% if logo %}
+            <img id="logo" src="{{ logo.url }}" alt="{{ logo.alt }}" />
+            {% else %}
+            {{ planet.name }}
+            {% endif %}
+        </a>
+    </h1>
+
+    <div id="content-body">
+        <div id="body-main">
+            <h1 class="pageheading">Search Results</h1>
+            {% if error %}
+            <div class="search-error">
+                <p>{{ error }}</p>
+            </div>
+            {% else %}
+            <h2>Results for "{{ query }}"</h2>
+            {% if words_truncated %}
+            <p><em>Note: Your search was limited to the first {{ max_search_words }} words.</em></p>
+            {% endif %}
+            {% if results %}
+            <ul>
+                {% for entry in results %}
+                <li>
+                    <h4><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h4>
+                    <p><em>by {{ entry.display_author }}</em></p>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p>No results found for "{{ query }}"</p>
+            {% endif %}
+            {% endif %}
+        </div>
+
+        <div id="left-hand-navigation">
+            <div id="menu">
+                <form action="/search" method="get">
+                    <p style="margin-left: 1.5em;">
+                        <input type="text" name="q" value="{{ query }}" style="width: 10em;" />
+                        <input type="submit" value="Search" />
+                    </p>
+                </form>
+                <p style="margin-left: 1.5em;"><a href="/">Back to home</a></p>
+            </div>
+        </div>
+    </div>
+
+    <div id="footer">
+        <p><a href="/">Back to {{ planet.name }}</a></p>
+    </div>
+</body>
+</html>

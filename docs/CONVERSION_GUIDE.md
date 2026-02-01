@@ -266,6 +266,97 @@ Before declaring a conversion complete:
 
 ---
 
+## Manual Verification Checklist
+
+After deploying a converted site, manually verify these key aspects by comparing the original and converted sites side-by-side in browser windows.
+
+### Visual Layout
+
+**Logo and Header**
+- [ ] Logo displays in correct position (top-left, centered, etc.)
+- [ ] Logo is correct size (not stretched or squeezed)
+- [ ] Logo uses original file (not recreated/SVG substitute)
+- [ ] Header background color/image matches original
+- [ ] Header height matches original
+
+**Sidebar**
+- [ ] Sidebar position correct (left vs right vs none)
+- [ ] Sidebar width matches original proportionally
+- [ ] Sidebar background/border styling matches
+- [ ] "Subscriptions" heading style matches
+- [ ] Feed list bullet style matches (disc, square, custom)
+
+**Content Area**
+- [ ] Main content area margins match original
+- [ ] Date headers use same font family (Georgia, Helvetica, etc.)
+- [ ] Date headers use same color (#366D9C, #b72822, etc.)
+- [ ] Entry author headings styled correctly (italic, bold, etc.)
+- [ ] Entry title links styled correctly
+
+**Footer**
+- [ ] Footer background color/image matches
+- [ ] Footer text color matches
+- [ ] Footer positioning matches (fixed, relative)
+
+### Color Verification
+
+Use browser DevTools or a color picker to verify exact colors:
+
+| Element | Planet Python | Planet Mozilla |
+|---------|---------------|----------------|
+| Primary heading | #366D9C | #b72822 |
+| Links | #00A | #148cb5 |
+| Visited links | #551A8B | #636 |
+| Body text | #000 | #000 |
+| Header background | #F7F7F7 | #455372 |
+| Footer background | #FFF | #2a2a2a |
+
+### Font Verification
+
+| Element | Planet Python | Planet Mozilla |
+|---------|---------------|----------------|
+| Body text | Arial/Verdana | Helvetica/Arial |
+| Headings | Georgia (serif) | Helvetica (sans-serif) |
+| Date headers | Georgia, italic | Georgia, normal |
+| Sidebar text | Verdana | Helvetica |
+
+### Responsive Behavior
+
+- [ ] At 700px width, layout adjusts properly
+- [ ] At 480px width, layout remains usable
+- [ ] Logo scales appropriately on mobile
+- [ ] Sidebar moves below content on narrow screens
+
+### Functional Verification
+
+- [ ] RSS feed link works (`/feed.rss`)
+- [ ] Atom feed link works (`/feed.atom`)
+- [ ] OPML file accessible (`/feeds.opml`)
+- [ ] "Titles only" link works (if applicable)
+- [ ] Search form functions (if applicable)
+- [ ] All subscription links open in new tab or navigate correctly
+- [ ] Keyboard shortcuts work (j/k navigation, ? for help)
+
+### Browser Compatibility
+
+Test in at least two browsers:
+- [ ] Chrome/Edge: Layout renders correctly
+- [ ] Firefox: Layout renders correctly
+- [ ] Safari: Layout renders correctly (if available)
+
+### Common Visual Issues to Check
+
+| Issue | What to Look For | Fix |
+|-------|------------------|-----|
+| Logo wrong size | Stretched/squeezed appearance | Check width/height attributes |
+| Wrong sidebar | Left vs right placement | Check CSS `order` property |
+| Missing backgrounds | Solid color instead of image | Download and serve original images |
+| Wrong fonts | Sans-serif vs serif headings | Check CSS font-family |
+| Link colors off | Links look different | Check CSS link colors |
+| Spacing issues | Too much/too little margin | Compare with original CSS |
+
+---
+
 ## Technical Notes for Cloudflare Workers
 
 ### Binary Data Handling

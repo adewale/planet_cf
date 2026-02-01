@@ -11,19 +11,7 @@
     <link rel="alternate" type="application/atom+xml" title="{{ planet.name }} Atom Feed" href="{{ feed_links.atom or '/feed.atom' }}">
     <link rel="alternate" type="application/rss+xml" title="{{ planet.name }} RSS Feed" href="{{ feed_links.rss or '/feed.rss' }}">
 </head>
-<body{% if theme == 'planet-mozilla' %} class="theme-mozilla"{% endif %}>
-    {% if theme == 'planet-mozilla' %}
-    <nav class="mozilla-nav" aria-label="Mozilla corporate navigation">
-        <div class="mozilla-nav-inner">
-            <span class="mozilla-nav-label">Looking For:</span>
-            <a href="https://www.mozilla.org/">mozilla.org</a>
-            <a href="https://wiki.mozilla.org/">Wiki</a>
-            <a href="https://developer.mozilla.org/">Developer Center</a>
-            <a href="https://www.mozilla.org/firefox/">Firefox</a>
-            <a href="https://www.thunderbird.net/">Thunderbird</a>
-        </div>
-    </nav>
-    {% endif %}
+<body>
     <header>
         {% if logo %}
         <a href="/" class="logo-link">

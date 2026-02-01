@@ -1,0 +1,110 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>{{ planet.name }}</title>
+    <link rel="stylesheet" type="text/css" href="/static/style.css" />
+    <link rel="alternate" type="application/atom+xml" title="{{ planet.name }} Atom Feed" href="{{ feed_links.atom or '/feed.atom' }}" />
+    <link rel="alternate" type="application/rss+xml" title="{{ planet.name }} RSS Feed" href="{{ feed_links.rss or '/feed.rss' }}" />
+    <link rel="icon" href="/static/favicon.ico" sizes="32x32" />
+</head>
+<body>
+    <!-- Logo -->
+    <h1 id="logoheader">
+        <a href="/" id="logolink" accesskey="1">
+            {% if logo %}
+            <img id="logo" src="{{ logo.url }}" alt="{{ logo.alt }}" />
+            {% else %}
+            {{ planet.name }}
+            {% endif %}
+        </a>
+    </h1>
+
+    <div id="content-body">
+        <div id="body-main">
+            <h1 class="pageheading">{{ planet.name }}</h1>
+            <p>Last update: {{ generated_at }}</p>
+
+            {% for date, day_entries in entries_by_date.items() %}
+            <h2>{{ date }}</h2>
+            {% set current_author = namespace(value='') %}
+            {% for entry in day_entries %}
+                {% if entry.display_author != current_author.value %}
+                    {% set current_author.value = entry.display_author %}
+            <hr /><h3 class="post"><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}" title="{{ entry.display_author }}">{{ entry.display_author or 'Unknown' }}</a></h3>
+                {% endif %}
+            <h4><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h4>
+            <div class="content">{{ entry.content | safe }}</div>
+            {% endfor %}
+            {% else %}
+            <p>No entries yet.</p>
+            {% endfor %}
+        </div>
+
+        <div id="left-hand-navigation">
+            <div id="menu">
+                <ul class="level-one">
+                    <li>
+                        <ul class="level-two">
+                            <li><a href="{{ feed_links.rss or '/feed.rss' }}">RSS feed</a></li>
+                            {% if feed_links.titles_only %}<li><a href="{{ feed_links.titles_only }}">Titles Only</a></li>{% endif %}
+                        </ul>
+                    </li>
+                </ul>
+
+                {% if related_sites %}
+                {% for section in related_sites %}
+                <h4>{{ section.title }}</h4>
+                <ul class="level-two">
+                    {% for link in section.links %}
+                    <li><a href="{{ link.url }}">{{ link.name }}</a></li>
+                    {% endfor %}
+                </ul>
+                {% endfor %}
+                {% endif %}
+
+                <h4><a href="{{ feed_links.opml or '/feeds.opml' }}">Subscriptions</a></h4>
+                <ul class="level-two">
+                    {% for feed in feeds %}
+                    <li><a href="{{ feed.site_url or feed.url or '#' }}" title="{{ feed.title }}">{{ feed.title or 'Untitled' }}</a></li>
+                    {% else %}
+                    <li>No feeds configured</li>
+                    {% endfor %}
+                </ul>
+
+                {% if submission %}
+                <p style="margin-left: 1.5em;"><a href="{{ submission.url }}">{{ submission.text }}</a></p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div id="footer">
+        <p>
+            <a href="{{ feed_links.atom or '/feed.atom' }}">Atom</a> |
+            <a href="{{ feed_links.rss or '/feed.rss' }}">RSS</a> |
+            <a href="{{ feed_links.opml or '/feeds.opml' }}">OPML</a>
+        </p>
+        <p>{{ footer_text }}{% if show_admin_link %} | <a href="/admin">Admin</a>{% endif %}</p>
+    </div>
+
+    <!-- Keyboard shortcuts help panel -->
+    <div class="shortcuts-backdrop hidden" id="shortcuts-backdrop"></div>
+    <div class="shortcuts-panel hidden" id="shortcuts-panel" role="dialog" aria-labelledby="shortcuts-title" aria-modal="true">
+        <h3 id="shortcuts-title">Keyboard Shortcuts</h3>
+        <dl>
+            <dt><kbd>j</kbd></dt>
+            <dd>Next entry</dd>
+            <dt><kbd>k</kbd></dt>
+            <dd>Previous entry</dd>
+            <dt><kbd>?</kbd></dt>
+            <dd>Toggle this help</dd>
+            <dt><kbd>Esc</kbd></dt>
+            <dd>Close help</dd>
+        </dl>
+        <button type="button" class="close-btn" id="close-shortcuts">Close</button>
+    </div>
+
+    <script src="/static/keyboard-nav.js"></script>
+</body>
+</html>
