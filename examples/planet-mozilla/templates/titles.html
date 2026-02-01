@@ -6,7 +6,7 @@
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <link href="/static/style.css" rel="stylesheet" type="text/css"/>
-    <link href="/static/favicon.ico" rel="shortcut icon" type="image/x-icon"/>
+    <link href="/static/favicon.ico" rel="shortcut icon" type="image/png"/>
     <link rel="alternate" href="{{ feed_links.atom or '/feed.atom' }}" title="{{ planet.name }}" type="application/atom+xml"/>
 </head>
 <body>
@@ -16,60 +16,53 @@
             <li><a href="https://www.mozilla.org/">mozilla.org</a></li>
             <li><a href="https://wiki.mozilla.org/">Wiki</a></li>
             <li><a href="https://developer.mozilla.org/">Developer Center</a></li>
-            <li><a href="https://www.mozilla.org/firefox/">Firefox</a></li>
-            <li><a href="https://www.thunderbird.net/">Thunderbird</a></li>
+            <li><a href="http://www.firefox.com/">Firefox</a></li>
+            <li><a href="http://www.getthunderbird.com/">Thunderbird</a></li>
         </ul>
     </div>
-
     <div id="header">
         <div id="dino">
             <h1><a href="/" title="Back to home page">{{ planet.name }}</a></h1>
         </div>
     </div>
-
     <div class="main-container">
         <div class="main-content">
             <p><a href="/">View full content</a></p>
-
-            {% for date, day_entries in entries_by_date.items() %}
+{% for date, day_entries in entries_by_date.items() %}
             <h2><time datetime="{{ date }}">{{ date }}</time></h2>
-            {% set current_author = namespace(value='') %}
-            {% for entry in day_entries %}
-                {% if entry.display_author != current_author.value %}
-                    {% set current_author.value = entry.display_author %}
-            <h3><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}">{{ entry.display_author or 'Unknown' }}</a></h3>
-                {% endif %}
-            <h4><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h4>
-            <p><em>{% if entry.display_author %}by {{ entry.display_author }} at {% endif %}{{ entry.published_at_display }}</em></p>
-            {% endfor %}
-            {% else %}
+{% for entry in day_entries %}
+            <article class="news">
+                <h3><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}" title="{{ entry.display_author }}">{{ entry.display_author or 'Unknown' }}</a> — <a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
+                <div class="permalink"><a href="{{ entry.url or '#' }}">by {{ entry.display_author }} at <time datetime="{{ entry.published_at }}" title="GMT">{{ entry.published_at_display }}</time></a></div>
+            </article>
+{% endfor %}
+{% else %}
             <p>No entries yet.</p>
-            {% endfor %}
+{% endfor %}
         </div>
-
         <div class="sidebar-content">
             <div class="feeds">
                 <h2>Subscribe to Planet</h2>
                 <ul>
                     <li><a href="{{ feed_links.atom or '/feed.atom' }}">Atom</a></li>
                     <li><a href="{{ feed_links.rss or '/feed.rss' }}">RSS 2.0</a></li>
+                </ul>
+                <ul>
                     <li class="opml"><a href="{{ feed_links.opml or '/feeds.opml' }}">OPML</a></li>
                 </ul>
             </div>
-
             <div class="main">
                 <h2>Subscriptions</h2>
-                <ul class="planets">
-                    {% for feed in feeds %}
+                <ul class="subscriptions">
+{% for feed in feeds %}
                     <li><a href="{{ feed.site_url or feed.url or '#' }}">{{ feed.title or 'Untitled' }}</a></li>
-                    {% else %}
+{% else %}
                     <li>No feeds configured</li>
-                    {% endfor %}
+{% endfor %}
                 </ul>
             </div>
         </div>
     </div>
-
     <div id="footer">
         <div id="footer-content">
             <p>{{ footer_text }}{% if show_admin_link %} | <a href="/admin">Admin</a>{% endif %}</p>

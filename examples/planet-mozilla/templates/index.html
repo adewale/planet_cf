@@ -5,9 +5,14 @@
     <title>{{ planet.name }}</title>
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <meta name="description" content="{{ planet.description }}"/>
+    <meta name="generator" content="PlanetCF"/>
+    <meta name="description" content="{{ planet.description or 'Aggregated updates from the community.' }}"/>
+    <meta property="og:site_name" content="{{ planet.name }}"/>
+    <meta property="og:title" content="{{ planet.name }}"/>
+    <meta property="og:description" content="{{ planet.description or 'Aggregated updates from the community.' }}"/>
+    <meta name="twitter:card" content="summary_large_image"/>
     <link href="/static/style.css" rel="stylesheet" type="text/css"/>
-    <link href="/static/favicon.ico" rel="shortcut icon" type="image/x-icon"/>
+    <link href="/static/favicon.ico" rel="shortcut icon" type="image/png"/>
     <link rel="alternate" href="{{ feed_links.atom or '/feed.atom' }}" title="{{ planet.name }}" type="application/atom+xml"/>
 </head>
 <body>
@@ -17,42 +22,39 @@
             <li><a href="https://www.mozilla.org/">mozilla.org</a></li>
             <li><a href="https://wiki.mozilla.org/">Wiki</a></li>
             <li><a href="https://developer.mozilla.org/">Developer Center</a></li>
-            <li><a href="https://www.mozilla.org/firefox/">Firefox</a></li>
-            <li><a href="https://www.thunderbird.net/">Thunderbird</a></li>
+            <li><a href="http://www.firefox.com/">Firefox</a></li>
+            <li><a href="http://www.getthunderbird.com/">Thunderbird</a></li>
         </ul>
     </div>
-
     <div id="header">
         <div id="dino">
             <h1><a href="/" title="Back to home page">{{ planet.name }}</a></h1>
         </div>
     </div>
-
     <div class="main-container">
         <div class="main-content">
-            {% for date, day_entries in entries_by_date.items() %}
+{% for date, day_entries in entries_by_date.items() %}
             <h2><time datetime="{{ date }}">{{ date }}</time></h2>
-            {% for entry in day_entries %}
-            <article class="news {{ entry.display_author | lower | replace(' ', '-') }}">
+{% for entry in day_entries %}
+            <article class="news">
                 <h3><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}" title="{{ entry.display_author }}">{{ entry.display_author or 'Unknown' }}</a> — <a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
                 <div class="entry">
                     <div class="content">{{ entry.content | safe }}</div>
                 </div>
                 <div class="permalink"><a href="{{ entry.url or '#' }}">by {{ entry.display_author }} at <time datetime="{{ entry.published_at }}" title="GMT">{{ entry.published_at_display }}</time></a></div>
             </article>
-            {% endfor %}
-            {% else %}
+{% endfor %}
+{% else %}
             <p>No entries yet.</p>
-            {% endfor %}
+{% endfor %}
         </div>
-
         <div class="sidebar-content">
             <div class="disclaimer">
                 <h2>{{ planet.name }}</h2>
-                <p>Collected here are the most recent blog posts from the community.
-                   The content here is unfiltered and uncensored, and represents the views of individual community members.</p>
+                <p>Collected here are the most recent blog posts from all over the Mozilla community.
+                   The content here is unfiltered and uncensored, and represents the views of individual community members.
+                   Individual posts are owned by their authors -- see original source for licensing information.</p>
             </div>
-
             <div class="feeds">
                 <h2>Subscribe to Planet</h2>
                 <p>Feeds:</p>
@@ -60,73 +62,46 @@
                     <li><a href="{{ feed_links.atom or '/feed.atom' }}">Atom</a></li>
                     <li><a href="{{ feed_links.rss or '/feed.rss' }}">RSS 2.0</a></li>
                 </ul>
+                <p></p>
                 <p>Subscription list:</p>
                 <ul>
                     <li class="opml"><a href="{{ feed_links.opml or '/feeds.opml' }}">OPML</a></li>
                 </ul>
                 <p>Last update: <time datetime="{{ generated_at }}" title="GMT">{{ generated_at }}</time></p>
             </div>
-
             <div class="main">
-                {% if related_sites %}
-                {% for section in related_sites %}
-                <h2>{{ section.title }}</h2>
+                <h2>Other Planets</h2>
                 <ul class="planets">
-                    {% for link in section.links %}
-                    <li><a href="{{ link.url }}">{{ link.name }}</a></li>
-                    {% endfor %}
+                    <li><a href="https://planet.mozilla.org/projects/">Projects</a></li>
+                    <li><a href="https://planet.mozilla.org/participation/">Planet Participation</a></li>
+                    <li><a href="https://planet.mozilla.org/thunderbird/">Planet Thunderbird</a></li>
+                    <li><a href="https://quality.mozilla.org/">Planet QMO</a></li>
+                    <li><a href="https://planet.mozilla.org/ateam/">Planet Automation</a></li>
+                    <li><a href="https://planet.mozilla.org/research/">Mozilla Research</a></li>
                 </ul>
-                {% endfor %}
-                {% endif %}
-
-                {% if not is_lite_mode %}
                 <div id="sidebar">
                     <h2>Search</h2>
-                    <form action="/search" method="GET" class="search-form">
+                    <form action="/search" method="GET">
                         <input name="q" type="search" placeholder="Search..."/>
                         <button type="submit">Search</button>
                     </form>
                 </div>
-                {% endif %}
-
                 <h2>Subscriptions</h2>
                 <ul class="subscriptions">
-                    {% for feed in feeds %}
-                    <li><a href="{{ feed.site_url or feed.url or '#' }}" title="{{ feed.title }}">{{ feed.title or 'Untitled' }}</a></li>
-                    {% else %}
+{% for feed in feeds %}
+                    <li><a title="subscribe" href="{{ feed.url }}"><img src="/static/img/feed-icon-10x10.png" alt="(feed)"/></a> <a href="{{ feed.site_url or feed.url or '#' }}" title="{{ feed.title }}">{{ feed.title or 'Untitled' }}</a></li>
+{% else %}
                     <li>No feeds configured</li>
-                    {% endfor %}
+{% endfor %}
                 </ul>
             </div>
+            <div class="bottom"></div>
         </div>
     </div>
-
     <div id="footer">
         <div id="footer-content">
-            <p>
-                {{ footer_text }}
-                {% if show_admin_link %} | <a href="/admin">Admin</a>{% endif %}
-            </p>
+            <p>{{ footer_text }}{% if show_admin_link %} | <a href="/admin">Admin</a>{% endif %}</p>
         </div>
     </div>
-
-    <!-- Keyboard shortcuts help panel -->
-    <div class="shortcuts-backdrop hidden" id="shortcuts-backdrop"></div>
-    <div class="shortcuts-panel hidden" id="shortcuts-panel" role="dialog" aria-labelledby="shortcuts-title" aria-modal="true">
-        <h3 id="shortcuts-title">Keyboard Shortcuts</h3>
-        <dl>
-            <dt><kbd>j</kbd></dt>
-            <dd>Next entry</dd>
-            <dt><kbd>k</kbd></dt>
-            <dd>Previous entry</dd>
-            <dt><kbd>?</kbd></dt>
-            <dd>Toggle this help</dd>
-            <dt><kbd>Esc</kbd></dt>
-            <dd>Close help</dd>
-        </dl>
-        <button type="button" class="close-btn" id="close-shortcuts">Close</button>
-    </div>
-
-    <script src="/static/keyboard-nav.js"></script>
 </body>
 </html>

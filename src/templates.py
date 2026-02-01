@@ -645,255 +645,295 @@ _EMBEDDED_TEMPLATES = {
         "index.html": """<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
 <head>
-    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
-    <title>{{ planet.name }}</title>
-    <link rel="stylesheet" type="text/css" href="/static/style.css" />
-    <link rel="alternate" type="application/atom+xml" title="{{ planet.name }} Atom Feed" href="{{ feed_links.atom or '/feed.atom' }}" />
-    <link rel="alternate" type="application/rss+xml" title="{{ planet.name }} RSS Feed" href="{{ feed_links.rss or '/feed.rss' }}" />
-    <link rel="icon" href="/static/favicon.ico" sizes="32x32" />
+  <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+  <title>{{ planet.name }}</title>
+  <link rel="stylesheet" type="text/css" href="/static/style.css" />
+  <meta name="generator" content="PlanetCF" />
+  <meta name="keywords" content="Python weblog blog blogs blogger weblogger aggregator rss" />
+  <meta name="description" content="{{ planet.description or 'Recent postings from Python-related blogs.' }}" />
+  <link rel="alternate" type="application/rss+xml" title="RSS" href="{{ feed_links.rss or '/feed.rss' }}" />
+  <link rel="alternate" type="application/atom+xml" title="Atom" href="{{ feed_links.atom or '/feed.atom' }}" />
+  <link rel="icon" href="/static/favicon.ico" sizes="32x32" />
+  <style>
+    /* Make images responsive */
+    img {
+        border: 0;
+        height: auto;
+        max-width: 100%;
+        display: block;
+        padding-top: 5px;
+        padding-bottom: 35px;
+    }
+  </style>
 </head>
+
 <body>
-    <!-- Logo -->
-    <h1 id="logoheader">
-        <a href="/" id="logolink" accesskey="1">
-            {% if logo %}
-            <img id="logo" src="{{ logo.url }}" alt="{{ logo.alt }}" />
-            {% else %}
-            {{ planet.name }}
-            {% endif %}
-        </a>
-    </h1>
+  <!-- Logo -->
+  <h1 id="logoheader">
+    <a href="/" id="logolink" accesskey="1"><img id="logo"
+src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'homepage' }}" border="0" /></a>
+  </h1>
+  <!-- Skip to Navigation -->
+  <div class="skiptonav"><a href="#left-hand-navigation" accesskey="2"><img src="/static/images/trans.gif" id="skiptonav" alt="skip to navigation" border="0" /></a></div>
+  <div class="skiptonav"><a href="#content-body" accesskey="3"><img src="/static/images/trans.gif" id="skiptocontent" alt="skip to content" border="0" /></a></div>
 
-    <div id="content-body">
-        <div id="body-main">
-            <h1 class="pageheading">{{ planet.name }}</h1>
-            <p>Last update: {{ generated_at }}</p>
+  <div id="content-body">
+    <div id="body-main">
 
-            {% for date, day_entries in entries_by_date.items() %}
-            <h2>{{ date }}</h2>
-            {% set current_author = namespace(value='') %}
-            {% for entry in day_entries %}
-                {% if entry.display_author != current_author.value %}
-                    {% set current_author.value = entry.display_author %}
-            <hr /><h3 class="post"><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}" title="{{ entry.display_author }}">{{ entry.display_author or 'Unknown' }}</a></h3>
-                {% endif %}
-            <h4><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h4>
-            <div class="content">{{ entry.content | safe }}</div>
-            {% endfor %}
-            {% else %}
-            <p>No entries yet.</p>
-            {% endfor %}
-        </div>
+<h1 class="pageheading">{{ planet.name }}</h1>
 
-        <div id="left-hand-navigation">
-            <div id="menu">
-                <ul class="level-one">
-                    <li>
-                        <ul class="level-two">
-                            <li><a href="{{ feed_links.rss or '/feed.rss' }}">RSS feed</a></li>
-                            {% if feed_links.titles_only %}<li><a href="{{ feed_links.titles_only }}">Titles Only</a></li>{% endif %}
-                        </ul>
-                    </li>
-                </ul>
+<p>Last update: {{ generated_at }}
 
-                {% if related_sites %}
-                {% for section in related_sites %}
-                <h4>{{ section.title }}</h4>
-                <ul class="level-two">
-                    {% for link in section.links %}
-                    <li><a href="{{ link.url }}">{{ link.name }}</a></li>
-                    {% endfor %}
-                </ul>
-                {% endfor %}
-                {% endif %}
+{% for date, day_entries in entries_by_date.items() %}
 
-                <h4><a href="{{ feed_links.opml or '/feeds.opml' }}">Subscriptions</a></h4>
-                <ul class="level-two">
-                    {% for feed in feeds %}
-                    <li><a href="{{ feed.site_url or feed.url or '#' }}" title="{{ feed.title }}">{{ feed.title or 'Untitled' }}</a></li>
-                    {% else %}
-                    <li>No feeds configured</li>
-                    {% endfor %}
-                </ul>
 
-                {% if submission %}
-                <p style="margin-left: 1.5em;"><a href="{{ submission.url }}">{{ submission.text }}</a></p>
-                {% endif %}
-            </div>
-        </div>
+<h2>{{ date }}</h2>
+
+{% set current_author = namespace(value='') %}
+{% for entry in day_entries %}
+{% if entry.display_author != current_author.value %}
+{% set current_author.value = entry.display_author %}
+
+<hr /><h3 class="post"><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}" title="{{ entry.display_author }}">{{ entry.display_author or 'Unknown' }}</a></h3>
+
+{% endif %}
+
+<h4><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h4>
+<p>
+{{ entry.content | safe }}</p>
+<p>
+<em><a href="{{ entry.url or '#' }}">{{ entry.published_at_display }}</a></em>
+</p>
+
+{% endfor %}
+{% else %}
+<p>No entries yet.</p>
+{% endfor %}
+
+
     </div>
+  </div>
 
-    <div id="footer">
-        <p>
-            <a href="{{ feed_links.atom or '/feed.atom' }}">Atom</a> |
-            <a href="{{ feed_links.rss or '/feed.rss' }}">RSS</a> |
-            <a href="{{ feed_links.opml or '/feeds.opml' }}">OPML</a>
-        </p>
-        <p>{{ footer_text }}{% if show_admin_link %} | <a href="/admin">Admin</a>{% endif %}</p>
+  <div id="left-hand-navigation">
+    <div id="menu">
+      <ul class="level-one">
+          <li>
+          <ul class="level-two">
+             <li><a href="{{ feed_links.rss or '/feed.rss' }}">RSS feed</a></li>
+             <li><a href="/titles">Titles Only</a></li>
+             <li><a href="http://www.planetplanet.org/">Powered by Planet!</a></li>
+          </ul></li>
+          <li>Other Python Planets
+            <ul class="level-two">
+              <li><a href="http://terri.toybox.ca/python-soc/">Python Summer of Code</a></li>
+              <li><a href="http://www.afpy.org/planet/">Planet Python Francophone</a></li>
+              <li><a href="http://planeta.python.org.ar/">Planet Python Argentina</a></li>
+              <li><a href="http://planet.python.org.br/">Planet Python Brasil</a></li>
+              <li><a href="http://pl.python.org/planeta/">Planet Python Poland</a></li>
+            </ul></li>
+          <li>Python Libraries
+          <ul class="level-two">
+            <li><a href="http://planet.laptop.org/">OLPC</a></li>
+            <li><a href="http://planet.pysoy.org/">PySoy</a></li>
+            <li><a href="http://planet.scipy.org/">SciPy</a></li>
+            <li><a href="http://planet.sympy.org/">SymPy</a></li>
+            <li><a href="http://planet.twistedmatrix.com/">Twisted</a></li>
+          </ul></li>
+          <li>Python/Web Planets
+          <ul class="level-two">
+            <li><a href="http://planet.cherrypy.org/">CherryPy</a></li>
+            <li><a href="http://www.djangoproject.com/community/">Django Community</a></li>
+            <li><a href="http://planet.plone.org/">Plone</a></li>
+            <li><a href="http://planet.turbogears.org/">Turbogears</a></li>
+          </ul></li>
+          <li>Other Languages
+          <ul class="level-two">
+            <li><a href="http://planet.haskell.org/">Haskell</a></li>
+            <li><a href="http://planet.lisp.org/">Lisp</a></li>
+            <li><a href="http://planet.parrotcode.org/">Parrot</a></li>
+            <li><a href="http://planet.perl.org/">Perl</a></li>
+            <li><a href="http://planetruby.0x42.net/">Ruby</a></li>
+          </ul></li>
+          <li>Databases
+          <ul class="level-two">
+            <li><a href="http://www.planetmysql.org/">MySQL</a></li>
+            <li><a href="http://planet.postgresql.org/">PostgreSQL</a></li>
+          </ul></li>
+          <li>Subscriptions
+          <ul class="level-two">
+<li><a href="{{ feed_links.opml or '/feeds.opml' }}">[OPML feed]</a></li>
+{% for feed in feeds %}
+<li><a href="{{ feed.site_url or feed.url or '#' }}" title="{{ feed.title }}">{{ feed.title or 'Untitled' }}</a>
+</li>
+{% else %}
+<li>No feeds configured</li>
+{% endfor %}
+
+<li>
+    <i>
+    To request addition or removal,
+    <a href="https://github.com/python/planet">open a PR or issue</a>
+    </i>
+</li>
+          </ul></li>
+      </ul>
     </div>
-
-    <!-- Keyboard shortcuts help panel -->
-    <div class="shortcuts-backdrop hidden" id="shortcuts-backdrop"></div>
-    <div class="shortcuts-panel hidden" id="shortcuts-panel" role="dialog" aria-labelledby="shortcuts-title" aria-modal="true">
-        <h3 id="shortcuts-title">Keyboard Shortcuts</h3>
-        <dl>
-            <dt><kbd>j</kbd></dt>
-            <dd>Next entry</dd>
-            <dt><kbd>k</kbd></dt>
-            <dd>Previous entry</dd>
-            <dt><kbd>?</kbd></dt>
-            <dd>Toggle this help</dd>
-            <dt><kbd>Esc</kbd></dt>
-            <dd>Close help</dd>
-        </dl>
-        <button type="button" class="close-btn" id="close-shortcuts">Close</button>
-    </div>
-
-    <script src="/static/keyboard-nav.js"></script>
+  </div>
 </body>
 </html>
 """,
         "titles.html": """<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
 <head>
-    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
-    <title>{{ planet.name }} - Titles Only</title>
-    <link rel="stylesheet" type="text/css" href="/static/style.css" />
-    <link rel="alternate" type="application/atom+xml" title="{{ planet.name }} Atom Feed" href="{{ feed_links.atom or '/feed.atom' }}" />
-    <link rel="alternate" type="application/rss+xml" title="{{ planet.name }} RSS Feed" href="{{ feed_links.rss or '/feed.rss' }}" />
-    <link rel="icon" href="/static/favicon.ico" sizes="32x32" />
+  <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+  <title>{{ planet.name }}</title>
+  <link rel="stylesheet" type="text/css" href="/static/style.css" />
+  <meta name="generator" content="PlanetCF" />
+  <meta name="keywords" content="Python weblog blog blogs blogger weblogger aggregator rss" />
+  <meta name="description" content="{{ planet.description or 'Recent postings from Python-related blogs.' }}" />
+  <link rel="alternate" type="application/rss+xml" title="RSS" href="{{ feed_links.rss or '/feed.rss' }}" />
+  <link rel="alternate" type="application/atom+xml" title="Atom" href="{{ feed_links.atom or '/feed.atom' }}" />
+  <link rel="icon" href="/static/favicon.ico" sizes="32x32" />
 </head>
+
 <body>
-    <!-- Logo -->
-    <h1 id="logoheader">
-        <a href="/" id="logolink" accesskey="1">
-            {% if logo %}
-            <img id="logo" src="{{ logo.url }}" alt="{{ logo.alt }}" />
-            {% else %}
-            {{ planet.name }}
-            {% endif %}
-        </a>
-    </h1>
+  <!-- Logo -->
+  <h1 id="logoheader">
+    <a href="/" id="logolink" accesskey="1"><img id="logo"
+src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'homepage' }}" border="0" /></a>
+  </h1>
+  <!-- Skip to Navigation -->
+  <div class="skiptonav"><a href="#left-hand-navigation" accesskey="2"><img src="/static/images/trans.gif" id="skiptonav" alt="skip to navigation" border="0" /></a></div>
+  <div class="skiptonav"><a href="#content-body" accesskey="3"><img src="/static/images/trans.gif" id="skiptocontent" alt="skip to content" border="0" /></a></div>
 
-    <div id="content-body">
-        <div id="body-main">
-            <h1 class="pageheading">{{ planet.name }} - Titles Only</h1>
-            <p><a href="/">View full content</a></p>
+  <div id="content-body">
+    <div id="body-main">
 
-            {% for date, day_entries in entries_by_date.items() %}
-            <h2>{{ date }}</h2>
-            {% set current_author = namespace(value='') %}
-            {% for entry in day_entries %}
-                {% if entry.display_author != current_author.value %}
-                    {% set current_author.value = entry.display_author %}
-            <h3 class="post"><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}">{{ entry.display_author or 'Unknown' }}</a></h3>
-                {% endif %}
-            <h4><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h4>
-            <p><em>{% if entry.display_author %}by {{ entry.display_author }} at {% endif %}{{ entry.published_at_display }}</em></p>
-            {% endfor %}
-            {% else %}
-            <p>No entries yet.</p>
-            {% endfor %}
-        </div>
+<h1 class="pageheading">{{ planet.name }}</h1>
 
-        <div id="left-hand-navigation">
-            <div id="menu">
-                <ul class="level-one">
-                    <li>
-                        <ul class="level-two">
-                            <li><a href="{{ feed_links.rss or '/feed.rss' }}">RSS feed</a></li>
-                            <li><a href="/">Full content</a></li>
-                        </ul>
-                    </li>
-                </ul>
+<p>Last update: {{ generated_at }}
 
-                <h4><a href="{{ feed_links.opml or '/feeds.opml' }}">Subscriptions</a></h4>
-                <ul class="level-two">
-                    {% for feed in feeds %}
-                    <li><a href="{{ feed.site_url or feed.url or '#' }}">{{ feed.title or 'Untitled' }}</a></li>
-                    {% else %}
-                    <li>No feeds configured</li>
-                    {% endfor %}
-                </ul>
-            </div>
-        </div>
+{% for date, day_entries in entries_by_date.items() %}
+
+
+<h2>{{ date }}</h2>
+
+{% set current_author = namespace(value='') %}
+{% for entry in day_entries %}
+{% if entry.display_author != current_author.value %}
+{% set current_author.value = entry.display_author %}
+
+<hr /><h3 class="post"><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}" title="{{ entry.display_author }}">{{ entry.display_author or 'Unknown' }}</a></h3>
+
+{% endif %}
+
+<h4><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h4>
+<p>
+<em><a href="{{ entry.url or '#' }}">{{ entry.published_at_display }}</a></em>
+</p>
+
+{% endfor %}
+{% else %}
+<p>No entries yet.</p>
+{% endfor %}
+
+
     </div>
+  </div>
 
-    <div id="footer">
-        <p>
-            <a href="{{ feed_links.atom or '/feed.atom' }}">Atom</a> |
-            <a href="{{ feed_links.rss or '/feed.rss' }}">RSS</a> |
-            <a href="{{ feed_links.opml or '/feeds.opml' }}">OPML</a>
-        </p>
-        <p>{{ footer_text }}{% if show_admin_link %} | <a href="/admin">Admin</a>{% endif %}</p>
-        <p>Last updated: {{ generated_at }}</p>
+  <div id="left-hand-navigation">
+    <div id="menu">
+      <ul class="level-one">
+          <li>
+          <ul class="level-two">
+             <li><a href="{{ feed_links.rss or '/feed.rss' }}">RSS feed</a></li>
+             <li><a href="/">Full content</a></li>
+             <li><a href="http://www.planetplanet.org/">Powered by Planet!</a></li>
+          </ul></li>
+          <li>Subscriptions
+          <ul class="level-two">
+<li><a href="{{ feed_links.opml or '/feeds.opml' }}">[OPML feed]</a></li>
+{% for feed in feeds %}
+<li><a href="{{ feed.site_url or feed.url or '#' }}" title="{{ feed.title }}">{{ feed.title or 'Untitled' }}</a>
+</li>
+{% else %}
+<li>No feeds configured</li>
+{% endfor %}
+          </ul></li>
+      </ul>
     </div>
+  </div>
 </body>
 </html>
 """,
         "search.html": """<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
 <head>
-    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
-    <title>Search Results - {{ planet.name }}</title>
-    <link rel="stylesheet" type="text/css" href="/static/style.css" />
-    <link rel="icon" href="/static/favicon.ico" sizes="32x32" />
+  <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+  <title>Search Results - {{ planet.name }}</title>
+  <link rel="stylesheet" type="text/css" href="/static/style.css" />
+  <meta name="generator" content="PlanetCF" />
+  <link rel="icon" href="/static/favicon.ico" sizes="32x32" />
 </head>
+
 <body>
-    <!-- Logo -->
-    <h1 id="logoheader">
-        <a href="/" id="logolink" accesskey="1">
-            {% if logo %}
-            <img id="logo" src="{{ logo.url }}" alt="{{ logo.alt }}" />
-            {% else %}
-            {{ planet.name }}
-            {% endif %}
-        </a>
-    </h1>
+  <!-- Logo -->
+  <h1 id="logoheader">
+    <a href="/" id="logolink" accesskey="1"><img id="logo"
+src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'homepage' }}" border="0" /></a>
+  </h1>
+  <!-- Skip to Navigation -->
+  <div class="skiptonav"><a href="#left-hand-navigation" accesskey="2"><img src="/static/images/trans.gif" id="skiptonav" alt="skip to navigation" border="0" /></a></div>
+  <div class="skiptonav"><a href="#content-body" accesskey="3"><img src="/static/images/trans.gif" id="skiptocontent" alt="skip to content" border="0" /></a></div>
 
-    <div id="content-body">
-        <div id="body-main">
-            <h1 class="pageheading">Search Results</h1>
-            {% if error %}
-            <div class="search-error">
-                <p>{{ error }}</p>
-            </div>
-            {% else %}
-            <h2>Results for "{{ query }}"</h2>
-            {% if words_truncated %}
-            <p><em>Note: Your search was limited to the first {{ max_search_words }} words.</em></p>
-            {% endif %}
-            {% if results %}
-            <ul>
-                {% for entry in results %}
-                <li>
-                    <h4><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h4>
-                    <p><em>by {{ entry.display_author }}</em></p>
-                </li>
-                {% endfor %}
-            </ul>
-            {% else %}
-            <p>No results found for "{{ query }}"</p>
-            {% endif %}
-            {% endif %}
-        </div>
+  <div id="content-body">
+    <div id="body-main">
 
-        <div id="left-hand-navigation">
-            <div id="menu">
-                <form action="/search" method="get">
-                    <p style="margin-left: 1.5em;">
-                        <input type="text" name="q" value="{{ query }}" style="width: 10em;" />
-                        <input type="submit" value="Search" />
-                    </p>
-                </form>
-                <p style="margin-left: 1.5em;"><a href="/">Back to home</a></p>
-            </div>
-        </div>
+<h1 class="pageheading">Search Results</h1>
+
+{% if error %}
+<p style="color: #c00;">{{ error }}</p>
+{% else %}
+<h2>Results for "{{ query }}"</h2>
+{% if words_truncated %}
+<p><em>Note: Your search was limited to the first {{ max_search_words }} words.</em></p>
+{% endif %}
+{% if results %}
+{% for entry in results %}
+
+<hr /><h3 class="post"><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}" title="{{ entry.display_author }}">{{ entry.display_author or 'Unknown' }}</a></h3>
+
+<h4><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h4>
+<p>
+<em>{{ entry.published_at_display }}</em>
+</p>
+
+{% endfor %}
+{% else %}
+<p>No results found for "{{ query }}"</p>
+{% endif %}
+{% endif %}
+
     </div>
+  </div>
 
-    <div id="footer">
-        <p><a href="/">Back to {{ planet.name }}</a></p>
+  <div id="left-hand-navigation">
+    <div id="menu">
+      <ul class="level-one">
+          <li>
+          <ul class="level-two">
+             <li><a href="/">Back to home</a></li>
+             <li><a href="{{ feed_links.rss or '/feed.rss' }}">RSS feed</a></li>
+          </ul></li>
+      </ul>
+      <form action="/search" method="get" style="margin: 1em;">
+        <p>
+          <input type="text" name="q" value="{{ query }}" style="width: 10em;" />
+          <input type="submit" value="Search" />
+        </p>
+      </form>
     </div>
+  </div>
 </body>
 </html>
 """,
@@ -906,9 +946,14 @@ _EMBEDDED_TEMPLATES = {
     <title>{{ planet.name }}</title>
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <meta name="description" content="{{ planet.description }}"/>
+    <meta name="generator" content="PlanetCF"/>
+    <meta name="description" content="{{ planet.description or 'Aggregated updates from the community.' }}"/>
+    <meta property="og:site_name" content="{{ planet.name }}"/>
+    <meta property="og:title" content="{{ planet.name }}"/>
+    <meta property="og:description" content="{{ planet.description or 'Aggregated updates from the community.' }}"/>
+    <meta name="twitter:card" content="summary_large_image"/>
     <link href="/static/style.css" rel="stylesheet" type="text/css"/>
-    <link href="/static/favicon.ico" rel="shortcut icon" type="image/x-icon"/>
+    <link href="/static/favicon.ico" rel="shortcut icon" type="image/png"/>
     <link rel="alternate" href="{{ feed_links.atom or '/feed.atom' }}" title="{{ planet.name }}" type="application/atom+xml"/>
 </head>
 <body>
@@ -918,42 +963,39 @@ _EMBEDDED_TEMPLATES = {
             <li><a href="https://www.mozilla.org/">mozilla.org</a></li>
             <li><a href="https://wiki.mozilla.org/">Wiki</a></li>
             <li><a href="https://developer.mozilla.org/">Developer Center</a></li>
-            <li><a href="https://www.mozilla.org/firefox/">Firefox</a></li>
-            <li><a href="https://www.thunderbird.net/">Thunderbird</a></li>
+            <li><a href="http://www.firefox.com/">Firefox</a></li>
+            <li><a href="http://www.getthunderbird.com/">Thunderbird</a></li>
         </ul>
     </div>
-
     <div id="header">
         <div id="dino">
             <h1><a href="/" title="Back to home page">{{ planet.name }}</a></h1>
         </div>
     </div>
-
     <div class="main-container">
         <div class="main-content">
-            {% for date, day_entries in entries_by_date.items() %}
+{% for date, day_entries in entries_by_date.items() %}
             <h2><time datetime="{{ date }}">{{ date }}</time></h2>
-            {% for entry in day_entries %}
-            <article class="news {{ entry.display_author | lower | replace(' ', '-') }}">
+{% for entry in day_entries %}
+            <article class="news">
                 <h3><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}" title="{{ entry.display_author }}">{{ entry.display_author or 'Unknown' }}</a> — <a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
                 <div class="entry">
                     <div class="content">{{ entry.content | safe }}</div>
                 </div>
                 <div class="permalink"><a href="{{ entry.url or '#' }}">by {{ entry.display_author }} at <time datetime="{{ entry.published_at }}" title="GMT">{{ entry.published_at_display }}</time></a></div>
             </article>
-            {% endfor %}
-            {% else %}
+{% endfor %}
+{% else %}
             <p>No entries yet.</p>
-            {% endfor %}
+{% endfor %}
         </div>
-
         <div class="sidebar-content">
             <div class="disclaimer">
                 <h2>{{ planet.name }}</h2>
-                <p>Collected here are the most recent blog posts from the community.
-                   The content here is unfiltered and uncensored, and represents the views of individual community members.</p>
+                <p>Collected here are the most recent blog posts from all over the Mozilla community.
+                   The content here is unfiltered and uncensored, and represents the views of individual community members.
+                   Individual posts are owned by their authors -- see original source for licensing information.</p>
             </div>
-
             <div class="feeds">
                 <h2>Subscribe to Planet</h2>
                 <p>Feeds:</p>
@@ -961,74 +1003,47 @@ _EMBEDDED_TEMPLATES = {
                     <li><a href="{{ feed_links.atom or '/feed.atom' }}">Atom</a></li>
                     <li><a href="{{ feed_links.rss or '/feed.rss' }}">RSS 2.0</a></li>
                 </ul>
+                <p></p>
                 <p>Subscription list:</p>
                 <ul>
                     <li class="opml"><a href="{{ feed_links.opml or '/feeds.opml' }}">OPML</a></li>
                 </ul>
                 <p>Last update: <time datetime="{{ generated_at }}" title="GMT">{{ generated_at }}</time></p>
             </div>
-
             <div class="main">
-                {% if related_sites %}
-                {% for section in related_sites %}
-                <h2>{{ section.title }}</h2>
+                <h2>Other Planets</h2>
                 <ul class="planets">
-                    {% for link in section.links %}
-                    <li><a href="{{ link.url }}">{{ link.name }}</a></li>
-                    {% endfor %}
+                    <li><a href="https://planet.mozilla.org/projects/">Projects</a></li>
+                    <li><a href="https://planet.mozilla.org/participation/">Planet Participation</a></li>
+                    <li><a href="https://planet.mozilla.org/thunderbird/">Planet Thunderbird</a></li>
+                    <li><a href="https://quality.mozilla.org/">Planet QMO</a></li>
+                    <li><a href="https://planet.mozilla.org/ateam/">Planet Automation</a></li>
+                    <li><a href="https://planet.mozilla.org/research/">Mozilla Research</a></li>
                 </ul>
-                {% endfor %}
-                {% endif %}
-
-                {% if not is_lite_mode %}
                 <div id="sidebar">
                     <h2>Search</h2>
-                    <form action="/search" method="GET" class="search-form">
+                    <form action="/search" method="GET">
                         <input name="q" type="search" placeholder="Search..."/>
                         <button type="submit">Search</button>
                     </form>
                 </div>
-                {% endif %}
-
                 <h2>Subscriptions</h2>
                 <ul class="subscriptions">
-                    {% for feed in feeds %}
-                    <li><a href="{{ feed.site_url or feed.url or '#' }}" title="{{ feed.title }}">{{ feed.title or 'Untitled' }}</a></li>
-                    {% else %}
+{% for feed in feeds %}
+                    <li><a title="subscribe" href="{{ feed.url }}"><img src="/static/img/feed-icon-10x10.png" alt="(feed)"/></a> <a href="{{ feed.site_url or feed.url or '#' }}" title="{{ feed.title }}">{{ feed.title or 'Untitled' }}</a></li>
+{% else %}
                     <li>No feeds configured</li>
-                    {% endfor %}
+{% endfor %}
                 </ul>
             </div>
+            <div class="bottom"></div>
         </div>
     </div>
-
     <div id="footer">
         <div id="footer-content">
-            <p>
-                {{ footer_text }}
-                {% if show_admin_link %} | <a href="/admin">Admin</a>{% endif %}
-            </p>
+            <p>{{ footer_text }}{% if show_admin_link %} | <a href="/admin">Admin</a>{% endif %}</p>
         </div>
     </div>
-
-    <!-- Keyboard shortcuts help panel -->
-    <div class="shortcuts-backdrop hidden" id="shortcuts-backdrop"></div>
-    <div class="shortcuts-panel hidden" id="shortcuts-panel" role="dialog" aria-labelledby="shortcuts-title" aria-modal="true">
-        <h3 id="shortcuts-title">Keyboard Shortcuts</h3>
-        <dl>
-            <dt><kbd>j</kbd></dt>
-            <dd>Next entry</dd>
-            <dt><kbd>k</kbd></dt>
-            <dd>Previous entry</dd>
-            <dt><kbd>?</kbd></dt>
-            <dd>Toggle this help</dd>
-            <dt><kbd>Esc</kbd></dt>
-            <dd>Close help</dd>
-        </dl>
-        <button type="button" class="close-btn" id="close-shortcuts">Close</button>
-    </div>
-
-    <script src="/static/keyboard-nav.js"></script>
 </body>
 </html>
 """,
@@ -1040,7 +1055,7 @@ _EMBEDDED_TEMPLATES = {
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <link href="/static/style.css" rel="stylesheet" type="text/css"/>
-    <link href="/static/favicon.ico" rel="shortcut icon" type="image/x-icon"/>
+    <link href="/static/favicon.ico" rel="shortcut icon" type="image/png"/>
     <link rel="alternate" href="{{ feed_links.atom or '/feed.atom' }}" title="{{ planet.name }}" type="application/atom+xml"/>
 </head>
 <body>
@@ -1050,60 +1065,53 @@ _EMBEDDED_TEMPLATES = {
             <li><a href="https://www.mozilla.org/">mozilla.org</a></li>
             <li><a href="https://wiki.mozilla.org/">Wiki</a></li>
             <li><a href="https://developer.mozilla.org/">Developer Center</a></li>
-            <li><a href="https://www.mozilla.org/firefox/">Firefox</a></li>
-            <li><a href="https://www.thunderbird.net/">Thunderbird</a></li>
+            <li><a href="http://www.firefox.com/">Firefox</a></li>
+            <li><a href="http://www.getthunderbird.com/">Thunderbird</a></li>
         </ul>
     </div>
-
     <div id="header">
         <div id="dino">
             <h1><a href="/" title="Back to home page">{{ planet.name }}</a></h1>
         </div>
     </div>
-
     <div class="main-container">
         <div class="main-content">
             <p><a href="/">View full content</a></p>
-
-            {% for date, day_entries in entries_by_date.items() %}
+{% for date, day_entries in entries_by_date.items() %}
             <h2><time datetime="{{ date }}">{{ date }}</time></h2>
-            {% set current_author = namespace(value='') %}
-            {% for entry in day_entries %}
-                {% if entry.display_author != current_author.value %}
-                    {% set current_author.value = entry.display_author %}
-            <h3><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}">{{ entry.display_author or 'Unknown' }}</a></h3>
-                {% endif %}
-            <h4><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h4>
-            <p><em>{% if entry.display_author %}by {{ entry.display_author }} at {% endif %}{{ entry.published_at_display }}</em></p>
-            {% endfor %}
-            {% else %}
+{% for entry in day_entries %}
+            <article class="news">
+                <h3><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}" title="{{ entry.display_author }}">{{ entry.display_author or 'Unknown' }}</a> — <a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
+                <div class="permalink"><a href="{{ entry.url or '#' }}">by {{ entry.display_author }} at <time datetime="{{ entry.published_at }}" title="GMT">{{ entry.published_at_display }}</time></a></div>
+            </article>
+{% endfor %}
+{% else %}
             <p>No entries yet.</p>
-            {% endfor %}
+{% endfor %}
         </div>
-
         <div class="sidebar-content">
             <div class="feeds">
                 <h2>Subscribe to Planet</h2>
                 <ul>
                     <li><a href="{{ feed_links.atom or '/feed.atom' }}">Atom</a></li>
                     <li><a href="{{ feed_links.rss or '/feed.rss' }}">RSS 2.0</a></li>
+                </ul>
+                <ul>
                     <li class="opml"><a href="{{ feed_links.opml or '/feeds.opml' }}">OPML</a></li>
                 </ul>
             </div>
-
             <div class="main">
                 <h2>Subscriptions</h2>
-                <ul class="planets">
-                    {% for feed in feeds %}
+                <ul class="subscriptions">
+{% for feed in feeds %}
                     <li><a href="{{ feed.site_url or feed.url or '#' }}">{{ feed.title or 'Untitled' }}</a></li>
-                    {% else %}
+{% else %}
                     <li>No feeds configured</li>
-                    {% endfor %}
+{% endfor %}
                 </ul>
             </div>
         </div>
     </div>
-
     <div id="footer">
         <div id="footer-content">
             <p>{{ footer_text }}{% if show_admin_link %} | <a href="/admin">Admin</a>{% endif %}</p>
@@ -1121,7 +1129,7 @@ _EMBEDDED_TEMPLATES = {
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <link href="/static/style.css" rel="stylesheet" type="text/css"/>
-    <link href="/static/favicon.ico" rel="shortcut icon" type="image/x-icon"/>
+    <link href="/static/favicon.ico" rel="shortcut icon" type="image/png"/>
 </head>
 <body>
     <div id="utility">
@@ -1130,56 +1138,52 @@ _EMBEDDED_TEMPLATES = {
             <li><a href="https://www.mozilla.org/">mozilla.org</a></li>
             <li><a href="https://wiki.mozilla.org/">Wiki</a></li>
             <li><a href="https://developer.mozilla.org/">Developer Center</a></li>
-            <li><a href="https://www.mozilla.org/firefox/">Firefox</a></li>
-            <li><a href="https://www.thunderbird.net/">Thunderbird</a></li>
+            <li><a href="http://www.firefox.com/">Firefox</a></li>
+            <li><a href="http://www.getthunderbird.com/">Thunderbird</a></li>
         </ul>
     </div>
-
     <div id="header">
         <div id="dino">
             <h1><a href="/" title="Back to home page">{{ planet.name }}</a></h1>
         </div>
     </div>
-
     <div class="main-container">
         <div class="main-content">
             <h2>Search Results</h2>
-            {% if error %}
-            <div class="search-error" style="background: #fee; padding: 1em; border-radius: 0.5em; margin: 1em 0;">
+{% if error %}
+            <div class="search-error">
                 <p>{{ error }}</p>
             </div>
-            {% else %}
+{% else %}
             <h3>Results for "{{ query }}"</h3>
-            {% if words_truncated %}
-            <p style="font-size: 11px; color: #666;">Note: Your search was limited to the first {{ max_search_words }} words.</p>
-            {% endif %}
-            {% if results %}
-            <div class="entry">
-                {% for entry in results %}
-                <article class="news">
-                    <h4><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h4>
-                    <p style="font-size: 11px; color: #666; margin-left: 15px;">by {{ entry.display_author }}</p>
-                </article>
-                {% endfor %}
-            </div>
-            {% else %}
+{% if words_truncated %}
+            <p><em>Note: Your search was limited to the first {{ max_search_words }} words.</em></p>
+{% endif %}
+{% if results %}
+{% for entry in results %}
+            <article class="news">
+                <h3><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}" title="{{ entry.display_author }}">{{ entry.display_author or 'Unknown' }}</a> — <a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
+                <div class="permalink">by {{ entry.display_author }} at {{ entry.published_at_display }}</div>
+            </article>
+{% endfor %}
+{% else %}
             <p>No results found for "{{ query }}"</p>
-            {% endif %}
-            {% endif %}
+{% endif %}
+{% endif %}
         </div>
-
         <div class="sidebar-content">
             <div class="main">
-                <form action="/search" method="GET" class="search-form">
-                    <label><strong>Search</strong></label>
-                    <input type="search" name="q" value="{{ query }}" placeholder="Search entries..."/>
-                    <button type="submit">Search</button>
-                </form>
+                <div id="sidebar">
+                    <h2>Search</h2>
+                    <form action="/search" method="GET">
+                        <input name="q" type="search" value="{{ query }}" placeholder="Search..."/>
+                        <button type="submit">Search</button>
+                    </form>
+                </div>
                 <p><a href="/">Back to home</a></p>
             </div>
         </div>
     </div>
-
     <div id="footer">
         <div id="footer-content">
             <p><a href="/">Back to {{ planet.name }}</a></p>

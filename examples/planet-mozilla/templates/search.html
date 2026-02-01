@@ -6,7 +6,7 @@
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <link href="/static/style.css" rel="stylesheet" type="text/css"/>
-    <link href="/static/favicon.ico" rel="shortcut icon" type="image/x-icon"/>
+    <link href="/static/favicon.ico" rel="shortcut icon" type="image/png"/>
 </head>
 <body>
     <div id="utility">
@@ -15,56 +15,52 @@
             <li><a href="https://www.mozilla.org/">mozilla.org</a></li>
             <li><a href="https://wiki.mozilla.org/">Wiki</a></li>
             <li><a href="https://developer.mozilla.org/">Developer Center</a></li>
-            <li><a href="https://www.mozilla.org/firefox/">Firefox</a></li>
-            <li><a href="https://www.thunderbird.net/">Thunderbird</a></li>
+            <li><a href="http://www.firefox.com/">Firefox</a></li>
+            <li><a href="http://www.getthunderbird.com/">Thunderbird</a></li>
         </ul>
     </div>
-
     <div id="header">
         <div id="dino">
             <h1><a href="/" title="Back to home page">{{ planet.name }}</a></h1>
         </div>
     </div>
-
     <div class="main-container">
         <div class="main-content">
             <h2>Search Results</h2>
-            {% if error %}
-            <div class="search-error" style="background: #fee; padding: 1em; border-radius: 0.5em; margin: 1em 0;">
+{% if error %}
+            <div class="search-error">
                 <p>{{ error }}</p>
             </div>
-            {% else %}
+{% else %}
             <h3>Results for "{{ query }}"</h3>
-            {% if words_truncated %}
-            <p style="font-size: 11px; color: #666;">Note: Your search was limited to the first {{ max_search_words }} words.</p>
-            {% endif %}
-            {% if results %}
-            <div class="entry">
-                {% for entry in results %}
-                <article class="news">
-                    <h4><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h4>
-                    <p style="font-size: 11px; color: #666; margin-left: 15px;">by {{ entry.display_author }}</p>
-                </article>
-                {% endfor %}
-            </div>
-            {% else %}
+{% if words_truncated %}
+            <p><em>Note: Your search was limited to the first {{ max_search_words }} words.</em></p>
+{% endif %}
+{% if results %}
+{% for entry in results %}
+            <article class="news">
+                <h3><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}" title="{{ entry.display_author }}">{{ entry.display_author or 'Unknown' }}</a> — <a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
+                <div class="permalink">by {{ entry.display_author }} at {{ entry.published_at_display }}</div>
+            </article>
+{% endfor %}
+{% else %}
             <p>No results found for "{{ query }}"</p>
-            {% endif %}
-            {% endif %}
+{% endif %}
+{% endif %}
         </div>
-
         <div class="sidebar-content">
             <div class="main">
-                <form action="/search" method="GET" class="search-form">
-                    <label><strong>Search</strong></label>
-                    <input type="search" name="q" value="{{ query }}" placeholder="Search entries..."/>
-                    <button type="submit">Search</button>
-                </form>
+                <div id="sidebar">
+                    <h2>Search</h2>
+                    <form action="/search" method="GET">
+                        <input name="q" type="search" value="{{ query }}" placeholder="Search..."/>
+                        <button type="submit">Search</button>
+                    </form>
+                </div>
                 <p><a href="/">Back to home</a></p>
             </div>
         </div>
     </div>
-
     <div id="footer">
         <div id="footer-content">
             <p><a href="/">Back to {{ planet.name }}</a></p>
