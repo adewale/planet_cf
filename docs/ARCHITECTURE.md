@@ -485,15 +485,218 @@ The queue message body JsProxy bug wasn't caught because:
 Every place that receives data from JavaScript (D1 results, form data, queue
 messages, AI results) MUST convert through `_to_py_safe()` before use.
 
+## Module Structure
+
+### Current Module Layout (as of 2026-02)
+
+```
+src/
+├── main.py           (3,655 lines) - Worker entrypoint + business logic
+├── templates.py      (3,378 lines) - Jinja2 templates + CSS + JS
+├── wrappers.py         (830 lines) - JS ↔ Python boundary converters
+├── observability.py    (460 lines) - Wide events + structured logging
+├── models.py           (408 lines) - Data models + sanitizer
+├── utils.py            (260 lines) - Utility functions [NEW]
+├── instance_config.py  (115 lines) - Lite mode + config loading
+└── __init__.py           (4 lines)
+```
+
+### Module Dependency Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              CLOUDFLARE WORKERS                              │
+│                                                                              │
+│  ┌────────────┐   ┌────────────┐   ┌────────────┐   ┌────────────┐          │
+│  │ scheduled()│   │  queue()   │   │  fetch()   │   │   ASSETS   │          │
+│  │  (cron)    │   │ (consumer) │   │  (HTTP)    │   │  (static)  │          │
+│  └─────┬──────┘   └─────┬──────┘   └─────┬──────┘   └────────────┘          │
+│        │                │                │                                   │
+│        └────────────────┼────────────────┘                                   │
+│                         ▼                                                    │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │                         main.py (entrypoint)                          │   │
+│  │                                                                       │   │
+│  │  class Default(WorkerEntrypoint):                                     │   │
+│  │    - scheduled() → enqueue feeds to FEED_QUEUE                        │   │
+│  │    - queue() → process feed messages                                  │   │
+│  │    - fetch() → handle HTTP requests, route to handlers                │   │
+│  │                                                                       │   │
+│  └───────────────────────────────┬───────────────────────────────────────┘   │
+│                                  │                                           │
+│                    ┌─────────────┼─────────────┐                            │
+│                    ▼             ▼             ▼                            │
+│  ┌──────────────────┐  ┌─────────────────┐  ┌──────────────────┐           │
+│  │   utils.py       │  │  wrappers.py    │  │  templates.py    │           │
+│  │                  │  │                 │  │                  │           │
+│  │ - log_op/error   │  │ - SafeEnv       │  │ - render_template│           │
+│  │ - html_response  │  │ - SafeHeaders   │  │ - TEMPLATE_*     │           │
+│  │ - json_response  │  │ - SafeFeedInfo  │  │ - THEME_CSS      │           │
+│  │ - validate_feed  │  │ - safe_http_fetch│ │ - ADMIN_JS       │           │
+│  │ - parse_datetime │  │ - entry/feed    │  │                  │           │
+│  │ - xml_escape     │  │   converters    │  │                  │           │
+│  └──────────────────┘  └─────────────────┘  └──────────────────┘           │
+│                                  │                                          │
+│                    ┌─────────────┼─────────────┐                            │
+│                    ▼             ▼             ▼                            │
+│  ┌──────────────────┐  ┌─────────────────┐  ┌──────────────────┐           │
+│  │  models.py       │  │observability.py │  │instance_config.py│           │
+│  │                  │  │                 │  │                  │           │
+│  │ - BleachSanitizer│  │ - RequestEvent  │  │ - is_lite_mode   │           │
+│  │ - EntryRow       │  │ - FeedFetchEvent│  │ - theme loading  │           │
+│  │ - FeedRow        │  │ - SchedulerEvent│  │                  │           │
+│  │ - Session        │  │ - Timer         │  │                  │           │
+│  │                  │  │ - emit_event    │  │                  │           │
+│  └──────────────────┘  └─────────────────┘  └──────────────────┘           │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Planned Further Decomposition
+
+The `main.py` file (3,655 lines) can be further decomposed into:
+
+```
+main.py (current: 3,655 lines)
+    │
+    ├── config.py (~150 lines)
+    │   └── Config getters: retention_days, max_entries, thresholds
+    │
+    ├── auth.py (~350 lines)
+    │   └── OAuth: github_oauth, verify_cookie, create_cookie, logout
+    │
+    ├── rendering.py (~450 lines)
+    │   └── Output: generate_html, atom_feed, rss_feed, opml, formatters
+    │
+    ├── entries.py (~400 lines)
+    │   └── Entry lifecycle: upsert_entry, retention_policy, indexing
+    │
+    ├── feeds.py (~500 lines)
+    │   └── Feed processing: process_feed, fetch_content, metadata
+    │
+    ├── search.py (~350 lines)
+    │   └── Search: semantic search, keyword search, scoring
+    │
+    └── admin.py (~700 lines)
+        └── Admin API: CRUD feeds, OPML import, DLQ, audit log
+```
+
+### Class Diagram
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                  main.py                                      │
+│                                                                               │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                    class Default(WorkerEntrypoint)                       │ │
+│  │─────────────────────────────────────────────────────────────────────────│ │
+│  │ Properties:                                                              │ │
+│  │   env: SafeEnv                  # Wrapped environment bindings           │ │
+│  │                                                                          │ │
+│  │ Trigger Handlers:                                                        │ │
+│  │   scheduled(event, env, ctx)    # Cron trigger (hourly)                  │ │
+│  │   queue(batch, env, ctx)        # Queue consumer                         │ │
+│  │   fetch(request, env, ctx)      # HTTP requests                          │ │
+│  │                                                                          │ │
+│  │ Feed Processing:                                                         │ │
+│  │   _process_single_feed()        # Fetch + parse + store                  │ │
+│  │   _fetch_full_content()         # Follow links for full text             │ │
+│  │   _normalize_urls()             # Make relative URLs absolute            │ │
+│  │   _sanitize_html()              # Bleach sanitization                    │ │
+│  │                                                                          │ │
+│  │ Entry Management:                                                        │ │
+│  │   _upsert_entry()               # Insert or update entry                 │ │
+│  │   _index_entry_for_search()     # Generate embedding + index             │ │
+│  │   _apply_retention_policy()     # Delete old entries                     │ │
+│  │   _get_recent_entries()         # Query entries for display              │ │
+│  │                                                                          │ │
+│  │ HTML/Feed Generation:                                                    │ │
+│  │   _generate_html()              # Render index template                  │ │
+│  │   _generate_atom_feed()         # Atom XML                               │ │
+│  │   _generate_rss_feed()          # RSS 2.0 XML                            │ │
+│  │   _export_opml()                # OPML feed list                         │ │
+│  │                                                                          │ │
+│  │ Search:                                                                  │ │
+│  │   _search_entries()             # Semantic + keyword search              │ │
+│  │                                                                          │ │
+│  │ Admin:                                                                   │ │
+│  │   _handle_admin()               # Route admin requests                   │ │
+│  │   _add_feed()                   # Add new feed                           │ │
+│  │   _remove_feed()                # Deactivate feed                        │ │
+│  │   _import_opml()                # Bulk import feeds                      │ │
+│  │                                                                          │ │
+│  │ Auth:                                                                    │ │
+│  │   _verify_signed_cookie()       # Validate session                       │ │
+│  │   _create_signed_cookie()       # Create session                         │ │
+│  │   _handle_github_callback()     # OAuth callback                         │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────────────┘
+        │
+        │ imports
+        ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                wrappers.py                                    │
+│                                                                               │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                         class SafeEnv                                    │ │
+│  │─────────────────────────────────────────────────────────────────────────│ │
+│  │ Wraps WorkerEnv to provide safe access to bindings:                     │ │
+│  │   DB: D1Database              # D1 database binding                      │ │
+│  │   FEED_QUEUE: Queue           # Feed fetch queue                         │ │
+│  │   DEAD_LETTER_QUEUE: Queue    # Failed job queue                         │ │
+│  │   SEARCH_INDEX: Vectorize     # Semantic search index                    │ │
+│  │   AI: WorkersAI               # Embedding generation                     │ │
+│  │   ASSETS: AssetsBinding       # Static file serving                      │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                               │
+│  Converters:                                                                  │
+│    _to_py_safe(obj)              # JsProxy → Python dict/list                │
+│    entry_rows_from_d1(result)    # D1 results → Python dicts                 │
+│    feed_rows_from_d1(result)     # D1 results → Python dicts                 │
+│    safe_http_fetch(url, ...)     # Fetch with JsProxy handling              │
+└──────────────────────────────────────────────────────────────────────────────┘
+        │
+        │ imports
+        ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                 utils.py                                      │
+│                                                                               │
+│  Logging:                                                                     │
+│    log_op(event_type, **kwargs)       # Structured operational log           │
+│    log_error(event_type, exc, ...)    # Structured error log                 │
+│    truncate_error(error, max_len)     # Safe error truncation                │
+│                                                                               │
+│  Validation:                                                                  │
+│    validate_feed_id(feed_id) → int    # Validate path parameter              │
+│    get_display_author(author, feed)   # Filter email from author             │
+│                                                                               │
+│  Response Builders:                                                           │
+│    html_response(content, max_age)    # HTML with security headers           │
+│    json_response(data, status)        # JSON response                        │
+│    json_error(message, status)        # Error response                       │
+│    redirect_response(location)        # 302 redirect                         │
+│    feed_response(content, type)       # Atom/RSS/OPML                        │
+│                                                                               │
+│  Helpers:                                                                     │
+│    xml_escape(text)                   # Escape for XML embedding             │
+│    parse_query_params(url)            # Extract query string                 │
+│    normalize_entry_content(content)   # Remove duplicate headings            │
+│    parse_iso_datetime(iso_string)     # Parse to datetime                    │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
 ## File Structure
 
 ```
 planet_cf/
 ├── src/
 │   ├── main.py          # Main worker (fetch, queue, scheduled handlers)
+│   ├── utils.py         # Utility functions (logging, validation, responses)
 │   ├── templates.py     # Jinja2 templates (embedded for Workers)
+│   ├── wrappers.py      # JS ↔ Python boundary converters
 │   ├── models.py        # Pydantic models for observability
 │   ├── observability.py # Structured logging and event emission
+│   ├── instance_config.py # Lite mode detection + config loading
 │   └── __init__.py
 ├── tests/
 │   ├── unit/            # Unit tests (pure Python, no external deps)
