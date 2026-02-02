@@ -491,12 +491,13 @@ messages, AI results) MUST convert through `_to_py_safe()` before use.
 
 ```
 src/
-├── main.py           (3,655 lines) - Worker entrypoint + business logic
+├── main.py           (3,575 lines) - Worker entrypoint + business logic
 ├── templates.py      (3,378 lines) - Jinja2 templates + CSS + JS
 ├── wrappers.py         (830 lines) - JS ↔ Python boundary converters
 ├── observability.py    (460 lines) - Wide events + structured logging
 ├── models.py           (408 lines) - Data models + sanitizer
-├── utils.py            (260 lines) - Utility functions [NEW]
+├── utils.py            (320 lines) - Utility functions (logging, responses, dates)
+├── auth.py             (217 lines) - Session cookies + OAuth helpers [NEW]
 ├── instance_config.py  (115 lines) - Lite mode + config loading
 └── __init__.py           (4 lines)
 ```
@@ -524,18 +525,18 @@ src/
 │  │                                                                       │   │
 │  └───────────────────────────────┬───────────────────────────────────────┘   │
 │                                  │                                           │
-│                    ┌─────────────┼─────────────┐                            │
-│                    ▼             ▼             ▼                            │
-│  ┌──────────────────┐  ┌─────────────────┐  ┌──────────────────┐           │
-│  │   utils.py       │  │  wrappers.py    │  │  templates.py    │           │
-│  │                  │  │                 │  │                  │           │
-│  │ - log_op/error   │  │ - SafeEnv       │  │ - render_template│           │
-│  │ - html_response  │  │ - SafeHeaders   │  │ - TEMPLATE_*     │           │
-│  │ - json_response  │  │ - SafeFeedInfo  │  │ - THEME_CSS      │           │
-│  │ - validate_feed  │  │ - safe_http_fetch│ │ - ADMIN_JS       │           │
-│  │ - parse_datetime │  │ - entry/feed    │  │                  │           │
-│  │ - xml_escape     │  │   converters    │  │                  │           │
-│  └──────────────────┘  └─────────────────┘  └──────────────────┘           │
+│              ┌───────────┬───────────┼───────────┬───────────┐              │
+│              ▼           ▼           ▼           ▼           ▼              │
+│  ┌────────────────┐ ┌──────────┐ ┌─────────────┐ ┌─────────────────┐       │
+│  │   utils.py     │ │ auth.py  │ │ wrappers.py │ │  templates.py   │       │
+│  │                │ │          │ │             │ │                 │       │
+│  │ - log_op/error │ │ - create │ │ - SafeEnv   │ │ - render_       │       │
+│  │ - html_response│ │   _cookie│ │ - SafeHeaders│ │   template     │       │
+│  │ - json_response│ │ - verify │ │ - SafeFeed  │ │ - TEMPLATE_*    │       │
+│  │ - format_date  │ │   _cookie│ │   Info      │ │ - THEME_CSS     │       │
+│  │ - relative_time│ │ - session│ │ - safe_http │ │ - ADMIN_JS      │       │
+│  │ - xml_escape   │ │   helpers│ │   _fetch    │ │                 │       │
+│  └────────────────┘ └──────────┘ └─────────────┘ └─────────────────┘       │
 │                                  │                                          │
 │                    ┌─────────────┼─────────────┐                            │
 │                    ▼             ▼             ▼                            │
@@ -552,33 +553,36 @@ src/
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Planned Further Decomposition
+### Extraction Progress
 
-The `main.py` file (3,655 lines) can be further decomposed into:
+Modules extracted from `main.py`:
 
 ```
-main.py (current: 3,655 lines)
-    │
-    ├── config.py (~150 lines)
-    │   └── Config getters: retention_days, max_entries, thresholds
-    │
-    ├── auth.py (~350 lines)
-    │   └── OAuth: github_oauth, verify_cookie, create_cookie, logout
-    │
-    ├── rendering.py (~450 lines)
-    │   └── Output: generate_html, atom_feed, rss_feed, opml, formatters
-    │
-    ├── entries.py (~400 lines)
-    │   └── Entry lifecycle: upsert_entry, retention_policy, indexing
-    │
-    ├── feeds.py (~500 lines)
-    │   └── Feed processing: process_feed, fetch_content, metadata
-    │
-    ├── search.py (~350 lines)
-    │   └── Search: semantic search, keyword search, scoring
-    │
-    └── admin.py (~700 lines)
-        └── Admin API: CRUD feeds, OPML import, DLQ, audit log
+Extracted:
+├── utils.py (320 lines) ✅
+│   └── Logging, responses, validation, date formatting
+│
+└── auth.py (217 lines) ✅
+    └── Session cookies, HMAC signing, OAuth helpers
+
+Remaining to extract:
+├── config.py (~150 lines)
+│   └── Config getters: retention_days, max_entries, thresholds
+│
+├── rendering.py (~450 lines)
+│   └── Output: generate_html, atom_feed, rss_feed, opml
+│
+├── entries.py (~400 lines)
+│   └── Entry lifecycle: upsert_entry, retention_policy, indexing
+│
+├── feeds.py (~500 lines)
+│   └── Feed processing: process_feed, fetch_content, metadata
+│
+├── search.py (~350 lines)
+│   └── Search: semantic search, keyword search, scoring
+│
+└── admin.py (~700 lines)
+    └── Admin API: CRUD feeds, OPML import, DLQ, audit log
 ```
 
 ### Class Diagram
@@ -625,10 +629,11 @@ main.py (current: 3,655 lines)
 │  │   _remove_feed()                # Deactivate feed                        │ │
 │  │   _import_opml()                # Bulk import feeds                      │ │
 │  │                                                                          │ │
-│  │ Auth:                                                                    │ │
-│  │   _verify_signed_cookie()       # Validate session                       │ │
-│  │   _create_signed_cookie()       # Create session                         │ │
-│  │   _handle_github_callback()     # OAuth callback                         │ │
+│  │ Auth (delegates to auth.py):                                             │ │
+│  │   _verify_signed_cookie()       # → auth.get_session_from_cookies        │ │
+│  │   _redirect_to_github_oauth()   # → auth.build_oauth_state_cookie_header │ │
+│  │   _handle_github_callback()     # → auth.create_session_cookie           │ │
+│  │   _logout()                     # → auth.build_clear_session_cookie_header│ │
 │  └─────────────────────────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────────────────────┘
         │
