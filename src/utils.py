@@ -258,3 +258,63 @@ def parse_iso_datetime(iso_string: str | None) -> datetime | None:
         return dt
     except (ValueError, AttributeError):
         return None
+
+
+def format_datetime(iso_string: str | None) -> str:
+    """Format ISO datetime string for display (e.g., 'January 15, 2026 at 02:30 PM')."""
+    dt = parse_iso_datetime(iso_string)
+    if dt is None:
+        return iso_string or ""
+    return dt.strftime("%B %d, %Y at %I:%M %p")
+
+
+def format_pub_date(iso_string: str | None) -> str:
+    """Format publication date concisely (e.g., 'Jun 2013' or 'Jan 15').
+
+    If same year as now, shows "Mon Day" (e.g., "Jun 15").
+    Otherwise shows "Mon Year" (e.g., "Jun 2013").
+    """
+    dt = parse_iso_datetime(iso_string)
+    if dt is None:
+        return ""
+    now = datetime.now(UTC)
+    if dt.year == now.year:
+        return dt.strftime("%b %d")
+    return dt.strftime("%b %Y")
+
+
+def relative_time(iso_string: str | None) -> str:
+    """Convert ISO datetime to relative time (e.g., '2 hours ago')."""
+    dt = parse_iso_datetime(iso_string)
+    if dt is None:
+        return "never" if not iso_string else "unknown"
+    now = datetime.now(UTC)
+    delta = now - dt
+
+    if delta.days > 30:
+        # Use rounding for more accurate month representation
+        months = (delta.days + 15) // 30
+        return f"{months} month{'s' if months != 1 else ''} ago"
+    elif delta.days > 0:
+        return f"{delta.days} day{'s' if delta.days != 1 else ''} ago"
+    elif delta.seconds > 3600:
+        hours = delta.seconds // 3600
+        return f"{hours} hour{'s' if hours != 1 else ''} ago"
+    elif delta.seconds > 60:
+        minutes = delta.seconds // 60
+        return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+    else:
+        return "just now"
+
+
+def format_date_label(date_str: str) -> str:
+    """Convert YYYY-MM-DD to absolute date like 'August 25, 2025'.
+
+    Always shows the actual date rather than relative labels like 'Today'.
+    This is clearer when there are gaps between posts.
+    """
+    try:
+        entry_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        return entry_date.strftime("%B %d, %Y")
+    except (ValueError, AttributeError):
+        return date_str

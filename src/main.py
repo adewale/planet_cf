@@ -62,6 +62,12 @@ from utils import (
     feed_response as _feed_response,
 )
 from utils import (
+    format_date_label as _format_date_label,
+)
+from utils import (
+    format_pub_date as _format_pub_date,
+)
+from utils import (
     get_display_author as _get_display_author,
 )
 from utils import (
@@ -87,6 +93,9 @@ from utils import (
 )
 from utils import (
     redirect_response as _redirect_response,
+)
+from utils import (
+    relative_time as _relative_time,
 )
 from utils import (
     truncate_error as _truncate_error,
@@ -1560,13 +1569,13 @@ class Default(WorkerEntrypoint):
 
             # Store both ISO date (for datetime attribute) and display label
             if date_str not in date_labels:
-                date_labels[date_str] = self._format_date_label(date_str)
+                date_labels[date_str] = _format_date_label(date_str)
             if date_str not in entries_by_date:
                 entries_by_date[date_str] = []
 
             # Add display date (same as group date for consistency)
             if date_str and date_str != "Unknown":
-                entry["published_at_display"] = self._format_pub_date(group_date)
+                entry["published_at_display"] = _format_pub_date(group_date)
             else:
                 entry["published_at_display"] = ""
 
@@ -1591,7 +1600,7 @@ class Default(WorkerEntrypoint):
         entries_by_date = dict(sorted(entries_by_date.items(), key=lambda x: x[0], reverse=True))
 
         for feed in feeds:
-            feed["last_success_at_relative"] = self._relative_time(feed["last_success_at"])
+            feed["last_success_at_relative"] = _relative_time(feed["last_success_at"])
 
         # Render template - track template time
         # Check if running in lite mode (no search, no auth)
@@ -1744,61 +1753,6 @@ class Default(WorkerEntrypoint):
             _log_op("retention_cleanup", entries_deleted=len(deleted_ids))
 
         return stats
-
-    def _format_datetime(self, iso_string: str | None) -> str:
-        """Format ISO datetime string for display."""
-        dt = _parse_iso_datetime(iso_string)
-        if dt is None:
-            return iso_string or ""
-        return dt.strftime("%B %d, %Y at %I:%M %p")
-
-    def _format_pub_date(self, iso_string: str | None) -> str:
-        """Format publication date concisely (e.g., 'Jun 2013' or 'Jan 15')."""
-        dt = _parse_iso_datetime(iso_string)
-        if dt is None:
-            return ""
-        now = datetime.now(timezone.utc)
-        # If same year, show "Mon Day" (e.g., "Jun 15")
-        if dt.year == now.year:
-            return dt.strftime("%b %d")
-        # Otherwise show "Mon Year" (e.g., "Jun 2013")
-        return dt.strftime("%b %Y")
-
-    def _relative_time(self, iso_string: str | None) -> str:
-        """Convert ISO datetime to relative time (e.g., '2 hours ago')."""
-        dt = _parse_iso_datetime(iso_string)
-        if dt is None:
-            return "never" if not iso_string else "unknown"
-        now = datetime.now(timezone.utc)
-        delta = now - dt
-
-        if delta.days > 30:
-            # Use rounding for more accurate month representation
-            months = (delta.days + 15) // 30
-            return f"{months} month{'s' if months != 1 else ''} ago"
-        elif delta.days > 0:
-            return f"{delta.days} day{'s' if delta.days != 1 else ''} ago"
-        elif delta.seconds > 3600:
-            hours = delta.seconds // 3600
-            return f"{hours} hour{'s' if hours != 1 else ''} ago"
-        elif delta.seconds > 60:
-            minutes = delta.seconds // 60
-            return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
-        else:
-            return "just now"
-
-    def _format_date_label(self, date_str: str) -> str:
-        """Convert YYYY-MM-DD to absolute date like 'August 25, 2025'.
-
-        Always shows the actual date rather than relative labels like 'Today'.
-        This is clearer when there are gaps between posts.
-        """
-        try:
-            entry_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-            # Format as "August 25, 2025"
-            return entry_date.strftime("%B %d, %Y")
-        except (ValueError, AttributeError):
-            return date_str
 
     async def _serve_atom(self) -> Response:
         """Generate and serve Atom feed on-demand."""
