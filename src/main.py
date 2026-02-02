@@ -8,14 +8,11 @@ Main Worker entrypoint handling all triggers:
 """
 
 import asyncio
-import base64
 import hashlib
-import hmac
 import ipaddress
 import json
 import re
 import secrets
-import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from typing import Any, TypeAlias
@@ -24,6 +21,15 @@ from urllib.parse import parse_qs, urlparse
 import feedparser
 from workers import Request, Response, WorkerEntrypoint
 
+from auth import (
+    build_clear_oauth_state_cookie_header,
+    build_clear_session_cookie_header,
+    build_oauth_state_cookie_header,
+    build_session_cookie_header,
+    create_session_cookie,
+    get_session_from_cookies,
+    parse_cookie_value,
+)
 from instance_config import is_lite_mode as check_lite_mode
 from models import BleachSanitizer
 from observability import (
@@ -156,12 +162,10 @@ FEED_TIMEOUT_SECONDS = 60  # Max wall time per feed
 HTTP_TIMEOUT_SECONDS = 30  # HTTP request timeout
 # Issue 9.3/9.5: Include contact info for good netizen behavior
 USER_AGENT = "PlanetCF/1.0 (+https://planetcf.com; contact@planetcf.com)"
-SESSION_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
 # Security: Maximum search query length to prevent DoS
 MAX_SEARCH_QUERY_LENGTH = 1000
 MAX_SEARCH_WORDS = 10  # Prevent DoS via excessive word count in multi-word search
 MAX_OPML_FEEDS = 100  # Prevent DoS via unbounded OPML import
-SESSION_GRACE_SECONDS = 5  # Clock skew grace period (reduced from 60s for security)
 REINDEX_COOLDOWN_SECONDS = 300  # 5 minute cooldown between reindex operations
 # Standardized error message truncation length
 ERROR_MESSAGE_MAX_LENGTH = 200
@@ -3352,44 +3356,10 @@ class Default(WorkerEntrypoint):
     def _verify_signed_cookie(self, request: WorkerRequest) -> dict[str, Any] | None:
         """Verify the signed session cookie (stateless, no KV).
 
-        Cookie format: base64(json_payload).signature
+        Delegates to auth.get_session_from_cookies for actual verification.
         """
         cookies = SafeHeaders(request).cookie
-        session_cookie = None
-        for cookie in cookies.split(";"):
-            if cookie.strip().startswith("session="):
-                session_cookie = cookie.strip()[8:]
-                break
-
-        if not session_cookie or "." not in session_cookie:
-            return None
-
-        try:
-            payload_b64, signature = session_cookie.rsplit(".", 1)
-
-            # Verify signature
-            expected_sig = hmac.new(
-                self.env.SESSION_SECRET.encode(), payload_b64.encode(), hashlib.sha256
-            ).hexdigest()
-
-            if not hmac.compare_digest(signature, expected_sig):
-                return None
-
-            # Decode payload
-            payload = json.loads(base64.urlsafe_b64decode(payload_b64))
-
-            # Check expiration with minimal grace period for clock skew
-            if payload.get("exp", 0) < time.time() - SESSION_GRACE_SECONDS:
-                return None
-
-            return payload
-        except Exception as e:
-            _log_op(
-                "session_verify_failed",
-                error_type=type(e).__name__,
-                error=_truncate_error(e),
-            )
-            return None
+        return get_session_from_cookies(cookies, self.env.SESSION_SECRET)
 
     def _redirect_to_github_oauth(self, request: WorkerRequest) -> Response:
         """Redirect to GitHub OAuth authorization."""
@@ -3421,7 +3391,7 @@ class Default(WorkerEntrypoint):
             f"&state={state}"
         )
 
-        state_cookie = f"oauth_state={state}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600"
+        state_cookie = build_oauth_state_cookie_header(state)
         return Response(
             "",
             status=302,
@@ -3452,11 +3422,7 @@ class Default(WorkerEntrypoint):
 
             # Verify state parameter matches cookie (CSRF protection)
             cookies = SafeHeaders(request).cookie
-            expected_state = None
-            for cookie in cookies.split(";"):
-                if cookie.strip().startswith("oauth_state="):
-                    expected_state = cookie.strip()[12:]
-                    break
+            expected_state = parse_cookie_value(cookies, "oauth_state")
 
             if not state or not expected_state or state != expected_state:
                 if event:
@@ -3593,22 +3559,17 @@ class Default(WorkerEntrypoint):
             )
 
             # Create signed session cookie (stateless, no KV)
-            session_cookie = self._create_signed_cookie(
-                {
-                    "github_username": github_username,
-                    "github_id": github_id,
-                    "avatar_url": user_data.get("avatar_url"),
-                    "exp": int(time.time()) + SESSION_TTL_SECONDS,
-                }
+            session_cookie = create_session_cookie(
+                github_username=github_username,
+                github_id=github_id,
+                avatar_url=user_data.get("avatar_url"),
+                secret=self.env.SESSION_SECRET,
             )
 
             # Clear oauth_state cookie and set session cookie
             # Use list of tuples to support multiple Set-Cookie headers
-            clear_state = "oauth_state=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0"
-            session = (
-                f"session={session_cookie}; HttpOnly; Secure; "
-                f"SameSite=Lax; Path=/; Max-Age={SESSION_TTL_SECONDS}"
-            )
+            clear_state = build_clear_oauth_state_cookie_header()
+            session = build_session_cookie_header(session_cookie)
 
             # Populate OAuth success metrics on consolidated event
             if event:
@@ -3644,20 +3605,6 @@ class Default(WorkerEntrypoint):
                 status=500,
             )
 
-    def _create_signed_cookie(self, payload: dict[str, Any]) -> str:
-        """Create an HMAC-signed cookie.
-
-        Format: base64(json_payload).signature
-        """
-        payload_json = json.dumps(payload)
-        payload_b64 = base64.urlsafe_b64encode(payload_json.encode()).decode()
-
-        signature = hmac.new(
-            self.env.SESSION_SECRET.encode(), payload_b64.encode(), hashlib.sha256
-        ).hexdigest()
-
-        return f"{payload_b64}.{signature}"
-
     def _logout(self, request: WorkerRequest) -> Response:
         """Log out by clearing the session cookie (stateless - nothing to delete)."""
         return Response(
@@ -3665,7 +3612,7 @@ class Default(WorkerEntrypoint):
             status=302,
             headers={
                 "Location": "/",
-                "Set-Cookie": "session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0",
+                "Set-Cookie": build_clear_session_cookie_header(),
             },
         )
 
