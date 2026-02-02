@@ -13,9 +13,19 @@ Admins marked with "test_only": true are only seeded in local mode.
 
 import argparse
 import json
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
+
+# Module-level connection for efficient SQL quoting
+_quote_conn = sqlite3.connect(":memory:")
+
+
+def sql_quote(value: str) -> str:
+    """Safely quote a string for SQLite SQL."""
+    cursor = _quote_conn.execute("SELECT quote(?)", (value,))
+    return cursor.fetchone()[0]
 
 
 def seed_admins(local: bool = False):
@@ -46,17 +56,20 @@ def seed_admins(local: bool = False):
     target = "local" if local else "remote"
     print(f"Seeding {len(admins)} admin(s) to {target} database...")
 
+    failed_admins = []
+
     for admin in admins:
         username = admin["github_username"]
         display_name = admin.get("display_name", username)
         github_id = admin.get("github_id", 0)
 
-        # Escape single quotes in display name
-        display_name_escaped = display_name.replace("'", "''")
+        # Use proper SQL escaping for both fields
+        username_quoted = sql_quote(username)
+        display_name_quoted = sql_quote(display_name)
 
         sql = f"""
             INSERT INTO admins (github_username, github_id, display_name, is_active)
-            VALUES ('{username}', {github_id}, '{display_name_escaped}', 1)
+            VALUES ({username_quoted}, {github_id}, {display_name_quoted}, 1)
             ON CONFLICT(github_username) DO UPDATE SET
                 display_name = excluded.display_name,
                 is_active = 1;
@@ -76,7 +89,11 @@ def seed_admins(local: bool = False):
             print(f"  [OK] Seeded admin: {username}")
         else:
             print(f"  [FAIL] Failed to seed {username}: {result.stderr}", file=sys.stderr)
-            sys.exit(1)
+            failed_admins.append(username)
+
+    if failed_admins:
+        print(f"\n{len(failed_admins)} admin(s) failed to seed", file=sys.stderr)
+        sys.exit(1)
 
     print("Done!")
 

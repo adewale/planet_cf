@@ -27,13 +27,18 @@ Requirements:
 
 import argparse
 import json
+import os
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import Request, urlopen
+
+# Module-level connection for efficient SQL quoting
+_quote_conn = sqlite3.connect(":memory:")
 
 
 def sql_quote(value: str) -> str:
@@ -42,13 +47,8 @@ def sql_quote(value: str) -> str:
     Uses sqlite3's own escaping logic to prevent SQL injection.
     Returns the value wrapped in single quotes with proper escaping.
     """
-    # Use sqlite3 to properly escape - it handles all edge cases
-    # including NULL bytes, unicode, and special characters
-    conn = sqlite3.connect(":memory:")
-    cursor = conn.execute("SELECT quote(?)", (value,))
-    result = cursor.fetchone()[0]
-    conn.close()
-    return result
+    cursor = _quote_conn.execute("SELECT quote(?)", (value,))
+    return cursor.fetchone()[0]
 
 
 def read_opml_file(file_path: str) -> str:
@@ -248,8 +248,6 @@ ON CONFLICT(url) DO UPDATE SET title = excluded.title, site_url = excluded.site_
         batch_sql = ";\n".join(sql_statements) + ";"
 
         # Write to temp file for execution
-        import tempfile
-
         with tempfile.NamedTemporaryFile(mode="w", suffix=".sql", delete=False) as f:
             f.write(batch_sql)
             temp_file = f.name
@@ -297,8 +295,6 @@ ON CONFLICT(url) DO UPDATE SET title = excluded.title, site_url = excluded.site_
                     else:
                         print(f"  [FAIL] {feed['title']}: {single_result.stderr}", file=sys.stderr)
         finally:
-            import os
-
             os.unlink(temp_file)
 
         # Progress indicator
