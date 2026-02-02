@@ -21,6 +21,9 @@ from urllib.parse import parse_qs, urlparse
 import feedparser
 from workers import Request, Response, WorkerEntrypoint
 
+from admin import (
+    admin_error_response,
+)
 from auth import (
     build_clear_oauth_state_cookie_header,
     build_clear_session_cookie_header,
@@ -29,6 +32,24 @@ from auth import (
     create_session_cookie,
     get_session_from_cookies,
     parse_cookie_value,
+)
+from config import (
+    DEFAULT_FEED_FAILURE_THRESHOLD,
+    MAX_OPML_FEEDS,
+    MAX_SEARCH_QUERY_LENGTH,
+    MAX_SEARCH_WORDS,
+    REINDEX_COOLDOWN_SECONDS,
+    USER_AGENT,
+    get_embedding_max_chars,
+    get_feed_auto_deactivate_threshold,
+    get_feed_failure_threshold,
+    get_feed_timeout,
+    get_http_timeout,
+    get_max_entries_per_feed,
+    get_planet_config,
+    get_retention_days,
+    get_search_score_threshold,
+    get_search_top_k,
 )
 from instance_config import is_lite_mode as check_lite_mode
 from models import BleachSanitizer
@@ -45,7 +66,6 @@ from templates import (
     KEYBOARD_NAV_JS,
     STATIC_CSS,
     TEMPLATE_ADMIN_DASHBOARD,
-    TEMPLATE_ADMIN_ERROR,
     TEMPLATE_ADMIN_LOGIN,
     TEMPLATE_FEED_ATOM,
     TEMPLATE_FEED_RSS,
@@ -164,33 +184,11 @@ class RateLimitError(Exception):
 
 
 # =============================================================================
-# Configuration
+# Configuration (constants imported from config.py, local constants below)
 # =============================================================================
 
-FEED_TIMEOUT_SECONDS = 60  # Max wall time per feed
-HTTP_TIMEOUT_SECONDS = 30  # HTTP request timeout
-# Issue 9.3/9.5: Include contact info for good netizen behavior
-USER_AGENT = "PlanetCF/1.0 (+https://planetcf.com; contact@planetcf.com)"
-# Security: Maximum search query length to prevent DoS
-MAX_SEARCH_QUERY_LENGTH = 1000
-MAX_SEARCH_WORDS = 10  # Prevent DoS via excessive word count in multi-word search
-MAX_OPML_FEEDS = 100  # Prevent DoS via unbounded OPML import
-REINDEX_COOLDOWN_SECONDS = 300  # 5 minute cooldown between reindex operations
 # Standardized error message truncation length
 ERROR_MESSAGE_MAX_LENGTH = 200
-
-# Retention policy defaults (can be overridden via env vars)
-DEFAULT_RETENTION_DAYS = 90  # Default to 90 days
-DEFAULT_MAX_ENTRIES_PER_FEED = 50  # Max entries to keep per feed (smart default)
-
-# Search configuration defaults (can be overridden via env vars)
-DEFAULT_EMBEDDING_MAX_CHARS = 2000  # Max chars to embed per entry
-DEFAULT_SEARCH_SCORE_THRESHOLD = 0.3  # Minimum similarity score (0.0-1.0)
-DEFAULT_SEARCH_TOP_K = 50  # Max semantic search results before filtering
-
-# Feed failure thresholds (can be overridden via env vars)
-DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD = 10  # Consecutive failures before auto-deactivate
-DEFAULT_FEED_FAILURE_THRESHOLD = 3  # Consecutive failures to show in DLQ
 
 # SQL query limits (prevent unbounded result sets)
 DEFAULT_QUERY_LIMIT = 500  # Maximum entries returned in a single query
@@ -298,13 +296,11 @@ class Default(WorkerEntrypoint):
 
     def _get_feed_timeout(self) -> int:
         """Get feed timeout from environment, default 60 seconds."""
-        val = getattr(self.env, "FEED_TIMEOUT_SECONDS", None)
-        return int(val) if val else FEED_TIMEOUT_SECONDS
+        return get_feed_timeout(self.env)
 
     def _get_http_timeout(self) -> int:
         """Get HTTP timeout from environment, default 30 seconds."""
-        val = getattr(self.env, "HTTP_TIMEOUT_SECONDS", None)
-        return int(val) if val else HTTP_TIMEOUT_SECONDS
+        return get_http_timeout(self.env)
 
     # Track if database has been initialized (per-isolate state)
     _db_initialized: bool = False
@@ -1794,12 +1790,7 @@ class Default(WorkerEntrypoint):
 
     def _get_planet_config(self) -> dict[str, str]:
         """Get planet configuration from environment."""
-        return {
-            "name": getattr(self.env, "PLANET_NAME", None) or "Planet CF",
-            "description": getattr(self.env, "PLANET_DESCRIPTION", None)
-            or "Aggregated posts from Cloudflare employees and community",
-            "link": getattr(self.env, "PLANET_URL", None) or "https://planetcf.com",
-        }
+        return get_planet_config(self.env)
 
     def _admin_error_response(
         self,
@@ -1808,88 +1799,36 @@ class Default(WorkerEntrypoint):
         status: int = 400,
         back_url: str | None = "/admin",
     ) -> Response:
-        """Return an HTML error page for admin/auth errors.
-
-        For browser-initiated requests (form submissions, OAuth callbacks),
-        users expect HTML responses, not JSON. This provides a user-friendly
-        error page instead of raw JSON.
-        """
-        planet = self._get_planet_config()
-        html = render_template(
-            TEMPLATE_ADMIN_ERROR,
-            planet=planet,
-            title=title,
+        """Return an HTML error page for admin/auth errors."""
+        return admin_error_response(
+            planet=self._get_planet_config(),
             message=message,
+            title=title,
+            status=status,
             back_url=back_url,
         )
-        return _html_response(html, cache_max_age=0)
 
-    def _get_config_value(
-        self,
-        env_key: str,
-        default: int | float,
-        value_type: type[int] | type[float] = int,
-    ) -> int | float:
-        """Get a configuration value from environment with type conversion and fallback.
-
-        This is a generic helper that consolidates the pattern used by all config getters.
-        It handles environment variable lookup, type conversion, and error logging.
-
-        Args:
-            env_key: The environment variable name to look up
-            default: The default value to use if not set or on error
-            value_type: The type to convert to (int or float)
-
-        Returns:
-            The configured value, or the default if not set or on conversion error
-        """
-        try:
-            value = getattr(self.env, env_key, None)
-            return value_type(value) if value else default
-        except (ValueError, TypeError) as e:
-            _log_op(
-                "config_validation_error",
-                config_key=env_key,
-                error=str(e),
-                using_default=default,
-            )
-            return default
-
+    # Config getters - delegate to config module
     def _get_retention_days(self) -> int:
-        """Get retention days from environment, default 90."""
-        return int(self._get_config_value("RETENTION_DAYS", DEFAULT_RETENTION_DAYS))
+        return get_retention_days(self.env)
 
     def _get_max_entries_per_feed(self) -> int:
-        """Get max entries per feed from environment, default 50."""
-        return int(
-            self._get_config_value("RETENTION_MAX_ENTRIES_PER_FEED", DEFAULT_MAX_ENTRIES_PER_FEED)
-        )
+        return get_max_entries_per_feed(self.env)
 
     def _get_embedding_max_chars(self) -> int:
-        """Get max chars to embed per entry from environment, default 2000."""
-        return int(self._get_config_value("EMBEDDING_MAX_CHARS", DEFAULT_EMBEDDING_MAX_CHARS))
+        return get_embedding_max_chars(self.env)
 
     def _get_search_score_threshold(self) -> float:
-        """Get minimum similarity score threshold from environment, default 0.3."""
-        return float(
-            self._get_config_value("SEARCH_SCORE_THRESHOLD", DEFAULT_SEARCH_SCORE_THRESHOLD, float)
-        )
+        return get_search_score_threshold(self.env)
 
     def _get_search_top_k(self) -> int:
-        """Get max semantic search results from environment, default 50."""
-        return int(self._get_config_value("SEARCH_TOP_K", DEFAULT_SEARCH_TOP_K))
+        return get_search_top_k(self.env)
 
     def _get_feed_auto_deactivate_threshold(self) -> int:
-        """Get threshold for auto-deactivating feeds from environment, default 10."""
-        return int(
-            self._get_config_value(
-                "FEED_AUTO_DEACTIVATE_THRESHOLD", DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD
-            )
-        )
+        return get_feed_auto_deactivate_threshold(self.env)
 
     def _get_feed_failure_threshold(self) -> int:
-        """Get threshold for DLQ display from environment, default 3."""
-        return int(self._get_config_value("FEED_FAILURE_THRESHOLD", DEFAULT_FEED_FAILURE_THRESHOLD))
+        return get_feed_failure_threshold(self.env)
 
     def _generate_atom_feed(self, planet: dict[str, str], entries: list[dict[str, Any]]) -> str:
         """Generate Atom 1.0 feed XML using template."""
