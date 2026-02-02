@@ -2395,13 +2395,10 @@ class Default(WorkerEntrypoint):
                         )
                     else:
                         # Multiple words: all must appear in title OR all in content
-                        # Build dynamic WHERE clause (f-string needed for dynamic conditions)
-                        word_patterns = []
-                        bind_values = []
-                        for word in words:
-                            escaped_word = word.replace("%", "\\%").replace("_", "\\_")
-                            word_patterns.append(f"%{escaped_word}%")
-                            bind_values.append(f"%{escaped_word}%")
+                        # Build LIKE patterns with SQL wildcards escaped
+                        bind_values = [
+                            f"%{word.replace('%', '\\%').replace('_', '\\_')}%" for word in words
+                        ]
 
                         # All words in title OR all words in content
                         title_conditions = " AND ".join(
