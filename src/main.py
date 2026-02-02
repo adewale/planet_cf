@@ -27,16 +27,12 @@ from workers import Request, Response, WorkerEntrypoint
 from instance_config import is_lite_mode as check_lite_mode
 from models import BleachSanitizer
 from observability import (
-    ERROR_MESSAGE_MAX_LENGTH,
     AdminActionEvent,
     FeedFetchEvent,
     RequestEvent,
     SchedulerEvent,
     Timer,
     emit_event,
-    log_error,
-    log_op,
-    truncate_error,
 )
 from templates import (
     ADMIN_JS,
@@ -55,6 +51,42 @@ from templates import (
     THEME_CSS,
     THEME_LOGOS,
     render_template,
+)
+from utils import (
+    feed_response as _feed_response,
+)
+from utils import (
+    get_display_author as _get_display_author,
+)
+from utils import (
+    html_response as _html_response,
+)
+from utils import (
+    json_error as _json_error,
+)
+from utils import (
+    json_response as _json_response,
+)
+from utils import (
+    log_error as _log_error,
+)
+from utils import (
+    log_op as _log_op,
+)
+from utils import (
+    normalize_entry_content as _normalize_entry_content,
+)
+from utils import (
+    parse_iso_datetime as _parse_iso_datetime,
+)
+from utils import (
+    redirect_response as _redirect_response,
+)
+from utils import (
+    truncate_error as _truncate_error,
+)
+from utils import (
+    validate_feed_id as _validate_feed_id,
 )
 from wrappers import (
     SafeEnv,
@@ -94,6 +126,8 @@ WorkerCtx: TypeAlias = Any
 WorkerRequest: TypeAlias = Any
 #: feedparser's FeedParserDict (dynamic dictionary-like object)
 FeedParserDict: TypeAlias = Any
+#: Logging kwargs - intentionally accepts any JSON-serializable values
+LogKwargs: TypeAlias = Any
 
 
 # =============================================================================
@@ -129,6 +163,9 @@ MAX_SEARCH_WORDS = 10  # Prevent DoS via excessive word count in multi-word sear
 MAX_OPML_FEEDS = 100  # Prevent DoS via unbounded OPML import
 SESSION_GRACE_SECONDS = 5  # Clock skew grace period (reduced from 60s for security)
 REINDEX_COOLDOWN_SECONDS = 300  # 5 minute cooldown between reindex operations
+# Standardized error message truncation length
+ERROR_MESSAGE_MAX_LENGTH = 200
+
 # Retention policy defaults (can be overridden via env vars)
 DEFAULT_RETENTION_DAYS = 90  # Default to 90 days
 DEFAULT_MAX_ENTRIES_PER_FEED = 50  # Max entries to keep per feed (smart default)
@@ -161,232 +198,6 @@ BLOCKED_METADATA_IPS = {
     "100.100.100.200",  # Alibaba Cloud metadata
     "192.0.0.192",  # Oracle Cloud metadata
 }
-
-
-def _get_display_author(author: str | None, feed_title: str | None) -> str:
-    """Compute display author for an entry, filtering out email addresses.
-
-    If author is empty or contains '@' (likely an email), use feed_title instead.
-    This provides a safe, centralized check that handles the email filtering logic
-    in Python rather than in templates.
-
-    Args:
-        author: Entry author from feed (may be email, empty, or None)
-        feed_title: Feed title to use as fallback
-
-    Returns:
-        Safe display string for author attribution
-    """
-    if author and "@" not in author:
-        return author
-    return feed_title or "Unknown"
-
-
-def _validate_feed_id(feed_id: str) -> int | None:
-    """Validate and convert a feed ID from URL path to integer.
-
-    Returns the integer ID if valid, None otherwise.
-    Prevents path traversal and invalid ID attacks.
-    """
-    if not feed_id:
-        return None
-    # Only allow positive integers (no leading zeros except for "0")
-    if not feed_id.isdigit():
-        return None
-    try:
-        id_int = int(feed_id)
-        # Reject zero or negative (shouldn't happen with isdigit, but be safe)
-        if id_int <= 0:
-            return None
-        return id_int
-    except (ValueError, OverflowError):
-        return None
-
-
-def _xml_escape(text: str) -> str:
-    """Escape XML special characters for safe embedding in XML content.
-
-    This is applied before CDATA wrapping to handle any edge cases
-    where content might contain problematic XML sequences.
-    """
-    # Standard XML entity escaping
-    text = text.replace("&", "&amp;")
-    text = text.replace("<", "&lt;")
-    text = text.replace(">", "&gt;")
-    return text
-
-
-def _parse_query_params(url_str: str) -> dict[str, list[str]]:
-    """Extract query parameters from a URL string.
-
-    Returns a dict where each key maps to a list of values.
-    """
-    if "?" not in url_str:
-        return {}
-    query_string = url_str.split("?", 1)[1]
-    return parse_qs(query_string)
-
-
-# =============================================================================
-# Content Normalization
-# =============================================================================
-
-
-def _normalize_entry_content(content: str, title: str | None) -> str:
-    """Normalize entry content for display by removing duplicate title headings.
-
-    Many feeds include the post title as an <h1> or <h2> at the start of the
-    content body. Since our template already displays the title, this creates
-    visual duplication. This function strips the leading heading if it matches
-    the entry title.
-
-    Handles common patterns:
-    - <h1>Title</h1> at start
-    - Metadata (date/read time) before the <h1>
-    - Whitespace padding inside heading tags
-    - Link-wrapped headings: <h1><a href="#">Title</a></h1>
-
-    Args:
-        content: HTML content that may contain a duplicate title heading
-        title: The entry title to match against
-
-    Returns:
-        Content with the duplicate title heading removed if found
-    """
-    if not content or not title:
-        return content
-
-    # Normalize title for comparison (strip whitespace, lowercase)
-    title_normalized = title.strip().lower()
-
-    # Limit regex search to first 1000 chars to prevent ReDoS on pathological input
-    # Duplicate title headings always appear at the start of content
-    search_content = content[:1000] if len(content) > 1000 else content
-
-    # Pattern to match optional metadata, then <h1> or <h2> with the title
-    # Group 1: Optional metadata (date, read time, etc.) before the heading
-    # Group 2: The heading tag (h1 or h2)
-    # Group 3: Optional link opening tag
-    # Group 4: The heading text
-    # Group 5: Optional link closing tag
-    pattern = (
-        r"^(\s*(?:[A-Za-z]+\s+\d{1,2},?\s+\d{4}\s*)?(?:/\s*\d+\s*min\s*read\s*)?\s*)"  # metadata
-        r"<(h[12])(?:\s[^>]*)?>\s*"  # opening h1/h2
-        r"(?:(<a[^>]*>)\s*)?"  # optional link open
-        r"([^<]+?)"  # heading text
-        r"\s*(?:(</a>)\s*)?"  # optional link close
-        r"</\2>"  # closing h1/h2
-    )
-
-    match = re.match(pattern, search_content, re.IGNORECASE)
-
-    if match:
-        heading_text = match.group(4).strip().lower()
-        if heading_text == title_normalized:
-            # Strip the metadata and heading, keep remaining content
-            return content[match.end() :].lstrip()
-
-    return content
-
-
-# =============================================================================
-# Response Helpers
-# =============================================================================
-
-
-def _html_response(content: str, cache_max_age: int = 3600) -> Response:
-    """Create an HTML response with caching and security headers."""
-    # Content Security Policy - defense in depth against XSS
-    # - default-src 'self': Only allow same-origin resources by default
-    # - script-src 'self': Only allow same-origin scripts (external JS files)
-    # - style-src 'self' 'unsafe-inline': Allow inline styles (needed for templates)
-    # - img-src https: data:: HTTPS images + data URIs (for inline images)
-    # - frame-ancestors 'none': Prevent clickjacking (cannot be framed)
-    # - base-uri 'self': Prevent base tag injection attacks
-    # - form-action 'self': Forms can only submit to same origin
-    csp = (
-        "default-src 'self'; "
-        "script-src 'self'; "
-        "style-src 'self' 'unsafe-inline'; "
-        "img-src https: data:; "
-        "frame-ancestors 'none'; "
-        "base-uri 'self'; "
-        "form-action 'self'"
-    )
-    return Response(
-        content,
-        headers={
-            "Content-Type": "text/html; charset=utf-8",
-            "Cache-Control": f"public, max-age={cache_max_age}, stale-while-revalidate=60",
-            "Content-Security-Policy": csp,
-            "X-Frame-Options": "DENY",
-            "X-Content-Type-Options": "nosniff",
-            "Referrer-Policy": "strict-origin-when-cross-origin",
-            "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
-        },
-    )
-
-
-def _json_response(data: dict, status: int = 200) -> Response:
-    """Create a JSON response."""
-    return Response(
-        json.dumps(data),
-        status=status,
-        headers={"Content-Type": "application/json"},
-    )
-
-
-def _json_error(message: str, status: int = 400) -> Response:
-    """Create a JSON error response."""
-    return _json_response({"error": message}, status=status)
-
-
-def _redirect_response(location: str) -> Response:
-    """Create a redirect response."""
-    return Response("", status=302, headers={"Location": location})
-
-
-def _feed_response(content: str, content_type: str, cache_max_age: int = 3600) -> Response:
-    """Create a feed response (Atom/RSS/OPML) with caching headers."""
-    return Response(
-        content,
-        headers={
-            "Content-Type": f"{content_type}; charset=utf-8",
-            "Cache-Control": f"public, max-age={cache_max_age}, stale-while-revalidate=60",
-        },
-    )
-
-
-# =============================================================================
-# Datetime Helpers
-# =============================================================================
-
-
-def _parse_iso_datetime(iso_string: str | None) -> datetime | None:
-    """Parse an ISO datetime string to a timezone-aware datetime.
-
-    Handles various ISO formats:
-    - With Z suffix: "2026-01-17T12:00:00Z"
-    - With offset: "2026-01-17T12:00:00+00:00"
-    - Naive (no timezone): "2026-01-17T12:00:00" (assumes UTC)
-
-    Args:
-        iso_string: ISO format datetime string, or None
-
-    Returns:
-        Timezone-aware datetime in UTC, or None if input is empty/invalid
-    """
-    if not iso_string:
-        return None
-    try:
-        # Replace Z suffix with +00:00 for fromisoformat compatibility
-        dt = datetime.fromisoformat(iso_string.replace("Z", "+00:00"))
-        # Ensure timezone-aware (database may store naive datetimes)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt
-    except (ValueError, AttributeError):
-        return None
 
 
 # =============================================================================
@@ -678,7 +489,7 @@ class Default(WorkerEntrypoint):
             except Exception as e:
                 sched_event.outcome = "error"
                 sched_event.error_type = type(e).__name__
-                sched_event.error_message = truncate_error(e)
+                sched_event.error_message = _truncate_error(e)
                 raise
 
         sched_event.wall_time_ms = total_timer.elapsed_ms
@@ -698,19 +509,14 @@ class Default(WorkerEntrypoint):
 
         Note: Workers Python runtime passes (batch, env, ctx) but we use self.env from __init__.
         """
+        _log_op("queue_batch_received", batch_size=len(batch.messages))
+
         for message in batch.messages:
             # CRITICAL: Convert JsProxy message body to Python dict
             feed_job_raw = message.body
             feed_job = _to_py_safe(feed_job_raw)
             if not feed_job or not isinstance(feed_job, dict):
-                # Invalid message - emit minimal event and ack to prevent retry loop
-                invalid_event = FeedFetchEvent(
-                    outcome="error",
-                    error_type="InvalidMessage",
-                    error_message=f"Invalid body type: {type(feed_job_raw).__name__}",
-                    error_retriable=False,
-                )
-                emit_event(invalid_event)
+                _log_op("queue_message_invalid", body_type=type(feed_job_raw).__name__)
                 message.ack()  # Don't retry invalid messages
                 continue
 
@@ -755,7 +561,7 @@ class Default(WorkerEntrypoint):
                     event.error_type = "TimeoutError"
                     event.error_message = f"Timeout after {feed_timeout}s"
                     event.error_retriable = True
-                    await self._record_feed_error(feed_id, "Timeout", event)
+                    await self._record_feed_error(feed_id, "Timeout")
                     message.retry()
 
                 except RateLimitError as e:
@@ -764,7 +570,7 @@ class Default(WorkerEntrypoint):
                     event.wall_time_ms = timer.elapsed_ms
                     event.outcome = "rate_limited"
                     event.error_type = "RateLimitError"
-                    event.error_message = truncate_error(e)
+                    event.error_message = _truncate_error(e)
                     event.error_retriable = True
                     # Don't call _record_feed_error - feed is not failing
                     message.retry()
@@ -773,9 +579,9 @@ class Default(WorkerEntrypoint):
                     event.wall_time_ms = timer.elapsed_ms
                     event.outcome = "error"
                     event.error_type = type(e).__name__
-                    event.error_message = truncate_error(e)
+                    event.error_message = _truncate_error(e)
                     event.error_retriable = not isinstance(e, ValueError)
-                    await self._record_feed_error(feed_id, str(e), event)
+                    await self._record_feed_error(feed_id, str(e))
                     message.retry()
 
             # Emit wide event (sampling applied)
@@ -856,9 +662,7 @@ class Default(WorkerEntrypoint):
             # Note: We can't distinguish redirect types with fetch API
             # Treat any redirect as potentially permanent
             await self._update_feed_url(feed_id, final_url)
-            # Track URL change on event (http_redirected already set above)
-            if event:
-                event.feed_url_original = url
+            _log_op("feed_url_updated", old_url=url, new_url=final_url)
 
         # Check for HTTP errors
         if status_code >= 400:
@@ -885,15 +689,16 @@ class Default(WorkerEntrypoint):
         if event:
             event.entries_found = entries_found
 
+        _log_op("feed_entries_found", feed_id=feed_id, entries_count=entries_found)
+
         for entry in entries_list:
             # Ensure entry is Python dict (boundary conversion handled by _to_py_safe)
             py_entry = _to_py_safe(entry)
             if not isinstance(py_entry, dict):
-                if event:
-                    event.parse_errors += 1
+                _log_op("entry_not_dict", entry_type=type(py_entry).__name__)
                 continue
 
-            result = await self._upsert_entry(feed_id, py_entry, event)
+            result = await self._upsert_entry(feed_id, py_entry)
             entry_id = result.get("entry_id") if result else None
             if entry_id:
                 entries_added += 1
@@ -911,12 +716,13 @@ class Default(WorkerEntrypoint):
                     if stats.get("text_truncated"):
                         event.indexing_text_truncated += 1
             else:
-                if event:
-                    event.upsert_failures += 1
+                entry_title = str(py_entry.get("title", ""))[:50]
+                _log_op("entry_upsert_failed", feed_id=feed_id, entry_title=entry_title)
 
         # Mark fetch as successful
         await self._update_feed_success(feed_id, new_etag, new_last_modified)
 
+        _log_op("feed_processed", feed_url=url, entries_added=entries_added)
         return {"status": "ok", "entries_added": entries_added, "entries_found": entries_found}
 
     def _normalize_urls(self, content: str, base_url: str) -> str:
@@ -1012,14 +818,11 @@ class Default(WorkerEntrypoint):
 
             return None
 
-        except Exception:
-            # Content fetch failures are expected (timeouts, 404s, blocked)
-            # Caller falls back to summary - no need to log each failure
+        except Exception as e:
+            _log_op("content_fetch_error", url=url, error=_truncate_error(e))
             return None
 
-    async def _upsert_entry(
-        self, feed_id: int, entry: dict[str, Any], event: FeedFetchEvent | None = None
-    ) -> dict[str, Any]:
+    async def _upsert_entry(self, feed_id: int, entry: dict[str, Any]) -> dict[str, Any]:
         """Insert or update a single entry with sanitized content."""
         # Generate stable GUID - must be non-empty
         guid = entry.get("id") or entry.get("link") or entry.get("title")
@@ -1051,8 +854,11 @@ class Default(WorkerEntrypoint):
             fetched_content = await self._fetch_full_content(entry_url)
             if fetched_content:
                 content = fetched_content
-                if event:
-                    event.content_fetched_count += 1
+                _log_op(
+                    "full_content_fetched",
+                    url=entry_url[:100],
+                    content_len=len(content),
+                )
 
         # Sanitize HTML (XSS prevention)
         sanitized_content = self._sanitize_html(content)
@@ -1122,8 +928,14 @@ class Default(WorkerEntrypoint):
                     entry_id, title, sanitized_content, feed_id=feed_id
                 )
             except Exception as e:
-                # Don't fail - entry is still usable without search
-                # Error is captured in indexing_stats for aggregation on parent event
+                # Log but don't fail - entry is still usable without search
+                _log_op(
+                    "search_index_skipped",
+                    entry_id=entry_id,
+                    error_type=type(e).__name__,
+                    error=_truncate_error(e),
+                )
+                # Create failed stats for aggregation
                 indexing_stats = {
                     "success": False,
                     "embedding_ms": 0,
@@ -1131,7 +943,7 @@ class Default(WorkerEntrypoint):
                     "total_ms": 0,
                     "text_truncated": False,
                     "error_type": type(e).__name__,
-                    "error_message": truncate_error(e),
+                    "error_message": _truncate_error(e),
                 }
 
         return {"entry_id": entry_id, "indexing_stats": indexing_stats}
@@ -1216,7 +1028,7 @@ class Default(WorkerEntrypoint):
 
             except Exception as e:
                 stats["error_type"] = type(e).__name__
-                stats["error_message"] = truncate_error(e)
+                stats["error_message"] = _truncate_error(e)
                 raise
 
         stats["total_ms"] = wall_timer.elapsed_ms
@@ -1231,7 +1043,7 @@ class Default(WorkerEntrypoint):
         try:
             parsed = urlparse(url)
         except Exception as e:
-            log_error("url_parse_error", e, url=url)
+            _log_error("url_parse_error", e, url=url)
             return False
 
         # Only allow http/https
@@ -1295,9 +1107,7 @@ class Default(WorkerEntrypoint):
             .run()
         )
 
-    async def _record_feed_error(
-        self, feed_id: int, error_message: str, event: FeedFetchEvent | None = None
-    ) -> None:
+    async def _record_feed_error(self, feed_id: int, error_message: str) -> None:
         """Record a feed fetch error and auto-deactivate after too many failures."""
         # Issue 9.4: Auto-deactivate feeds after configurable consecutive failures
         threshold = self._get_feed_auto_deactivate_threshold()
@@ -1320,10 +1130,13 @@ class Default(WorkerEntrypoint):
         )
         # Convert JsProxy to Python dict
         result = _to_py_safe(result_raw)
-        if result and result.get("is_active") == 0 and event:
-            # Feed was auto-deactivated - track on event
-            event.feed_auto_deactivated = True
-            event.feed_consecutive_failures = result.get("consecutive_failures", 0)
+        if result and result.get("is_active") == 0:
+            _log_op(
+                "feed_auto_deactivated",
+                feed_id=feed_id,
+                consecutive_failures=result.get("consecutive_failures"),
+                reason="Too many consecutive failures",
+            )
 
     async def _update_feed_url(self, feed_id: int, new_url: str) -> None:
         """Update feed URL after permanent redirect."""
@@ -1548,11 +1361,14 @@ class Default(WorkerEntrypoint):
                     event.cache_status = "bypass"
 
             except Exception as e:
+                _log_op(
+                    "request_error",
+                    path=path,
+                    error_type=type(e).__name__,
+                    error=_truncate_error(e),
+                )
                 event.wall_time_ms = timer.elapsed_ms
                 event.status_code = 500
-                event.outcome = "error"
-                event.error_type = type(e).__name__
-                event.error_message = truncate_error(e)
                 emit_event(event)
                 raise
 
@@ -1896,9 +1712,14 @@ class Default(WorkerEntrypoint):
                 try:
                     await self.env.SEARCH_INDEX.deleteByIds([str(id) for id in deleted_ids])
                     stats["vectors_deleted"] = len(deleted_ids)
-                except Exception:
-                    # Error tracked in stats["errors"] for aggregation on SchedulerEvent
+                except Exception as e:
                     stats["errors"] += 1
+                    _log_op(
+                        "vectorize_delete_error",
+                        error_type=type(e).__name__,
+                        error_message=_truncate_error(e),
+                        ids_count=len(deleted_ids),
+                    )
                     # Continue with D1 deletion even if vector cleanup fails
 
             stats["vectorize_ms"] = vectorize_timer.elapsed_ms
@@ -1916,6 +1737,7 @@ class Default(WorkerEntrypoint):
                 )
 
             stats["entries_deleted"] = len(deleted_ids)
+            _log_op("retention_cleanup", entries_deleted=len(deleted_ids))
 
         return stats
 
@@ -2336,8 +2158,7 @@ class Default(WorkerEntrypoint):
                     m for m in semantic_matches_raw if m.get("score", 0) >= score_threshold
                 ]
         except Exception as e:
-            if event:
-                event.search_semantic_error = truncate_error(e)
+            _log_op("semantic_search_failed", error=_truncate_error(e))
 
         # 2. Keyword search via D1 (primary ranking signal)
         try:
@@ -2428,8 +2249,7 @@ class Default(WorkerEntrypoint):
             if event:
                 event.search_d1_ms = d1_timer.elapsed_ms
         except Exception as e:
-            if event:
-                event.search_keyword_error = truncate_error(e)
+            _log_op("keyword_search_failed", error=_truncate_error(e))
 
         # 3. Combine results: keyword matches FIRST, then semantic matches
         # This is the key ranking insight: exact text match is the strongest signal
@@ -2845,11 +2665,11 @@ class Default(WorkerEntrypoint):
             if feed_data.bozo and not feed_data.entries:
                 # Security: Log detailed error internally, return generic message
                 bozo_exc = feed_data.bozo_exception
-                log_op(
+                _log_op(
                     "feed_validation_parse_error",
                     url=url,
                     error_type=type(bozo_exc).__name__ if bozo_exc else "Unknown",
-                    error_detail=truncate_error(bozo_exc) if bozo_exc else "Invalid format",
+                    error_detail=_truncate_error(bozo_exc) if bozo_exc else "Invalid format",
                 )
                 return {
                     "valid": False,
@@ -2879,7 +2699,7 @@ class Default(WorkerEntrypoint):
             }
 
         except Exception as e:
-            error_msg = truncate_error(e)
+            error_msg = _truncate_error(e)
             if "timeout" in error_msg.lower():
                 return {"valid": False, "error": "Timeout fetching feed (10s)"}
             return {"valid": False, "error": error_msg}
@@ -2926,7 +2746,7 @@ class Default(WorkerEntrypoint):
                 if not validation["valid"]:
                     admin_event.outcome = "error"
                     admin_event.error_type = "ValidationError"
-                    admin_event.error_message = truncate_error(validation["error"])
+                    admin_event.error_message = _truncate_error(validation["error"])
                     return self._admin_error_response(
                         f"Could not validate feed: {validation['error']}",
                         title="Feed Validation Failed",
@@ -2986,7 +2806,7 @@ class Default(WorkerEntrypoint):
             except Exception as e:
                 admin_event.outcome = "error"
                 admin_event.error_type = type(e).__name__
-                admin_event.error_message = truncate_error(e)
+                admin_event.error_message = _truncate_error(e)
                 return self._admin_error_response(
                     "An unexpected error occurred while adding the feed. Please try again.",
                     title="Error Adding Feed",
@@ -3044,7 +2864,7 @@ class Default(WorkerEntrypoint):
             except Exception as e:
                 admin_event.outcome = "error"
                 admin_event.error_type = type(e).__name__
-                admin_event.error_message = truncate_error(e)
+                admin_event.error_message = _truncate_error(e)
                 return self._admin_error_response(
                     "An unexpected error occurred while deleting the feed. Please try again.",
                     title="Error Deleting Feed",
@@ -3109,7 +2929,7 @@ class Default(WorkerEntrypoint):
             except Exception as e:
                 admin_event.outcome = "error"
                 admin_event.error_type = type(e).__name__
-                admin_event.error_message = truncate_error(e)
+                admin_event.error_message = _truncate_error(e)
                 return _json_error(str(e), status=500)
             finally:
                 admin_event.wall_time_ms = timer.elapsed_ms
@@ -3154,9 +2974,9 @@ class Default(WorkerEntrypoint):
                 try:
                     parser = ET.XMLParser(forbid_dtd=True)
                     root = ET.fromstring(content, parser=parser)
-                except ET.ParseError:
+                except ET.ParseError as e:
                     # Don't expose detailed parse errors to users
-                    # Error captured on AdminActionEvent (emitted in finally block)
+                    _log_op("opml_parse_error", error=_truncate_error(e))
                     admin_event.outcome = "error"
                     admin_event.error_type = "ParseError"
                     admin_event.error_message = "Invalid OPML format"
@@ -3229,7 +3049,7 @@ class Default(WorkerEntrypoint):
             except Exception as e:
                 admin_event.outcome = "error"
                 admin_event.error_type = type(e).__name__
-                admin_event.error_message = truncate_error(e)
+                admin_event.error_message = _truncate_error(e)
                 return self._admin_error_response(
                     "An unexpected error occurred while importing the OPML file. Please try again.",
                     title="Import Error",
@@ -3335,10 +3155,10 @@ class Default(WorkerEntrypoint):
                 return _redirect_response("/admin")
 
             except Exception as e:
-                # Error captured on AdminActionEvent (emitted in finally block)
                 admin_event.outcome = "error"
                 admin_event.error_type = type(e).__name__
-                admin_event.error_message = truncate_error(e)
+                admin_event.error_message = _truncate_error(e)
+                _log_op("dlq_retry_error", feed_id=feed_id, error=str(e))
                 return self._admin_error_response(
                     "An unexpected error occurred while retrying the feed. Please try again.",
                     title="Retry Error",
@@ -3442,9 +3262,14 @@ class Default(WorkerEntrypoint):
                             entry_id, title, content, feed_id=feed_id, trigger="reindex"
                         )
                         indexed += 1
-                    except Exception:
-                        # Error count aggregated on AdminActionEvent.reindex_entries_failed
+                    except Exception as e:
                         failed += 1
+                        _log_op(
+                            "reindex_entry_failed",
+                            entry_id=entry_id,
+                            error_type=type(e).__name__,
+                            error=_truncate_error(e),
+                        )
 
                 admin_event.reindex_entries_indexed = indexed
                 admin_event.reindex_entries_failed = failed
@@ -3472,7 +3297,7 @@ class Default(WorkerEntrypoint):
             except Exception as e:
                 admin_event.outcome = "error"
                 admin_event.error_type = type(e).__name__
-                admin_event.error_message = truncate_error(e)
+                admin_event.error_message = _truncate_error(e)
                 return _json_error(str(e), status=500)
             finally:
                 admin_event.reindex_total_ms = timer.elapsed_ms
@@ -3559,10 +3384,10 @@ class Default(WorkerEntrypoint):
 
             return payload
         except Exception as e:
-            log_op(
+            _log_op(
                 "session_verify_failed",
                 error_type=type(e).__name__,
-                error=truncate_error(e),
+                error=_truncate_error(e),
             )
             return None
 
@@ -3661,6 +3486,7 @@ class Default(WorkerEntrypoint):
             )
 
             if token_response.status_code != 200:
+                _log_op("github_token_exchange_failed", status_code=token_response.status_code)
                 if event:
                     event.outcome = "error"
                     event.oauth_success = False
@@ -3679,6 +3505,11 @@ class Default(WorkerEntrypoint):
 
             if not access_token:
                 error_desc = token_data.get("error_description", "Unknown error")
+                _log_op(
+                    "github_oauth_error",
+                    error=token_data.get("error"),
+                    description=error_desc,
+                )
                 if event:
                     event.outcome = "error"
                     event.oauth_success = False
@@ -3706,6 +3537,11 @@ class Default(WorkerEntrypoint):
             )
 
             if user_response.status_code != 200:
+                _log_op(
+                    "github_api_error",
+                    status_code=user_response.status_code,
+                    response=_truncate_error(user_response.text),
+                )
                 if event:
                     event.outcome = "error"
                     event.oauth_success = False
@@ -3791,12 +3627,17 @@ class Default(WorkerEntrypoint):
             )
 
         except Exception as e:
-            # Error captured on RequestEvent (emitted by fetch() handler)
+            # Issue 4.5/6.5: Use _log_op() for structured logging
+            _log_op(
+                "oauth_error",
+                error_type=type(e).__name__,
+                error_message=_truncate_error(e),
+            )
             if event:
                 event.outcome = "error"
                 event.oauth_success = False
                 event.error_type = type(e).__name__
-                event.error_message = truncate_error(e)
+                event.error_message = _truncate_error(e)
             return self._admin_error_response(
                 "An unexpected error occurred during authentication. Please try again.",
                 title="Authentication Failed",
