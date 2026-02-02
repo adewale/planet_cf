@@ -79,6 +79,7 @@
     "RETENTION_MAX_ENTRIES_PER_FEED": "100",
     "FEED_TIMEOUT_SECONDS": "60",
     "HTTP_TIMEOUT_SECONDS": "30",
+    // Planet Mozilla aggregates many feeds, so we show more items per page
     "ITEMS_PER_PAGE": "75",
     "OPML_SOURCE_URL": "https://planet.mozilla.org/opml.xml"
   },

@@ -8,6 +8,16 @@ This is the minimal starting point for a new Planet CF instance. It runs in **li
 - No OAuth required (no admin interface)
 - No Vectorize required (no semantic search)
 - Minimal Cloudflare resources needed
+- Version-controlled feed management via `assets/feeds.opml`
+
+## Directory Structure
+
+- `wrangler.jsonc` - Wrangler configuration with lite mode enabled
+- `templates/` - HTML templates (index, search, titles, admin)
+- `theme/` - Custom CSS styling
+- `assets/` - Static assets served via Cloudflare's ASSETS binding
+  - `feeds.opml` - Your feed list (edit this to add/remove feeds)
+  - `static/` - Images, CSS, and other static files
 
 ## Quick Start
 

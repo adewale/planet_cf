@@ -2,7 +2,7 @@
 // Planet CF - Feed Aggregator for Cloudflare Python Workers
 //
 // =============================================================================
-// LITE MODE
+// MODE CONFIGURATION
 // =============================================================================
 // This config runs in FULL mode with all features enabled.
 //

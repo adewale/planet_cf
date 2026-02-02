@@ -180,7 +180,9 @@ def read_wrangler_config(config_path: str) -> tuple[str, str | None, str | None]
     opml_url = config.get("vars", {}).get("OPML_SOURCE_URL")
     if not opml_url:
         print("Error: OPML_SOURCE_URL not found in config vars", file=sys.stderr)
-        print("For lite mode, create assets/feeds.opml in the example directory", file=sys.stderr)
+        print(
+            "Set OPML_SOURCE_URL in vars, or use lite mode with assets/feeds.opml", file=sys.stderr
+        )
         sys.exit(1)
 
     return db_name, opml_url, None
@@ -217,6 +219,9 @@ def insert_feeds(
         batch = feeds[i : i + batch_size]
 
         # Build batch SQL
+        # Note: Using manual SQL escaping because wrangler d1 execute --command
+        # doesn't support prepared statement syntax. The values come from OPML
+        # files which are trusted input (not user-generated).
         sql_statements = []
         for feed in batch:
             # Escape single quotes in strings

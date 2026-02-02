@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>My Planet Feeds</title>
+    <ownerName>Your Name</ownerName>
+    <ownerEmail>you@example.com</ownerEmail>
+  </head>
+  <body>
+    <!-- Add your feeds here -->
+    <!-- Example: <outline type="rss" text="Blog Name" xmlUrl="https://example.com/feed.xml" htmlUrl="https://example.com"/> -->
+  </body>
+</opml>
