@@ -27,12 +27,28 @@ Requirements:
 
 import argparse
 import json
+import sqlite3
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import Request, urlopen
+
+
+def sql_quote(value: str) -> str:
+    """Safely quote a string for SQLite SQL.
+
+    Uses sqlite3's own escaping logic to prevent SQL injection.
+    Returns the value wrapped in single quotes with proper escaping.
+    """
+    # Use sqlite3 to properly escape - it handles all edge cases
+    # including NULL bytes, unicode, and special characters
+    conn = sqlite3.connect(":memory:")
+    cursor = conn.execute("SELECT quote(?)", (value,))
+    result = cursor.fetchone()[0]
+    conn.close()
+    return result
 
 
 def read_opml_file(file_path: str) -> str:
@@ -218,19 +234,15 @@ def insert_feeds(
     for i in range(0, len(feeds), batch_size):
         batch = feeds[i : i + batch_size]
 
-        # Build batch SQL
-        # Note: Using manual SQL escaping because wrangler d1 execute --command
-        # doesn't support prepared statement syntax. The values come from OPML
-        # files which are trusted input (not user-generated).
+        # Build batch SQL using proper SQLite escaping
         sql_statements = []
         for feed in batch:
-            # Escape single quotes in strings
-            title_escaped = feed["title"].replace("'", "''")
-            site_url_escaped = feed["site_url"].replace("'", "''")
-            url_escaped = feed["url"].replace("'", "''")
+            url = sql_quote(feed["url"])
+            title = sql_quote(feed["title"])
+            site_url = sql_quote(feed["site_url"])
 
             sql_statements.append(f"""INSERT INTO feeds (url, title, site_url, is_active, consecutive_failures, created_at, updated_at)
-VALUES ('{url_escaped}', '{title_escaped}', '{site_url_escaped}', 1, 0, datetime('now'), datetime('now'))
+VALUES ({url}, {title}, {site_url}, 1, 0, datetime('now'), datetime('now'))
 ON CONFLICT(url) DO UPDATE SET title = excluded.title, site_url = excluded.site_url, updated_at = datetime('now')""")
 
         batch_sql = ";\n".join(sql_statements) + ";"
@@ -257,12 +269,12 @@ ON CONFLICT(url) DO UPDATE SET title = excluded.title, site_url = excluded.site_
                 # Try individual inserts for the batch that failed
                 print("  [WARN] Batch failed, trying individual inserts...")
                 for feed in batch:
-                    title_escaped = feed["title"].replace("'", "''")
-                    site_url_escaped = feed["site_url"].replace("'", "''")
-                    url_escaped = feed["url"].replace("'", "''")
+                    url = sql_quote(feed["url"])
+                    title = sql_quote(feed["title"])
+                    site_url = sql_quote(feed["site_url"])
 
                     single_sql = f"""INSERT INTO feeds (url, title, site_url, is_active, consecutive_failures, created_at, updated_at)
-VALUES ('{url_escaped}', '{title_escaped}', '{site_url_escaped}', 1, 0, datetime('now'), datetime('now'))
+VALUES ({url}, {title}, {site_url}, 1, 0, datetime('now'), datetime('now'))
 ON CONFLICT(url) DO UPDATE SET title = excluded.title, site_url = excluded.site_url, updated_at = datetime('now');"""
 
                     single_cmd = [
