@@ -22,9 +22,10 @@ import random
 import secrets
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
 from typing import Any, cast
 from urllib.parse import urlparse
+
+from utils import get_iso_timestamp
 
 # Configure module logger for structured event output
 # Using INFO level for events, which Cloudflare Workers captures from stdout/stderr
@@ -121,7 +122,7 @@ class RequestEvent:
     def __post_init__(self) -> None:
         """Initialize timestamp, request_id, and correlation_id if not provided."""
         if not self.timestamp:
-            self.timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            self.timestamp = get_iso_timestamp()
         if not self.request_id:
             self.request_id = generate_request_id()
         if not self.correlation_id:
@@ -203,7 +204,7 @@ class FeedFetchEvent:
     def __post_init__(self) -> None:
         """Initialize timestamp, request_id, and feed_domain if not provided."""
         if not self.timestamp:
-            self.timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            self.timestamp = get_iso_timestamp()
         if not self.request_id:
             self.request_id = generate_request_id()
         if self.feed_url and not self.feed_domain:
@@ -268,7 +269,7 @@ class SchedulerEvent:
     def __post_init__(self) -> None:
         """Initialize timestamp, request_id, and correlation_id if not provided."""
         if not self.timestamp:
-            self.timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            self.timestamp = get_iso_timestamp()
         if not self.request_id:
             self.request_id = generate_request_id()
         if not self.correlation_id:
@@ -337,7 +338,7 @@ class AdminActionEvent:
     def __post_init__(self) -> None:
         """Initialize timestamp and request_id if not provided."""
         if not self.timestamp:
-            self.timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            self.timestamp = get_iso_timestamp()
         if not self.request_id:
             self.request_id = generate_request_id()
 

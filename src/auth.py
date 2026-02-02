@@ -173,45 +173,39 @@ def get_session_from_cookies(cookies_header: str, secret: str) -> dict[str, Any]
 # Cookie Header Builders
 # =============================================================================
 
+# Standard cookie security attributes (HttpOnly, Secure, SameSite=Lax)
+COOKIE_SECURITY_ATTRS = "HttpOnly; Secure; SameSite=Lax; Path=/"
 
-def build_session_cookie_header(cookie_value: str, ttl_seconds: int = SESSION_TTL_SECONDS) -> str:
-    """Build the Set-Cookie header for a session cookie.
+
+def _build_cookie_header(name: str, value: str, max_age: int) -> str:
+    """Build a Set-Cookie header with standard security attributes.
 
     Args:
-        cookie_value: The signed session cookie value
-        ttl_seconds: Cookie lifetime in seconds
+        name: Cookie name
+        value: Cookie value
+        max_age: Cookie lifetime in seconds (0 to expire immediately)
 
     Returns:
         The complete Set-Cookie header value.
     """
-    return f"session={cookie_value}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age={ttl_seconds}"
+    return f"{name}={value}; {COOKIE_SECURITY_ATTRS}; Max-Age={max_age}"
+
+
+def build_session_cookie_header(cookie_value: str, ttl_seconds: int = SESSION_TTL_SECONDS) -> str:
+    """Build the Set-Cookie header for a session cookie."""
+    return _build_cookie_header("session", cookie_value, ttl_seconds)
 
 
 def build_clear_session_cookie_header() -> str:
-    """Build the Set-Cookie header to clear the session cookie.
-
-    Returns:
-        The Set-Cookie header value that expires the session cookie.
-    """
-    return "session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0"
+    """Build the Set-Cookie header to clear the session cookie."""
+    return _build_cookie_header("session", "", 0)
 
 
 def build_oauth_state_cookie_header(state: str) -> str:
-    """Build the Set-Cookie header for an OAuth state cookie.
-
-    Args:
-        state: The OAuth state value for CSRF protection
-
-    Returns:
-        The Set-Cookie header value.
-    """
-    return f"oauth_state={state}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600"
+    """Build the Set-Cookie header for an OAuth state cookie."""
+    return _build_cookie_header("oauth_state", state, 600)
 
 
 def build_clear_oauth_state_cookie_header() -> str:
-    """Build the Set-Cookie header to clear the OAuth state cookie.
-
-    Returns:
-        The Set-Cookie header value that expires the OAuth state cookie.
-    """
-    return "oauth_state=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0"
+    """Build the Set-Cookie header to clear the OAuth state cookie."""
+    return _build_cookie_header("oauth_state", "", 0)

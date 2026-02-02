@@ -143,6 +143,9 @@ addopts = "-v --tb=short"
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]
+markers = [
+    "e2e: end-to-end tests requiring external services (live worker deployment)",
+]
 
 # =============================================================================
 # Coverage Configuration

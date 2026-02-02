@@ -996,7 +996,7 @@ class Default(WorkerEntrypoint):
         with Timer() as wall_timer:
             try:
                 # Combine title and content for embedding (truncate to configurable limit)
-                max_chars = self._get_embedding_max_chars()
+                max_chars = get_embedding_max_chars(self.env)
                 combined_text = f"{title}\n\n{content[:max_chars]}"
                 stats["text_truncated"] = len(content) > max_chars
 
@@ -1119,7 +1119,7 @@ class Default(WorkerEntrypoint):
     async def _record_feed_error(self, feed_id: int, error_message: str) -> None:
         """Record a feed fetch error and auto-deactivate after too many failures."""
         # Issue 9.4: Auto-deactivate feeds after configurable consecutive failures
-        threshold = self._get_feed_auto_deactivate_threshold()
+        threshold = get_feed_auto_deactivate_threshold(self.env)
         # Note: Check consecutive_failures + 1 (the NEW value after increment) against threshold
         # to avoid race condition where the CASE sees the old value before increment
         result_raw = await (
@@ -1449,8 +1449,8 @@ class Default(WorkerEntrypoint):
         # Query entries using configurable retention period
         # Uses first_seen for ordering/grouping to prevent spam from retroactive entries
         # Per-feed-per-day limit prevents any single feed from dominating when added
-        retention_days = self._get_retention_days()
-        max_per_feed = self._get_max_entries_per_feed()
+        retention_days = get_retention_days(self.env)
+        max_per_feed = get_max_entries_per_feed(self.env)
 
         # Calculate cutoff date in Python for parameterized query
         cutoff_date = (datetime.now(timezone.utc) - timedelta(days=retention_days)).strftime(
@@ -1667,8 +1667,8 @@ class Default(WorkerEntrypoint):
             - errors: int
 
         """
-        retention_days = self._get_retention_days()
-        max_per_feed = self._get_max_entries_per_feed()
+        retention_days = get_retention_days(self.env)
+        max_per_feed = get_max_entries_per_feed(self.env)
 
         stats = {
             "retention_days": retention_days,
@@ -1807,28 +1807,6 @@ class Default(WorkerEntrypoint):
             status=status,
             back_url=back_url,
         )
-
-    # Config getters - delegate to config module
-    def _get_retention_days(self) -> int:
-        return get_retention_days(self.env)
-
-    def _get_max_entries_per_feed(self) -> int:
-        return get_max_entries_per_feed(self.env)
-
-    def _get_embedding_max_chars(self) -> int:
-        return get_embedding_max_chars(self.env)
-
-    def _get_search_score_threshold(self) -> float:
-        return get_search_score_threshold(self.env)
-
-    def _get_search_top_k(self) -> int:
-        return get_search_top_k(self.env)
-
-    def _get_feed_auto_deactivate_threshold(self) -> int:
-        return get_feed_auto_deactivate_threshold(self.env)
-
-    def _get_feed_failure_threshold(self) -> int:
-        return get_feed_failure_threshold(self.env)
 
     def _generate_atom_feed(self, planet: dict[str, str], entries: list[dict[str, Any]]) -> str:
         """Generate Atom 1.0 feed XML using template."""
@@ -2019,8 +1997,8 @@ class Default(WorkerEntrypoint):
             return _html_response(html, cache_max_age=0)
 
         # Get search configuration
-        top_k = self._get_search_top_k()
-        score_threshold = self._get_search_score_threshold()
+        top_k = get_search_top_k(self.env)
+        score_threshold = get_search_score_threshold(self.env)
 
         # Track if query was truncated for user feedback
         words_truncated = False
@@ -2059,7 +2037,7 @@ class Default(WorkerEntrypoint):
 
         # 2. Keyword search via D1 (primary ranking signal)
         try:
-            search_limit = self._get_search_top_k()
+            search_limit = get_search_top_k(self.env)
             with Timer() as d1_timer:
                 # Escape special characters for LIKE pattern
                 escaped_query = query.replace("%", "\\%").replace("_", "\\_")
@@ -2968,7 +2946,7 @@ class Default(WorkerEntrypoint):
 
     async def _view_dlq(self) -> Response:
         """View dead letter queue contents (failed feeds with configurable threshold)."""
-        threshold = self._get_feed_failure_threshold()
+        threshold = get_feed_failure_threshold(self.env)
         result = await (
             self.env.DB.prepare("""
             SELECT id, url, title, consecutive_failures, last_fetch_at, fetch_error as last_error

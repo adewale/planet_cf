@@ -43,6 +43,14 @@ if not _logger.handlers:
     # Note: propagate defaults to True, needed for test caplog capture
 
 
+def get_iso_timestamp() -> str:
+    """Get current UTC time as ISO string with Z suffix (RFC3339).
+
+    Centralizes the datetime→ISO string conversion used throughout the codebase.
+    """
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
 def log_op(event_type: str, **kwargs: LogKwargs) -> None:
     """Log an operational event as structured JSON.
 
@@ -51,7 +59,7 @@ def log_op(event_type: str, **kwargs: LogKwargs) -> None:
     """
     event = {
         "event_type": event_type,
-        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "timestamp": get_iso_timestamp(),
         **kwargs,
     }
     _logger.info(json.dumps(event))
@@ -77,7 +85,7 @@ def log_error(event_type: str, exception: Exception, **kwargs: LogKwargs) -> Non
     """
     event = {
         "event_type": event_type,
-        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "timestamp": get_iso_timestamp(),
         "error_type": type(exception).__name__,
         "error": truncate_error(exception),
         **kwargs,
@@ -180,28 +188,40 @@ def normalize_entry_content(content: str, title: str | None) -> str:
 # Response Builders
 # =============================================================================
 
+# Security headers applied to all HTML responses
+SECURITY_HEADERS = {
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+}
+
+# Default Content Security Policy
+DEFAULT_CSP = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src https: data:; "
+    "frame-ancestors 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self'"
+)
+
+
+def _build_cache_control(max_age: int) -> str:
+    """Build Cache-Control header value with stale-while-revalidate."""
+    return f"public, max-age={max_age}, stale-while-revalidate=60"
+
 
 def html_response(content: str, cache_max_age: int = 3600) -> Response:
     """Create an HTML response with caching and security headers."""
-    csp = (
-        "default-src 'self'; "
-        "script-src 'self'; "
-        "style-src 'self' 'unsafe-inline'; "
-        "img-src https: data:; "
-        "frame-ancestors 'none'; "
-        "base-uri 'self'; "
-        "form-action 'self'"
-    )
     return Response(
         content,
         headers={
             "Content-Type": "text/html; charset=utf-8",
-            "Cache-Control": f"public, max-age={cache_max_age}, stale-while-revalidate=60",
-            "Content-Security-Policy": csp,
-            "X-Frame-Options": "DENY",
-            "X-Content-Type-Options": "nosniff",
-            "Referrer-Policy": "strict-origin-when-cross-origin",
-            "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+            "Cache-Control": _build_cache_control(cache_max_age),
+            "Content-Security-Policy": DEFAULT_CSP,
+            **SECURITY_HEADERS,
         },
     )
 
@@ -231,7 +251,7 @@ def feed_response(content: str, content_type: str, cache_max_age: int = 3600) ->
         content,
         headers={
             "Content-Type": f"{content_type}; charset=utf-8",
-            "Cache-Control": f"public, max-age={cache_max_age}, stale-while-revalidate=60",
+            "Cache-Control": _build_cache_control(cache_max_age),
         },
     )
 
