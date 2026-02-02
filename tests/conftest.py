@@ -48,8 +48,39 @@ class MockWorkerEntrypoint:
         pass
 
 
+class MockRequest:
+    """Mock Cloudflare Workers Request object."""
+
+    def __init__(
+        self,
+        url: str = "https://example.com/",
+        method: str = "GET",
+        headers: dict | None = None,
+        body: str | bytes | None = None,
+    ):
+        self.url = url
+        self.method = method
+        self._headers = headers or {}
+        self._body = body
+
+    @property
+    def headers(self) -> dict:
+        return self._headers
+
+    async def text(self) -> str:
+        if isinstance(self._body, bytes):
+            return self._body.decode("utf-8")
+        return self._body or ""
+
+    async def json(self) -> Any:
+        import json
+
+        return json.loads(await self.text())
+
+
 # Create mock workers module
 _mock_workers = ModuleType("workers")
+_mock_workers.Request = MockRequest
 _mock_workers.Response = MockResponse
 _mock_workers.WorkerEntrypoint = MockWorkerEntrypoint
 
