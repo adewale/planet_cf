@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>Test Planet Feeds</title>
+    <dateCreated>2024-01-01T00:00:00Z</dateCreated>
+    <docs>Stable public feeds for E2E testing</docs>
+  </head>
+  <body>
+    <outline type="rss" text="Cloudflare Blog" xmlUrl="https://blog.cloudflare.com/rss/" htmlUrl="https://blog.cloudflare.com"/>
+    <outline type="rss" text="GitHub Blog" xmlUrl="https://github.blog/feed/" htmlUrl="https://github.blog"/>
+    <outline type="rss" text="Mozilla Hacks" xmlUrl="https://hacks.mozilla.org/feed/" htmlUrl="https://hacks.mozilla.org"/>
+  </body>
+</opml>

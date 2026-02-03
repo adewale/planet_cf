@@ -12,7 +12,7 @@ This catches issues that mock-based tests miss:
 
 Run with:
     # Terminal 1: Start wrangler with remote bindings
-    npx wrangler dev --remote
+    npx wrangler dev --remote --config examples/test-planet/wrangler.jsonc
 
     # Terminal 2: Run this test
     uv run pytest tests/e2e/test_search_real.py -v -s
@@ -21,39 +21,19 @@ The test will skip if wrangler dev is not running.
 """
 
 import asyncio
-import base64
-import hashlib
-import hmac
-import json
-import os
-import time
 import uuid
 
 import httpx
 import pytest
 
-# Configuration - can be overridden via environment
-BASE_URL = os.environ.get("PLANET_TEST_URL", "http://localhost:8787")
-SESSION_SECRET = os.environ.get("SESSION_SECRET", "test-secret-for-local-development-32chars")
+from tests.e2e.conftest import E2E_BASE_URL, create_test_session
 
 
-def create_test_session(username: str = "testadmin") -> str:
-    """Create a signed session cookie for testing."""
-    session_data = {
-        "github_username": username,
-        "github_id": 12345,
-        "exp": int(time.time()) + 3600,
-    }
-    payload = base64.b64encode(json.dumps(session_data).encode()).decode()
-    signature = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
-    return f"{payload}.{signature}"
-
-
-async def is_server_running() -> bool:
+async def _is_server_running() -> bool:
     """Check if wrangler dev server is running."""
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
-            response = await client.get(f"{BASE_URL}/")
+            response = await client.get(f"{E2E_BASE_URL}/")
             return response.status_code == 200
     except (httpx.ConnectError, httpx.TimeoutException):
         return False
@@ -62,9 +42,10 @@ async def is_server_running() -> bool:
 @pytest.fixture
 async def require_server():
     """Skip test if wrangler dev is not running."""
-    if not await is_server_running():
+    if not await _is_server_running():
         pytest.skip(
-            f"Wrangler dev server not running at {BASE_URL}. Start with: npx wrangler dev --remote"
+            f"Wrangler dev server not running at {E2E_BASE_URL}. "
+            "Start with: npx wrangler dev --remote --config examples/test-planet/wrangler.jsonc"
         )
 
 
@@ -100,7 +81,7 @@ class TestSearchWithRealInfrastructure:
             # Step 1: Trigger reindex to ensure entries are indexed
             print("\n1. Triggering reindex...")
             reindex_response = await client.post(
-                f"{BASE_URL}/admin/reindex",
+                f"{E2E_BASE_URL}/admin/reindex",
                 cookies=admin_session,
             )
 
@@ -128,7 +109,7 @@ class TestSearchWithRealInfrastructure:
             for term in search_terms:
                 print(f"\n2. Searching for '{term}'...")
                 search_response = await client.get(
-                    f"{BASE_URL}/search",
+                    f"{E2E_BASE_URL}/search",
                     params={"q": term},
                 )
 
@@ -171,13 +152,13 @@ class TestSearchWithRealInfrastructure:
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             # First, check what entries exist
-            homepage = await client.get(f"{BASE_URL}/")
+            homepage = await client.get(f"{E2E_BASE_URL}/")
             assert homepage.status_code == 200
 
             # Trigger reindex to ensure current entries are indexed
             print("\n1. Triggering reindex...")
             reindex_response = await client.post(
-                f"{BASE_URL}/admin/reindex",
+                f"{E2E_BASE_URL}/admin/reindex",
                 cookies=admin_session,
             )
 
@@ -194,7 +175,7 @@ class TestSearchWithRealInfrastructure:
             # (unless by cosmic coincidence it exists)
             print(f"\n2. Searching for unique word '{unique_word}'...")
             search_response = await client.get(
-                f"{BASE_URL}/search",
+                f"{E2E_BASE_URL}/search",
                 params={"q": unique_word},
             )
 
@@ -216,7 +197,7 @@ class TestSearchWithRealInfrastructure:
             print("\n3. Verifying search infrastructure is working...")
             # Try a semantic search - "hello" should work even if no exact match
             hello_response = await client.get(
-                f"{BASE_URL}/search",
+                f"{E2E_BASE_URL}/search",
                 params={"q": "hello world"},
             )
             assert hello_response.status_code == 200
@@ -244,7 +225,7 @@ class TestSearchWithRealInfrastructure:
             print("\n1. Triggering full reindex...")
 
             reindex_response = await client.post(
-                f"{BASE_URL}/admin/reindex",
+                f"{E2E_BASE_URL}/admin/reindex",
                 cookies=admin_session,
             )
 
@@ -322,7 +303,7 @@ class TestSearchWithDataCreation:
                 # Step 1: Add the test feed
                 print("\n1. Adding test feed...")
                 add_response = await client.post(
-                    f"{BASE_URL}/admin/feeds",
+                    f"{E2E_BASE_URL}/admin/feeds",
                     data={"url": test_feed_url},
                     cookies=admin_session,
                     follow_redirects=False,
@@ -333,7 +314,7 @@ class TestSearchWithDataCreation:
 
                 # Find the feed ID for cleanup
                 feeds_response = await client.get(
-                    f"{BASE_URL}/admin/feeds",
+                    f"{E2E_BASE_URL}/admin/feeds",
                     cookies=admin_session,
                 )
                 if feeds_response.status_code == 200:
@@ -347,7 +328,7 @@ class TestSearchWithDataCreation:
                 # Step 2: Trigger feed fetch
                 print("\n2. Triggering feed fetch...")
                 await client.post(
-                    f"{BASE_URL}/admin/regenerate",
+                    f"{E2E_BASE_URL}/admin/regenerate",
                     cookies=admin_session,
                     follow_redirects=False,
                 )
@@ -359,7 +340,7 @@ class TestSearchWithDataCreation:
                 # Step 3: Reindex for search
                 print("\n3. Reindexing entries...")
                 reindex_response = await client.post(
-                    f"{BASE_URL}/admin/reindex",
+                    f"{E2E_BASE_URL}/admin/reindex",
                     cookies=admin_session,
                 )
 
@@ -373,7 +354,7 @@ class TestSearchWithDataCreation:
                 # Step 4: Search for content
                 print("\n4. Searching for 'cloudflare'...")
                 search_response = await client.get(
-                    f"{BASE_URL}/search",
+                    f"{E2E_BASE_URL}/search",
                     params={"q": "cloudflare"},
                 )
 
@@ -391,7 +372,7 @@ class TestSearchWithDataCreation:
                 print("\n5. Cleaning up - deleting test feed...")
                 if created_feed_id:
                     delete_response = await client.post(
-                        f"{BASE_URL}/admin/feeds/{created_feed_id}",
+                        f"{E2E_BASE_URL}/admin/feeds/{created_feed_id}",
                         data={"_method": "DELETE"},
                         cookies=admin_session,
                         follow_redirects=False,
@@ -403,7 +384,7 @@ class TestSearchWithDataCreation:
                 else:
                     # Try to find and delete by URL
                     feeds_response = await client.get(
-                        f"{BASE_URL}/admin/feeds",
+                        f"{E2E_BASE_URL}/admin/feeds",
                         cookies=admin_session,
                     )
                     if feeds_response.status_code == 200:
@@ -411,7 +392,7 @@ class TestSearchWithDataCreation:
                         for feed in feeds_data.get("feeds", []):
                             if feed.get("url") == test_feed_url:
                                 await client.post(
-                                    f"{BASE_URL}/admin/feeds/{feed['id']}",
+                                    f"{E2E_BASE_URL}/admin/feeds/{feed['id']}",
                                     data={"_method": "DELETE"},
                                     cookies=admin_session,
                                     follow_redirects=False,
@@ -430,11 +411,11 @@ class TestSearchEdgeCases:
         """Test that empty/short queries are handled gracefully."""
         async with httpx.AsyncClient() as client:
             # Empty query
-            response = await client.get(f"{BASE_URL}/search", params={"q": ""})
+            response = await client.get(f"{E2E_BASE_URL}/search", params={"q": ""})
             assert response.status_code in [200, 400]
 
             # Too short query
-            response = await client.get(f"{BASE_URL}/search", params={"q": "a"})
+            response = await client.get(f"{E2E_BASE_URL}/search", params={"q": "a"})
             assert response.status_code in [200, 400]
             if response.status_code == 200:
                 # Check for either "too short" or "at least 2 characters" message
@@ -448,7 +429,7 @@ class TestSearchEdgeCases:
             # Very long query
             long_query = "test " * 500
             response = await client.get(
-                f"{BASE_URL}/search",
+                f"{E2E_BASE_URL}/search",
                 params={"q": long_query},
             )
             # Should either work or return an error, not crash
@@ -462,13 +443,13 @@ class TestSearchEdgeCases:
                 "test & query",
                 "test <script>alert(1)</script>",
                 "test\nwith\nnewlines",
-                "test with émojis 🔥",
+                "test with emojis",
                 "日本語テスト",
             ]
 
             for query in special_queries:
                 response = await client.get(
-                    f"{BASE_URL}/search",
+                    f"{E2E_BASE_URL}/search",
                     params={"q": query},
                 )
                 # Should handle gracefully

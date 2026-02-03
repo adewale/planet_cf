@@ -1,0 +1,51 @@
+# Test Planet Instance Configuration
+# Dedicated test instance for running E2E tests against real Cloudflare infrastructure.
+#
+# Setup: ./scripts/setup_test_planet.sh
+# Docs:  docs/TESTING.md
+
+mode: full
+
+planet:
+  id: test-planet
+  name: Test Planet
+  description: E2E test instance for PlanetCF
+  url: https://test-planet.example.workers.dev
+  owner:
+    name: PlanetCF Tests
+    email: test@planetcf.dev
+
+branding:
+  theme: default
+  footer_text: "Test Planet - E2E Testing"
+  show_admin_link: true
+
+content:
+  days: 7
+  group_by_date: true
+  max_entries_per_feed: 50
+  retention_days: 30
+
+search:
+  enabled: true
+
+feeds:
+  http_timeout_seconds: 30
+  feed_timeout_seconds: 60
+  auto_deactivate_threshold: 10
+  failure_threshold: 3
+
+auth:
+  provider: github
+
+cloudflare:
+  database_name: test-planet-db
+  vectorize_index: test-planet-entries
+  feed_queue: test-planet-feed-queue
+  dead_letter_queue: test-planet-feed-dlq
+
+admins:
+  - username: adewale
+    display_name: Adewale Oshineye
+  - username: testadmin
+    display_name: Test Admin

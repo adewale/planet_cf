@@ -269,7 +269,7 @@ if [[ -d "$MIGRATIONS_DIR" ]]; then
         if [[ -f "$MIGRATION" ]]; then
             MIGRATION_NAME=$(basename "$MIGRATION")
             echo -e "  Running: ${MIGRATION_NAME}"
-            npx wrangler d1 execute "$DB_NAME" --file "$MIGRATION" --config "$CONFIG_FILE" 2>&1 || {
+            npx wrangler d1 execute "$DB_NAME" --remote --file "$MIGRATION" --config "$CONFIG_FILE" 2>&1 || {
                 echo -e "  ${YELLOW}Warning: Migration may have already been applied${NC}"
             }
         fi
