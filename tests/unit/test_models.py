@@ -1,4 +1,4 @@
-# tests/unit/test_types.py
+# tests/unit/test_models.py
 """Unit tests for domain model types."""
 
 import json

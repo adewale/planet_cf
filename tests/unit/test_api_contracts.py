@@ -6,8 +6,10 @@ These tests ensure that:
 1. Embedded JavaScript uses correct HTTP methods for backend routes
 2. Public endpoints return appropriate content types (HTML vs JSON)
 3. Error responses are user-friendly for browser-based requests
+4. JSON response shapes match what admin JavaScript expects (C1 prevention)
 """
 
+import inspect
 import re
 
 
@@ -169,3 +171,213 @@ class TestBackendRouteDefinitions:
 
         # Check that POST is expected for toggle with /toggle path
         assert "/toggle" in source, "Toggle route should check for /toggle path"
+
+
+# =============================================================================
+# JSON Response Shape Contract Tests
+# =============================================================================
+
+
+class TestJSONResponseContracts:
+    """Verify JSON response keys match what admin JavaScript expects.
+
+    These tests prevent C1-type bugs where the backend returns JSON with
+    different keys than the frontend JavaScript expects (e.g., returning
+    {"failed_feeds": ...} when JS expects {"feeds": ...}).
+    """
+
+    def _get_js_data_accesses(self) -> dict[str, set[str]]:
+        """Extract all data.X property accesses from admin JS, grouped by function.
+
+        Returns:
+            Dict mapping JS function name to set of data.X property names accessed
+        """
+        from templates import ADMIN_JS
+
+        # Map JS functions to their data property accesses
+        functions: dict[str, set[str]] = {}
+
+        # Split JS into function blocks
+        # loadDLQ, loadAuditLog, rebuildSearchIndex, inline fetch handlers
+        func_pattern = re.compile(
+            r"function\s+(\w+)\s*\(\s*\)\s*\{(.*?)^\}",
+            re.DOTALL | re.MULTILINE,
+        )
+
+        for match in func_pattern.finditer(ADMIN_JS):
+            func_name = match.group(1)
+            func_body = match.group(2)
+
+            # Find all data.X accesses
+            data_accesses = set(re.findall(r"data\.(\w+)", func_body))
+            if data_accesses:
+                functions[func_name] = data_accesses
+
+        # Also check inline .then(function(data) { ... }) handlers
+        inline_pattern = re.compile(
+            r"\.then\(function\(data\)\s*\{(.*?)\}\)",
+            re.DOTALL,
+        )
+        for i, match in enumerate(inline_pattern.finditer(ADMIN_JS)):
+            body = match.group(1)
+            data_accesses = set(re.findall(r"data\.(\w+)", body))
+            if data_accesses and f"inline_{i}" not in functions:
+                # Try to find context
+                start = max(0, match.start() - 200)
+                context = ADMIN_JS[start : match.start()]
+                if "/admin/feeds/" in context and "toggle" not in context:
+                    functions.setdefault("feed_update_handler", set()).update(data_accesses)
+
+        return functions
+
+    def test_dlq_response_uses_feeds_key(self):
+        """DLQ endpoint must return {"feeds": [...]} to match loadDLQ() JavaScript.
+
+        C1 bug: Backend returned {"failed_feeds": ...} but JS expected data.feeds.
+        This test ensures the backend _view_dlq() returns the correct key.
+        """
+        from main import Default
+
+        source = inspect.getsource(Default._view_dlq)
+
+        # The response must contain "feeds" as a key
+        assert '"feeds"' in source, (
+            '_view_dlq() must return JSON with "feeds" key. '
+            "The admin JS loadDLQ() accesses data.feeds - "
+            'if the backend returns {"failed_feeds": ...} the DLQ tab will show empty.'
+        )
+
+        # It should NOT use "failed_feeds"
+        assert '"failed_feeds"' not in source, (
+            '_view_dlq() returns "failed_feeds" but JS expects "feeds". '
+            "This is the C1 bug - the DLQ tab will appear empty."
+        )
+
+    def test_dlq_js_expects_feeds_key(self):
+        """Verify admin JS loadDLQ() accesses data.feeds."""
+        from templates import ADMIN_JS
+
+        # Find loadDLQ function body
+        func_match = re.search(
+            r"function\s+loadDLQ\s*\(\s*\)\s*\{(.*?)^\}",
+            ADMIN_JS,
+            re.DOTALL | re.MULTILINE,
+        )
+        assert func_match, "loadDLQ() function not found in ADMIN_JS"
+
+        body = func_match.group(1)
+        assert "data.feeds" in body, (
+            "loadDLQ() should access data.feeds to match backend _view_dlq() response"
+        )
+
+    def test_list_feeds_response_uses_feeds_key(self):
+        """_list_feeds() must return {"feeds": [...]} matching JS expectations."""
+        from main import Default
+
+        source = inspect.getsource(Default._list_feeds)
+
+        assert '"feeds"' in source, '_list_feeds() must return JSON with "feeds" key.'
+
+    def test_audit_log_response_uses_entries_key(self):
+        """_view_audit_log() must return {"entries": [...]} matching loadAuditLog() JS.
+
+        The admin JS loadAuditLog() accesses data.entries to render audit items.
+        """
+        from main import Default
+
+        source = inspect.getsource(Default._view_audit_log)
+
+        assert '"entries"' in source, (
+            '_view_audit_log() must return JSON with "entries" key. '
+            "The admin JS loadAuditLog() accesses data.entries."
+        )
+
+    def test_audit_log_js_expects_entries_key(self):
+        """Verify admin JS loadAuditLog() accesses data.entries."""
+        from templates import ADMIN_JS
+
+        func_match = re.search(
+            r"function\s+loadAuditLog\s*\(\s*\)\s*\{(.*?)^\}",
+            ADMIN_JS,
+            re.DOTALL | re.MULTILINE,
+        )
+        assert func_match, "loadAuditLog() function not found in ADMIN_JS"
+
+        body = func_match.group(1)
+        assert "data.entries" in body, (
+            "loadAuditLog() should access data.entries to match backend _view_audit_log() response"
+        )
+
+    def test_update_feed_response_uses_success_key(self):
+        """_update_feed() must return {"success": true} matching JS expectations.
+
+        The inline JS handler for feed title updates checks data.success.
+        """
+        from main import Default
+
+        source = inspect.getsource(Default._update_feed)
+
+        assert '"success"' in source, (
+            '_update_feed() must return JSON with "success" key. '
+            "The admin JS checks data.success after title updates."
+        )
+
+    def test_reindex_response_uses_success_and_indexed_keys(self):
+        """_reindex_all_entries() must return {"success": true, "indexed": N}.
+
+        The admin JS rebuildSearchIndex() checks data.success and data.indexed.
+        """
+        from main import Default
+
+        source = inspect.getsource(Default._reindex_all_entries)
+
+        assert '"success"' in source, (
+            '_reindex_all_entries() must return JSON with "success" key. '
+            "The admin JS rebuildSearchIndex() checks data.success."
+        )
+        assert '"indexed"' in source, (
+            '_reindex_all_entries() must return JSON with "indexed" key. '
+            "The admin JS shows 'Done! (N indexed)' using data.indexed."
+        )
+
+    def test_reindex_js_expects_success_and_indexed(self):
+        """Verify admin JS rebuildSearchIndex() accesses data.success and data.indexed."""
+        from templates import ADMIN_JS
+
+        func_match = re.search(
+            r"function\s+rebuildSearchIndex\s*\(\s*\)\s*\{(.*?)^\}",
+            ADMIN_JS,
+            re.DOTALL | re.MULTILINE,
+        )
+        assert func_match, "rebuildSearchIndex() function not found in ADMIN_JS"
+
+        body = func_match.group(1)
+        assert "data.success" in body, "rebuildSearchIndex() should check data.success"
+        assert "data.indexed" in body, "rebuildSearchIndex() should use data.indexed for display"
+
+    def test_all_js_data_accesses_are_documented(self):
+        """Comprehensive check: extract all data.X from JS and verify they're expected.
+
+        This test serves as a living document of the frontend-backend contract.
+        """
+        from templates import ADMIN_JS
+
+        # Extract all data.X accesses from the entire JS
+        all_accesses = set(re.findall(r"data\.(\w+)", ADMIN_JS))
+
+        # These are the known/expected data properties
+        expected_properties = {
+            "feeds",  # loadDLQ, _list_feeds responses
+            "entries",  # loadAuditLog response
+            "success",  # _update_feed, _reindex_all_entries responses
+            "indexed",  # _reindex_all_entries response
+            "error",  # error responses (json_error)
+            "length",  # JavaScript array length check (data.feeds.length)
+        }
+
+        unexpected = all_accesses - expected_properties
+        assert not unexpected, (
+            f"Admin JS accesses data properties not in known contract: {unexpected}. "
+            f"Either add these to the expected_properties set (if intentional) "
+            f"or fix the JS/backend mismatch."
+        )

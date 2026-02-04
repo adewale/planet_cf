@@ -139,6 +139,14 @@ ignore = [
 "src/wrappers.py" = [
     "ANN401",  # JS/Python boundary layer - Any is intentional for JsProxy types
 ]
+"vulture_whitelist.py" = [
+    "F401",   # Imports are used to tell vulture symbols are intentional
+    "F811",   # Re-imports are intentional in whitelist
+    "F821",   # Undefined names are placeholders for vulture
+    "E501",   # Long lines OK in whitelist comments
+    "E402",   # Import order doesn't matter in whitelist
+    "B018",   # "Useless" expressions are how vulture whitelists work
+]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -182,3 +190,13 @@ exclude_lines = [
     "if __name__ == .__main__.:",
 ]
 fail_under = 60
+
+# =============================================================================
+# Vulture Configuration (Dead Code Detection)
+# =============================================================================
+
+[tool.vulture]
+paths = ["src/"]
+exclude = []
+min_confidence = 60
+sort_by_size = false

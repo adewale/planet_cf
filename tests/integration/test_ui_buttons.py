@@ -377,8 +377,8 @@ class TestDLQ:
             )
             assert response.status_code == 200
             data = response.json()
-            assert "failed_feeds" in data
-            assert isinstance(data["failed_feeds"], list)
+            assert "feeds" in data
+            assert isinstance(data["feeds"], list)
 
     @pytest.mark.asyncio
     async def test_retry_dlq_button_invalid_id(self, session_cookie):

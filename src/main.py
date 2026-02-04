@@ -21,6 +21,8 @@ from urllib.parse import parse_qs, urlparse
 import feedparser
 from workers import Response, WorkerEntrypoint
 
+from admin import admin_error_response as _admin_error_response_fn
+
 # Abstraction modules for reduced code duplication
 from admin_context import admin_action_context
 from auth import (
@@ -50,6 +52,9 @@ from config import (
     SESSION_TTL_SECONDS,
     USER_AGENT,
 )
+from config import (
+    get_config_value as _get_config_value_fn,
+)
 from content_processor import EntryContentProcessor
 from instance_config import is_lite_mode as check_lite_mode
 from models import BleachSanitizer
@@ -68,7 +73,6 @@ from templates import (
     KEYBOARD_NAV_JS,
     STATIC_CSS,
     TEMPLATE_ADMIN_DASHBOARD,
-    TEMPLATE_ADMIN_ERROR,
     TEMPLATE_ADMIN_LOGIN,
     TEMPLATE_FEED_ATOM,
     TEMPLATE_FEED_HEALTH,
@@ -83,7 +87,16 @@ from utils import (
     ERROR_MESSAGE_MAX_LENGTH,
 )
 from utils import (
+    SECURITY_HEADERS as _SECURITY_HEADERS,
+)
+from utils import (
     feed_response as _feed_response,
+)
+from utils import (
+    format_date_label as _format_date_label,
+)
+from utils import (
+    format_pub_date as _format_pub_date,
 )
 from utils import (
     get_display_author as _get_display_author,
@@ -111,6 +124,9 @@ from utils import (
 )
 from utils import (
     redirect_response as _redirect_response,
+)
+from utils import (
+    relative_time as _relative_time,
 )
 from utils import (
     truncate_error as _truncate_error,
@@ -183,7 +199,7 @@ class RateLimitError(Exception):
 
 # Constants imported from config module (single source of truth)
 
-# HTML sanitizer instance (uses settings from types.py)
+# HTML sanitizer instance (uses settings from models.py)
 _sanitizer = BleachSanitizer()
 
 # Cloud metadata endpoints to block (SSRF protection)
@@ -209,6 +225,7 @@ class Default(WorkerEntrypoint):
     """
 
     _cached_safe_env: SafeEnv | None = None  # Cached wrapped environment
+    _router: RouteDispatcher | None = None  # Cached route dispatcher
 
     @property
     def env(self) -> SafeEnv:
@@ -300,6 +317,7 @@ class Default(WorkerEntrypoint):
                         last_modified TEXT,
                         last_fetch_at TEXT,
                         last_success_at TEXT,
+                        last_entry_at TEXT,
                         fetch_error TEXT,
                         fetch_error_count INTEGER DEFAULT 0,
                         consecutive_failures INTEGER DEFAULT 0,
@@ -1202,8 +1220,10 @@ class Default(WorkerEntrypoint):
     # =========================================================================
 
     def _create_router(self) -> RouteDispatcher:
-        """Create the route dispatcher with all route definitions."""
-        return RouteDispatcher(
+        """Create or return the cached route dispatcher with all route definitions."""
+        if self._router is not None:
+            return self._router
+        self._router = RouteDispatcher(
             [
                 # Public routes (cacheable at edge)
                 Route(path="/", content_type="html", cacheable=True),
@@ -1250,6 +1270,7 @@ class Default(WorkerEntrypoint):
                 ),
             ]
         )
+        return self._router
 
     async def fetch(
         self, request: WorkerRequest, env: WorkerEnv = None, ctx: WorkerCtx = None
@@ -1549,13 +1570,13 @@ class Default(WorkerEntrypoint):
             date_str = group_date[:10] if group_date else "Unknown"  # YYYY-MM-DD
 
             # Convert to absolute date label (e.g., "January 15, 2026")
-            date_label = self._format_date_label(date_str)
+            date_label = _format_date_label(date_str)
             if date_label not in entries_by_date:
                 entries_by_date[date_label] = []
 
             # Add display date (same as group date for consistency)
             if date_str and date_str != "Unknown":
-                entry["published_at_display"] = self._format_pub_date(group_date)
+                entry["published_at_display"] = _format_pub_date(group_date)
             else:
                 entry["published_at_display"] = ""
 
@@ -1588,7 +1609,7 @@ class Default(WorkerEntrypoint):
         entries_by_date = dict(sorted(entries_by_date.items(), key=get_sort_date, reverse=True))
 
         for feed in feeds:
-            feed["last_success_at_relative"] = self._relative_time(feed["last_success_at"])
+            feed["last_success_at_relative"] = _relative_time(feed["last_success_at"])
 
         # Render template - track template time
         # Check if running in lite mode (no search, no auth)
@@ -1676,18 +1697,19 @@ class Default(WorkerEntrypoint):
         if deleted_ids:
             # Delete vectors from Vectorize (Issue 11.2: handle errors gracefully)
             with Timer() as vectorize_timer:
-                try:
-                    await self.env.SEARCH_INDEX.deleteByIds([str(id) for id in deleted_ids])
-                    stats["vectors_deleted"] = len(deleted_ids)
-                except Exception as e:
-                    stats["errors"] += 1
-                    _log_op(
-                        "vectorize_delete_error",
-                        error_type=type(e).__name__,
-                        error_message=_truncate_error(e),
-                        ids_count=len(deleted_ids),
-                    )
-                    # Continue with D1 deletion even if vector cleanup fails
+                if self.env.SEARCH_INDEX is not None:
+                    try:
+                        await self.env.SEARCH_INDEX.deleteByIds([str(id) for id in deleted_ids])
+                        stats["vectors_deleted"] = len(deleted_ids)
+                    except Exception as e:
+                        stats["errors"] += 1
+                        _log_op(
+                            "vectorize_delete_error",
+                            error_type=type(e).__name__,
+                            error_message=_truncate_error(e),
+                            ids_count=len(deleted_ids),
+                        )
+                        # Continue with D1 deletion even if vector cleanup fails
 
             stats["vectorize_ms"] = vectorize_timer.elapsed_ms
 
@@ -1707,61 +1729,6 @@ class Default(WorkerEntrypoint):
             _log_op("retention_cleanup", entries_deleted=len(deleted_ids))
 
         return stats
-
-    def _format_datetime(self, iso_string: str | None) -> str:
-        """Format ISO datetime string for display."""
-        dt = _parse_iso_datetime(iso_string)
-        if dt is None:
-            return iso_string or ""
-        return dt.strftime("%B %d, %Y at %I:%M %p")
-
-    def _format_pub_date(self, iso_string: str | None) -> str:
-        """Format publication date concisely (e.g., 'Jun 2013' or 'Jan 15')."""
-        dt = _parse_iso_datetime(iso_string)
-        if dt is None:
-            return ""
-        now = datetime.now(timezone.utc)
-        # If same year, show "Mon Day" (e.g., "Jun 15")
-        if dt.year == now.year:
-            return dt.strftime("%b %d")
-        # Otherwise show "Mon Year" (e.g., "Jun 2013")
-        return dt.strftime("%b %Y")
-
-    def _relative_time(self, iso_string: str | None) -> str:
-        """Convert ISO datetime to relative time (e.g., '2 hours ago')."""
-        dt = _parse_iso_datetime(iso_string)
-        if dt is None:
-            return "never" if not iso_string else "unknown"
-        now = datetime.now(timezone.utc)
-        delta = now - dt
-
-        if delta.days > 30:
-            # Use rounding for more accurate month representation
-            months = (delta.days + 15) // 30
-            return f"{months} month{'s' if months != 1 else ''} ago"
-        elif delta.days > 0:
-            return f"{delta.days} day{'s' if delta.days != 1 else ''} ago"
-        elif delta.seconds > 3600:
-            hours = delta.seconds // 3600
-            return f"{hours} hour{'s' if hours != 1 else ''} ago"
-        elif delta.seconds > 60:
-            minutes = delta.seconds // 60
-            return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
-        else:
-            return "just now"
-
-    def _format_date_label(self, date_str: str) -> str:
-        """Convert YYYY-MM-DD to absolute date like 'August 25, 2025'.
-
-        Always shows the actual date rather than relative labels like 'Today'.
-        This is clearer when there are gaps between posts.
-        """
-        try:
-            entry_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-            # Format as "August 25, 2025"
-            return entry_date.strftime("%B %d, %Y")
-        except (ValueError, AttributeError):
-            return date_str
 
     async def _serve_atom(self) -> Response:
         """Generate and serve Atom feed on-demand."""
@@ -1810,21 +1777,10 @@ class Default(WorkerEntrypoint):
         status: int = 400,
         back_url: str | None = "/admin",
     ) -> Response:
-        """Return an HTML error page for admin/auth errors.
-
-        For browser-initiated requests (form submissions, OAuth callbacks),
-        users expect HTML responses, not JSON. This provides a user-friendly
-        error page instead of raw JSON.
-        """
-        planet = self._get_planet_config()
-        html = render_template(
-            TEMPLATE_ADMIN_ERROR,
-            planet=planet,
-            title=title,
-            message=message,
-            back_url=back_url,
+        """Return an HTML error page for admin/auth errors."""
+        return _admin_error_response_fn(
+            self._get_planet_config(), message, title=title, status=status, back_url=back_url
         )
-        return _html_response(html, cache_max_age=0)
 
     def _get_config_value(
         self,
@@ -1832,30 +1788,8 @@ class Default(WorkerEntrypoint):
         default: int | float,
         value_type: type[int] | type[float] = int,
     ) -> int | float:
-        """Get a configuration value from environment with type conversion and fallback.
-
-        This is a generic helper that consolidates the pattern used by all config getters.
-        It handles environment variable lookup, type conversion, and error logging.
-
-        Args:
-            env_key: The environment variable name to look up
-            default: The default value to use if not set or on error
-            value_type: The type to convert to (int or float)
-
-        Returns:
-            The configured value, or the default if not set or on conversion error
-        """
-        try:
-            value = getattr(self.env, env_key, None)
-            return value_type(value) if value else default
-        except (ValueError, TypeError) as e:
-            _log_op(
-                "config_validation_error",
-                config_key=env_key,
-                error=str(e),
-                using_default=default,
-            )
-            return default
+        """Get a configuration value from environment with type conversion."""
+        return _get_config_value_fn(self.env, env_key, default, value_type)
 
     def _get_retention_days(self) -> int:
         """Get retention days from environment, default 90."""
@@ -2101,8 +2035,10 @@ class Default(WorkerEntrypoint):
                 search_result = builder.build(limit=search_limit)
 
                 # Track if words were truncated for DoS protection
-                if search_result.words_truncated and event:
-                    event.search_words_truncated = True
+                if search_result.words_truncated:
+                    words_truncated = True
+                    if event:
+                        event.search_words_truncated = True
 
                 # Execute the built query
                 keyword_result = (
@@ -2249,6 +2185,7 @@ class Default(WorkerEntrypoint):
                 headers={
                     "Content-Type": "text/css",
                     "Cache-Control": "public, max-age=86400",
+                    **_SECURITY_HEADERS,
                 },
             )
         if path == "/static/admin.js":
@@ -2258,6 +2195,7 @@ class Default(WorkerEntrypoint):
                 headers={
                     "Content-Type": "application/javascript",
                     "Cache-Control": "public, max-age=86400",
+                    **_SECURITY_HEADERS,
                 },
             )
         if path == "/static/keyboard-nav.js":
@@ -2267,6 +2205,7 @@ class Default(WorkerEntrypoint):
                 headers={
                     "Content-Type": "application/javascript",
                     "Cache-Control": "public, max-age=86400",
+                    **_SECURITY_HEADERS,
                 },
             )
         return _json_error("Not Found", status=404)
@@ -2842,7 +2781,7 @@ class Default(WorkerEntrypoint):
             .bind(threshold)
             .all()
         )
-        return _json_response({"failed_feeds": feed_rows_from_d1(result.results)})
+        return _json_response({"feeds": feed_rows_from_d1(result.results)})
 
     async def _retry_dlq_feed(self, feed_id: int, admin: dict[str, Any]) -> Response:
         """Retry a failed feed by resetting its failure count and re-queuing."""

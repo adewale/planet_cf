@@ -10,7 +10,6 @@ import logging
 import re
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import parse_qs
 
 from workers import Response
 
@@ -34,12 +33,12 @@ ERROR_MESSAGE_MAX_LENGTH = 200
 
 # Configure module logger for structured operational logs
 # Use "src.main" name for backward compatibility with tests
-_logger = logging.getLogger("src.main")
-if not _logger.handlers:
+logger = logging.getLogger("src.main")
+if not logger.handlers:
     _handler = logging.StreamHandler()
     _handler.setFormatter(logging.Formatter("%(message)s"))
-    _logger.addHandler(_handler)
-    _logger.setLevel(logging.INFO)
+    logger.addHandler(_handler)
+    logger.setLevel(logging.INFO)
     # Note: propagate defaults to True, needed for test caplog capture
 
 
@@ -62,7 +61,7 @@ def log_op(event_type: str, **kwargs: LogKwargs) -> None:
         "timestamp": get_iso_timestamp(),
         **kwargs,
     }
-    _logger.info(json.dumps(event))
+    logger.info(json.dumps(event))
 
 
 def truncate_error(error: str | Exception, max_length: int = ERROR_MESSAGE_MAX_LENGTH) -> str:
@@ -90,7 +89,7 @@ def log_error(event_type: str, exception: Exception, **kwargs: LogKwargs) -> Non
         "error": truncate_error(exception),
         **kwargs,
     }
-    _logger.error(json.dumps(event))
+    logger.error(json.dumps(event))
 
 
 # =============================================================================
@@ -133,17 +132,6 @@ def xml_escape(text: str) -> str:
     text = text.replace("<", "&lt;")
     text = text.replace(">", "&gt;")
     return text
-
-
-def parse_query_params(url_str: str) -> dict[str, list[str]]:
-    """Extract query parameters from a URL string.
-
-    Returns a dict where each key maps to a list of values.
-    """
-    if "?" not in url_str:
-        return {}
-    query_string = url_str.split("?", 1)[1]
-    return parse_qs(query_string)
 
 
 # =============================================================================
