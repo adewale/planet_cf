@@ -8,7 +8,7 @@ and content processing. These have no dependencies on the Worker class.
 import json
 import logging
 import re
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import parse_qs
 
@@ -48,7 +48,7 @@ def get_iso_timestamp() -> str:
 
     Centralizes the datetime→ISO string conversion used throughout the codebase.
     """
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def log_op(event_type: str, **kwargs: LogKwargs) -> None:
@@ -274,7 +274,7 @@ def parse_iso_datetime(iso_string: str | None) -> datetime | None:
     try:
         dt = datetime.fromisoformat(iso_string.replace("Z", "+00:00"))
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=UTC)
+            dt = dt.replace(tzinfo=timezone.utc)
         return dt
     except (ValueError, AttributeError):
         return None
@@ -297,7 +297,7 @@ def format_pub_date(iso_string: str | None) -> str:
     dt = parse_iso_datetime(iso_string)
     if dt is None:
         return ""
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     if dt.year == now.year:
         return dt.strftime("%b %d")
     return dt.strftime("%b %Y")
@@ -308,7 +308,7 @@ def relative_time(iso_string: str | None) -> str:
     dt = parse_iso_datetime(iso_string)
     if dt is None:
         return "never" if not iso_string else "unknown"
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     delta = now - dt
 
     if delta.days > 30:

@@ -10,6 +10,7 @@ converted at the boundary layer before reaching business logic.
 """
 
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 
@@ -286,6 +287,10 @@ class SafeD1:
         """Prepare a SQL statement with automatic result conversion."""
         return SafeD1Statement(self._db.prepare(sql))
 
+    async def exec(self, sql: str) -> Any:
+        """Execute raw SQL (for multi-statement DDL like schema creation)."""
+        return await self._db.exec(sql)
+
 
 class SafeAI:
     """Wrapper for Workers AI that auto-converts results to Python."""
@@ -396,7 +401,7 @@ async def safe_http_fetch(
         # Handle form data for POST
         if data and method.upper() == "POST":
             # URL-encode form data
-            body = "&".join(f"{k}={v}" for k, v in data.items())
+            body = urlencode(data)
             fetch_options_dict["body"] = body
             if "content-type" not in {k.lower() for k in headers}:
                 fetch_options_dict["headers"] = {

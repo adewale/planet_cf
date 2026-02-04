@@ -25,7 +25,13 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, cast
 from urllib.parse import urlparse
 
-from utils import get_iso_timestamp
+from utils import (
+    ERROR_MESSAGE_MAX_LENGTH,  # noqa: F401 (re-exported)
+    get_iso_timestamp,
+    log_error,  # noqa: F401 (re-exported)
+    log_op,  # noqa: F401 (re-exported)
+    truncate_error,  # noqa: F401 (re-exported)
+)
 
 # Configure module logger for structured event output
 # Using INFO level for events, which Cloudflare Workers captures from stdout/stderr
@@ -468,66 +474,6 @@ class Timer:
 
 
 # =============================================================================
-# Operational Logging
+# Operational Logging (imported from utils — single source of truth)
+# Re-exported at top of file: ERROR_MESSAGE_MAX_LENGTH, log_error, log_op, truncate_error
 # =============================================================================
-
-#: Maximum length for error messages in logs
-ERROR_MESSAGE_MAX_LENGTH = 200
-
-
-def truncate_error(error: str | Exception, max_length: int = ERROR_MESSAGE_MAX_LENGTH) -> str:
-    """Truncate error message to a maximum length.
-
-    Args:
-        error: Error message string or Exception object
-        max_length: Maximum length for the error message
-
-    Returns:
-        Truncated error string with '...' suffix if truncated
-
-    """
-    error_str = str(error)
-    if len(error_str) <= max_length:
-        return error_str
-    return error_str[: max_length - 3] + "..."
-
-
-def log_op(event_type: str, **kwargs: Any) -> None:
-    """Log an operational event as structured JSON.
-
-    Unlike wide events (FeedFetchEvent, etc.), these are simpler operational
-    logs for debugging and monitoring internal operations.
-
-    Args:
-        event_type: Type of operational event (e.g., "queue_batch_received")
-        **kwargs: Additional fields to include in the log event
-
-    """
-    event = {
-        "event_type": event_type,
-        "timestamp": get_iso_timestamp(),
-        **kwargs,
-    }
-    logger.info(json.dumps(event))
-
-
-def log_error(event_type: str, exception: Exception, **kwargs: Any) -> None:
-    """Log an error event with standardized exception formatting.
-
-    Uses logger.error() level for error events, making them easily
-    distinguishable from info-level operational logs.
-
-    Args:
-        event_type: Type of error event (e.g., "url_parse_error")
-        exception: The exception that occurred
-        **kwargs: Additional fields to include in the log event
-
-    """
-    event = {
-        "event_type": event_type,
-        "timestamp": get_iso_timestamp(),
-        "error_type": type(exception).__name__,
-        "error": truncate_error(exception),
-        **kwargs,
-    }
-    logger.error(json.dumps(event))

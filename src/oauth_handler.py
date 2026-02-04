@@ -308,7 +308,13 @@ class GitHubOAuthHandler:
 
         # Get user info
         if token_result.access_token is None:
-            return UserInfoResult(error="Missing access token from token exchange"), token_result
+            return UserInfoResult(
+                error=OAuthError(
+                    error_type="TokenExchangeError",
+                    message="Missing access token from token exchange",
+                    status_code=500,
+                )
+            ), token_result
         user_result = await self.get_user_info(token_result.access_token)
         return user_result, token_result
 

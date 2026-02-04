@@ -12,16 +12,8 @@ import json
 import time
 from typing import Any
 
+from config import SESSION_GRACE_SECONDS, SESSION_TTL_SECONDS
 from utils import log_op, truncate_error
-
-# =============================================================================
-# Constants
-# =============================================================================
-
-# Session configuration
-SESSION_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
-SESSION_GRACE_SECONDS = 5  # Clock skew grace period (reduced from 60s for security)
-
 
 # =============================================================================
 # Cookie Parsing

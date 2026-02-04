@@ -39,6 +39,16 @@ DEFAULT_SEARCH_TOP_K = 50
 DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD = 10
 DEFAULT_FEED_FAILURE_THRESHOLD = 3
 
+# SQL query limits (prevent unbounded result sets)
+DEFAULT_QUERY_LIMIT = 500  # Maximum entries returned in a single query
+
+# Smart defaults: Content display fallback
+FALLBACK_ENTRIES_LIMIT = 50  # Show 50 most recent entries if date range is empty
+
+# Session security
+SESSION_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
+SESSION_GRACE_SECONDS = 5  # Clock skew grace period (reduced from 60s for security)
+
 
 # =============================================================================
 # Configuration Getters

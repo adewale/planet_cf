@@ -1,4 +1,4 @@
-# src/types.py
+# src/models.py
 """Type definitions for Planet CF."""
 
 import json

@@ -23,29 +23,24 @@
 //   ./scripts/deploy_instance.sh planet-python
 //
 // =============================================================================
-// MANUAL DEPLOY (Alternative)
+// MANUAL DEPLOY (Alternative) — Lite Mode
 // =============================================================================
 //
 // Step 1: Create the D1 Database
 //   Run: npx wrangler d1 create planet-python-db
 //   Copy the database_id and replace "YOUR_DATABASE_ID" below.
 //
-// Step 2: Create Vectorize Index
-//   Run: npx wrangler vectorize create planet-python-entries --dimensions 768 --metric cosine
-//
-// Step 3: Create Queues
+// Step 2: Create Queues
 //   Run: npx wrangler queues create planet-python-feed-queue
 //   Run: npx wrangler queues create planet-python-feed-dlq
 //
-// Step 4: Set Secrets
-//   Run: npx wrangler secret put GITHUB_CLIENT_ID --config examples/planet-python/wrangler.jsonc
-//   Run: npx wrangler secret put GITHUB_CLIENT_SECRET --config examples/planet-python/wrangler.jsonc
+// Step 3: Set Secrets
 //   Run: npx wrangler secret put SESSION_SECRET --config examples/planet-python/wrangler.jsonc
 //
-// Step 5: Run Database Migrations
+// Step 4: Run Database Migrations
 //   Run: npx wrangler d1 execute planet-python-db --remote --file migrations/001_initial.sql
 //
-// Step 6: Deploy
+// Step 5: Deploy
 //   Run: npx wrangler deploy --config examples/planet-python/wrangler.jsonc
 //
 // =============================================================================

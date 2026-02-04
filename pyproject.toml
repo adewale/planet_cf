@@ -71,17 +71,28 @@ packages = ["src"]
 python-version = "3.12"
 extra-paths = ["stubs"]
 
+[tool.ty.src]
+include = ["src/"]
+
 [tool.ty.rules]
-# Ignore unresolved imports for Cloudflare/Pyodide runtime modules
-# These are only available at runtime in the Workers environment
-unresolved-import = "ignore"
-# Cloudflare Workers has different method signatures than our stubs
-invalid-method-override = "ignore"
-# Pyodide FFI interop has dynamic types
-call-non-callable = "ignore"
-possibly-missing-attribute = "ignore"
-# ty's stdlib stubs don't include Python 3.12+ features like XMLParser(forbid_dtd=)
+# ty's bundled typeshed stubs don't include XMLParser(forbid_dtd=) from Python 3.12+
 unknown-argument = "ignore"
+# SafeEnv wraps optional bindings (AI, SEARCH_INDEX) as T | None;
+# callers rely on runtime mode checks rather than None guards before access
+possibly-missing-attribute = "ignore"
+# js_fetch is imported from Pyodide's js module which resolves to None in tests;
+# at runtime it's always callable
+call-non-callable = "ignore"
+
+[tool.ty.analysis]
+# Cloudflare Workers runtime modules are only available inside Pyodide/Workers
+# and cannot be resolved in the local development environment
+allowed-unresolved-imports = [
+    "js",
+    "js.*",
+    "pyodide",
+    "pyodide.*",
+]
 
 [tool.ruff]
 line-length = 100
@@ -114,13 +125,16 @@ ignore = [
 "src/templates.py" = ["E501"]  # Embedded HTML templates have long lines
 "src/observability.py" = [
     "S311",  # random.random() is fine for sampling (not security)
-    "UP017",  # Can't use datetime.UTC - Pyodide uses Python 3.11
+    "UP017",  # Keep timezone.utc for consistency across the codebase
 ]
 "src/main.py" = [
     "S608",  # SQL uses bind() parameters, not string formatting
     "S314",  # XML parsing for admin OPML import (authenticated only)
     "UP040",  # Can't use PEP 695 `type` keyword - Pyodide uses Python 3.11
-    "UP017",  # Can't use datetime.UTC - Pyodide uses Python 3.11
+    "UP017",  # Keep timezone.utc for consistency across the codebase
+]
+"src/utils.py" = [
+    "UP017",  # Keep timezone.utc for consistency across the codebase
 ]
 "src/wrappers.py" = [
     "ANN401",  # JS/Python boundary layer - Any is intentional for JsProxy types

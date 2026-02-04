@@ -31,14 +31,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from observability import AdminActionEvent, Timer, emit_event
-
-
-def _truncate_error(error: str | Exception, max_length: int = 200) -> str:
-    """Truncate error message with indicator if needed."""
-    error_str = str(error)
-    if len(error_str) <= max_length:
-        return error_str
-    return error_str[: max_length - 3] + "..."
+from utils import truncate_error as _truncate_error
 
 
 @dataclass

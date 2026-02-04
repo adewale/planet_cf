@@ -8,12 +8,8 @@ Main Worker entrypoint handling all triggers:
 """
 
 import asyncio
-import base64
-import hashlib
-import hmac
 import ipaddress
 import json
-import logging
 import re
 import secrets
 import time
@@ -27,6 +23,33 @@ from workers import Response, WorkerEntrypoint
 
 # Abstraction modules for reduced code duplication
 from admin_context import admin_action_context
+from auth import (
+    build_clear_oauth_state_cookie_header,
+    build_clear_session_cookie_header,
+    build_oauth_state_cookie_header,
+    build_session_cookie_header,
+    create_signed_cookie,
+    get_session_from_cookies,
+)
+from config import (
+    DEFAULT_EMBEDDING_MAX_CHARS,
+    DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD,
+    DEFAULT_FEED_FAILURE_THRESHOLD,
+    DEFAULT_MAX_ENTRIES_PER_FEED,
+    DEFAULT_QUERY_LIMIT,
+    DEFAULT_RETENTION_DAYS,
+    DEFAULT_SEARCH_SCORE_THRESHOLD,
+    DEFAULT_SEARCH_TOP_K,
+    FALLBACK_ENTRIES_LIMIT,
+    FEED_TIMEOUT_SECONDS,
+    HTTP_TIMEOUT_SECONDS,
+    MAX_OPML_FEEDS,
+    MAX_SEARCH_QUERY_LENGTH,
+    MAX_SEARCH_WORDS,
+    REINDEX_COOLDOWN_SECONDS,
+    SESSION_TTL_SECONDS,
+    USER_AGENT,
+)
 from content_processor import EntryContentProcessor
 from instance_config import is_lite_mode as check_lite_mode
 from models import BleachSanitizer
@@ -55,6 +78,45 @@ from templates import (
     TEMPLATE_SEARCH,
     TEMPLATE_TITLES,
     render_template,
+)
+from utils import (
+    ERROR_MESSAGE_MAX_LENGTH,
+)
+from utils import (
+    feed_response as _feed_response,
+)
+from utils import (
+    get_display_author as _get_display_author,
+)
+from utils import (
+    html_response as _html_response,
+)
+from utils import (
+    json_error as _json_error,
+)
+from utils import (
+    json_response as _json_response,
+)
+from utils import (
+    log_error as _log_error,
+)
+from utils import (
+    log_op as _log_op,
+)
+from utils import (
+    normalize_entry_content as _normalize_entry_content,
+)
+from utils import (
+    parse_iso_datetime as _parse_iso_datetime,
+)
+from utils import (
+    redirect_response as _redirect_response,
+)
+from utils import (
+    truncate_error as _truncate_error,
+)
+from utils import (
+    validate_feed_id as _validate_feed_id,
 )
 from wrappers import (
     SafeEnv,
@@ -95,8 +157,6 @@ WorkerCtx: TypeAlias = Any
 WorkerRequest: TypeAlias = Any
 #: feedparser's FeedParserDict (dynamic dictionary-like object)
 FeedParserDict: TypeAlias = Any
-#: Logging kwargs - intentionally accepts any JSON-serializable values
-LogKwargs: TypeAlias = Any
 
 
 # =============================================================================
@@ -121,39 +181,7 @@ class RateLimitError(Exception):
 # Configuration
 # =============================================================================
 
-FEED_TIMEOUT_SECONDS = 60  # Max wall time per feed
-HTTP_TIMEOUT_SECONDS = 30  # HTTP request timeout
-# Issue 9.3/9.5: Include contact info for good netizen behavior
-USER_AGENT = "PlanetCF/1.0 (+https://planetcf.com; contact@planetcf.com)"
-SESSION_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
-# Security: Maximum search query length to prevent DoS
-MAX_SEARCH_QUERY_LENGTH = 1000
-MAX_SEARCH_WORDS = 10  # Prevent DoS via excessive word count in multi-word search
-MAX_OPML_FEEDS = 100  # Prevent DoS via unbounded OPML import
-SESSION_GRACE_SECONDS = 5  # Clock skew grace period (reduced from 60s for security)
-REINDEX_COOLDOWN_SECONDS = 300  # 5 minute cooldown between reindex operations
-# Standardized error message truncation length
-ERROR_MESSAGE_MAX_LENGTH = 200
-
-# Retention policy defaults (can be overridden via env vars)
-DEFAULT_RETENTION_DAYS = 90  # Default to 90 days
-DEFAULT_MAX_ENTRIES_PER_FEED = 50  # Max entries to keep per feed (smart default)
-
-# Search configuration defaults (can be overridden via env vars)
-DEFAULT_EMBEDDING_MAX_CHARS = 2000  # Max chars to embed per entry
-DEFAULT_SEARCH_SCORE_THRESHOLD = 0.3  # Minimum similarity score (0.0-1.0)
-DEFAULT_SEARCH_TOP_K = 50  # Max semantic search results before filtering
-
-# Feed failure thresholds (can be overridden via env vars)
-DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD = 10  # Consecutive failures before auto-deactivate
-DEFAULT_FEED_FAILURE_THRESHOLD = 3  # Consecutive failures to show in DLQ
-
-# SQL query limits (prevent unbounded result sets)
-DEFAULT_QUERY_LIMIT = 500  # Maximum entries returned in a single query
-
-# Smart defaults: Content display fallback
-# When no entries found in display range, show the N most recent entries
-FALLBACK_ENTRIES_LIMIT = 50  # Show 50 most recent entries if date range is empty
+# Constants imported from config module (single source of truth)
 
 # HTML sanitizer instance (uses settings from types.py)
 _sanitizer = BleachSanitizer()
@@ -164,291 +192,6 @@ BLOCKED_METADATA_IPS = {
     "100.100.100.200",  # Alibaba Cloud metadata
     "192.0.0.192",  # Oracle Cloud metadata
 }
-
-
-# =============================================================================
-# Structured Logging Helper
-# =============================================================================
-
-# Configure module logger for structured operational logs
-# Using INFO level for events, which Cloudflare Workers captures from stdout/stderr
-_logger = logging.getLogger(__name__)
-if not _logger.handlers:
-    _handler = logging.StreamHandler()
-    # Output raw JSON without additional formatting (event already has timestamp)
-    _handler.setFormatter(logging.Formatter("%(message)s"))
-    _logger.addHandler(_handler)
-    _logger.setLevel(logging.INFO)
-    # Prevent propagation to root logger to avoid duplicate output
-    _logger.propagate = False
-
-
-def _log_op(event_type: str, **kwargs: LogKwargs) -> None:
-    """Log an operational event as structured JSON.
-
-    Unlike wide events (FeedFetchEvent, etc.), these are simpler operational
-    logs for debugging and monitoring internal operations.
-    """
-    event = {
-        "event_type": event_type,
-        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        **kwargs,
-    }
-    _logger.info(json.dumps(event))
-
-
-def _truncate_error(error: str | Exception, max_length: int = ERROR_MESSAGE_MAX_LENGTH) -> str:
-    """Truncate error message with indicator if needed.
-
-    Unlike plain slicing, this adds an ellipsis indicator when truncation occurs,
-    making it clear to readers that the message was cut off.
-    """
-    error_str = str(error)
-    if len(error_str) <= max_length:
-        return error_str
-    return error_str[: max_length - 3] + "..."
-
-
-def _log_error(event_type: str, exception: Exception, **kwargs: LogKwargs) -> None:
-    """Log an error event with standardized exception formatting.
-
-    Uses logger.error() level for error events, making them easily
-    distinguishable from info-level operational logs.
-    """
-    event = {
-        "event_type": event_type,
-        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        "error_type": type(exception).__name__,
-        "error": _truncate_error(exception),
-        **kwargs,
-    }
-    _logger.error(json.dumps(event))
-
-
-def _get_display_author(author: str | None, feed_title: str | None) -> str:
-    """Compute display author for an entry, filtering out email addresses.
-
-    If author is empty or contains '@' (likely an email), use feed_title instead.
-    This provides a safe, centralized check that handles the email filtering logic
-    in Python rather than in templates.
-
-    Args:
-        author: Entry author from feed (may be email, empty, or None)
-        feed_title: Feed title to use as fallback
-
-    Returns:
-        Safe display string for author attribution
-    """
-    if author and "@" not in author:
-        return author
-    return feed_title or "Unknown"
-
-
-def _validate_feed_id(feed_id: str) -> int | None:
-    """Validate and convert a feed ID from URL path to integer.
-
-    Returns the integer ID if valid, None otherwise.
-    Prevents path traversal and invalid ID attacks.
-    """
-    if not feed_id:
-        return None
-    # Only allow positive integers (no leading zeros except for "0")
-    if not feed_id.isdigit():
-        return None
-    try:
-        id_int = int(feed_id)
-        # Reject zero or negative (shouldn't happen with isdigit, but be safe)
-        if id_int <= 0:
-            return None
-        return id_int
-    except (ValueError, OverflowError):
-        return None
-
-
-def _xml_escape(text: str) -> str:
-    """Escape XML special characters for safe embedding in XML content.
-
-    This is applied before CDATA wrapping to handle any edge cases
-    where content might contain problematic XML sequences.
-    """
-    # Standard XML entity escaping
-    text = text.replace("&", "&amp;")
-    text = text.replace("<", "&lt;")
-    text = text.replace(">", "&gt;")
-    return text
-
-
-def _parse_query_params(url_str: str) -> dict[str, list[str]]:
-    """Extract query parameters from a URL string.
-
-    Returns a dict where each key maps to a list of values.
-    """
-    if "?" not in url_str:
-        return {}
-    query_string = url_str.split("?", 1)[1]
-    return parse_qs(query_string)
-
-
-# =============================================================================
-# Content Normalization
-# =============================================================================
-
-
-def _normalize_entry_content(content: str, title: str | None) -> str:
-    """Normalize entry content for display by removing duplicate title headings.
-
-    Many feeds include the post title as an <h1> or <h2> at the start of the
-    content body. Since our template already displays the title, this creates
-    visual duplication. This function strips the leading heading if it matches
-    the entry title.
-
-    Handles common patterns:
-    - <h1>Title</h1> at start
-    - Metadata (date/read time) before the <h1>
-    - Whitespace padding inside heading tags
-    - Link-wrapped headings: <h1><a href="#">Title</a></h1>
-
-    Args:
-        content: HTML content that may contain a duplicate title heading
-        title: The entry title to match against
-
-    Returns:
-        Content with the duplicate title heading removed if found
-    """
-    if not content or not title:
-        return content
-
-    # Normalize title for comparison (strip whitespace, lowercase)
-    title_normalized = title.strip().lower()
-
-    # Limit regex search to first 1000 chars to prevent ReDoS on pathological input
-    # Duplicate title headings always appear at the start of content
-    search_content = content[:1000] if len(content) > 1000 else content
-
-    # Pattern to match optional metadata, then <h1> or <h2> with the title
-    # Group 1: Optional metadata (date, read time, etc.) before the heading
-    # Group 2: The heading tag (h1 or h2)
-    # Group 3: Optional link opening tag
-    # Group 4: The heading text
-    # Group 5: Optional link closing tag
-    pattern = (
-        r"^(\s*(?:[A-Za-z]+\s+\d{1,2},?\s+\d{4}\s*)?(?:/\s*\d+\s*min\s*read\s*)?\s*)"  # metadata
-        r"<(h[12])(?:\s[^>]*)?>\s*"  # opening h1/h2
-        r"(?:(<a[^>]*>)\s*)?"  # optional link open
-        r"([^<]+?)"  # heading text
-        r"\s*(?:(</a>)\s*)?"  # optional link close
-        r"</\2>"  # closing h1/h2
-    )
-
-    match = re.match(pattern, search_content, re.IGNORECASE)
-
-    if match:
-        heading_text = match.group(4).strip().lower()
-        if heading_text == title_normalized:
-            # Strip the metadata and heading, keep remaining content
-            return content[match.end() :].lstrip()
-
-    return content
-
-
-# =============================================================================
-# Response Helpers
-# =============================================================================
-
-
-def _html_response(content: str, cache_max_age: int = 3600) -> Response:
-    """Create an HTML response with caching and security headers."""
-    # Content Security Policy - defense in depth against XSS
-    # - default-src 'self': Only allow same-origin resources by default
-    # - script-src 'self': Only allow same-origin scripts (external JS files)
-    # - style-src 'self' 'unsafe-inline': Allow inline styles (needed for templates)
-    # - img-src https: data:: HTTPS images + data URIs (for inline images)
-    # - frame-ancestors 'none': Prevent clickjacking (cannot be framed)
-    # - base-uri 'self': Prevent base tag injection attacks
-    # - form-action 'self': Forms can only submit to same origin
-    csp = (
-        "default-src 'self'; "
-        "script-src 'self'; "
-        "style-src 'self' 'unsafe-inline'; "
-        "img-src https: data:; "
-        "frame-ancestors 'none'; "
-        "base-uri 'self'; "
-        "form-action 'self'"
-    )
-    return Response(
-        content,
-        headers={
-            "Content-Type": "text/html; charset=utf-8",
-            "Cache-Control": f"public, max-age={cache_max_age}, stale-while-revalidate=60",
-            "Content-Security-Policy": csp,
-            "X-Frame-Options": "DENY",
-            "X-Content-Type-Options": "nosniff",
-            "Referrer-Policy": "strict-origin-when-cross-origin",
-            "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
-        },
-    )
-
-
-def _json_response(data: dict, status: int = 200) -> Response:
-    """Create a JSON response."""
-    return Response(
-        json.dumps(data),
-        status=status,
-        headers={"Content-Type": "application/json"},
-    )
-
-
-def _json_error(message: str, status: int = 400) -> Response:
-    """Create a JSON error response."""
-    return _json_response({"error": message}, status=status)
-
-
-def _redirect_response(location: str) -> Response:
-    """Create a redirect response."""
-    return Response("", status=302, headers={"Location": location})
-
-
-def _feed_response(content: str, content_type: str, cache_max_age: int = 3600) -> Response:
-    """Create a feed response (Atom/RSS/OPML) with caching headers."""
-    return Response(
-        content,
-        headers={
-            "Content-Type": f"{content_type}; charset=utf-8",
-            "Cache-Control": f"public, max-age={cache_max_age}, stale-while-revalidate=60",
-        },
-    )
-
-
-# =============================================================================
-# Datetime Helpers
-# =============================================================================
-
-
-def _parse_iso_datetime(iso_string: str | None) -> datetime | None:
-    """Parse an ISO datetime string to a timezone-aware datetime.
-
-    Handles various ISO formats:
-    - With Z suffix: "2026-01-17T12:00:00Z"
-    - With offset: "2026-01-17T12:00:00+00:00"
-    - Naive (no timezone): "2026-01-17T12:00:00" (assumes UTC)
-
-    Args:
-        iso_string: ISO format datetime string, or None
-
-    Returns:
-        Timezone-aware datetime in UTC, or None if input is empty/invalid
-    """
-    if not iso_string:
-        return None
-    try:
-        # Replace Z suffix with +00:00 for fromisoformat compatibility
-        dt = datetime.fromisoformat(iso_string.replace("Z", "+00:00"))
-        # Ensure timezone-aware (database may store naive datetimes)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt
-    except (ValueError, AttributeError):
-        return None
 
 
 # =============================================================================
@@ -629,7 +372,12 @@ class Default(WorkerEntrypoint):
     # Cron Handler - Scheduler
     # =========================================================================
 
-    async def scheduled(self, event: ScheduledEvent, env: WorkerEnv, ctx: WorkerCtx) -> None:
+    async def scheduled(
+        self,
+        event: ScheduledEvent,
+        env: WorkerEnv = None,
+        ctx: WorkerCtx = None,
+    ) -> None:
         """Hourly cron trigger - enqueue feeds for fetching.
 
         Content (HTML/RSS/Atom) is generated on-demand by fetch(), not pre-generated.
@@ -727,7 +475,7 @@ class Default(WorkerEntrypoint):
     # Queue Handler - Feed Fetcher
     # =========================================================================
 
-    async def queue(self, batch: QueueBatch, env: WorkerEnv, ctx: WorkerCtx) -> None:
+    async def queue(self, batch: QueueBatch, env: WorkerEnv = None, ctx: WorkerCtx = None) -> None:
         """Process a batch of feed messages from the queue.
 
         Each message contains exactly ONE feed to fetch.
@@ -3412,44 +3160,10 @@ class Default(WorkerEntrypoint):
     def _verify_signed_cookie(self, request: WorkerRequest) -> dict[str, Any] | None:
         """Verify the signed session cookie (stateless, no KV).
 
-        Cookie format: base64(json_payload).signature
+        Delegates to auth.get_session_from_cookies for the actual verification.
         """
         cookies = SafeHeaders(request).cookie
-        session_cookie = None
-        for cookie in cookies.split(";"):
-            if cookie.strip().startswith("session="):
-                session_cookie = cookie.strip()[8:]
-                break
-
-        if not session_cookie or "." not in session_cookie:
-            return None
-
-        try:
-            payload_b64, signature = session_cookie.rsplit(".", 1)
-
-            # Verify signature
-            expected_sig = hmac.new(
-                self.env.SESSION_SECRET.encode(), payload_b64.encode(), hashlib.sha256
-            ).hexdigest()
-
-            if not hmac.compare_digest(signature, expected_sig):
-                return None
-
-            # Decode payload
-            payload = json.loads(base64.urlsafe_b64decode(payload_b64))
-
-            # Check expiration with minimal grace period for clock skew
-            if payload.get("exp", 0) < time.time() - SESSION_GRACE_SECONDS:
-                return None
-
-            return payload
-        except Exception as e:
-            _log_op(
-                "session_verify_failed",
-                error_type=type(e).__name__,
-                error=_truncate_error(e),
-            )
-            return None
+        return get_session_from_cookies(cookies, self.env.SESSION_SECRET)
 
     def _redirect_to_github_oauth(self, request: WorkerRequest) -> Response:
         """Redirect to GitHub OAuth authorization."""
@@ -3481,7 +3195,7 @@ class Default(WorkerEntrypoint):
             f"&state={state}"
         )
 
-        state_cookie = f"oauth_state={state}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600"
+        state_cookie = build_oauth_state_cookie_header(state)
         return Response(
             "",
             status=302,
@@ -3578,11 +3292,8 @@ class Default(WorkerEntrypoint):
 
             # Clear oauth_state cookie and set session cookie
             # Use list of tuples to support multiple Set-Cookie headers
-            clear_state = "oauth_state=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0"
-            session = (
-                f"session={session_cookie}; HttpOnly; Secure; "
-                f"SameSite=Lax; Path=/; Max-Age={SESSION_TTL_SECONDS}"
-            )
+            clear_state = build_clear_oauth_state_cookie_header()
+            session = build_session_cookie_header(session_cookie)
 
             # Populate OAuth success metrics on consolidated event
             if event:
@@ -3621,16 +3332,9 @@ class Default(WorkerEntrypoint):
     def _create_signed_cookie(self, payload: dict[str, Any]) -> str:
         """Create an HMAC-signed cookie.
 
-        Format: base64(json_payload).signature
+        Delegates to auth.create_signed_cookie for the actual signing.
         """
-        payload_json = json.dumps(payload)
-        payload_b64 = base64.urlsafe_b64encode(payload_json.encode()).decode()
-
-        signature = hmac.new(
-            self.env.SESSION_SECRET.encode(), payload_b64.encode(), hashlib.sha256
-        ).hexdigest()
-
-        return f"{payload_b64}.{signature}"
+        return create_signed_cookie(payload, self.env.SESSION_SECRET)
 
     def _logout(self, request: WorkerRequest) -> Response:
         """Log out by clearing the session cookie (stateless - nothing to delete)."""
@@ -3639,7 +3343,7 @@ class Default(WorkerEntrypoint):
             status=302,
             headers={
                 "Location": "/",
-                "Set-Cookie": "session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0",
+                "Set-Cookie": build_clear_session_cookie_header(),
             },
         )
 

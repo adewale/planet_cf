@@ -14,6 +14,7 @@ For local development, you can use config/instance.yaml with the
 generate_wrangler_config.py script to generate wrangler.jsonc.
 """
 
+from config import SESSION_TTL_SECONDS
 from wrappers import SafeEnv
 
 # =============================================================================
@@ -59,7 +60,7 @@ DEFAULTS = {
     "FEED_FAILURE_THRESHOLD": "3",  # Retry attempts before marking as failed
     # Auth
     "OAUTH_PROVIDER": "github",
-    "SESSION_TTL_SECONDS": "604800",  # 7 days
+    "SESSION_TTL_SECONDS": str(SESSION_TTL_SECONDS),  # 7 days
 }
 
 
