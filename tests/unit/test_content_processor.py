@@ -1,7 +1,6 @@
 # tests/unit/test_content_processor.py
 """Tests for the entry content processor."""
 
-
 from src.content_processor import (
     SUMMARY_MAX_LENGTH,
     EntryContentProcessor,

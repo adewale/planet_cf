@@ -29,7 +29,6 @@ from workers import Response, WorkerEntrypoint
 from admin_context import admin_action_context
 from content_processor import EntryContentProcessor
 from instance_config import is_lite_mode as check_lite_mode
-from xml_sanitizer import strip_xml_control_chars
 from models import BleachSanitizer
 from oauth_handler import GitHubOAuthHandler, extract_oauth_state_from_cookies
 from observability import (
@@ -75,6 +74,7 @@ from wrappers import (
     feed_rows_from_d1,
     safe_http_fetch,
 )
+from xml_sanitizer import strip_xml_control_chars
 
 # =============================================================================
 # Type Aliases for Cloudflare Workers Runtime
@@ -1358,9 +1358,11 @@ class Default(WorkerEntrypoint):
         """
         # If old_url not provided, fetch it from database for audit logging
         if old_url is None:
-            result = await self.env.DB.prepare(
-                "SELECT url FROM feeds WHERE id = ?"
-            ).bind(feed_id).first()
+            result = (
+                await self.env.DB.prepare("SELECT url FROM feeds WHERE id = ?")
+                .bind(feed_id)
+                .first()
+            )
             old_url = result.get("url") if result else None
 
         # Update the feed URL
@@ -1453,47 +1455,53 @@ class Default(WorkerEntrypoint):
 
     def _create_router(self) -> RouteDispatcher:
         """Create the route dispatcher with all route definitions."""
-        return RouteDispatcher([
-            # Public routes (cacheable at edge)
-            Route(path="/", content_type="html", cacheable=True),
-            Route(path="/index.html", content_type="html", cacheable=True, route_name="/"),
-            Route(path="/titles", content_type="html", cacheable=True),
-            Route(path="/titles.html", content_type="html", cacheable=True, route_name="/titles"),
-            Route(path="/feed.atom", content_type="atom", cacheable=True),
-            Route(path="/feed.rss", content_type="rss", cacheable=True),
-            Route(path="/feeds.opml", content_type="opml", cacheable=True),
-            Route(path="/search", content_type="search", cacheable=False, lite_mode_disabled=True),
-            Route(
-                path="/static/",
-                prefix=True,
-                content_type="static",
-                cacheable=True,
-                route_name="/static/*",
-            ),
-            # OAuth routes
-            Route(
-                path="/auth/github",
-                content_type="auth",
-                cacheable=False,
-                lite_mode_disabled=True,
-            ),
-            Route(
-                path="/auth/github/callback",
-                content_type="auth",
-                cacheable=False,
-                lite_mode_disabled=True,
-            ),
-            # Admin routes
-            Route(
-                path="/admin",
-                prefix=True,
-                content_type="admin",
-                cacheable=False,
-                requires_auth=True,
-                route_name="/admin/*",
-                lite_mode_disabled=True,
-            ),
-        ])
+        return RouteDispatcher(
+            [
+                # Public routes (cacheable at edge)
+                Route(path="/", content_type="html", cacheable=True),
+                Route(path="/index.html", content_type="html", cacheable=True, route_name="/"),
+                Route(path="/titles", content_type="html", cacheable=True),
+                Route(
+                    path="/titles.html", content_type="html", cacheable=True, route_name="/titles"
+                ),
+                Route(path="/feed.atom", content_type="atom", cacheable=True),
+                Route(path="/feed.rss", content_type="rss", cacheable=True),
+                Route(path="/feeds.opml", content_type="opml", cacheable=True),
+                Route(
+                    path="/search", content_type="search", cacheable=False, lite_mode_disabled=True
+                ),
+                Route(
+                    path="/static/",
+                    prefix=True,
+                    content_type="static",
+                    cacheable=True,
+                    route_name="/static/*",
+                ),
+                # OAuth routes
+                Route(
+                    path="/auth/github",
+                    content_type="auth",
+                    cacheable=False,
+                    lite_mode_disabled=True,
+                ),
+                Route(
+                    path="/auth/github/callback",
+                    content_type="auth",
+                    cacheable=False,
+                    lite_mode_disabled=True,
+                ),
+                # Admin routes
+                Route(
+                    path="/admin",
+                    prefix=True,
+                    content_type="admin",
+                    cacheable=False,
+                    requires_auth=True,
+                    route_name="/admin/*",
+                    lite_mode_disabled=True,
+                ),
+            ]
+        )
 
     async def fetch(
         self, request: WorkerRequest, env: WorkerEnv = None, ctx: WorkerCtx = None
@@ -1550,9 +1558,7 @@ class Default(WorkerEntrypoint):
                         event.content_type = "error"
                     else:
                         # Dispatch to appropriate handler based on route
-                        response = await self._dispatch_route(
-                            match, request, path, event
-                        )
+                        response = await self._dispatch_route(match, request, path, event)
                         event.content_type = match.content_type
                 else:
                     # No route matched
@@ -2352,9 +2358,7 @@ class Default(WorkerEntrypoint):
 
                 # Execute the built query
                 keyword_result = (
-                    await self.env.DB.prepare(search_result.sql)
-                    .bind(*search_result.params)
-                    .all()
+                    await self.env.DB.prepare(search_result.sql).bind(*search_result.params).all()
                 )
 
                 keyword_entries = entry_rows_from_d1(keyword_result.results)
@@ -2940,9 +2944,7 @@ class Default(WorkerEntrypoint):
                 await self.env.DB.prepare(sql).bind(*params).run()
 
                 # Audit log
-                await ctx.log_action(
-                    admin["id"], "update_feed", "feed", feed_id, audit_details
-                )
+                await ctx.log_action(admin["id"], "update_feed", "feed", feed_id, audit_details)
 
                 ctx.set_success()
                 return _json_response({"success": True})

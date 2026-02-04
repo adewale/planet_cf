@@ -4,8 +4,8 @@
 // Setup:
 //   ./scripts/setup_test_planet.sh
 //
-// Local dev with remote bindings:
-//   npx wrangler dev --remote --config examples/test-planet/wrangler.jsonc
+// Local dev (bindings connect to remote Cloudflare services automatically):
+//   npx wrangler dev --config examples/test-planet/wrangler.jsonc
 //
 // Run E2E tests:
 //   RUN_E2E_TESTS=1 uv run pytest tests/e2e/ -v
@@ -49,19 +49,22 @@
     {
       "binding": "DB",
       "database_name": "test-planet-db",
-      "database_id": "c0c494c0-6f97-4f55-8af3-9bc8f75cdff1"
+      "database_id": "c0c494c0-6f97-4f55-8af3-9bc8f75cdff1",
+      "remote": true
     }
   ],
 
   "vectorize": [
     {
       "binding": "SEARCH_INDEX",
-      "index_name": "test-planet-entries"
+      "index_name": "test-planet-entries",
+      "remote": true
     }
   ],
 
   "ai": {
-    "binding": "AI"
+    "binding": "AI",
+    "remote": true
   },
 
   "queues": {

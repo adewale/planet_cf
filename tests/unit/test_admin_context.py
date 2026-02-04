@@ -207,9 +207,7 @@ class TestAdminActionContextManager:
         admin = {"github_username": "test", "id": 1}
         deployment = {"worker_version": "v1", "deployment_environment": "test"}
 
-        async with admin_action_context(
-            admin, "add_feed", "feed", deployment
-        ) as ctx:
+        async with admin_action_context(admin, "add_feed", "feed", deployment) as ctx:
             ctx.set_target_id(123)
             ctx.set_success()
 
@@ -223,9 +221,7 @@ class TestAdminActionContextManager:
         deployment = {}
 
         with pytest.raises(ValueError):
-            async with admin_action_context(
-                admin, "add_feed", "feed", deployment
-            ) as ctx:
+            async with admin_action_context(admin, "add_feed", "feed", deployment) as ctx:
                 raise ValueError("Test error")
 
         assert ctx.event.outcome == "error"
@@ -240,9 +236,7 @@ class TestAdminActionContextManager:
         admin = {"github_username": "test", "id": 1}
         deployment = {}
 
-        async with admin_action_context(
-            admin, "test_action", "test", deployment
-        ) as ctx:
+        async with admin_action_context(admin, "test_action", "test", deployment) as ctx:
             await asyncio.sleep(0.01)  # 10ms
             ctx.set_success()
 
@@ -254,9 +248,7 @@ class TestAdminActionContextManager:
         admin = {"github_username": "test", "id": 1}
         deployment = {}
 
-        async with admin_action_context(
-            admin, "reindex", "search_index", deployment
-        ) as ctx:
+        async with admin_action_context(admin, "reindex", "search_index", deployment) as ctx:
             ctx.set_success()
 
         assert ctx.event.reindex_total_ms == ctx.event.wall_time_ms
@@ -290,9 +282,7 @@ class TestAdminActionContextManager:
         admin = {"github_username": "test", "id": 1}
         deployment = {}
 
-        async with admin_action_context(
-            admin, "add_feed", "feed", deployment
-        ) as ctx:
+        async with admin_action_context(admin, "add_feed", "feed", deployment) as ctx:
             # Should not raise
             await ctx.log_action(1, "add_feed", "feed", 123, {})
             ctx.set_success()

@@ -12,34 +12,18 @@ Note: This test requires the wrangler dev server to be running.
 """
 
 import asyncio
-import base64
-import hashlib
-import hmac
-import json
 import threading
-import time
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 import httpx
 import pytest
 
+from tests.e2e.conftest import E2E_BASE_URL as BASE_URL
+from tests.e2e.conftest import create_test_session
 from tests.integration.conftest import requires_wrangler
 
-# Configuration
-BASE_URL = "http://localhost:8787"
-SESSION_SECRET = "test-secret-for-local-development-32chars"
-
-
-def create_test_session(username: str = "testadmin") -> str:
-    """Create a signed session cookie for testing."""
-    session_data = {
-        "github_username": username,
-        "github_id": 12345,
-        "exp": int(time.time()) + 3600,
-    }
-    payload = base64.b64encode(json.dumps(session_data).encode()).decode()
-    signature = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
-    return f"{payload}.{signature}"
+# Generous timeout for integration tests where wrangler may be slow to respond
+DEFAULT_TIMEOUT = httpx.Timeout(60.0, connect=30.0)
 
 
 class RSSHandler(SimpleHTTPRequestHandler):
@@ -119,7 +103,7 @@ class TestE2EFeedToHomepage:
         session = create_test_session()
         cookies = {"session": session}
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             # Attempt to add a localhost feed - should be blocked
             add_response = await client.post(
                 f"{BASE_URL}/admin/feeds",
@@ -155,7 +139,22 @@ class TestE2EFeedToHomepage:
         # Example: AWS What's New feed (very stable)
         test_url = "https://aws.amazon.com/about-aws/whats-new/recent/feed/"
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+            # Clean up any leftover test feed from previous runs
+            cleanup_response = await client.get(
+                f"{BASE_URL}/admin/feeds",
+                cookies=cookies,
+            )
+            if cleanup_response.status_code == 200:
+                for feed in cleanup_response.json().get("feeds", []):
+                    if feed.get("url") == test_url:
+                        await client.post(
+                            f"{BASE_URL}/admin/feeds/{feed['id']}",
+                            data={"_method": "DELETE"},
+                            cookies=cookies,
+                            follow_redirects=False,
+                        )
+
             # Add the public feed
             add_response = await client.post(
                 f"{BASE_URL}/admin/feeds",
@@ -163,6 +162,11 @@ class TestE2EFeedToHomepage:
                 cookies=cookies,
                 follow_redirects=False,
             )
+            # Skip if the external feed is unreachable or rate limited
+            if add_response.status_code == 200 and "error" in add_response.text.lower():
+                pytest.skip(
+                    "External feed could not be added (possibly unreachable or rate limited)"
+                )
             assert add_response.status_code == 302, f"Add feed failed: {add_response.text}"
 
             # Trigger feed fetch
@@ -213,7 +217,7 @@ class TestHomepageRendering:
     @pytest.mark.asyncio
     async def test_homepage_loads_with_entries(self):
         """Homepage should load and display any existing entries."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             response = await client.get(f"{BASE_URL}/")
             assert response.status_code == 200
             assert "<html" in response.text.lower()
@@ -223,7 +227,7 @@ class TestHomepageRendering:
     @pytest.mark.asyncio
     async def test_homepage_includes_admin_link(self):
         """Homepage footer may include an admin link (configurable via show_admin_link)."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             response = await client.get(f"{BASE_URL}/")
             assert response.status_code == 200
             # Admin link is optional (controlled by show_admin_link config)
@@ -233,7 +237,7 @@ class TestHomepageRendering:
     @pytest.mark.asyncio
     async def test_homepage_includes_feed_links(self):
         """Homepage should include Atom, RSS, and OPML links."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             response = await client.get(f"{BASE_URL}/")
             assert response.status_code == 200
             assert 'href="/feed.atom"' in response.text or "/feed.atom" in response.text
@@ -243,7 +247,7 @@ class TestHomepageRendering:
     @pytest.mark.asyncio
     async def test_atom_feed_contains_entries(self):
         """Atom feed should contain entries if they exist."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             response = await client.get(f"{BASE_URL}/feed.atom")
             assert response.status_code == 200
             assert "application/atom+xml" in response.headers.get("content-type", "")
@@ -254,7 +258,7 @@ class TestHomepageRendering:
     @pytest.mark.asyncio
     async def test_rss_feed_contains_entries(self):
         """RSS feed should contain entries if they exist."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             response = await client.get(f"{BASE_URL}/feed.rss")
             assert response.status_code == 200
             assert "application/rss+xml" in response.headers.get("content-type", "")
@@ -282,8 +286,25 @@ class TestFeedProcessingFlow:
         session = create_test_session()
         cookies = {"session": session}
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            # Get initial feed count
+        test_url = "https://feeds.bbci.co.uk/news/technology/rss.xml"
+
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+            # Clean up any leftover test feed from previous runs
+            cleanup_response = await client.get(
+                f"{BASE_URL}/admin/feeds",
+                cookies=cookies,
+            )
+            assert cleanup_response.status_code == 200
+            for feed in cleanup_response.json().get("feeds", []):
+                if feed.get("url") == test_url:
+                    await client.post(
+                        f"{BASE_URL}/admin/feeds/{feed['id']}",
+                        data={"_method": "DELETE"},
+                        cookies=cookies,
+                        follow_redirects=False,
+                    )
+
+            # Get initial feed count (after cleanup)
             initial_response = await client.get(
                 f"{BASE_URL}/admin/feeds",
                 cookies=cookies,
@@ -292,7 +313,6 @@ class TestFeedProcessingFlow:
             initial_count = len(initial_response.json().get("feeds", []))
 
             # Add a test feed (using a real RSS feed)
-            test_url = "https://feeds.bbci.co.uk/news/technology/rss.xml"
             add_response = await client.post(
                 f"{BASE_URL}/admin/feeds",
                 data={"url": test_url},

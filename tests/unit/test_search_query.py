@@ -106,7 +106,9 @@ class TestSearchQueryBuilderMultiWord:
 
     def test_multi_word_respects_custom_max(self):
         """Custom max_words limit is respected."""
-        builder = SearchQueryBuilder(query="one two three four five", is_phrase_search=False, max_words=3)
+        builder = SearchQueryBuilder(
+            query="one two three four five", is_phrase_search=False, max_words=3
+        )
         result = builder.build(limit=50)
 
         assert result.words_truncated is True

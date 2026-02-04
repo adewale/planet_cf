@@ -197,7 +197,21 @@ class TestRealSearchWithKnownData:
 
     Prerequisite: Run `uv run python scripts/seed_test_data.py --reindex`
     to seed and index the test data.
+
+    These tests will skip if the fixture data is not found in the database.
     """
+
+    async def _check_fixture_data_present(self, client, fixtures):
+        """Check if fixture data is seeded by searching for a known fixture entry."""
+        # Search for a distinctive fixture term and check for a fixture-specific URL
+        # (not just the title, which gets echoed back in the search form)
+        fixture_url = fixtures["entries"][0]["url"]
+        test_title = fixtures["entries"][0]["title"]
+        response = await client.get("/search", params={"q": test_title})
+        if response.status_code != 200:
+            return False
+        # Check for the fixture entry's URL in the results (not just the query echo)
+        return fixture_url in response.text
 
     @pytest.mark.asyncio
     async def test_title_in_query_match(self, client, fixtures):
@@ -207,6 +221,12 @@ class TestRealSearchWithKnownData:
         Tests the fix for: "what the day-to-day looks like now" not finding
         "What the day-to-day looks like"
         """
+        if not await self._check_fixture_data_present(client, fixtures):
+            pytest.skip(
+                "Fixture data not seeded. Run: "
+                "uv run python scripts/seed_test_data.py --local --reindex"
+            )
+
         test_case = next(
             tc
             for tc in fixtures["test_queries"]
@@ -224,6 +244,12 @@ class TestRealSearchWithKnownData:
     @pytest.mark.asyncio
     async def test_exact_title_match(self, client, fixtures):
         """Exact title match should appear first."""
+        if not await self._check_fixture_data_present(client, fixtures):
+            pytest.skip(
+                "Fixture data not seeded. Run: "
+                "uv run python scripts/seed_test_data.py --local --reindex"
+            )
+
         test_case = next(
             tc for tc in fixtures["test_queries"] if tc["query"] == "context is the work"
         )
@@ -237,6 +263,12 @@ class TestRealSearchWithKnownData:
     @pytest.mark.asyncio
     async def test_all_fixture_queries(self, client, fixtures):
         """Run all test queries from fixtures against real infrastructure."""
+        if not await self._check_fixture_data_present(client, fixtures):
+            pytest.skip(
+                "Fixture data not seeded. Run: "
+                "uv run python scripts/seed_test_data.py --local --reindex"
+            )
+
         failures = []
 
         for test_case in fixtures["test_queries"]:

@@ -102,5 +102,3 @@ def is_lite_mode(env: SafeEnv) -> bool:
     """
     mode = _get_env(env, "INSTANCE_MODE", "full").lower()
     return mode == "lite"
-
-

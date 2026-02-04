@@ -9,8 +9,6 @@ illegal control characters (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F) while
 preserving valid ones (tab=0x09, newline=0x0A, carriage return=0x0D).
 """
 
-import pytest
-
 from src.xml_sanitizer import strip_xml_control_chars
 
 
@@ -136,6 +134,6 @@ class TestStripXmlControlChars:
 
     def test_handles_emoji(self):
         """Emoji characters (high Unicode) are preserved."""
-        text = "Hello \U0001F600 World"  # Grinning face emoji
+        text = "Hello \U0001f600 World"  # Grinning face emoji
         result = strip_xml_control_chars(text)
         assert result == text

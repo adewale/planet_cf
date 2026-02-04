@@ -161,12 +161,8 @@ class SearchQueryBuilder:
             bind_values.append(f"%{escaped_word}%")
 
         # Build WHERE conditions
-        title_conditions = " AND ".join(
-            ["e.title LIKE ? ESCAPE '\\'" for _ in self._words]
-        )
-        content_conditions = " AND ".join(
-            ["e.content LIKE ? ESCAPE '\\'" for _ in self._words]
-        )
+        title_conditions = " AND ".join(["e.title LIKE ? ESCAPE '\\'" for _ in self._words])
+        content_conditions = " AND ".join(["e.content LIKE ? ESCAPE '\\'" for _ in self._words])
 
         sql = f"""
             {self._build_base_select()}

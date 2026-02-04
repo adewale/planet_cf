@@ -32,6 +32,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 # Module-level connection for efficient SQL quoting
@@ -137,7 +138,8 @@ def seed_entries(
             f"{sql_quote(published_at)}, {sql_quote(published_at)}) "
             f"ON CONFLICT(feed_id, guid) DO UPDATE SET "
             f"title = excluded.title, content = excluded.content, "
-            f"summary = excluded.summary, author = excluded.author;"
+            f"summary = excluded.summary, author = excluded.author, "
+            f"published_at = excluded.published_at;"
         )
         if run_sql(db_name, sql, local=local, config=config):
             print(f"  [OK] Entry: {entry.get('title', entry['guid'])}")
@@ -254,6 +256,14 @@ Examples:
 
     feeds = fixtures.get("feeds", [])
     entries = fixtures.get("entries", [])
+
+    # Override published_at with dynamic dates relative to today so entries
+    # are always within the 30-day retention window regardless of when the
+    # seed script is run. Entry 0 gets yesterday, entry 1 gets 2 days ago, etc.
+    now = datetime.now(UTC)
+    for i, entry in enumerate(entries):
+        dynamic_date = now - timedelta(days=i + 1)
+        entry["published_at"] = dynamic_date.strftime("%Y-%m-%dT%H:%M:%S")
 
     if not feeds and not entries:
         print("No test data found in fixtures file.")

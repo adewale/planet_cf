@@ -1,7 +1,6 @@
 # tests/unit/test_route_dispatcher.py
 """Tests for the route dispatcher."""
 
-
 from src.route_dispatcher import (
     Route,
     RouteDispatcher,
@@ -190,7 +189,12 @@ class TestRouteDispatcherPatternMatch:
 
     def test_pattern_match_multiple_params(self):
         """Matches pattern with multiple parameters."""
-        routes = [Route(path="/feeds/:feed_id/entries/:entry_id", pattern="/feeds/:feed_id/entries/:entry_id")]
+        routes = [
+            Route(
+                path="/feeds/:feed_id/entries/:entry_id",
+                pattern="/feeds/:feed_id/entries/:entry_id",
+            )
+        ]
         dispatcher = RouteDispatcher(routes)
 
         match = dispatcher.match("/feeds/42/entries/99")
