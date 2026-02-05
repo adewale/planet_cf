@@ -189,9 +189,9 @@ _EMBEDDED_TEMPLATES = {
         </main>
 
         <aside class="sidebar">
-            {% if feed_links %}
+            {% if feed_links and (feed_links.sidebar_rss or feed_links.titles_only or feed_links.planet_planet) %}
             <div class="sidebar-links">
-                <a href="{{ feed_links.rss or '/feed.rss' }}">RSS</a>
+                {% if feed_links.sidebar_rss %}<a href="{{ feed_links.sidebar_rss }}">RSS</a>{% endif %}
                 {% if feed_links.titles_only %}<a href="{{ feed_links.titles_only }}">titles only</a>{% endif %}
                 {% if feed_links.planet_planet %}<a href="{{ feed_links.planet_planet }}">Planet Planet</a>{% endif %}
             </div>
@@ -1160,7 +1160,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
                 <ul>
                     <li><a href="{{ feed_links.atom or '/feed.atom' }}">Atom</a></li>
                     <li><a href="{{ feed_links.rss or '/feed.rss' }}">RSS 2.0</a></li>
-                    <li><a href="{{ feed_links.rss10 or '/feed.rss10' }}">RSS 1.0</a></li>
+                    {% if feed_links.rss10 %}<li><a href="{{ feed_links.rss10 }}">RSS 1.0</a></li>{% endif %}
                 </ul>
                 <p></p>
                 <p>Subscription list:</p>
@@ -1254,7 +1254,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
                 <ul>
                     <li><a href="{{ feed_links.atom or '/feed.atom' }}">Atom</a></li>
                     <li><a href="{{ feed_links.rss or '/feed.rss' }}">RSS 2.0</a></li>
-                    <li><a href="{{ feed_links.rss10 or '/feed.rss10' }}">RSS 1.0</a></li>
+                    {% if feed_links.rss10 %}<li><a href="{{ feed_links.rss10 }}">RSS 1.0</a></li>{% endif %}
                 </ul>
                 <ul>
                     <li class="opml"><a href="{{ feed_links.opml or '/feeds.opml' }}">OPML</a></li>

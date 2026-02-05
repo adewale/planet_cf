@@ -203,6 +203,9 @@ class RateLimitError(Exception):
 # HTML sanitizer instance (uses settings from models.py)
 _sanitizer = BleachSanitizer()
 
+# Themes that hide sidebar feed links (RSS, titles only) from the template
+_THEMES_HIDE_SIDEBAR_LINKS: frozenset[str] = frozenset({"planet-cloudflare"})
+
 # Cloud metadata endpoints to block (SSRF protection)
 BLOCKED_METADATA_IPS = {
     "169.254.169.254",  # AWS/GCP/Azure metadata
@@ -1624,7 +1627,7 @@ class Default(WorkerEntrypoint):
             "opml": "/feeds.opml",
         }
         # Only include sidebar links for themes that use them
-        if theme not in ("planet-cloudflare",):
+        if theme not in _THEMES_HIDE_SIDEBAR_LINKS:
             feed_links["sidebar_rss"] = "/feed.rss"
             feed_links["titles_only"] = "/titles"
 

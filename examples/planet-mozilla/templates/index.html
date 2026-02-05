@@ -65,7 +65,7 @@
                 <ul>
                     <li><a href="{{ feed_links.atom or '/feed.atom' }}">Atom</a></li>
                     <li><a href="{{ feed_links.rss or '/feed.rss' }}">RSS 2.0</a></li>
-                    <li><a href="{{ feed_links.rss10 or '/feed.rss10' }}">RSS 1.0</a></li>
+                    {% if feed_links.rss10 %}<li><a href="{{ feed_links.rss10 }}">RSS 1.0</a></li>{% endif %}
                 </ul>
                 <p></p>
                 <p>Subscription list:</p>

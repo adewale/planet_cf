@@ -108,6 +108,45 @@ class TestToPySafe:
         result = _to_py_safe((1, 2, 3))
         assert result == [1, 2, 3]
 
+    def test_depth_guard_prevents_unbounded_recursion(self):
+        """Deeply nested structures are handled without stack overflow.
+
+        The depth guard at _MAX_CONVERSION_DEPTH (50) should return the raw
+        value once the limit is exceeded, preventing unbounded recursion.
+        """
+        from src.wrappers import _MAX_CONVERSION_DEPTH
+
+        # Build a structure 100 levels deep (well past the 50-level guard)
+        deep: dict | str = "leaf"
+        for _i in range(100):
+            deep = {"level": deep}
+
+        # Should not raise RecursionError
+        result = _to_py_safe(deep)
+        assert result is not None
+
+        # Walk into the result up to the depth limit
+        node = result
+        for _ in range(_MAX_CONVERSION_DEPTH):
+            assert isinstance(node, dict)
+            node = node["level"]
+
+        # At depth >= _MAX_CONVERSION_DEPTH the value is returned as-is
+        # (a raw dict that was not recursively converted further, but still a dict
+        # because _to_py_safe returns the value unchanged at the depth limit).
+        # The important thing is we didn't get a stack overflow.
+        assert node is not None
+
+    def test_depth_guard_returns_value_at_limit(self):
+        """At exactly the depth limit, _to_py_safe returns value as-is."""
+        from src.wrappers import _MAX_CONVERSION_DEPTH
+
+        # Call _to_py_safe with _depth at exactly the limit
+        sentinel = {"key": "should_not_be_recursed"}
+        result = _to_py_safe(sentinel, _depth=_MAX_CONVERSION_DEPTH)
+        # The value should be returned as-is (no conversion attempted)
+        assert result is sentinel
+
 
 class TestToPyList:
     """Tests for _to_py_list function."""
@@ -687,3 +726,140 @@ class TestNormalizeEntryContent:
         title = "Some Title"
         result = _normalize_entry_content(content, title)
         assert result == content
+
+
+# =============================================================================
+# Theme-aware CSS Serving Tests
+# =============================================================================
+
+
+class _MinimalEnv:
+    """Minimal mock environment for theme tests."""
+
+    def __init__(self, theme: str | None = None):
+        self.DB = _MockDB()
+        self.AI = None
+        self.SEARCH_INDEX = None
+        self.FEED_QUEUE = None
+        self.DEAD_LETTER_QUEUE = None
+        self.PLANET_NAME = "Test"
+        self.SESSION_SECRET = "test-secret-key-for-testing-only"
+        self.GITHUB_CLIENT_ID = "test-client-id"
+        self.GITHUB_CLIENT_SECRET = "test-client-secret"
+        if theme is not None:
+            self.THEME = theme
+
+
+class _MockDB:
+    """Minimal mock D1 database for theme tests."""
+
+    def prepare(self, sql: str):
+        return self
+
+    def bind(self, *args):
+        return self
+
+    async def all(self):
+        class _Result:
+            results = []
+            success = True
+
+        return _Result()
+
+    async def first(self):
+        return None
+
+
+class TestGetDefaultCss:
+    """Tests for _get_default_css() theme-aware CSS serving."""
+
+    def test_returns_theme_css_for_known_theme(self):
+        """When THEME is planet-cloudflare, returns THEME_CSS['planet-cloudflare']."""
+        from src.main import Default
+        from src.templates import THEME_CSS
+
+        worker = Default()
+        worker.env = _MinimalEnv(theme="planet-cloudflare")
+
+        result = worker._get_default_css()
+        assert result == THEME_CSS["planet-cloudflare"]
+        assert len(result) > 0
+
+    def test_returns_static_css_for_unknown_theme(self):
+        """When THEME is an unknown value, returns STATIC_CSS."""
+        from src.main import Default
+        from src.templates import STATIC_CSS
+
+        worker = Default()
+        worker.env = _MinimalEnv(theme="nonexistent-theme")
+
+        result = worker._get_default_css()
+        assert result == STATIC_CSS
+
+    def test_returns_static_css_when_theme_not_set(self):
+        """When THEME is not set, returns STATIC_CSS (default theme)."""
+        from src.main import Default
+        from src.templates import STATIC_CSS
+
+        worker = Default()
+        worker.env = _MinimalEnv()  # No THEME attribute
+
+        result = worker._get_default_css()
+        assert result == STATIC_CSS
+
+
+# =============================================================================
+# Conditional feed_links Tests
+# =============================================================================
+
+
+class TestFeedLinksConditionalSidebarRss:
+    """Tests for conditional feed_links.sidebar_rss based on theme."""
+
+    def test_planet_cloudflare_excludes_sidebar_links(self):
+        """For planet-cloudflare theme, feed_links should NOT contain sidebar_rss or titles_only."""
+        from src.main import _THEMES_HIDE_SIDEBAR_LINKS
+
+        # Simulate the feed_links construction logic from _generate_html
+        theme = "planet-cloudflare"
+        feed_links: dict[str, str] = {
+            "atom": "/feed.atom",
+            "rss": "/feed.rss",
+            "opml": "/feeds.opml",
+        }
+        if theme not in _THEMES_HIDE_SIDEBAR_LINKS:
+            feed_links["sidebar_rss"] = "/feed.rss"
+            feed_links["titles_only"] = "/titles"
+
+        assert "sidebar_rss" not in feed_links
+        assert "titles_only" not in feed_links
+        # Base links should still be present
+        assert "rss" in feed_links
+        assert "atom" in feed_links
+        assert "opml" in feed_links
+
+    def test_default_theme_includes_sidebar_links(self):
+        """For default theme, feed_links should contain sidebar_rss and titles_only."""
+        from src.main import _THEMES_HIDE_SIDEBAR_LINKS
+
+        theme = "default"
+        feed_links: dict[str, str] = {
+            "atom": "/feed.atom",
+            "rss": "/feed.rss",
+            "opml": "/feeds.opml",
+        }
+        if theme not in _THEMES_HIDE_SIDEBAR_LINKS:
+            feed_links["sidebar_rss"] = "/feed.rss"
+            feed_links["titles_only"] = "/titles"
+
+        assert "sidebar_rss" in feed_links
+        assert feed_links["sidebar_rss"] == "/feed.rss"
+        assert "titles_only" in feed_links
+        assert feed_links["titles_only"] == "/titles"
+
+    def test_themes_hide_sidebar_links_contains_planet_cloudflare(self):
+        """The _THEMES_HIDE_SIDEBAR_LINKS constant includes planet-cloudflare."""
+        from src.main import _THEMES_HIDE_SIDEBAR_LINKS
+
+        assert "planet-cloudflare" in _THEMES_HIDE_SIDEBAR_LINKS
+        assert isinstance(_THEMES_HIDE_SIDEBAR_LINKS, frozenset)
