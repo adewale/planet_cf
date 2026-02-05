@@ -1615,14 +1615,36 @@ class Default(WorkerEntrypoint):
         # Check if running in lite mode (no search, no auth)
         is_lite = check_lite_mode(self.env)
 
+        # Build feed_links dict for templates
+        feed_links = {
+            "atom": "/feed.atom",
+            "rss": "/feed.rss",
+            "opml": "/feeds.opml",
+            "titles_only": "/titles",
+        }
+
+        # Check if admin link should be shown (default: True in full mode)
+        show_admin_link = not is_lite
+
+        # Build date_labels for themes (identity mapping since keys are already formatted)
+        date_labels = {date_key: date_key for date_key in entries_by_date}
+
         with Timer() as render_timer:
             html = render_template(
                 template,
+                theme=self._get_theme(),
                 planet=planet,
                 entries_by_date=entries_by_date,
                 feeds=feeds,
+                feed_links=feed_links,
+                date_labels=date_labels,
                 generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
                 is_lite_mode=is_lite,
+                show_admin_link=show_admin_link,
+                logo=None,
+                submission=None,
+                related_sites=None,
+                footer_text="Powered by Planet CF",
             )
 
         # Populate remaining generation metrics
@@ -1770,6 +1792,10 @@ class Default(WorkerEntrypoint):
             "link": getattr(self.env, "PLANET_URL", None) or "https://planetcf.com",
         }
 
+    def _get_theme(self) -> str:
+        """Get the theme name from environment (default: 'default')."""
+        return getattr(self.env, "THEME", None) or "default"
+
     def _admin_error_response(
         self,
         message: str,
@@ -1779,7 +1805,12 @@ class Default(WorkerEntrypoint):
     ) -> Response:
         """Return an HTML error page for admin/auth errors."""
         return _admin_error_response_fn(
-            self._get_planet_config(), message, title=title, status=status, back_url=back_url
+            self._get_planet_config(),
+            message,
+            title=title,
+            status=status,
+            back_url=back_url,
+            theme=self._get_theme(),
         )
 
     def _get_config_value(
@@ -1844,6 +1875,7 @@ class Default(WorkerEntrypoint):
         ]
         return render_template(
             TEMPLATE_FEED_ATOM,
+            theme=self._get_theme(),
             planet=planet,
             entries=template_entries,
             updated_at=f"{datetime.now(timezone.utc).isoformat()}Z",
@@ -1871,6 +1903,7 @@ class Default(WorkerEntrypoint):
         ]
         return render_template(
             TEMPLATE_FEED_RSS,
+            theme=self._get_theme(),
             planet=planet,
             entries=template_entries,
             last_build_date=datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000"),
@@ -1900,6 +1933,7 @@ class Default(WorkerEntrypoint):
 
         opml = render_template(
             TEMPLATE_FEEDS_OPML,
+            theme=self._get_theme(),
             planet=planet,
             feeds=template_feeds,
             owner_name=owner_name,
@@ -1960,6 +1994,7 @@ class Default(WorkerEntrypoint):
             planet = self._get_planet_config()
             html = render_template(
                 TEMPLATE_SEARCH,
+                theme=self._get_theme(),
                 planet=planet,
                 query=query,
                 results=[],
@@ -1975,6 +2010,7 @@ class Default(WorkerEntrypoint):
             planet = self._get_planet_config()
             html = render_template(
                 TEMPLATE_SEARCH,
+                theme=self._get_theme(),
                 planet=planet,
                 query=query[:50] + "...",
                 results=[],
@@ -2061,7 +2097,9 @@ class Default(WorkerEntrypoint):
             if event:
                 event.search_results_total = 0
             planet = self._get_planet_config()
-            html = render_template(TEMPLATE_SEARCH, planet=planet, query=query, results=[])
+            html = render_template(
+                TEMPLATE_SEARCH, theme=self._get_theme(), planet=planet, query=query, results=[]
+            )
             return _html_response(html, cache_max_age=0)
 
         # 4. Build entry map for lookups
@@ -2166,6 +2204,7 @@ class Default(WorkerEntrypoint):
         planet = self._get_planet_config()
         html = render_template(
             TEMPLATE_SEARCH,
+            theme=self._get_theme(),
             planet=planet,
             query=query,
             results=sorted_results,
@@ -2331,7 +2370,7 @@ class Default(WorkerEntrypoint):
     def _serve_admin_login(self) -> Response:
         """Serve the admin login page."""
         planet = self._get_planet_config()
-        html = render_template(TEMPLATE_ADMIN_LOGIN, planet=planet)
+        html = render_template(TEMPLATE_ADMIN_LOGIN, theme=self._get_theme(), planet=planet)
         return _html_response(html, cache_max_age=0)
 
     async def _serve_admin_dashboard(self, admin: dict[str, Any]) -> Response:
@@ -2343,6 +2382,7 @@ class Default(WorkerEntrypoint):
         planet = self._get_planet_config()
         html = render_template(
             TEMPLATE_ADMIN_DASHBOARD,
+            theme=self._get_theme(),
             planet=planet,
             admin=admin,
             feeds=feed_rows_from_d1(feeds_result.results),
@@ -2946,6 +2986,7 @@ class Default(WorkerEntrypoint):
         planet = self._get_planet_config()
         html = render_template(
             TEMPLATE_FEED_HEALTH,
+            theme=self._get_theme(),
             planet=planet,
             feeds=feeds,
             total_feeds=len(feeds),

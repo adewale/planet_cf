@@ -100,7 +100,20 @@ uv sync
 npm install
 ```
 
-### 2. Create Cloudflare Resources
+### 2. Set Up Python Modules (Required for Deployment)
+
+Cloudflare Python Workers require bundled pip dependencies. These are stored in a `python_modules/` directory that is gitignored (not tracked in version control).
+
+```bash
+# Create python_modules from the pyodide virtual environment
+make python-modules
+```
+
+This copies the required packages (feedparser, jinja2, bleach, markupsafe, etc.) from `.venv-workers/pyodide-venv/` to `python_modules/`.
+
+**Note:** You must run this after cloning or pulling updates. The deploy script will validate that `python_modules/` exists and contains the required packages before deployment.
+
+### 3. Create Cloudflare Resources
 
 ```bash
 # Create D1 database
@@ -116,13 +129,13 @@ npx wrangler queues create planetcf-feed-dlq
 
 Update `wrangler.jsonc` with your database ID from the output above.
 
-### 3. Apply Database Migrations
+### 4. Apply Database Migrations
 
 ```bash
 npx wrangler d1 execute planetcf --remote --file=migrations/001_initial.sql
 ```
 
-### 4. Set Up GitHub OAuth
+### 5. Set Up GitHub OAuth
 
 1. Go to [GitHub Developer Settings](https://github.com/settings/developers)
 2. Click "New OAuth App"
@@ -132,7 +145,7 @@ npx wrangler d1 execute planetcf --remote --file=migrations/001_initial.sql
    - **Authorization callback URL:** `https://your-worker.workers.dev/auth/github/callback`
 4. Copy the Client ID and generate a Client Secret
 
-### 5. Configure Secrets
+### 6. Configure Secrets
 
 ```bash
 # GitHub OAuth credentials
@@ -148,7 +161,7 @@ npx wrangler secret put SESSION_SECRET
 # Paste the generated hex string
 ```
 
-### 6. Add Admin User
+### 7. Add Admin User
 
 Add yourself as an admin using your **GitHub username** (the login name that appears in your GitHub profile URL, e.g., `adewale` from `github.com/adewale`):
 
@@ -161,7 +174,7 @@ npx wrangler d1 execute planetcf --remote --command \
 - ✅ Correct: `adewale`
 - ❌ Wrong: `@adewale`, `https://github.com/adewale`
 
-### 7. Deploy
+### 8. Deploy
 
 ```bash
 npx wrangler deploy

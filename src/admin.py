@@ -23,6 +23,7 @@ def admin_error_response(
     title: str | None = None,
     status: int = 400,
     back_url: str | None = "/admin",
+    theme: str = "default",
 ) -> Any:
     """Create an HTML error page for admin/auth errors.
 
@@ -32,12 +33,14 @@ def admin_error_response(
         title: Optional error title
         status: HTTP status code
         back_url: URL for the back button
+        theme: Theme name for template rendering
 
     Returns:
         Response with rendered error page.
     """
     html = render_template(
         TEMPLATE_ADMIN_ERROR,
+        theme=theme,
         planet=planet,
         title=title,
         message=message,

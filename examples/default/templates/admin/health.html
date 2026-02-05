@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feed Health - {{ planet.name }}</title>
+    <link rel="icon" href="/static/favicon.ico" sizes="32x32">
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        body { max-width: 1200px; margin: 0 auto; padding: 0; }
+        header { display: flex; justify-content: space-between; align-items: center; text-align: left; padding: 1rem 1.5rem; }
+        header h1 { margin: 0; font-size: 1.5rem; }
+        header h1::before { display: none; }
+        .header-actions { display: flex; gap: 0.75rem; }
+        .health-content { padding: 1rem 1.5rem; }
+        .summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .summary-card { padding: 1rem; background: var(--bg-tertiary); border-radius: 8px; text-align: center; }
+        .summary-card .count { font-size: 2rem; font-weight: bold; }
+        .summary-card .label { font-size: 0.875rem; color: var(--text-muted); }
+        .summary-card.healthy .count { color: var(--success); }
+        .summary-card.warning .count { color: #f59e0b; }
+        .summary-card.failing .count { color: var(--error); }
+        .summary-card.inactive .count { color: var(--text-muted); }
+        .health-table { width: 100%; border-collapse: collapse; background: var(--bg-primary); border-radius: 8px; overflow: hidden; }
+        .health-table th, .health-table td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid var(--border-light); }
+        .health-table th { background: var(--bg-tertiary); font-weight: 600; font-size: 0.875rem; }
+        .health-table tr:last-child td { border-bottom: none; }
+        .health-table tr:hover { background: var(--bg-secondary); }
+        .status-badge { padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+        .status-badge.healthy { background: #d1fae5; color: #065f46; }
+        .status-badge.warning { background: #fef3c7; color: #92400e; }
+        .status-badge.failing { background: #fee2e2; color: #991b1b; }
+        .status-badge.inactive { background: #e5e7eb; color: #6b7280; }
+        .feed-title { font-weight: 600; }
+        .feed-url { font-size: 0.75rem; color: var(--text-muted); word-break: break-all; max-width: 300px; }
+        .error-text { font-size: 0.75rem; color: var(--error); max-width: 200px; word-break: break-word; }
+        .time-ago { font-size: 0.875rem; color: var(--text-muted); }
+        .actions-cell { white-space: nowrap; }
+        .actions-cell form { display: inline; }
+        .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
+        .table-responsive { overflow-x: auto; }
+        @media (max-width: 768px) {
+            .feed-url { max-width: 150px; }
+            .health-table th, .health-table td { padding: 0.5rem; font-size: 0.875rem; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1><a href="/">{{ planet.name }}</a> <span style="color: var(--text-muted); font-weight: normal; font-size: 0.875rem;">Feed Health</span></h1>
+        <div class="header-actions">
+            <a href="/admin" class="btn">Back to Dashboard</a>
+        </div>
+    </header>
+
+    <div class="health-content">
+        <div class="summary-cards">
+            <div class="summary-card">
+                <div class="count">{{ total_feeds }}</div>
+                <div class="label">Total Feeds</div>
+            </div>
+            <div class="summary-card healthy">
+                <div class="count">{{ healthy_count }}</div>
+                <div class="label">Healthy</div>
+            </div>
+            <div class="summary-card warning">
+                <div class="count">{{ warning_count }}</div>
+                <div class="label">Warning</div>
+            </div>
+            <div class="summary-card failing">
+                <div class="count">{{ failing_count }}</div>
+                <div class="label">Failing</div>
+            </div>
+            <div class="summary-card inactive">
+                <div class="count">{{ inactive_count }}</div>
+                <div class="label">Inactive</div>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="health-table">
+                <thead>
+                    <tr>
+                        <th>Status</th>
+                        <th>Feed</th>
+                        <th>Last Fetch</th>
+                        <th>Last Entry</th>
+                        <th>Failures</th>
+                        <th>Entries</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for feed in feeds %}
+                    <tr>
+                        <td>
+                            <span class="status-badge {{ feed.health_status }}">{{ feed.health_status }}</span>
+                        </td>
+                        <td>
+                            <div class="feed-title">{{ feed.title or 'Untitled' }}</div>
+                            <div class="feed-url">{{ feed.url }}</div>
+                            {% if feed.fetch_error and feed.health_status == 'failing' %}
+                            <div class="error-text">{{ feed.fetch_error }}</div>
+                            {% endif %}
+                        </td>
+                        <td class="time-ago">{{ feed.last_fetch_at or 'Never' }}</td>
+                        <td class="time-ago">{{ feed.last_entry_at or 'Never' }}</td>
+                        <td>{{ feed.consecutive_failures or 0 }}</td>
+                        <td>{{ feed.entry_count or 0 }}</td>
+                        <td class="actions-cell">
+                            {% if feed.health_status == 'failing' %}
+                            <form action="/admin/dlq/{{ feed.id }}/retry" method="POST" style="display: inline;">
+                                <button type="submit" class="btn btn-sm">Retry</button>
+                            </form>
+                            {% endif %}
+                            {% if feed.is_active %}
+                            <form action="/admin/feeds/{{ feed.id }}" method="POST" style="display: inline;">
+                                <input type="hidden" name="_method" value="PUT">
+                                <input type="hidden" name="is_active" value="0">
+                                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Deactivate this feed?')">Deactivate</button>
+                            </form>
+                            {% else %}
+                            <form action="/admin/feeds/{{ feed.id }}" method="POST" style="display: inline;">
+                                <input type="hidden" name="_method" value="PUT">
+                                <input type="hidden" name="is_active" value="1">
+                                <button type="submit" class="btn btn-sm btn-success">Activate</button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                            No feeds configured yet.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

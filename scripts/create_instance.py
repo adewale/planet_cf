@@ -18,6 +18,7 @@ For full automated provisioning, you'll need wrangler CLI installed.
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -30,6 +31,78 @@ EXAMPLES_DIR = PROJECT_ROOT / "examples"
 THEMES_DIR = PROJECT_ROOT / "themes"
 CONFIG_DIR = PROJECT_ROOT / "config"
 TEMPLATE_FILE = CONFIG_DIR / "instance.example.yaml"
+
+
+def get_available_themes() -> list[str]:
+    """Get list of available themes from templates.py."""
+    try:
+        # Import from src directory
+        sys.path.insert(0, str(PROJECT_ROOT / "src"))
+        from templates import _EMBEDDED_TEMPLATES
+
+        # Return themes excluding _shared (internal)
+        return [t for t in _EMBEDDED_TEMPLATES if not t.startswith("_")]
+    except ImportError:
+        # Fallback if templates.py doesn't exist yet
+        return ["default"]
+
+
+def validate_theme(theme: str) -> tuple[bool, str]:
+    """Validate that a theme exists in templates.py.
+
+    Returns:
+        (is_valid, message)
+    """
+    available = get_available_themes()
+    if theme in available:
+        return True, f"Theme '{theme}' is available"
+    else:
+        return False, (
+            f"Warning: Theme '{theme}' not found in templates.py.\n"
+            f"Available themes: {', '.join(sorted(available))}\n"
+            f"The default theme will be used at runtime."
+        )
+
+
+def create_python_modules_symlink(instance_dir: Path) -> bool:
+    """Create python_modules symlink in instance directory.
+
+    Args:
+        instance_dir: Path to the instance directory (examples/{instance_id}/)
+
+    Returns:
+        True if symlink was created or already exists, False on error
+    """
+    symlink_path = instance_dir / "python_modules"
+    target = "../../python_modules"
+
+    # Check if root python_modules exists
+    root_python_modules = PROJECT_ROOT / "python_modules"
+    if not root_python_modules.exists():
+        print("    ⚠️  Root python_modules/ not found. Run 'make python-modules' before deploying.")
+        return False
+
+    if symlink_path.is_symlink():
+        # Already a symlink - check if it points to the right place
+        current_target = os.readlink(symlink_path)
+        if current_target == target:
+            print("    ✓ python_modules symlink already exists")
+            return True
+        else:
+            # Points to wrong place - remove and recreate
+            symlink_path.unlink()
+    elif symlink_path.exists():
+        # Exists but not a symlink (could be a directory from copying)
+        print("    ✓ python_modules directory exists (not a symlink)")
+        return True
+
+    try:
+        symlink_path.symlink_to(target)
+        print(f"    ✓ Created python_modules symlink -> {target}")
+        return True
+    except OSError as e:
+        print(f"    ⚠️  Could not create symlink: {e}")
+        return False
 
 
 def slugify(text: str) -> str:
@@ -742,6 +815,14 @@ Modes:
             config_path.write_text(content)
             print(f"  Updated config.yaml with instance ID: {args.id}")
 
+        # Create python_modules symlink (remove copied one first if it exists)
+        symlink_path = target_dir / "python_modules"
+        if symlink_path.exists() and not symlink_path.is_symlink():
+            import shutil
+
+            shutil.rmtree(symlink_path)
+        create_python_modules_symlink(target_dir)
+
         print(f"\n✅ Created examples/{args.id}/ from {args.from_example}")
         print("\nNext steps:")
         print(f"  1. Edit examples/{args.id}/config.yaml to customize your instance")
@@ -778,6 +859,11 @@ Modes:
     print(f"   Theme: {args.theme}")
     print(f"   Mode: {mode_label}")
 
+    # Validate theme
+    theme_valid, theme_msg = validate_theme(args.theme)
+    if not theme_valid:
+        print(f"\n⚠️  {theme_msg}")
+
     if args.dry_run:
         # Show what would be created without actually creating
         print("\n📁 Files that would be created:")
@@ -785,6 +871,7 @@ Modes:
         print(f"   - examples/{args.id}/wrangler.jsonc")
         print(f"   - examples/{args.id}/theme/")
         print(f"   - examples/{args.id}/static/")
+        print(f"   - examples/{args.id}/python_modules -> ../../python_modules (symlink)")
         print("\n☁️  Cloudflare resources that would be needed:")
         print(f"   - D1 database: {args.id}-db")
         if not args.lite:
@@ -827,6 +914,11 @@ Modes:
         lite_mode=args.lite,
     )
     print(f"\n✓ Created wrangler config: {wrangler_path.relative_to(PROJECT_ROOT)}")
+
+    # Create python_modules symlink
+    print("\n📦 Setting up python_modules...")
+    instance_dir = EXAMPLES_DIR / args.id
+    create_python_modules_symlink(instance_dir)
 
     # Provision or print instructions (this may update wrangler config with database_id)
     resources = provision_cloudflare_resources(args.id, args.auto_provision, lite_mode=args.lite)

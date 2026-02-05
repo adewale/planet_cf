@@ -280,16 +280,54 @@ else
 fi
 echo ""
 
-# Step 6: Ensure python_modules symlink exists
-echo -e "${YELLOW}Step 6/7: Setting up python_modules symlink...${NC}"
+# Step 6: Ensure python_modules symlink exists and is valid
+echo -e "${YELLOW}Step 6/7: Setting up python_modules...${NC}"
 INSTANCE_DIR="$PROJECT_ROOT/examples/${INSTANCE_ID}"
 SYMLINK_PATH="$INSTANCE_DIR/python_modules"
 TARGET_PATH="../../python_modules"
+ROOT_PYTHON_MODULES="$PROJECT_ROOT/python_modules"
 
+# First, check if root python_modules exists
+if [[ ! -d "$ROOT_PYTHON_MODULES" ]]; then
+    echo -e "  ${RED}Error: Root python_modules/ directory not found${NC}"
+    echo -e "  ${RED}Cloudflare Python Workers require bundled dependencies.${NC}"
+    echo ""
+    echo -e "  To create python_modules, run:"
+    echo -e "    ${BLUE}make python-modules${NC}"
+    echo ""
+    echo -e "  This copies dependencies from .venv-workers/pyodide-venv/"
+    exit 1
+fi
+
+# Validate that required packages exist
+REQUIRED_PACKAGES=("feedparser" "jinja2" "bleach" "markupsafe")
+MISSING_PACKAGES=()
+for pkg in "${REQUIRED_PACKAGES[@]}"; do
+    if [[ ! -d "$ROOT_PYTHON_MODULES/$pkg" ]]; then
+        MISSING_PACKAGES+=("$pkg")
+    fi
+done
+
+if [[ ${#MISSING_PACKAGES[@]} -gt 0 ]]; then
+    echo -e "  ${RED}Error: python_modules/ is missing required packages:${NC}"
+    for pkg in "${MISSING_PACKAGES[@]}"; do
+        echo -e "    - $pkg"
+    done
+    echo ""
+    echo -e "  To fix, run:"
+    echo -e "    ${BLUE}make python-modules${NC}"
+    exit 1
+fi
+
+echo -e "  ${GREEN}Root python_modules/ validated (has required packages)${NC}"
+
+# Now set up symlink or verify existing python_modules
 if [[ -L "$SYMLINK_PATH" ]]; then
     echo -e "  ${GREEN}Symlink already exists: python_modules${NC}"
+elif [[ -d "$SYMLINK_PATH" ]]; then
+    echo -e "  ${GREEN}python_modules directory exists${NC}"
 elif [[ -e "$SYMLINK_PATH" ]]; then
-    echo -e "  ${YELLOW}python_modules exists but is not a symlink - skipping${NC}"
+    echo -e "  ${YELLOW}python_modules exists but is not a symlink or directory - skipping${NC}"
 else
     ln -s "$TARGET_PATH" "$SYMLINK_PATH" 2>&1 || {
         echo -e "  ${YELLOW}Warning: Could not create symlink${NC}"
@@ -299,11 +337,33 @@ fi
 echo ""
 
 # Step 7: Deploy
-echo -e "${YELLOW}Step 7/7: Deploying worker...${NC}"
-npx wrangler deploy --config "$CONFIG_FILE" 2>&1 || {
+echo -e "${YELLOW}Step 7/8: Deploying worker...${NC}"
+DEPLOY_OUTPUT=$(npx wrangler deploy --config "$CONFIG_FILE" 2>&1) || {
     echo -e "${RED}Deployment failed${NC}"
+    echo "$DEPLOY_OUTPUT"
     exit 1
 }
+echo "$DEPLOY_OUTPUT"
+
+# Extract the deployed URL from wrangler output
+DEPLOYED_URL=$(echo "$DEPLOY_OUTPUT" | grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' | head -1)
+echo ""
+
+# Step 8: Verify deployment
+echo -e "${YELLOW}Step 8/8: Verifying deployment...${NC}"
+if [[ -n "$DEPLOYED_URL" ]]; then
+    # Give the worker a moment to initialize
+    sleep 2
+    if uv run python "$PROJECT_ROOT/scripts/verify_deployment.py" "$DEPLOYED_URL" 2>&1; then
+        echo -e "  ${GREEN}Deployment verified successfully!${NC}"
+    else
+        echo -e "  ${YELLOW}Warning: Deployment verification failed${NC}"
+        echo -e "  ${YELLOW}The site may still be initializing. Check manually: $DEPLOYED_URL${NC}"
+    fi
+else
+    echo -e "  ${YELLOW}Could not extract deployed URL from output${NC}"
+    echo -e "  ${YELLOW}Skipping verification${NC}"
+fi
 echo ""
 
 echo -e "${GREEN}========================================${NC}"

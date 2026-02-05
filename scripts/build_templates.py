@@ -49,6 +49,7 @@ THEMED_TEMPLATE_FILES = [
 ADMIN_TEMPLATE_FILES = [
     "admin/dashboard.html",
     "admin/error.html",
+    "admin/health.html",
     "admin/login.html",
 ]
 
@@ -522,6 +523,7 @@ TEMPLATE_SEARCH = "search.html"
 TEMPLATE_ADMIN_DASHBOARD = "admin/dashboard.html"
 TEMPLATE_ADMIN_ERROR = "admin/error.html"
 TEMPLATE_ADMIN_LOGIN = "admin/login.html"
+TEMPLATE_FEED_HEALTH = "admin/health.html"
 TEMPLATE_FEED_ATOM = "feed.atom.xml"
 TEMPLATE_FEED_RSS = "feed.rss.xml"
 TEMPLATE_FEED_RSS10 = "feed.rss10.xml"
