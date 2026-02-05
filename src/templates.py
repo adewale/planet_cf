@@ -70,9 +70,9 @@ _EMBEDDED_TEMPLATES = {
         </main>
 
         <aside class="sidebar">
-            {% if feed_links %}
+            {% if feed_links and (feed_links.sidebar_rss or feed_links.titles_only or feed_links.planet_planet) %}
             <div class="sidebar-links">
-                <a href="{{ feed_links.rss or '/feed.rss' }}">RSS</a>
+                {% if feed_links.sidebar_rss %}<a href="{{ feed_links.sidebar_rss }}">RSS</a>{% endif %}
                 {% if feed_links.titles_only %}<a href="{{ feed_links.titles_only }}">titles only</a>{% endif %}
                 {% if feed_links.planet_planet %}<a href="{{ feed_links.planet_planet }}">Planet Planet</a>{% endif %}
             </div>
