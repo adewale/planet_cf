@@ -1617,12 +1617,14 @@ class Default(WorkerEntrypoint):
         is_lite = check_lite_mode(self.env)
 
         # Build feed_links dict for templates
-        feed_links = {
+        feed_links: dict[str, str] = {
             "atom": "/feed.atom",
             "rss": "/feed.rss",
             "opml": "/feeds.opml",
-            "titles_only": "/titles",
         }
+        # Only include titles-only link for themes that use it
+        if self._get_theme() not in ("planet-cloudflare",):
+            feed_links["titles_only"] = "/titles"
 
         # Check if admin link should be shown (default: True in full mode)
         show_admin_link = not is_lite
