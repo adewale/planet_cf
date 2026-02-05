@@ -69,7 +69,7 @@ packages = ["src"]
 
 [tool.ty.environment]
 python-version = "3.12"
-extra-paths = ["stubs"]
+extra-paths = ["stubs", "src"]
 
 [tool.ty.src]
 include = ["src/"]
