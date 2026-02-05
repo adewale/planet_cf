@@ -40,6 +40,7 @@
     "FEED_TIMEOUT_SECONDS": "60",
     "HTTP_TIMEOUT_SECONDS": "30",
     // Observability context
+    "THEME": "planet-cloudflare",
     "DEPLOYMENT_ENVIRONMENT": "production"
     // DEPLOYMENT_VERSION is set dynamically via VERSION_METADATA binding below
     // Search configuration (optional - uses defaults if not set):

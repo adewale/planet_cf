@@ -538,6 +538,7 @@ THEME_CSS = {
 
     # Add theme-specific CSS from examples
     example_themes = {
+        "planet-cloudflare": EXAMPLES_DIR / "planet-cloudflare" / "theme" / "style.css",
         "planet-python": EXAMPLES_DIR / "planet-python" / "theme" / "style.css",
         "planet-mozilla": EXAMPLES_DIR / "planet-mozilla" / "theme" / "style.css",
     }

@@ -81,6 +81,7 @@ from templates import (
     TEMPLATE_INDEX,
     TEMPLATE_SEARCH,
     TEMPLATE_TITLES,
+    THEME_CSS,
     render_template,
 )
 from utils import (
@@ -2250,7 +2251,10 @@ class Default(WorkerEntrypoint):
         return _json_error("Not Found", status=404)
 
     def _get_default_css(self) -> str:
-        """Return default CSS styling from templates module."""
+        """Return CSS styling for the current theme, falling back to STATIC_CSS."""
+        theme = self._get_theme()
+        if theme in THEME_CSS:
+            return THEME_CSS[theme]
         return STATIC_CSS
 
     def _get_admin_js(self) -> str:

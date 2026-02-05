@@ -2569,6 +2569,340 @@ TEMPLATE_FEEDS_OPML = "feeds.opml"
 # =============================================================================
 
 THEME_CSS = {
+    "planet-cloudflare": """/* Default Theme - Modern, clean design with accent colors */
+/* Based on the original Planet CF design */
+
+:root {
+    /* Theme: Default - Configurable via CSS custom properties */
+    --accent: #f6821f;
+    --accent-dark: #e5731a;
+    --accent-light: #fff7ed;
+    --accent-subtle: #fed7aa;
+
+    /* Neutral tones */
+    --text-primary: #111827;
+    --text-secondary: #374151;
+    --text-muted: #6b7280;
+
+    /* Backgrounds */
+    --bg-primary: #ffffff;
+    --bg-secondary: #f9fafb;
+    --bg-tertiary: #f3f4f6;
+
+    /* Borders */
+    --border-light: #e5e7eb;
+    --border-medium: #d1d5db;
+    --border-accent: var(--accent);
+
+    /* Code blocks */
+    --code-bg: #1f2937;
+    --code-text: #f3f4f6;
+
+    /* Semantic colors */
+    --success: #059669;
+    --error: #dc2626;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.07);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: 'Georgia', 'Times New Roman', serif;
+    font-size: 18px;
+    line-height: 1.8;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+    font-weight: 700;
+}
+
+.search-form, .sidebar, footer, .meta, button, .day h2 {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+header {
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border-light);
+    padding: 0.5rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+header h1 {
+    margin: 0;
+    font-weight: 600;
+    font-size: 1.125rem;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+}
+
+header p {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    margin: 0;
+}
+
+header p::before {
+    content: '·';
+    margin-right: 0.5rem;
+    color: var(--border-medium);
+}
+
+header a { color: var(--text-primary); text-decoration: none; }
+header a:hover { color: var(--accent); }
+
+.container {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 2rem;
+    max-width: 1200px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+}
+
+main { min-width: 0; }
+
+.day { margin-bottom: 2.5rem; }
+.day h2 {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding-bottom: 0.5rem;
+    margin-bottom: 1.25rem;
+    border-bottom: 1px solid var(--border-light);
+}
+
+article {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+article:hover {
+    box-shadow: var(--shadow-md);
+    border-color: var(--border-medium);
+}
+
+article h3 {
+    margin-bottom: 0.625rem;
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+article h3 a {
+    color: var(--text-primary);
+    text-decoration: none;
+    transition: color 0.15s ease;
+}
+
+article h3 a:hover { color: var(--accent); }
+
+article header {
+    background: transparent;
+    border-bottom: none;
+    padding: 0;
+    text-align: left;
+}
+
+.meta {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    margin-bottom: 1rem;
+}
+
+.meta .author { color: var(--text-secondary); font-weight: 500; }
+.meta .date-sep { color: var(--text-muted); margin: 0 0.25rem; }
+
+.content {
+    overflow-wrap: break-word;
+    color: var(--text-secondary);
+    font-size: 1.0625rem;
+    line-height: 1.85;
+}
+
+.content p { margin-bottom: 1.25rem; }
+.content p:last-child { margin-bottom: 0; }
+
+.content img {
+    max-width: 100%;
+    height: auto;
+    max-height: 600px;
+    object-fit: contain;
+    border-radius: 6px;
+    margin: 1rem 0;
+}
+
+.content pre, .content code {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.875rem;
+}
+
+.content code {
+    background: var(--bg-tertiary);
+    color: var(--accent-dark);
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+}
+
+.content pre {
+    background: var(--code-bg);
+    color: var(--code-text);
+    padding: 1.25rem;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 1rem 0;
+}
+
+.content pre code {
+    background: transparent;
+    color: inherit;
+    padding: 0;
+}
+
+.content a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.15s ease;
+}
+
+.content a:hover { border-bottom-color: var(--accent); }
+
+.content blockquote {
+    border-left: 3px solid var(--border-medium);
+    margin: 1.25rem 0;
+    padding: 0.75rem 1.25rem;
+    background: var(--bg-tertiary);
+    font-style: italic;
+}
+
+.sidebar {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-light);
+    padding: 1.5rem;
+    border-radius: 10px;
+    height: fit-content;
+    position: sticky;
+    top: 1rem;
+    box-shadow: var(--shadow-sm);
+}
+
+.sidebar h2 {
+    margin-bottom: 1rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+}
+
+.search-form {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border-light);
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+}
+
+.search-form input {
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border-light);
+    border-radius: 6px;
+    width: 100%;
+    font-size: 0.9rem;
+    background: var(--bg-secondary);
+}
+
+.search-form input:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: var(--bg-primary);
+    box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.search-form button {
+    padding: 0.75rem 1rem;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-medium);
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.search-form button:hover {
+    background: var(--bg-secondary);
+    border-color: var(--accent-subtle);
+}
+
+.feeds { list-style: none; }
+.feeds li {
+    padding: 0.625rem 0;
+    border-bottom: 1px solid var(--border-light);
+    font-size: 0.925rem;
+}
+.feeds li:last-child { border-bottom: none; }
+.feeds li a { color: var(--text-secondary); text-decoration: none; }
+.feeds li a:hover { color: var(--accent); }
+.feeds li.healthy::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    background: var(--success);
+    border-radius: 50%;
+    margin-right: 0.5rem;
+    vertical-align: middle;
+}
+.feeds li.unhealthy::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    background: var(--error);
+    border-radius: 50%;
+    margin-right: 0.5rem;
+    vertical-align: middle;
+}
+
+footer {
+    text-align: center;
+    padding: 2.5rem 2rem;
+    background: var(--bg-tertiary);
+    margin-top: 3rem;
+    border-top: 1px solid var(--border-light);
+}
+
+footer p { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.5rem; }
+footer a { color: var(--accent); text-decoration: none; }
+footer a:hover { color: var(--accent-dark); }
+
+@media (max-width: 768px) {
+    header { flex-direction: column; gap: 0.125rem; }
+    header p::before { display: none; }
+    .container { grid-template-columns: 1fr; }
+    .sidebar { position: static; }
+}
+""",
     "planet-python": """/* Planet Python Theme - Using ORIGINAL selectors from planetpython.org */
 /* Source: https://planetpython.org/static/styles/styles.css */
 
