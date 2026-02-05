@@ -75,13 +75,17 @@ extra-paths = ["stubs", "src"]
 include = ["src/"]
 
 [tool.ty.rules]
-# ty's bundled typeshed stubs don't include XMLParser(forbid_dtd=) from Python 3.12+
+# XMLParser(forbid_dtd=True) is a valid kwarg added in Python 3.12+ (CPython
+# commit bpo-42990), but ty's bundled typeshed stubs don't declare it yet.
 unknown-argument = "ignore"
-# SafeEnv wraps optional bindings (AI, SEARCH_INDEX) as T | None;
-# callers rely on runtime mode checks rather than None guards before access
+# SafeEnv wraps optional Cloudflare bindings (VECTORIZE, AI, SEARCH_INDEX, etc.)
+# as T | None. In lite deployment mode these bindings don't exist, so attribute
+# access looks unsafe to ty -- but the code handles None at runtime via mode checks.
 possibly-missing-attribute = "ignore"
-# js_fetch is imported from Pyodide's js module which resolves to None in tests;
-# at runtime it's always callable
+# js.fetch (aliased as js_fetch) comes from Pyodide's `js` module, which only
+# resolves inside the Cloudflare Workers runtime. ty sees it as None during static
+# analysis since the `js` module isn't available locally, but it is always callable
+# at runtime.
 call-non-callable = "ignore"
 
 [tool.ty.analysis]
