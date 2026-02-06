@@ -125,9 +125,9 @@ _EMBEDDED_TEMPLATES = {
     <div class="shortcuts-panel hidden" id="shortcuts-panel" role="dialog" aria-labelledby="shortcuts-title" aria-modal="true">
         <h3 id="shortcuts-title">Keyboard Shortcuts</h3>
         <dl>
-            <dt><kbd>j</kbd></dt>
+            <dt><kbd>n</kbd></dt>
             <dd>Next entry</dd>
-            <dt><kbd>k</kbd></dt>
+            <dt><kbd>p</kbd></dt>
             <dd>Previous entry</dd>
             <dt><kbd>?</kbd></dt>
             <dd>Toggle this help</dd>
@@ -2356,17 +2356,17 @@ KEYBOARD_NAV_JS = """// Keyboard navigation for browsing entries
             return;
         }
 
-        if (e.key === 'j') {
+        if (e.key === 'n') {
             e.preventDefault();
             select(current + 1);
         }
-        if (e.key === 'k') {
+        if (e.key === 'p') {
             e.preventDefault();
             // Don't go before first article
             if (current > 0) {
                 select(current - 1);
             } else if (current === -1) {
-                // First keypress with k: select last article
+                // First keypress with p: select last article
                 select(articles.length - 1);
             }
         }
