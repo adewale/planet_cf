@@ -1,0 +1,87 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+  <title>{{ planet.name }}</title>
+  <link rel="stylesheet" type="text/css" href="/static/styles/screen-switcher-default.css" />
+  <link rel="stylesheet" type="text/css" href="/static/styles/netscape4.css" />
+  <link rel="stylesheet" type="text/css" media="print" href="/static/styles/print.css" />
+  <link rel="alternate stylesheet" type="text/css" href="/static/styles/largestyles.css" title="Large" />
+  <link rel="alternate stylesheet" type="text/css" href="/static/styles/defaultfonts.css" title="Default fonts" />
+  <meta name="generator" content="PlanetCF" />
+  <meta name="keywords" content="Python weblog blog blogs blogger weblogger aggregator rss" />
+  <meta name="description" content="{{ planet.description or 'Recent postings from Python-related blogs.' }}" />
+  <link rel="alternate" type="application/rss+xml" title="RSS" href="{{ feed_links.rss or '/feed.rss' }}" />
+  <link rel="alternate" type="application/atom+xml" title="Atom" href="{{ feed_links.atom or '/feed.atom' }}" />
+  <link rel="icon" href="/static/favicon.ico" sizes="32x32" />
+</head>
+
+<body>
+  <!-- Logo -->
+  <h1 id="logoheader">
+    <a href="/" id="logolink" accesskey="1"><img id="logo"
+src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'homepage' }}" border="0" /></a>
+  </h1>
+  <!-- Skip to Navigation -->
+  <div class="skiptonav"><a href="#left-hand-navigation" accesskey="2"><img src="/static/images/trans.gif" id="skiptonav" alt="skip to navigation" border="0" /></a></div>
+  <div class="skiptonav"><a href="#content-body" accesskey="3"><img src="/static/images/trans.gif" id="skiptocontent" alt="skip to content" border="0" /></a></div>
+
+  <div id="content-body">
+    <div id="body-main">
+
+<h1 class="pageheading">{{ planet.name }}</h1>
+
+<p>Last update: {{ generated_at }}
+
+{% for date, day_entries in entries_by_date.items() %}
+
+
+<h2>{{ date_labels[date] }}</h2>
+
+{% set current_author = namespace(value='') %}
+{% for entry in day_entries %}
+{% if entry.display_author != current_author.value %}
+{% set current_author.value = entry.display_author %}
+
+<hr /><h3 class="post"><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}" title="{{ entry.display_author }}">{{ entry.display_author or 'Unknown' }}</a></h3>
+
+{% endif %}
+
+<h4><a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h4>
+<p>
+<em><a href="{{ entry.url or '#' }}">{{ entry.published_at_display }}</a></em>
+</p>
+
+{% endfor %}
+{% else %}
+<p>No entries yet.</p>
+{% endfor %}
+
+
+    </div>
+  </div>
+
+  <div id="left-hand-navigation">
+    <div id="menu">
+      <ul class="level-one">
+          <li>
+          <ul class="level-two">
+             <li><a href="{{ feed_links.rss or '/feed.rss' }}">RSS feed</a></li>
+             <li><a href="/">Full content</a></li>
+             <li><a href="http://www.planetplanet.org/">Powered by Planet!</a></li>
+          </ul></li>
+          <li>Subscriptions
+          <ul class="level-two">
+<li><a href="{{ feed_links.opml or '/feeds.opml' }}">[OPML feed]</a></li>
+{% for feed in feeds %}
+<li><a href="{{ feed.site_url or feed.url or '#' }}" title="{{ feed.title }}">{{ feed.title or 'Untitled' }}</a>
+</li>
+{% else %}
+<li>No feeds configured</li>
+{% endfor %}
+          </ul></li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

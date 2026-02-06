@@ -13,6 +13,29 @@ repos:
       - id: ruff-format
         types_or: [python, pyi]
 
+  # ty - Fast Python type checker (from Astral, makers of ruff/uv)
+  # No official pre-commit hook yet (https://github.com/astral-sh/ty/issues/269)
+  # Using local hook with uvx until one is available
+  - repo: local
+    hooks:
+      - id: ty
+        name: ty (type check)
+        entry: uvx ty check src/
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
+
+  # Vulture - Dead code detection
+  # Uses uvx to run vulture without installing it as a dependency
+  - repo: local
+    hooks:
+      - id: vulture
+        name: vulture (dead code detection)
+        entry: uvx vulture src/ vulture_whitelist.py
+        language: system
+        types_or: [python]
+        pass_filenames: false
+
   # Basic file hygiene
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0

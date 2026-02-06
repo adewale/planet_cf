@@ -1,5 +1,20 @@
-// wrangler.jsonc (Wrangler v4.58.0+, January 2026)
+// wrangler.jsonc - Root configuration for local development
 // Planet CF - Feed Aggregator for Cloudflare Python Workers
+//
+// This is the default/development configuration. For creating new instances,
+// see the examples/ directory:
+//
+//   examples/default/        - Minimal lite-mode starting point
+//   examples/planet-cloudflare/ - Full-featured configuration
+//   examples/planet-python/  - Planet Python clone
+//   examples/planet-mozilla/ - Planet Mozilla clone
+//
+// To create a new instance:
+//   python scripts/create_instance.py --id my-planet --name "My Planet"
+//
+// Or copy from an existing example:
+//   python scripts/create_instance.py --id my-planet --from-example planet-cloudflare
+//
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "planetcf",
@@ -24,6 +39,7 @@
     "FEED_TIMEOUT_SECONDS": "60",
     "HTTP_TIMEOUT_SECONDS": "30",
     // Observability context
+    "THEME": "planet-cloudflare",
     "DEPLOYMENT_ENVIRONMENT": "production"
     // DEPLOYMENT_VERSION is set dynamically via VERSION_METADATA binding below
     // Search configuration (optional - uses defaults if not set):

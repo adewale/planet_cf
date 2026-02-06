@@ -10,8 +10,20 @@ converted at the boundary layer before reaching business logic.
 """
 
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
+
+# =============================================================================
+# Module-level constants
+# =============================================================================
+
+# Maximum recursion depth for _to_py_safe() JsProxy-to-Python conversion.
+# Feeds rarely nest beyond a few levels; 50 is generous headroom.
+_MAX_CONVERSION_DEPTH = 50
+
+# Default timeout in seconds for HTTP fetch requests.
+_DEFAULT_HTTP_TIMEOUT_SECONDS = 30
 
 # =============================================================================
 # Pyodide-specific imports (only available in Cloudflare Workers environment)
@@ -82,16 +94,26 @@ def _is_js_undefined(value: Any) -> bool:
     return False
 
 
-def _to_py_safe(value: Any) -> Any:
+def _to_py_safe(value: Any, *, _depth: int = 0) -> Any:
     """Safely convert a JsProxy value to Python, handling undefined/null.
 
     Returns None for JavaScript undefined/null or Python None.
     Returns Python primitive for JsProxy primitives.
     Recursively converts dicts and lists.
     Passes through Python values unchanged.
+
+    Args:
+        value: The value to convert.
+        _depth: Internal recursion depth counter. When _MAX_CONVERSION_DEPTH
+            is exceeded the value is returned as-is to prevent unbounded
+            recursion (e.g. from pathological JsProxy chains).
     """
     if value is None:
         return None
+
+    # Guard against unbounded recursion
+    if _depth >= _MAX_CONVERSION_DEPTH:
+        return value
 
     # Check for undefined BEFORE any other checks
     if _is_js_undefined(value):
@@ -106,23 +128,23 @@ def _to_py_safe(value: Any) -> Any:
         try:
             converted = value.to_py()
             # to_py() might return a dict with JsProxy values, recurse
-            return _to_py_safe(converted)
+            return _to_py_safe(converted, _depth=_depth + 1)
         except (AttributeError, TypeError, ValueError):
             # JsProxy conversion failed, try other approaches
             pass
 
     # For dicts, recursively convert all values
     if isinstance(value, dict):
-        return {k: _to_py_safe(v) for k, v in value.items()}
+        return {k: _to_py_safe(v, _depth=_depth + 1) for k, v in value.items()}
 
     # For lists, recursively convert all items
     if isinstance(value, list):
-        return [_to_py_safe(item) for item in value]
+        return [_to_py_safe(item, _depth=_depth + 1) for item in value]
 
     # For tuples (including time.struct_time from feedparser), convert to list
     # This ensures published_parsed can be indexed and converted to datetime
     if isinstance(value, tuple):
-        return [_to_py_safe(item) for item in value]
+        return [_to_py_safe(item, _depth=_depth + 1) for item in value]
 
     # Try to convert to string as last resort
     try:
@@ -286,6 +308,10 @@ class SafeD1:
         """Prepare a SQL statement with automatic result conversion."""
         return SafeD1Statement(self._db.prepare(sql))
 
+    async def exec(self, sql: str) -> Any:
+        """Execute raw SQL (for multi-statement DDL like schema creation)."""
+        return await self._db.exec(sql)
+
 
 class SafeAI:
     """Wrapper for Workers AI that auto-converts results to Python."""
@@ -372,7 +398,7 @@ async def safe_http_fetch(
     method: str = "GET",
     headers: dict | None = None,
     data: dict | None = None,
-    timeout_seconds: int = 30,
+    timeout_seconds: int = _DEFAULT_HTTP_TIMEOUT_SECONDS,
 ) -> HttpResponse:
     """Boundary-layer HTTP fetch that works in both Pyodide and test environments.
 
@@ -396,7 +422,7 @@ async def safe_http_fetch(
         # Handle form data for POST
         if data and method.upper() == "POST":
             # URL-encode form data
-            body = "&".join(f"{k}={v}" for k, v in data.items())
+            body = urlencode(data)
             fetch_options_dict["body"] = body
             if "content-type" not in {k.lower() for k in headers}:
                 fetch_options_dict["headers"] = {
@@ -455,8 +481,11 @@ class SafeEnv:
         self._env = env
         # Wrap each binding with its safe wrapper
         self.DB = SafeD1(env.DB)
-        self.AI = SafeAI(env.AI)
-        self.SEARCH_INDEX = SafeVectorize(env.SEARCH_INDEX)
+        # AI and SEARCH_INDEX are optional (not present in lite mode)
+        ai = getattr(env, "AI", None)
+        self.AI = SafeAI(ai) if ai else None
+        search_index = getattr(env, "SEARCH_INDEX", None)
+        self.SEARCH_INDEX = SafeVectorize(search_index) if search_index else None
         # Queue bindings are optional (not supported in wrangler dev --remote)
         queue = getattr(env, "FEED_QUEUE", None)
         self.FEED_QUEUE = SafeQueue(queue) if queue else None
@@ -791,15 +820,6 @@ __all__ = [
     # Constants
     "HAS_PYODIDE",
     "JS_NULL",
-    # Python→JavaScript conversion
-    "_to_js_value",
-    # JavaScript→Python conversion
-    "_is_js_undefined",
-    "_safe_str",
-    "_to_py_safe",
-    "_extract_form_value",
-    "_to_py_list",
-    "_to_d1_value",
     # D1 row factories
     "feed_row_from_js",
     "feed_rows_from_d1",

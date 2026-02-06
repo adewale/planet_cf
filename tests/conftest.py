@@ -48,8 +48,39 @@ class MockWorkerEntrypoint:
         pass
 
 
+class MockRequest:
+    """Mock Cloudflare Workers Request object."""
+
+    def __init__(
+        self,
+        url: str = "https://example.com/",
+        method: str = "GET",
+        headers: dict | None = None,
+        body: str | bytes | None = None,
+    ):
+        self.url = url
+        self.method = method
+        self._headers = headers or {}
+        self._body = body
+
+    @property
+    def headers(self) -> dict:
+        return self._headers
+
+    async def text(self) -> str:
+        if isinstance(self._body, bytes):
+            return self._body.decode("utf-8")
+        return self._body or ""
+
+    async def json(self) -> Any:
+        import json
+
+        return json.loads(await self.text())
+
+
 # Create mock workers module
 _mock_workers = ModuleType("workers")
+_mock_workers.Request = MockRequest
 _mock_workers.Response = MockResponse
 _mock_workers.WorkerEntrypoint = MockWorkerEntrypoint
 
@@ -210,6 +241,40 @@ class MockAI:
         return {"data": [[0.1] * 768]}
 
 
+class MockAssets:
+    """Mock Cloudflare ASSETS binding for static file serving."""
+
+    def __init__(self, files: dict[str, tuple[str, str]] | None = None):
+        """Initialize with optional file mappings.
+
+        Args:
+            files: Dict mapping paths to (content, content_type) tuples.
+        """
+        self._files = files or {
+            "/static/style.css": ("/* mock css */", "text/css"),
+            "/feeds.opml": ('<?xml version="1.0"?><opml/>', "application/xml"),
+        }
+
+    async def fetch(self, request) -> MockResponse:
+        """Serve a static file based on request path."""
+        url = str(request.url)
+        # Extract path from URL
+        path = "/" + url.split("://", 1)[1].split("/", 1)[-1] if "://" in url else url
+
+        # Remove query string if present
+        if "?" in path:
+            path = path.split("?")[0]
+
+        if path in self._files:
+            content, content_type = self._files[path]
+            return MockResponse(
+                body=content,
+                status=200,
+                headers={"Content-Type": content_type},
+            )
+        return MockResponse(body="Not Found", status=404)
+
+
 @dataclass
 class MockEnv:
     """Mock Cloudflare Worker environment bindings."""
@@ -219,6 +284,7 @@ class MockEnv:
     DEAD_LETTER_QUEUE: MockQueue
     SEARCH_INDEX: MockVectorize
     AI: MockAI
+    ASSETS: MockAssets | None = None
     PLANET_NAME: str = "Test Planet"
     PLANET_URL: str = "https://test.example.com"
     PLANET_DESCRIPTION: str = "Test description"
@@ -227,6 +293,11 @@ class MockEnv:
     SESSION_SECRET: str = "test-secret-key-for-testing-only-32chars"
     GITHUB_CLIENT_ID: str = "test-client-id"
     GITHUB_CLIENT_SECRET: str = "test-client-secret"
+
+    def __post_init__(self):
+        """Initialize ASSETS if not provided."""
+        if self.ASSETS is None:
+            self.ASSETS = MockAssets()
 
 
 # =============================================================================

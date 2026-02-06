@@ -40,7 +40,7 @@ A feed aggregator built on Cloudflare Workers (Python) with D1, Queues, and Vect
 
 ## Request Flow
 
-### Public Pages (/, /feed.atom, /feed.rss)
+### Public Pages (/, /titles, /feed.atom, /feed.rss, /feed.rss10, /feeds.opml, /search)
 
 ```
 Browser Request
@@ -54,7 +54,7 @@ Browser Request
       │ (cache miss)
       ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  1. Query D1 for entries (last 90 days, max 100/feed)           │
+│  1. Query D1 for entries (last 90 days, max 50/feed)            │
 │  2. Query D1 for active feeds                                    │
 │  3. Render Jinja2 template                                       │
 │  4. Return HTML/XML with cache headers                           │
@@ -152,13 +152,15 @@ CREATE TABLE feeds (
     author_email TEXT,
     etag TEXT,
     last_modified TEXT,
-    is_active INTEGER DEFAULT 1,
-    consecutive_failures INTEGER DEFAULT 0,
     last_fetch_at TEXT,
     last_success_at TEXT,
     fetch_error TEXT,
+    fetch_error_count INTEGER DEFAULT 0,
+    consecutive_failures INTEGER DEFAULT 0,
+    is_active INTEGER DEFAULT 1,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    last_entry_at TEXT
 );
 
 -- Entries table
@@ -169,12 +171,12 @@ CREATE TABLE entries (
     url TEXT,
     title TEXT,
     author TEXT,
-    summary TEXT,
     content TEXT,
+    summary TEXT,
     published_at TEXT,
-    first_seen TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    first_seen TEXT,          -- Added by migration 003
     UNIQUE(feed_id, guid)
 );
 
@@ -183,8 +185,11 @@ CREATE TABLE admins (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     github_username TEXT UNIQUE NOT NULL,
     github_id INTEGER,
+    display_name TEXT,
+    avatar_url TEXT,
     is_active INTEGER DEFAULT 1,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    last_login_at TEXT
 );
 
 -- Audit log
@@ -367,6 +372,20 @@ The external JavaScript uses:
 - `addEventListener()` in `DOMContentLoaded` for initialization
 - `escapeHtml()` for all dynamic content to prevent XSS
 
+### Per-Theme Feed Format Configuration
+
+Feed formats are controlled by theme-based frozensets in `src/main.py`:
+
+| Frozenset | Controls | Themes |
+|-----------|----------|--------|
+| `_THEMES_HIDE_SIDEBAR_LINKS` | Hides RSS/titles-only sidebar links | `planet-cloudflare` |
+| `_THEMES_WITH_RSS10` | Enables RSS 1.0 (RDF) feed link | `planet-mozilla` |
+
+RSS 2.0, Atom, and OPML are available for all instances. RSS 1.0 is only linked in templates
+for themes in `_THEMES_WITH_RSS10`. All feed routes (`/feed.rss`, `/feed.atom`, `/feeds.opml`,
+`/feed.rss10`) are registered universally — the frozensets control what appears in `feed_links`
+(and thus in the rendered HTML), not whether the route exists.
+
 ### Static File Serving
 
 Static files are served from `/static/*` routes:
@@ -485,24 +504,398 @@ The queue message body JsProxy bug wasn't caught because:
 Every place that receives data from JavaScript (D1 results, form data, queue
 messages, AI results) MUST convert through `_to_py_safe()` before use.
 
+## Module Structure
+
+### Current Module Layout (as of 2026-02)
+
+```
+src/
+├── templates.py         (3,703 lines) - Jinja2 templates + CSS + JS (embedded at build)
+├── main.py              (3,385 lines) - Worker entrypoint + core business logic
+├── wrappers.py            (847 lines) - JS ↔ Python boundary converters
+├── observability.py       (479 lines) - Wide events + structured logging
+├── models.py              (362 lines) - Data models + sanitizer
+├── oauth_handler.py       (335 lines) - GitHub OAuth flow handler
+├── utils.py               (328 lines) - Utility functions (logging, responses, dates)
+├── route_dispatcher.py    (281 lines) - HTTP route matching + dispatch
+├── search_query.py        (234 lines) - SQL search query builder
+├── admin_context.py       (220 lines) - Admin action context manager
+├── content_processor.py   (204 lines) - Feed entry content extraction
+├── admin.py               (194 lines) - Admin error responses + OPML parsing
+├── auth.py                (203 lines) - Session cookies + HMAC signing
+├── config.py              (172 lines) - Constants + env-based config getters
+├── instance_config.py     (105 lines) - Lite mode detection + config loading
+├── xml_sanitizer.py        (55 lines) - XML control character stripping
+└── __init__.py              (4 lines)
+                          ───────
+                    Total: 11,111 lines
+```
+
+### Module Dependency Diagram
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                               CLOUDFLARE WORKERS                                  │
+│                                                                                   │
+│  ┌────────────┐   ┌────────────┐   ┌────────────┐                               │
+│  │ scheduled()│   │  queue()   │   │  fetch()   │                               │
+│  │  (cron)    │   │ (consumer) │   │  (HTTP)    │                               │
+│  └─────┬──────┘   └─────┬──────┘   └─────┬──────┘                               │
+│        │                │                │                                        │
+│        └────────────────┼────────────────┘                                        │
+│                         ▼                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐  │
+│  │                          main.py (entrypoint)                                │  │
+│  │                                                                              │  │
+│  │  class Default(WorkerEntrypoint):                                            │  │
+│  │    - scheduled() → enqueue feeds to FEED_QUEUE                               │  │
+│  │    - queue() → process feed messages                                         │  │
+│  │    - fetch() → route HTTP requests via RouteDispatcher                       │  │
+│  │                                                                              │  │
+│  │  Imports from ALL 15 other modules (see arrows below)                        │  │
+│  └──────┬────────────────────────────────────────────────────────────────┬──────┘  │
+│         │                                                                │         │
+│    ┌────┴────────────┬──────────────┬──────────────┬──────────────┐      │         │
+│    ▼                 ▼              ▼              ▼              ▼      │         │
+│  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌────────────┐ ┌──────────┐ │         │
+│  │ admin.py  │ │admin_     │ │oauth_     │ │route_      │ │search_   │ │         │
+│  │           │ │context.py │ │handler.py │ │dispatcher  │ │query.py  │ │         │
+│  │error resp.│ │action ctx │ │GitHub flow│ │.py         │ │SQL build │ │         │
+│  │OPML parse │ │timing     │ │code exch. │ │pattern     │ │phrase/   │ │         │
+│  │           │ │audit emit │ │user info  │ │matching    │ │multi-word│ │         │
+│  └──┬──┬──┬──┘ └──┬────┬──┘ └─────┬─────┘ └────────────┘ └──────────┘ │         │
+│     │  │  │        │    │          │         (no deps)      (no deps)  │         │
+│     │  │  │        │    │          │                                    │         │
+│    ┌┘  │  │     ┌──┘    │    ┌─────┘   ┌───────────────────────────────┘         │
+│    │   │  │     │       │    │         │                                          │
+│    ▼   │  ▼     ▼       ▼    ▼         ▼                                          │
+│  ┌─────┴────┐ ┌─────────────────┐ ┌──────────┐ ┌──────────────────┐              │
+│  │config.py │ │observability.py │ │wrappers  │ │  templates.py    │              │
+│  │          │ │                 │ │.py       │ │                  │              │
+│  │constants │ │ RequestEvent    │ │SafeEnv   │ │render_template   │              │
+│  │get_config│ │ FeedFetchEvent  │ │SafeHeaders│ │TEMPLATE_*        │              │
+│  │_value()  │ │ SchedulerEvent  │ │SafeFeed  │ │THEME_CSS         │              │
+│  │          │ │ AdminActionEvent│ │Info      │ │ADMIN_JS          │              │
+│  │          │ │ Timer           │ │safe_http │ │STATIC_CSS        │              │
+│  │          │ │ emit_event      │ │_fetch    │ │                  │              │
+│  └────┬─────┘ └───────┬────────┘ └──────────┘ └──────────────────┘              │
+│       │               │           (no local)    (no local deps)                  │
+│       │               │                                                          │
+│       ▼               ▼                                                          │
+│  ┌────────────────────────┐  ┌──────────────────┐  ┌──────────────────────────┐  │
+│  │       utils.py         │  │    models.py     │  │  instance_config.py      │  │
+│  │                        │  │                  │  │                          │  │
+│  │ log_op, log_error      │  │ BleachSanitizer  │  │ is_lite_mode()           │  │
+│  │ html/json/feed_response│  │ EntryRow,FeedRow │  │ theme loading            │  │
+│  │ format_date, xml_escape│  │ Session          │  │                          │  │
+│  │ validate_feed_id       │  │ (no local deps)  │  │ imports: config,         │  │
+│  │ (no local deps)        │  │                  │  │          wrappers        │  │
+│  └────────────────────────┘  └──────────────────┘  └──────────────────────────┘  │
+│                                                                                   │
+│  ┌──────────────────────────────┐  ┌──────────────────────────────────────────┐   │
+│  │  content_processor.py        │  │  xml_sanitizer.py                        │   │
+│  │                              │  │                                          │   │
+│  │  EntryContentProcessor       │  │  strip_xml_control_chars()               │   │
+│  │  extract content, GUID, date │  │  (no deps - leaf module)                 │   │
+│  │                              │  │                                          │   │
+│  │  imports: xml_sanitizer  ────┼──┘                                          │   │
+│  └──────────────────────────────┘                                             │   │
+│                                                                                   │
+│  ┌───────────────────────────────────────────────────────────────────────────┐    │
+│  │  auth.py                                                                   │    │
+│  │                                                                            │    │
+│  │  create_signed_cookie, get_session_from_cookies, build_*_header            │    │
+│  │  imports: config, utils                                                    │    │
+│  └───────────────────────────────────────────────────────────────────────────┘    │
+│                                                                                   │
+│  Dependency summary (local imports only):                                         │
+│                                                                                   │
+│    main.py ──► admin, admin_context, auth, config, content_processor,             │
+│                instance_config, models, oauth_handler, observability,              │
+│                route_dispatcher, search_query, templates, utils,                   │
+│                wrappers, xml_sanitizer                                             │
+│    admin.py ──► config, templates, utils                                          │
+│    admin_context.py ──► observability, utils                                      │
+│    auth.py ──► config, utils                                                      │
+│    config.py ──► utils                                                            │
+│    content_processor.py ──► xml_sanitizer                                         │
+│    instance_config.py ──► config, wrappers                                        │
+│    oauth_handler.py ──► wrappers                                                  │
+│    observability.py ──► utils                                                     │
+│    models.py, route_dispatcher.py, search_query.py,                               │
+│      templates.py, utils.py, wrappers.py, xml_sanitizer.py ──► (none)             │
+│                                                                                   │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Extraction Progress
+
+15 modules have been extracted from `main.py`. The extraction focused on
+cross-cutting concerns, infrastructure, and self-contained logic. Core business
+logic (feed processing, rendering, search, admin CRUD) remains in `main.py`.
+
+```
+Extracted (15 modules, ~7,722 lines total):
+
+Infrastructure / plumbing:
+├── utils.py              (328 lines) - Logging, responses, validation, date formatting
+├── wrappers.py           (847 lines) - JS/Python boundary layer (SafeEnv, SafeHeaders, etc.)
+├── config.py             (172 lines) - Constants + env-based config getters
+├── instance_config.py    (105 lines) - Lite mode detection + config loading
+├── observability.py      (479 lines) - Wide events, structured logging, Timer
+├── route_dispatcher.py   (281 lines) - HTTP route table + pattern matching
+└── xml_sanitizer.py       (55 lines) - XML control character stripping
+
+Authentication / authorization:
+├── auth.py               (203 lines) - Session cookies, HMAC signing
+├── oauth_handler.py      (335 lines) - GitHub OAuth code exchange + user info
+└── admin_context.py      (220 lines) - Admin action context manager + audit emit
+
+Domain logic helpers:
+├── admin.py              (194 lines) - Admin error responses + OPML XML parsing
+├── content_processor.py  (204 lines) - Feed entry content extraction + GUID generation
+└── search_query.py       (234 lines) - SQL search query builder (phrase/multi-word)
+
+Data + presentation:
+├── models.py             (362 lines) - Data models, BleachSanitizer, typed dicts
+└── templates.py        (3,703 lines) - Jinja2 templates + CSS + JS (embedded at build)
+
+Still in main.py (3,385 lines):
+├── Feed processing     - _process_single_feed(), _fetch_full_content(), _normalize_urls()
+├── Entry management    - _upsert_entry(), _index_entry_for_search(), _apply_retention_policy()
+├── HTML/feed rendering - _generate_html(), _generate_atom_feed(), _generate_rss_feed()
+├── Search              - _search_entries() (semantic + keyword)
+├── Admin CRUD          - _handle_admin(), _add_feed(), _remove_feed(), _import_opml()
+├── SSRF validation     - _validate_feed_url(), _is_private_ip()
+└── Worker entrypoint   - class Default: scheduled(), queue(), fetch()
+```
+
+### Class Diagram
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                  main.py                                      │
+│                                                                               │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                    class Default(WorkerEntrypoint)                       │ │
+│  │─────────────────────────────────────────────────────────────────────────│ │
+│  │ Properties:                                                              │ │
+│  │   env: SafeEnv                  # Wrapped environment bindings           │ │
+│  │                                                                          │ │
+│  │ Trigger Handlers:                                                        │ │
+│  │   scheduled(event, env, ctx)    # Cron trigger (hourly)                  │ │
+│  │   queue(batch, env, ctx)        # Queue consumer                         │ │
+│  │   fetch(request, env, ctx)      # HTTP requests (via RouteDispatcher)    │ │
+│  │                                                                          │ │
+│  │ Routing:                                                                 │ │
+│  │   _create_router()              # Build RouteDispatcher with all routes  │ │
+│  │   _dispatch_route()             # Execute matched route handler          │ │
+│  │                                                                          │ │
+│  │ Feed Processing:                                                         │ │
+│  │   _process_single_feed()        # Fetch + parse + store                  │ │
+│  │   _fetch_full_content()         # Follow links for full text             │ │
+│  │   _normalize_urls()             # Make relative URLs absolute            │ │
+│  │   _sanitize_html()              # Bleach sanitization                    │ │
+│  │   _validate_feed_url()          # SSRF protection                        │ │
+│  │                                                                          │ │
+│  │ Entry Management:                                                        │ │
+│  │   _upsert_entry()               # Insert or update entry                 │ │
+│  │   _index_entry_for_search()     # Generate embedding + index             │ │
+│  │   _apply_retention_policy()     # Delete old entries                     │ │
+│  │   _get_recent_entries()         # Query entries for display              │ │
+│  │                                                                          │ │
+│  │ HTML/Feed Generation:                                                    │ │
+│  │   _generate_html()              # Render index template                  │ │
+│  │   _generate_atom_feed()         # Atom XML via template                  │ │
+│  │   _generate_rss_feed()          # RSS 2.0 XML via template               │ │
+│  │   _generate_rss10_feed()        # RSS 1.0 XML via template               │ │
+│  │   _export_opml()                # OPML feed list                         │ │
+│  │                                                                          │ │
+│  │ Search:                                                                  │ │
+│  │   _search_entries()             # Semantic + keyword (uses SearchQuery   │ │
+│  │                                 #   Builder, SafeVectorize, SafeAI)      │ │
+│  │                                                                          │ │
+│  │ Admin (delegates to admin.py, admin_context.py):                         │ │
+│  │   _handle_admin()               # Route admin requests                   │ │
+│  │   _add_feed()                   # Add new feed                           │ │
+│  │   _remove_feed()                # Deactivate feed                        │ │
+│  │   _import_opml()                # Bulk import (admin.parse_opml_feeds)   │ │
+│  │                                                                          │ │
+│  │ Auth (delegates to auth.py, oauth_handler.py):                           │ │
+│  │   Uses auth.get_session_from_cookies()                                   │ │
+│  │   Uses auth.build_session_cookie_header()                                │ │
+│  │   Uses auth.build_clear_session_cookie_header()                          │ │
+│  │   Uses auth.build_oauth_state_cookie_header()                            │ │
+│  │   Uses GitHubOAuthHandler.exchange_code() / .get_user_info()             │ │
+│  │                                                                          │ │
+│  │ Config (delegates to config.py):                                         │ │
+│  │   _get_config_value()           # Env-based config with defaults         │ │
+│  │   _get_retention_days()         # Entry retention period                 │ │
+│  │   _get_max_entries_per_feed()   # Per-feed entry limit                   │ │
+│  │   _get_search_score_threshold() # Semantic search threshold              │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────────────┘
+        │
+        │ imports
+        ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                wrappers.py                                    │
+│                                                                               │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                         class SafeEnv                                    │ │
+│  │─────────────────────────────────────────────────────────────────────────│ │
+│  │ Wraps WorkerEnv to provide safe access to bindings:                     │ │
+│  │   DB: SafeD1                  # D1 database (auto-converts results)      │ │
+│  │   FEED_QUEUE: SafeQueue       # Feed fetch queue (optional)              │ │
+│  │   DEAD_LETTER_QUEUE: SafeQueue# Failed job queue (optional)              │ │
+│  │   SEARCH_INDEX: SafeVectorize # Semantic search index (optional)         │ │
+│  │   AI: SafeAI                  # Embedding generation (optional)          │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                               │
+│  Safe Wrappers:                                                               │
+│    SafeD1 / SafeD1Statement        # Auto-convert D1 results to Python      │
+│    SafeAI                          # Auto-convert AI outputs to Python       │
+│    SafeVectorize                   # Auto-convert search results to Python   │
+│    SafeQueue                       # Queue send (outbound, no conversion)    │
+│    HttpResponse                    # Typed HTTP response wrapper             │
+│                                                                               │
+│  Converters:                                                                  │
+│    _to_py_safe(obj)                # JsProxy → Python dict/list              │
+│    _to_py_list(js_array)           # JsProxy array → Python list             │
+│    _to_d1_value(value)             # Python → D1-safe value                  │
+│    _is_js_undefined(value)         # Check for JS undefined                  │
+│    _safe_str(value)                # Safely stringify JsProxy                │
+│    _extract_form_value(form, key)  # Extract from JsProxy FormData          │
+│    entry_rows_from_d1(result)      # D1 results → Python dicts              │
+│    feed_rows_from_d1(result)       # D1 results → Python dicts              │
+│    feed_row_from_js(row)           # Single feed row conversion              │
+│    admin_row_from_js(row)          # Single admin row conversion             │
+│    audit_rows_from_d1(results)     # Audit log rows conversion              │
+│    entry_bind_values(entry)        # Entry → D1 bind params                 │
+│    feed_bind_values(feed)          # Feed → D1 bind params                  │
+│    safe_http_fetch(url, ...)       # Fetch with JsProxy handling            │
+│                                                                               │
+│  Data Classes:                                                                │
+│    SafeHeaders                     # Typed request header access             │
+│    SafeFormData                    # Typed form data access                  │
+│    SafeFeedInfo                    # Typed feed metadata                     │
+└──────────────────────────────────────────────────────────────────────────────┘
+        │
+        │ imports
+        ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                 utils.py                                      │
+│                                                                               │
+│  Logging:                                                                     │
+│    log_op(event_type, **kwargs)       # Structured operational log           │
+│    log_error(event_type, exc, ...)    # Structured error log                 │
+│    truncate_error(error, max_len)     # Safe error truncation                │
+│                                                                               │
+│  Validation:                                                                  │
+│    validate_feed_id(feed_id) → int    # Validate path parameter              │
+│    get_display_author(author, feed)   # Filter email from author             │
+│                                                                               │
+│  Response Builders:                                                           │
+│    html_response(content, max_age)    # HTML with security headers           │
+│    json_response(data, status)        # JSON response                        │
+│    json_error(message, status)        # Error response                       │
+│    redirect_response(location)        # 302 redirect                         │
+│    feed_response(content, type)       # Atom/RSS/OPML                        │
+│                                                                               │
+│  Formatters:                                                                  │
+│    xml_escape(text)                   # Escape for XML embedding             │
+│    normalize_entry_content(content)   # Remove duplicate headings            │
+│    parse_iso_datetime(iso_string)     # Parse to datetime                    │
+│    format_datetime(iso_string)        # Format for display                   │
+│    format_pub_date(iso_string)        # RFC 2822 date for RSS                │
+│    relative_time(iso_string)          # "2 hours ago" format                 │
+│    format_date_label(date_str)        # "Today", "Yesterday", etc.           │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
 ## File Structure
 
 ```
 planet_cf/
-├── src/
-│   ├── main.py          # Main worker (fetch, queue, scheduled handlers)
-│   ├── templates.py     # Jinja2 templates (embedded for Workers)
-│   ├── models.py        # Pydantic models for observability
-│   ├── observability.py # Structured logging and event emission
+├── src/                           # Worker source code (16 modules)
+│   ├── main.py                    #   Worker entrypoint + core business logic
+│   ├── templates.py               #   Jinja2 templates + CSS + JS (embedded at build)
+│   ├── wrappers.py                #   JS ↔ Python boundary converters
+│   ├── observability.py           #   Structured logging and wide event emission
+│   ├── models.py                  #   Data models, BleachSanitizer, typed dicts
+│   ├── oauth_handler.py           #   GitHub OAuth code exchange + user info
+│   ├── utils.py                   #   Utility functions (logging, validation, responses)
+│   ├── route_dispatcher.py        #   HTTP route table + pattern matching
+│   ├── search_query.py            #   SQL search query builder (phrase/multi-word)
+│   ├── admin_context.py           #   Admin action context manager + audit emit
+│   ├── content_processor.py       #   Feed entry content extraction + GUID generation
+│   ├── admin.py                   #   Admin error responses + OPML XML parsing
+│   ├── auth.py                    #   Session cookies + HMAC signing
+│   ├── config.py                  #   Constants + env-based config getters
+│   ├── instance_config.py         #   Lite mode detection + config loading
+│   ├── xml_sanitizer.py           #   XML control character stripping
 │   └── __init__.py
-├── tests/
-│   ├── unit/            # Unit tests (pure Python, no external deps)
-│   ├── integration/     # Integration tests (require wrangler dev)
-│   ├── e2e/             # End-to-end tests (production-like)
-│   └── mocks/           # Mock implementations for testing
-├── wrangler.jsonc       # Cloudflare Workers configuration
-├── pyproject.toml       # Python project configuration
-└── ARCHITECTURE.md      # This file
+├── templates/                     # Default Jinja2 templates (built into templates.py)
+│   ├── feed.atom.xml
+│   ├── feed.rss.xml
+│   ├── feed.rss10.xml
+│   ├── feeds.opml
+│   ├── style.css
+│   └── keyboard-nav.js
+├── static/                        # Static assets served at /static/*
+│   ├── admin.js                   #   Admin dashboard JavaScript
+│   ├── style.css                  #   Main stylesheet
+│   ├── favicon.ico
+│   ├── favicon.svg
+│   ├── favicon-32x32.png
+│   └── apple-touch-icon.png
+├── themes/                        # Theme CSS variants
+│   ├── classic/style.css
+│   ├── dark/style.css
+│   ├── default/style.css
+│   └── minimal/style.css
+├── config/                        # Instance configuration
+│   ├── admins.json                #   Authorized GitHub usernames
+│   └── instance.example.yaml      #   Example instance config
+├── examples/                      # Example planet instances
+│   ├── default/                   #   Minimal starter instance
+│   ├── planet-cloudflare/         #   Cloudflare blog aggregator
+│   ├── planet-mozilla/            #   Mozilla blog aggregator
+│   ├── planet-python/             #   Python blog aggregator
+│   └── test-planet/               #   Test instance for CI
+├── scripts/                       # Build + deployment scripts
+│   ├── build_templates.py         #   Embed templates into templates.py
+│   ├── convert_planet.py          #   Convert legacy planet configs
+│   ├── create_instance.py         #   Create new planet instance
+│   ├── deploy_instance.sh         #   Deploy an instance to Cloudflare
+│   ├── seed_admins.py             #   Seed admin users from admins.json
+│   ├── seed_feeds_from_opml.py    #   Import feeds from OPML file
+│   ├── seed_test_data.py          #   Generate test data
+│   ├── setup_test_planet.sh       #   Set up test planet for CI
+│   ├── validate_deployment_ready.py # Pre-deploy validation
+│   ├── verify_deployment.py       #   Post-deploy verification
+│   └── visual_compare.py          #   Visual comparison tool
+├── migrations/                    # D1 database migrations
+│   ├── 001_initial.sql
+│   ├── 002_seed_admins.sql
+│   ├── 003_add_first_seen.sql
+│   └── 004_add_last_entry_at.sql
+├── tests/                         # Test suite
+│   ├── unit/                      #   Unit tests (pure Python, no external deps)
+│   ├── integration/               #   Integration tests (require wrangler dev)
+│   ├── e2e/                       #   End-to-end tests (production-like)
+│   ├── js/                        #   JavaScript/Vitest tests
+│   ├── mocks/                     #   Mock implementations for testing
+│   ├── fixtures/                  #   Test fixtures
+│   └── conftest.py                #   Shared pytest configuration
+├── stubs/                         # Type stubs
+│   └── workers.pyi                #   Cloudflare Workers Python API stubs
+├── docs/                          # Documentation
+│   └── ARCHITECTURE.md            #   This file (+ other docs)
+├── wrangler.jsonc                 # Cloudflare Workers configuration
+├── pyproject.toml                 # Python project config (uv, ruff, pytest)
+├── Makefile                       # Development shortcuts
+└── vitest.config.js               # JavaScript test configuration
 ```
 
 ## Deployment

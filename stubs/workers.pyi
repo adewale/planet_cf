@@ -21,10 +21,34 @@ class Response:
     ) -> None: ...
 
 class WorkerEntrypoint:
-    """Base class for Cloudflare Workers entrypoints."""
+    """Base class for Cloudflare Workers entrypoints.
+
+    The Workers runtime calls these handler methods with positional arguments:
+    - fetch(request, env, ctx)
+    - queue(batch, env, ctx)
+    - scheduled(event, env, ctx)
+
+    env and ctx are optional with defaults to support test environments
+    where they may not be provided.
+    """
 
     env: Any
 
-    async def fetch(self, request: Any, *args: Any, **kwargs: Any) -> Response: ...
-    async def queue(self, batch: Any, *args: Any, **kwargs: Any) -> None: ...
-    async def scheduled(self, event: Any, *args: Any, **kwargs: Any) -> None: ...
+    async def fetch(
+        self,
+        request: Any,
+        env: Any = ...,
+        ctx: Any = ...,
+    ) -> Response: ...
+    async def queue(
+        self,
+        batch: Any,
+        env: Any = ...,
+        ctx: Any = ...,
+    ) -> None: ...
+    async def scheduled(
+        self,
+        event: Any,
+        env: Any = ...,
+        ctx: Any = ...,
+    ) -> None: ...

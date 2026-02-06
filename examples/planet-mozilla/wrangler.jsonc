@@ -1,0 +1,125 @@
+// examples/planet-mozilla/wrangler.jsonc
+// Planet instance: Planet Mozilla
+// A comprehensive clone of https://planet.mozilla.org/
+//
+// =============================================================================
+// LITE MODE
+// =============================================================================
+// This config runs in lite mode. Lite mode features:
+// - Simple, read-only feed aggregation
+// - No semantic search (no Vectorize binding)
+// - No admin interface (no OAuth required)
+//
+// To DISABLE lite mode (upgrade to full mode):
+//   1. Change "INSTANCE_MODE": "full" or remove the variable
+//   2. Add vectorize binding (see examples/planet-cloudflare/)
+//   3. Add ai binding (see examples/planet-cloudflare/)
+//   4. Set GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SESSION_SECRET secrets
+//
+// =============================================================================
+// QUICK DEPLOY (Recommended)
+// =============================================================================
+//
+//   ./scripts/deploy_instance.sh planet-mozilla
+//
+// =============================================================================
+// MANUAL DEPLOY (Alternative)
+// =============================================================================
+//
+// Step 1: Create the D1 Database
+//   Run: npx wrangler d1 create planet-mozilla-db
+//   Copy the database_id and replace "YOUR_DATABASE_ID" below.
+//
+// Step 2: Create Vectorize Index
+//   Run: npx wrangler vectorize create planet-mozilla-entries --dimensions 768 --metric cosine
+//
+// Step 3: Create Queues
+//   Run: npx wrangler queues create planet-mozilla-feed-queue
+//   Run: npx wrangler queues create planet-mozilla-feed-dlq
+//
+// Step 4: Set Secrets
+//   Run: npx wrangler secret put GITHUB_CLIENT_ID --config examples/planet-mozilla/wrangler.jsonc
+//   Run: npx wrangler secret put GITHUB_CLIENT_SECRET --config examples/planet-mozilla/wrangler.jsonc
+//   Run: npx wrangler secret put SESSION_SECRET --config examples/planet-mozilla/wrangler.jsonc
+//
+// Step 5: Run Database Migrations
+//   Run: npx wrangler d1 execute planet-mozilla-db --remote --file migrations/001_initial.sql
+//
+// Step 6: Deploy
+//   Run: npx wrangler deploy --config examples/planet-mozilla/wrangler.jsonc
+//
+// =============================================================================
+
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "planet-mozilla",
+  "main": "../../src/main.py",
+  "compatibility_date": "2026-01-01",
+  "assets": {
+    "directory": "./assets/",
+    "binding": "ASSETS"
+  },
+  "compatibility_flags": [
+    "python_workers",
+    "python_dedicated_snapshot"
+  ],
+  "limits": {
+    "cpu_ms": 60000
+  },
+  "vars": {
+    "INSTANCE_MODE": "lite",
+    "PLANET_ID": "planet-mozilla",
+    "PLANET_NAME": "Planet Mozilla",
+    "PLANET_DESCRIPTION": "Mozilla community blogs and news aggregator",
+    "PLANET_URL": "https://planet.mozilla.org",
+    "PLANET_OWNER_NAME": "Mozilla Community",
+    "PLANET_OWNER_EMAIL": "planet@mozilla.org",
+    "THEME": "planet-mozilla",
+    "RETENTION_DAYS": "90",
+    "RETENTION_MAX_ENTRIES_PER_FEED": "100",
+    "FEED_TIMEOUT_SECONDS": "60",
+    "HTTP_TIMEOUT_SECONDS": "30",
+    // Planet Mozilla aggregates many feeds, so we show more items per page
+    "ITEMS_PER_PAGE": "75",
+    "OPML_SOURCE_URL": "https://planet.mozilla.org/opml.xml"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1.0
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "planet-mozilla-db",
+      "database_id": "ff2b6fac-6dfa-4ffa-9159-19c1e1911897"
+    }
+  ],
+  // Lite mode: vectorize and ai bindings removed (no search functionality)
+  "queues": {
+    "producers": [
+      {
+        "binding": "FEED_QUEUE",
+        "queue": "planet-mozilla-feed-queue"
+      },
+      {
+        "binding": "DEAD_LETTER_QUEUE",
+        "queue": "planet-mozilla-feed-dlq"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "planet-mozilla-feed-queue",
+        "max_batch_size": 5,
+        "max_batch_timeout": 30,
+        "max_retries": 3,
+        "dead_letter_queue": "planet-mozilla-feed-dlq",
+        "retry_delay": 300
+      }
+    ]
+  },
+  "triggers": {
+    "crons": [
+      "0 * * * *"
+    ]
+  }
+}

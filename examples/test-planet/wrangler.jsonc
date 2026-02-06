@@ -1,0 +1,96 @@
+// wrangler.jsonc - Test Planet
+// Dedicated test instance for running E2E tests against real Cloudflare infrastructure.
+//
+// Setup:
+//   ./scripts/setup_test_planet.sh
+//
+// Local dev (bindings connect to remote Cloudflare services automatically):
+//   npx wrangler dev --config examples/test-planet/wrangler.jsonc
+//
+// Run E2E tests:
+//   RUN_E2E_TESTS=1 uv run pytest tests/e2e/ -v
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "test-planet",
+  "main": "../../src/main.py",
+  "compatibility_date": "2026-01-01",
+  "compatibility_flags": ["python_workers", "python_dedicated_snapshot"],
+
+  "limits": {
+    "cpu_ms": 60000
+  },
+
+  "vars": {
+    "PLANET_ID": "test-planet",
+    "PLANET_NAME": "Test Planet",
+    "PLANET_DESCRIPTION": "E2E test instance for PlanetCF",
+    "PLANET_URL": "https://test-planet.example.workers.dev",
+    "PLANET_OWNER_NAME": "PlanetCF Tests",
+    "PLANET_OWNER_EMAIL": "test@planetcf.dev",
+    "INSTANCE_MODE": "full",
+    "RETENTION_DAYS": "30",
+    "RETENTION_MAX_ENTRIES_PER_FEED": "50",
+    "FEED_TIMEOUT_SECONDS": "60",
+    "HTTP_TIMEOUT_SECONDS": "30",
+    "DEPLOYMENT_ENVIRONMENT": "test"
+  },
+
+  // Secrets (set via scripts/setup_test_planet.sh):
+  // - SESSION_SECRET: Deterministic test value (matches E2E_SESSION_SECRET in tests)
+  // - GITHUB_CLIENT_ID: Dummy value (E2E tests bypass OAuth via signed cookies)
+  // - GITHUB_CLIENT_SECRET: Dummy value
+
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1.0
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "test-planet-db",
+      "database_id": "c0c494c0-6f97-4f55-8af3-9bc8f75cdff1",
+      "remote": true
+    }
+  ],
+
+  "vectorize": [
+    {
+      "binding": "SEARCH_INDEX",
+      "index_name": "test-planet-entries",
+      "remote": true
+    }
+  ],
+
+  "ai": {
+    "binding": "AI",
+    "remote": true
+  },
+
+  "queues": {
+    "producers": [
+      { "binding": "FEED_QUEUE", "queue": "test-planet-feed-queue" },
+      { "binding": "DEAD_LETTER_QUEUE", "queue": "test-planet-feed-dlq" }
+    ],
+    "consumers": [
+      {
+        "queue": "test-planet-feed-queue",
+        "max_batch_size": 5,
+        "max_batch_timeout": 30,
+        "max_retries": 3,
+        "dead_letter_queue": "test-planet-feed-dlq",
+        "retry_delay": 60
+      }
+    ]
+  },
+
+  "assets": {
+    "directory": "./assets/",
+    "binding": "ASSETS"
+  },
+
+  // No cron trigger - tests trigger fetches explicitly
+  "triggers": {
+    "crons": []
+  }
+}

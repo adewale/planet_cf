@@ -1,0 +1,63 @@
+# .github/workflows/e2e.yml
+# End-to-end tests against real Cloudflare infrastructure.
+#
+# This workflow runs E2E tests against a deployed test-planet instance.
+# It requires:
+#   - CLOUDFLARE_API_TOKEN: API token with Workers, D1, Vectorize, Queues access
+#   - TEST_PLANET_URL: The deployed test-planet URL (e.g., https://test-planet.account.workers.dev)
+#
+# The test-planet instance must be set up first:
+#   ./scripts/setup_test_planet.sh
+name: E2E Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      seed_data:
+        description: 'Re-seed test data before running tests'
+        type: boolean
+        default: true
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/e2e/**'
+      - 'migrations/**'
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    # Only run if Cloudflare credentials are available
+    if: github.repository == 'adewale/planet_cf' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          uv sync --extra test
+          npm install wrangler
+
+      - name: Seed test data
+        if: github.event.inputs.seed_data != 'false'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          uv run python scripts/seed_test_data.py \
+            --db-name test-planet-db \
+            --config examples/test-planet/wrangler.jsonc
+
+      - name: Run E2E tests
+        env:
+          E2E_BASE_URL: ${{ secrets.TEST_PLANET_URL }}
+          E2E_SESSION_SECRET: "test-session-secret-for-e2e-testing-only"
+          E2E_ADMIN_USERNAME: "testadmin"
+          RUN_E2E_TESTS: "1"
+        run: |
+          uv run pytest tests/e2e/ -v --tb=short -x

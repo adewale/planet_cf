@@ -1,0 +1,375 @@
+/* Planet Mozilla Theme - Using ORIGINAL selectors from planet.mozilla.org */
+/* Source: https://planet.mozilla.org/planet.css */
+
+* {
+  line-height: 1.4;
+  padding: 0;
+}
+
+ul, ol {
+  padding-left: 22px;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: Helvetica, Arial, Verdana, sans-serif;
+  background: #fff url('/static/img/background.jpg') no-repeat scroll -95px top;
+  color: #000;
+}
+
+a {
+  color: #148cb5;
+  text-decoration: none;
+}
+
+a:hover {
+  color: #148cb5;
+  text-decoration: underline;
+}
+
+a:visited {
+  color: #636;
+}
+
+/* Header - ORIGINAL selectors */
+#header {
+  height: 101px;
+  background: url('/static/img/header-bg.jpg');
+}
+
+#header #dino {
+  background: url('/static/img/header-dino.jpg') no-repeat;
+  height: 101px;
+  width: 300px;
+}
+
+#header h1 {
+  padding: 0;
+  margin: 0;
+  background: transparent url('/static/img/logo.png') no-repeat 20px 35px;
+  z-index: 1;
+  height: 101px;
+}
+
+#header h1 a {
+  display: block;
+  text-indent: -9999px;
+  background: transparent url('/static/img/logo.png') no-repeat 20px 35px;
+  overflow: hidden;
+  width: 265px;
+  height: 101px;
+}
+
+/* Utility nav - ORIGINAL selectors */
+#utility {
+  font-family: "Trebuchet MS", sans-serif;
+  font-size: 62.5%;
+  margin: 0.8em 0 0.7em 30px;
+  text-align: right;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 3px 30px 0 0;
+}
+
+#utility * {
+  display: inline;
+}
+
+#utility p {
+  margin-right: -20px;
+}
+
+#utility strong {
+  color: #000;
+  font-size: 11px;
+}
+
+#utility ul {
+  margin-left: 10px;
+}
+
+#utility li {
+  background: transparent url('/static/img/bullet_utility.png') no-repeat 4px center;
+  padding-left: 16px;
+  font-size: 11px;
+}
+
+#utility li:first-child {
+  background: none;
+  padding: 0;
+}
+
+/* Main container - ORIGINAL selectors */
+.main-container {
+  display: flex;
+  gap: 16px;
+  margin: 0 auto;
+  max-width: 1200px;
+}
+
+.main-content {
+  flex-grow: 1;
+  max-width: 900px;
+}
+
+/* Headings */
+h2 {
+  font-family: Georgia, Times, "Times New Roman", serif;
+  font-weight: normal;
+  font-size: 1.75em;
+  color: #b72822;
+  margin-bottom: 0;
+}
+
+h3 {
+  margin-top: 10px;
+  border-bottom: 1px solid #ccc;
+}
+
+h3 a {
+  color: black;
+}
+
+h4 {
+  margin: 0 0 0 15px;
+  border-bottom: 1px solid #ccc;
+}
+
+h4 a {
+  color: black;
+}
+
+/* Entry styles */
+.entry {
+  margin-left: 15px;
+}
+
+.news .permalink {
+  text-align: right;
+}
+
+.news img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Footer - ORIGINAL selectors */
+#footer {
+  background-image: url('/static/img/footer.jpg');
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+#footer-content {
+  padding-top: 100px;
+}
+
+#footer-content p {
+  text-align: center;
+  padding: 5px;
+  background-color: #2a2a2a;
+  color: #999999;
+  font-size: 0.9em;
+}
+
+#footer-content a {
+  color: #999999;
+}
+
+#footer-content a:hover {
+  color: #ccc;
+}
+
+/* Sidebar - ORIGINAL selectors */
+.sidebar-content {
+  max-width: 300px;
+  font-size: 70%;
+}
+
+.sidebar-content .feeds,
+.sidebar-content .disclaimer {
+  padding-left: 15px;
+}
+
+.sidebar-content .feeds p {
+  padding: 0;
+  margin: 5px 0 0 0;
+}
+
+.sidebar-content .feeds ul {
+  padding-left: 10px;
+}
+
+.sidebar-content .feeds li {
+  margin: 0;
+  padding: 0px;
+  display: inline;
+}
+
+.sidebar-content .feeds li {
+  background-image: url('/static/img/feed-icon.png');
+  background-repeat: no-repeat;
+  background-position: 0 50%;
+  padding: 3px 10px 3px 15px;
+  margin: .4em 0;
+}
+
+.sidebar-content .feeds li.opml {
+  background-image: url('/static/img/opml-icon.png');
+  background-repeat: no-repeat;
+  background-position: 0 50%;
+  padding: 3px 10px 3px 15px;
+  margin: .4em 0;
+}
+
+.sidebar-content .main {
+  padding: 15px 0 0 15px;
+}
+
+.sidebar-content .main ul.planets {
+  list-style-image: url('/static/img/world.png');
+  padding-left: 35px;
+}
+
+.sidebar-content .main ul.planets li {
+  font-size: 1.3em;
+}
+
+.sidebar-content h2 {
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 1.2em;
+  font-weight: bold;
+  color: black;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+}
+
+/* Search form */
+.search-form {
+  background: #e4ecec;
+  padding: 10px;
+  border-radius: 1em;
+  margin-bottom: 1em;
+}
+
+.search-form label {
+  display: block;
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.search-form input[type="search"] {
+  width: 100%;
+  padding: 5px;
+  margin: 5px 0;
+  border: 1px solid #ccc;
+}
+
+.search-form button {
+  padding: 5px 10px;
+}
+
+/* Video styles */
+video {
+  max-width: 80%;
+  border: 1px solid lightgray;
+  border-radius: 10px;
+}
+
+/* Keyboard shortcuts panel */
+.shortcuts-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+}
+
+.shortcuts-backdrop.hidden {
+  display: none;
+}
+
+.shortcuts-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  border: 1px solid #333;
+  padding: 20px;
+  z-index: 1000;
+  min-width: 280px;
+  border-radius: 12px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+}
+
+.shortcuts-panel.hidden {
+  display: none;
+}
+
+.shortcuts-panel h3 {
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #ddd;
+}
+
+.shortcuts-panel dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 15px;
+}
+
+.shortcuts-panel dt {
+  text-align: right;
+}
+
+.shortcuts-panel kbd {
+  font-family: Monaco, Consolas, "Courier New", monospace;
+  font-size: 12px;
+  background: #f5f5f5;
+  border: 1px solid #ccc;
+  padding: 3px 6px;
+  border-radius: 2px;
+}
+
+.shortcuts-panel .close-btn {
+  margin-top: 15px;
+  background: #455372;
+  color: #fff;
+  border: none;
+  padding: 8px 15px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.shortcuts-panel .close-btn:hover {
+  background: #374461;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .main-container {
+    flex-direction: column;
+    margin: 16px;
+  }
+  .main-content,
+  .sidebar-content {
+    min-width: 100%;
+    max-width: 100%;
+  }
+}
+
+/* Print styles */
+@media print {
+  #utility, .sidebar-content, #footer {
+    display: none;
+  }
+  .main-container {
+    display: block;
+  }
+  #header {
+    background: white;
+  }
+}

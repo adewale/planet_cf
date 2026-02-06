@@ -39,8 +39,10 @@
 | Route | Method | Status | Implementation |
 |-------|--------|--------|----------------|
 | / | GET | ✅ | _serve_html() |
+| /titles | GET | ✅ | _serve_html() (titles template) |
 | /feed.atom | GET | ✅ | _serve_atom() |
 | /feed.rss | GET | ✅ | _serve_rss() |
+| /feed.rss10 | GET | ✅ | _serve_rss10() |
 | /feeds.opml | GET | ✅ | _export_opml() |
 | /search | GET | ✅ | _search_entries() |
 | /static/* | GET | ✅ | _serve_static() |

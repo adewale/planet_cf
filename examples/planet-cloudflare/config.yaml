@@ -1,0 +1,127 @@
+# Planet Cloudflare Instance Configuration
+# Full-featured Planet CF deployment with semantic search and admin interface
+#
+# This is a full mode instance with all features enabled:
+# - Semantic search powered by Vectorize and Workers AI
+# - Admin interface with GitHub OAuth authentication
+# - Queue-based feed fetching with retries and dead-letter queue
+
+# =============================================================================
+# Instance Mode
+# =============================================================================
+mode: full
+
+# =============================================================================
+# Core Identity
+# =============================================================================
+planet:
+  id: planetcf
+  name: Planet CF
+  description: Aggregated posts from Cloudflare employees and community
+  url: https://planetcf.com
+  owner:
+    name: Cloudflare
+    email: planet@planetcf.com
+
+# =============================================================================
+# Branding & Theme
+# =============================================================================
+branding:
+  # Default theme - modern, clean design
+  theme: default
+
+  # User-Agent string for feed fetching
+  user_agent: "{name}/1.0 (+{url}; {email})"
+
+  # Footer text
+  footer_text: "Powered by {name}"
+
+  # Show admin link in footer
+  show_admin_link: true
+
+# =============================================================================
+# Content Settings
+# =============================================================================
+content:
+  # How many days of entries to display on homepage
+  days: 7
+
+  # Group entries by date (classic Planet style)
+  group_by_date: true
+
+  # Maximum entries per feed to retain
+  max_entries_per_feed: 100
+
+  # Days to retain entries in database
+  retention_days: 90
+
+  # Summary truncation length
+  summary_max_length: 500
+
+# =============================================================================
+# Search Configuration
+# =============================================================================
+search:
+  # Enable semantic search (requires Vectorize)
+  enabled: true
+
+  # Max characters to embed per entry
+  embedding_max_chars: 2000
+
+  # Minimum similarity score (0.0-1.0)
+  score_threshold: 0.3
+
+  # Max results to return
+  top_k: 50
+
+# =============================================================================
+# Feed Processing
+# =============================================================================
+feeds:
+  # HTTP timeout for feed requests (seconds)
+  http_timeout_seconds: 30
+
+  # Max processing time per feed (seconds)
+  feed_timeout_seconds: 60
+
+  # Consecutive failures before auto-deactivation
+  auto_deactivate_threshold: 10
+
+  # Consecutive failures to show in DLQ
+  failure_threshold: 3
+
+# =============================================================================
+# Authentication
+# =============================================================================
+auth:
+  # OAuth provider: github, google, or oidc
+  provider: github
+
+  # OAuth scopes (provider-dependent)
+  scopes:
+    - user:email
+
+  # Session TTL in seconds (default: 7 days)
+  session_ttl_seconds: 604800
+
+# =============================================================================
+# Cloudflare Resources
+# =============================================================================
+cloudflare:
+  database_name: planetcf
+  vectorize_index: planetcf-entries
+  feed_queue: planetcf-feed-queue
+  dead_letter_queue: planetcf-feed-dlq
+
+# =============================================================================
+# Admin Users
+# =============================================================================
+admins:
+  - username: your-github-username
+    display_name: Your Name
+
+# =============================================================================
+# Initial Feeds
+# =============================================================================
+# Add Cloudflare-related blogs and feeds here
+initial_feeds: []

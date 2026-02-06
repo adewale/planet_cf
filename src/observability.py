@@ -22,9 +22,16 @@ import random
 import secrets
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
 from typing import Any, cast
 from urllib.parse import urlparse
+
+from utils import (
+    ERROR_MESSAGE_MAX_LENGTH,  # noqa: F401 (re-exported)
+    get_iso_timestamp,
+    log_error,  # noqa: F401 (re-exported)
+    log_op,  # noqa: F401 (re-exported)
+    truncate_error,  # noqa: F401 (re-exported)
+)
 
 # Configure module logger for structured event output
 # Using INFO level for events, which Cloudflare Workers captures from stdout/stderr
@@ -101,6 +108,7 @@ class RequestEvent:
     generation_entries_total: int | None = None
     generation_feeds_healthy: int | None = None
     generation_trigger: str | None = None  # "http"
+    generation_used_fallback: bool | None = None  # True if fallback entries shown
 
     # === OAuth fields (null for non-OAuth routes) ===
     oauth_stage: str | None = None  # "redirect" | "callback"
@@ -120,7 +128,7 @@ class RequestEvent:
     def __post_init__(self) -> None:
         """Initialize timestamp, request_id, and correlation_id if not provided."""
         if not self.timestamp:
-            self.timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            self.timestamp = get_iso_timestamp()
         if not self.request_id:
             self.request_id = generate_request_id()
         if not self.correlation_id:
@@ -202,7 +210,7 @@ class FeedFetchEvent:
     def __post_init__(self) -> None:
         """Initialize timestamp, request_id, and feed_domain if not provided."""
         if not self.timestamp:
-            self.timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            self.timestamp = get_iso_timestamp()
         if not self.request_id:
             self.request_id = generate_request_id()
         if self.feed_url and not self.feed_domain:
@@ -267,7 +275,7 @@ class SchedulerEvent:
     def __post_init__(self) -> None:
         """Initialize timestamp, request_id, and correlation_id if not provided."""
         if not self.timestamp:
-            self.timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            self.timestamp = get_iso_timestamp()
         if not self.request_id:
             self.request_id = generate_request_id()
         if not self.correlation_id:
@@ -336,7 +344,7 @@ class AdminActionEvent:
     def __post_init__(self) -> None:
         """Initialize timestamp and request_id if not provided."""
         if not self.timestamp:
-            self.timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            self.timestamp = get_iso_timestamp()
         if not self.request_id:
             self.request_id = generate_request_id()
 
@@ -466,66 +474,6 @@ class Timer:
 
 
 # =============================================================================
-# Operational Logging
+# Operational Logging (imported from utils — single source of truth)
+# Re-exported at top of file: ERROR_MESSAGE_MAX_LENGTH, log_error, log_op, truncate_error
 # =============================================================================
-
-#: Maximum length for error messages in logs
-ERROR_MESSAGE_MAX_LENGTH = 200
-
-
-def truncate_error(error: str | Exception, max_length: int = ERROR_MESSAGE_MAX_LENGTH) -> str:
-    """Truncate error message to a maximum length.
-
-    Args:
-        error: Error message string or Exception object
-        max_length: Maximum length for the error message
-
-    Returns:
-        Truncated error string with '...' suffix if truncated
-
-    """
-    error_str = str(error)
-    if len(error_str) <= max_length:
-        return error_str
-    return error_str[: max_length - 3] + "..."
-
-
-def log_op(event_type: str, **kwargs: Any) -> None:
-    """Log an operational event as structured JSON.
-
-    Unlike wide events (FeedFetchEvent, etc.), these are simpler operational
-    logs for debugging and monitoring internal operations.
-
-    Args:
-        event_type: Type of operational event (e.g., "queue_batch_received")
-        **kwargs: Additional fields to include in the log event
-
-    """
-    event = {
-        "event_type": event_type,
-        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        **kwargs,
-    }
-    logger.info(json.dumps(event))
-
-
-def log_error(event_type: str, exception: Exception, **kwargs: Any) -> None:
-    """Log an error event with standardized exception formatting.
-
-    Uses logger.error() level for error events, making them easily
-    distinguishable from info-level operational logs.
-
-    Args:
-        event_type: Type of error event (e.g., "url_parse_error")
-        exception: The exception that occurred
-        **kwargs: Additional fields to include in the log event
-
-    """
-    event = {
-        "event_type": event_type,
-        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        "error_type": type(exception).__name__,
-        "error": truncate_error(exception),
-        **kwargs,
-    }
-    logger.error(json.dumps(event))

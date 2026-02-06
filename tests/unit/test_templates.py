@@ -11,6 +11,7 @@ from src.templates import (
     TEMPLATE_ADMIN_LOGIN,
     TEMPLATE_FEED_ATOM,
     TEMPLATE_FEED_RSS,
+    TEMPLATE_FEED_RSS10,
     TEMPLATE_FEEDS_OPML,
     TEMPLATE_INDEX,
     TEMPLATE_SEARCH,
@@ -33,6 +34,7 @@ class TestRenderTemplate:
             entries_by_date={},
             feeds=[],
             generated_at="2026-01-01T00:00:00Z",
+            feed_links={"atom": "/feed.atom", "rss": "/feed.rss", "opml": "/feeds.opml"},
         )
         assert "Test Planet" in html
         assert "<!doctype html>" in html.lower()
@@ -120,6 +122,31 @@ class TestRenderTemplate:
         assert "<rss" in xml
         assert "Test Planet" in xml
 
+    def test_renders_rss10_feed(self):
+        """RSS 1.0 (RDF) feed template renders valid XML."""
+        xml = render_template(
+            TEMPLATE_FEED_RSS10,
+            planet={
+                "name": "Test Planet",
+                "link": "https://example.com",
+                "description": "Test",
+            },
+            entries=[
+                {
+                    "title": "Test Entry",
+                    "url": "https://example.com/post",
+                    "published_at_iso": "2026-01-01T00:00:00Z",
+                    "author": "Author",
+                    "content_truncated": "Some content",
+                }
+            ],
+        )
+        assert '<?xml version="1.0"' in xml
+        assert "rdf:RDF" in xml
+        assert "Test Planet" in xml
+        assert "Test Entry" in xml
+        assert "rdf:Seq" in xml
+
     def test_renders_opml(self):
         """OPML template renders valid XML."""
         xml = render_template(
@@ -151,6 +178,7 @@ class TestTemplateXSSPrevention:
             entries_by_date={},
             feeds=[],
             generated_at="2026-01-01T00:00:00Z",
+            feed_links={"atom": "/feed.atom", "rss": "/feed.rss", "opml": "/feeds.opml"},
         )
         # Check that the XSS payload is escaped (not that there are no script tags,
         # since we have a legitimate inline script for keyboard navigation)
@@ -195,6 +223,7 @@ class TestTemplateEmptyEntries:
             entries_by_date={},
             feeds=[],
             generated_at="2026-01-01T00:00:00Z",
+            feed_links={"atom": "/feed.atom", "rss": "/feed.rss", "opml": "/feeds.opml"},
         )
         assert "No entries yet" in html
 
@@ -265,6 +294,7 @@ class TestTemplateConstants:
         assert isinstance(TEMPLATE_ADMIN_LOGIN, str)
         assert isinstance(TEMPLATE_FEED_ATOM, str)
         assert isinstance(TEMPLATE_FEED_RSS, str)
+        assert isinstance(TEMPLATE_FEED_RSS10, str)
         assert isinstance(TEMPLATE_FEEDS_OPML, str)
 
     def test_template_constants_have_extensions(self):
@@ -275,4 +305,5 @@ class TestTemplateConstants:
         assert TEMPLATE_ADMIN_LOGIN.endswith(".html")
         assert TEMPLATE_FEED_ATOM.endswith(".xml")
         assert TEMPLATE_FEED_RSS.endswith(".xml")
+        assert TEMPLATE_FEED_RSS10.endswith(".xml")
         assert TEMPLATE_FEEDS_OPML.endswith(".opml")

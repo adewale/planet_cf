@@ -10,32 +10,14 @@ Tests cover:
 These tests run against a local wrangler dev instance.
 """
 
-import base64
-import hashlib
-import hmac
-import json
 import time
 
 import httpx
 import pytest
 
+from tests.e2e.conftest import E2E_BASE_URL as BASE_URL
+from tests.e2e.conftest import create_test_session
 from tests.integration.conftest import requires_wrangler
-
-# Configuration
-BASE_URL = "http://localhost:8787"
-SESSION_SECRET = "test-secret-for-local-development-32chars"
-
-
-def create_test_session(username: str = "testadmin") -> str:
-    """Create a signed session cookie for testing."""
-    session_data = {
-        "github_username": username,
-        "github_id": 12345,
-        "exp": int(time.time()) + 3600,
-    }
-    payload = base64.b64encode(json.dumps(session_data).encode()).decode()
-    signature = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
-    return f"{payload}.{signature}"
 
 
 @requires_wrangler
@@ -395,8 +377,8 @@ class TestDLQ:
             )
             assert response.status_code == 200
             data = response.json()
-            assert "failed_feeds" in data
-            assert isinstance(data["failed_feeds"], list)
+            assert "feeds" in data
+            assert isinstance(data["feeds"], list)
 
     @pytest.mark.asyncio
     async def test_retry_dlq_button_invalid_id(self, session_cookie):

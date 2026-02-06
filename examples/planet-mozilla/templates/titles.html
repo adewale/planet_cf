@@ -1,0 +1,74 @@
+<?xml version="1.0"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>{{ planet.name }} - Titles Only</title>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <link href="/static/style.css" rel="stylesheet" type="text/css"/>
+    <link href="/static/favicon.ico" rel="shortcut icon" type="image/png"/>
+    <link rel="alternate" href="{{ feed_links.atom or '/feed.atom' }}" title="{{ planet.name }}" type="application/atom+xml"/>
+</head>
+<body>
+    <div id="utility">
+        <p><strong>Looking For</strong></p>
+        <ul>
+            <li><a href="https://www.mozilla.org/">mozilla.org</a></li>
+            <li><a href="https://wiki.mozilla.org/">Wiki</a></li>
+            <li><a href="https://developer.mozilla.org/">Developer Center</a></li>
+            <li><a href="http://www.firefox.com/">Firefox</a></li>
+            <li><a href="http://www.getthunderbird.com/">Thunderbird</a></li>
+        </ul>
+    </div>
+    <div id="header">
+        <div id="dino">
+            <h1><a href="/" title="Back to home page">{{ planet.name }}</a></h1>
+        </div>
+    </div>
+    <div class="main-container">
+        <div class="main-content">
+            <p><a href="/">View full content</a></p>
+{% for date, day_entries in entries_by_date.items() %}
+            <h2><time datetime="{{ date }}">{{ date_labels[date] }}</time></h2>
+{% for entry in day_entries %}
+            <article class="news">
+                <h3><a href="{{ entry.feed_site_url or entry.feed_url or '#' }}" title="{{ entry.display_author }}">{{ entry.display_author or 'Unknown' }}</a> — <a href="{{ entry.url or '#' }}">{{ entry.title or 'Untitled' }}</a></h3>
+                <div class="permalink"><a href="{{ entry.url or '#' }}">by {{ entry.display_author }} at <time datetime="{{ entry.published_at }}" title="GMT">{{ entry.published_at_display }}</time></a></div>
+            </article>
+{% endfor %}
+{% else %}
+            <p>No entries yet.</p>
+{% endfor %}
+        </div>
+        <div class="sidebar-content">
+            <div class="feeds">
+                <h2>Subscribe to Planet</h2>
+                <ul>
+                    <li><a href="{{ feed_links.atom or '/feed.atom' }}">Atom</a></li>
+                    <li><a href="{{ feed_links.rss or '/feed.rss' }}">RSS 2.0</a></li>
+                    {% if feed_links.rss10 %}<li><a href="{{ feed_links.rss10 }}">RSS 1.0</a></li>{% endif %}
+                </ul>
+                <ul>
+                    <li class="opml"><a href="{{ feed_links.opml or '/feeds.opml' }}">OPML</a></li>
+                </ul>
+            </div>
+            <div class="main">
+                <h2>Subscriptions</h2>
+                <ul class="subscriptions">
+{% for feed in feeds %}
+                    <li><a href="{{ feed.site_url or feed.url or '#' }}">{{ feed.title or 'Untitled' }}</a></li>
+{% else %}
+                    <li>No feeds configured</li>
+{% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+    <div id="footer">
+        <div id="footer-content">
+            <p>{{ footer_text }}{% if show_admin_link %} | <a href="/admin">Admin</a>{% endif %}</p>
+            <p>Last updated: {{ generated_at }}</p>
+        </div>
+    </div>
+</body>
+</html>

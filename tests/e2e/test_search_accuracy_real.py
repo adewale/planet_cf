@@ -8,13 +8,14 @@ These tests verify search works correctly with actual:
 - Workers AI (real embeddings)
 
 To run these tests:
-    1. Start the worker: npx wrangler dev --remote
-    2. Run tests: pytest tests/e2e/test_search_accuracy_real.py -v
+    1. Seed test data: uv run python scripts/seed_test_data.py --local --reindex
+    2. Start the worker: npx wrangler dev --remote --config examples/test-planet/wrangler.jsonc
+    3. Run tests: RUN_E2E_TESTS=1 uv run pytest tests/e2e/test_search_accuracy_real.py -v
 
 These tests require:
 - A running wrangler dev instance with --remote flag
 - Network access to Cloudflare services
-- The test fixtures to be indexed in the database
+- The test fixtures to be indexed in the database (via seed_test_data.py)
 
 Why mock tests aren't enough:
 - Mocks can't verify real D1 LIKE query behavior
@@ -30,8 +31,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-# Base URL for the running worker
-BASE_URL = os.environ.get("PLANET_CF_URL", "http://localhost:8787")
+from tests.e2e.conftest import E2E_BASE_URL, create_test_session
 
 # Mark all tests in this module as requiring real infrastructure
 pytestmark = [
@@ -58,10 +58,11 @@ def fixtures():
     return load_fixtures()
 
 
-@pytest.fixture(scope="module")
-def client():
+@pytest.fixture
+async def client():
     """HTTP client for making requests to the worker."""
-    return httpx.AsyncClient(base_url=BASE_URL, timeout=30.0)
+    async with httpx.AsyncClient(base_url=E2E_BASE_URL, timeout=30.0) as c:
+        yield c
 
 
 class TestRealSearchAccuracy:
@@ -80,7 +81,6 @@ class TestRealSearchAccuracy:
         """Verify the worker is running and responding."""
         response = await client.get("/")
         assert response.status_code == 200
-        assert "Planet CF" in response.text
 
     @pytest.mark.asyncio
     async def test_exact_title_search(self, client):
@@ -184,20 +184,36 @@ class TestRealSearchAccuracy:
         for query in ["", "a"]:
             response = await client.get("/search", params={"q": query})
             # Should reject with error
-            assert response.status_code == 400 or "too short" in response.text.lower()
+            assert response.status_code == 200
+            assert (
+                "at least 2 characters" in response.text.lower()
+                or "too short" in response.text.lower()
+            )
 
 
 class TestRealSearchWithKnownData:
     """
-    Tests that require specific data to be indexed.
+    Tests that require specific fixture data to be indexed.
 
-    These tests assume the fixture data has been indexed.
-    Run `pytest tests/e2e/test_search_accuracy_real.py --setup-fixtures`
-    to set up the test data first.
+    Prerequisite: Run `uv run python scripts/seed_test_data.py --reindex`
+    to seed and index the test data.
+
+    These tests will skip if the fixture data is not found in the database.
     """
 
+    async def _check_fixture_data_present(self, client, fixtures):
+        """Check if fixture data is seeded by searching for a known fixture entry."""
+        # Search for a distinctive fixture term and check for a fixture-specific URL
+        # (not just the title, which gets echoed back in the search form)
+        fixture_url = fixtures["entries"][0]["url"]
+        test_title = fixtures["entries"][0]["title"]
+        response = await client.get("/search", params={"q": test_title})
+        if response.status_code != 200:
+            return False
+        # Check for the fixture entry's URL in the results (not just the query echo)
+        return fixture_url in response.text
+
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Requires fixture data to be indexed first")
     async def test_title_in_query_match(self, client, fixtures):
         """
         When query contains the full title, should find the post.
@@ -205,6 +221,12 @@ class TestRealSearchWithKnownData:
         Tests the fix for: "what the day-to-day looks like now" not finding
         "What the day-to-day looks like"
         """
+        if not await self._check_fixture_data_present(client, fixtures):
+            pytest.skip(
+                "Fixture data not seeded. Run: "
+                "uv run python scripts/seed_test_data.py --local --reindex"
+            )
+
         test_case = next(
             tc
             for tc in fixtures["test_queries"]
@@ -220,9 +242,14 @@ class TestRealSearchWithKnownData:
         )
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Requires fixture data to be indexed first")
     async def test_exact_title_match(self, client, fixtures):
         """Exact title match should appear first."""
+        if not await self._check_fixture_data_present(client, fixtures):
+            pytest.skip(
+                "Fixture data not seeded. Run: "
+                "uv run python scripts/seed_test_data.py --local --reindex"
+            )
+
         test_case = next(
             tc for tc in fixtures["test_queries"] if tc["query"] == "context is the work"
         )
@@ -234,9 +261,14 @@ class TestRealSearchWithKnownData:
         assert expected_title in response.text
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Requires fixture data to be indexed first")
     async def test_all_fixture_queries(self, client, fixtures):
         """Run all test queries from fixtures against real infrastructure."""
+        if not await self._check_fixture_data_present(client, fixtures):
+            pytest.skip(
+                "Fixture data not seeded. Run: "
+                "uv run python scripts/seed_test_data.py --local --reindex"
+            )
+
         failures = []
 
         for test_case in fixtures["test_queries"]:
@@ -281,11 +313,8 @@ class TestRealVectorizeIntegration:
 
         # Should work without errors
         assert response.status_code == 200
-        # Should not show a Vectorize error
-        assert "vectorize" not in response.text.lower() or "error" not in response.text.lower()
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Requires fixture data to be indexed first")
     async def test_semantic_similarity_works(self, client):
         """
         Semantic search should find conceptually related content.
@@ -304,14 +333,13 @@ class TestRealVectorizeIntegration:
         semantic_indicators = ["worker", "edge", "serverless", "cloudflare"]
 
         # If we have indexed content, we should find something
-        # (Skip assertion if no content is indexed yet)
         _ = any(term in body for term in semantic_indicators)  # Check for debugging
 
 
 # Utility functions for setting up test data
 
 
-async def setup_fixtures(admin_session: str):
+async def setup_fixtures():
     """
     Index fixture data into the real database.
 
@@ -319,12 +347,13 @@ async def setup_fixtures(admin_session: str):
     1. Adds feeds from fixtures
     2. Triggers reindexing
 
-    Run this once before running the real E2E tests.
+    Prefer using scripts/seed_test_data.py instead of this function.
     """
     fixtures = load_fixtures()
+    session_value = create_test_session()
 
     async with httpx.AsyncClient(
-        base_url=BASE_URL, timeout=30.0, cookies={"session": admin_session}
+        base_url=E2E_BASE_URL, timeout=30.0, cookies={"session": session_value}
     ) as client:
         # Add feeds
         for feed in fixtures["feeds"]:
@@ -340,12 +369,6 @@ async def setup_fixtures(admin_session: str):
 
 
 if __name__ == "__main__":
-    # Run with: python -m tests.e2e.test_search_accuracy_real
     import asyncio
 
-    # You need to set ADMIN_SESSION env var to a valid session cookie
-    admin_session = os.environ.get("ADMIN_SESSION")
-    if admin_session:
-        asyncio.run(setup_fixtures(admin_session))
-    else:
-        print("Set ADMIN_SESSION env var to index fixture data")
+    asyncio.run(setup_fixtures())

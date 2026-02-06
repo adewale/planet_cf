@@ -1,11 +1,11 @@
-# src/types.py
+# src/models.py
 """Type definitions for Planet CF."""
 
 import json
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from enum import Enum, auto
-from typing import Literal, NewType, NotRequired, Protocol, Self, TypedDict
+from typing import Literal, NewType, NotRequired, Self, TypedDict
 
 # =============================================================================
 # Semantic Type Aliases
@@ -249,16 +249,8 @@ class FetchError(Enum):
 
 
 # =============================================================================
-# Protocol for Testability
+# HTML Sanitization
 # =============================================================================
-
-
-class ContentSanitizer(Protocol):
-    """Protocol for HTML sanitization - enables testing with mocks."""
-
-    def clean(self, html: str) -> str:
-        """Sanitize HTML content and return safe HTML."""
-        ...
 
 
 class BleachSanitizer:
@@ -314,44 +306,6 @@ class BleachSanitizer:
         "span": ["class"],
     }
     ALLOWED_PROTOCOLS = ["http", "https", "mailto"]
-
-    def _link_callback(
-        self, attrs: dict[tuple[str | None, str], str], new: bool = False
-    ) -> dict[tuple[str | None, str], str]:
-        """Add security attributes to links.
-
-        Adds rel="noopener noreferrer" and target="_blank" to external links
-        to prevent window.opener attacks and referrer leakage.
-        """
-        # Get the href attribute
-        href_key = (None, "href")
-        href = attrs.get(href_key, "")
-
-        # Check if it's an external link (http/https, not same-origin)
-        if href.startswith(("http://", "https://")):
-            # Add target="_blank" for external links
-            attrs[(None, "target")] = "_blank"
-            # Add rel="noopener noreferrer" for security
-            attrs[(None, "rel")] = "noopener noreferrer"
-
-        return attrs
-
-    def _img_callback(
-        self, attrs: dict[tuple[str | None, str], str], new: bool = False
-    ) -> dict[tuple[str | None, str], str]:
-        """Add performance and accessibility attributes to images.
-
-        Adds loading="lazy" for performance and ensures alt attribute exists.
-        """
-        # Add lazy loading for performance
-        attrs[(None, "loading")] = "lazy"
-
-        # Ensure alt attribute exists for accessibility (empty string if missing)
-        alt_key = (None, "alt")
-        if alt_key not in attrs:
-            attrs[alt_key] = ""
-
-        return attrs
 
     def clean(self, html: str) -> str:
         """Sanitize HTML content and return safe HTML."""

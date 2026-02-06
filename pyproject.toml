@@ -42,6 +42,13 @@ dev = [
     "ruff>=0.4.0",
 ]
 
+tools = [
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+    "playwright>=1.40.0",
+    "pillow>=10.0.0",
+]
+
 # Cloudflare Python Workers development dependencies
 [dependency-groups]
 workers = [
@@ -62,19 +69,34 @@ packages = ["src"]
 
 [tool.ty.environment]
 python-version = "3.12"
-extra-paths = ["stubs"]
+extra-paths = ["stubs", "src"]
+
+[tool.ty.src]
+include = ["src/"]
 
 [tool.ty.rules]
-# Ignore unresolved imports for Cloudflare/Pyodide runtime modules
-# These are only available at runtime in the Workers environment
-unresolved-import = "ignore"
-# Cloudflare Workers has different method signatures than our stubs
-invalid-method-override = "ignore"
-# Pyodide FFI interop has dynamic types
-call-non-callable = "ignore"
-possibly-missing-attribute = "ignore"
-# ty's stdlib stubs don't include Python 3.12+ features like XMLParser(forbid_dtd=)
+# XMLParser(forbid_dtd=True) is a valid kwarg added in Python 3.12+ (CPython
+# commit bpo-42990), but ty's bundled typeshed stubs don't declare it yet.
 unknown-argument = "ignore"
+# SafeEnv wraps optional Cloudflare bindings (VECTORIZE, AI, SEARCH_INDEX, etc.)
+# as T | None. In lite deployment mode these bindings don't exist, so attribute
+# access looks unsafe to ty -- but the code handles None at runtime via mode checks.
+possibly-missing-attribute = "ignore"
+# js.fetch (aliased as js_fetch) comes from Pyodide's `js` module, which only
+# resolves inside the Cloudflare Workers runtime. ty sees it as None during static
+# analysis since the `js` module isn't available locally, but it is always callable
+# at runtime.
+call-non-callable = "ignore"
+
+[tool.ty.analysis]
+# Cloudflare Workers runtime modules are only available inside Pyodide/Workers
+# and cannot be resolved in the local development environment
+allowed-unresolved-imports = [
+    "js",
+    "js.*",
+    "pyodide",
+    "pyodide.*",
+]
 
 [tool.ruff]
 line-length = 100
@@ -107,16 +129,27 @@ ignore = [
 "src/templates.py" = ["E501"]  # Embedded HTML templates have long lines
 "src/observability.py" = [
     "S311",  # random.random() is fine for sampling (not security)
-    "UP017",  # Can't use datetime.UTC - Pyodide uses Python 3.11
+    "UP017",  # Keep timezone.utc for consistency across the codebase
 ]
 "src/main.py" = [
     "S608",  # SQL uses bind() parameters, not string formatting
     "S314",  # XML parsing for admin OPML import (authenticated only)
     "UP040",  # Can't use PEP 695 `type` keyword - Pyodide uses Python 3.11
-    "UP017",  # Can't use datetime.UTC - Pyodide uses Python 3.11
+    "UP017",  # Keep timezone.utc for consistency across the codebase
+]
+"src/utils.py" = [
+    "UP017",  # Keep timezone.utc for consistency across the codebase
 ]
 "src/wrappers.py" = [
     "ANN401",  # JS/Python boundary layer - Any is intentional for JsProxy types
+]
+"vulture_whitelist.py" = [
+    "F401",   # Imports are used to tell vulture symbols are intentional
+    "F811",   # Re-imports are intentional in whitelist
+    "F821",   # Undefined names are placeholders for vulture
+    "E501",   # Long lines OK in whitelist comments
+    "E402",   # Import order doesn't matter in whitelist
+    "B018",   # "Useless" expressions are how vulture whitelists work
 ]
 
 [tool.ruff.format]
@@ -135,6 +168,9 @@ python_functions = ["test_*"]
 addopts = "-v --tb=short"
 filterwarnings = [
     "ignore::DeprecationWarning",
+]
+markers = [
+    "e2e: end-to-end tests requiring external services (live worker deployment)",
 ]
 
 # =============================================================================
@@ -158,3 +194,13 @@ exclude_lines = [
     "if __name__ == .__main__.:",
 ]
 fail_under = 60
+
+# =============================================================================
+# Vulture Configuration (Dead Code Detection)
+# =============================================================================
+
+[tool.vulture]
+paths = ["src/"]
+exclude = []
+min_confidence = 60
+sort_by_size = false
