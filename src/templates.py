@@ -125,9 +125,9 @@ _EMBEDDED_TEMPLATES = {
     <div class="shortcuts-panel hidden" id="shortcuts-panel" role="dialog" aria-labelledby="shortcuts-title" aria-modal="true">
         <h3 id="shortcuts-title">Keyboard Shortcuts</h3>
         <dl>
-            <dt><kbd>j</kbd></dt>
+            <dt><kbd>n</kbd></dt>
             <dd>Next entry</dd>
-            <dt><kbd>k</kbd></dt>
+            <dt><kbd>p</kbd></dt>
             <dd>Previous entry</dd>
             <dt><kbd>?</kbd></dt>
             <dd>Toggle this help</dd>

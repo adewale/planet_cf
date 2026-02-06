@@ -335,7 +335,7 @@ Use browser DevTools or a color picker to verify exact colors:
 - [ ] "Titles only" link works (if applicable)
 - [ ] Search form functions (if applicable)
 - [ ] All subscription links open in new tab or navigate correctly
-- [ ] Keyboard shortcuts work (j/k navigation, ? for help)
+- [ ] Keyboard shortcuts work (n/p navigation, ? for help)
 
 ### Browser Compatibility
 
