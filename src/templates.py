@@ -788,7 +788,7 @@ _EMBEDDED_TEMPLATES = {
 """,
     },
     "planet-python": {
-        "index.html": """<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+        "index.html": """<!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
 <head>
   <meta http-equiv="content-type" content="text/html; charset=utf-8" />
@@ -801,6 +801,7 @@ _EMBEDDED_TEMPLATES = {
   <meta name="generator" content="PlanetCF" />
   <meta name="keywords" content="Python weblog blog blogs blogger weblogger aggregator rss" />
   <meta name="description" content="{{ planet.description or 'Recent postings from Python-related blogs.' }}" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="alternate" type="application/rss+xml" title="RSS" href="{{ feed_links.rss or '/feed.rss' }}" />
   <link rel="alternate" type="application/atom+xml" title="Atom" href="{{ feed_links.atom or '/feed.atom' }}" />
   <link rel="icon" href="/static/favicon.ico" sizes="32x32" />
@@ -824,11 +825,11 @@ _EMBEDDED_TEMPLATES = {
 src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'homepage' }}" border="0" /></a>
   </h1>
   <!-- Skip to Navigation -->
-  <div class="skiptonav"><a href="#left-hand-navigation" accesskey="2"><img src="/static/images/trans.gif" id="skiptonav" alt="skip to navigation" border="0" /></a></div>
-  <div class="skiptonav"><a href="#content-body" accesskey="3"><img src="/static/images/trans.gif" id="skiptocontent" alt="skip to content" border="0" /></a></div>
+  <div class="skiptonav"><a href="#left-hand-navigation" accesskey="2"><img src="/static/images/trans.gif" id="skiptonav" alt="skip to navigation" border="0" width="1" height="1" /></a></div>
+  <div class="skiptonav"><a href="#content-body" accesskey="3"><img src="/static/images/trans.gif" id="skiptocontent" alt="skip to content" border="0" width="1" height="1" /></a></div>
 
   <div id="content-body">
-    <div id="body-main">
+    <main id="body-main">
 
 <h1 class="pageheading">{{ planet.name }}</h1>
 
@@ -861,7 +862,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
 {% endfor %}
 
 
-    </div>
+    </main>
   </div>
 
   <div id="left-hand-navigation">
@@ -932,7 +933,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
 </body>
 </html>
 """,
-        "titles.html": """<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+        "titles.html": """<!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
 <head>
   <meta http-equiv="content-type" content="text/html; charset=utf-8" />
@@ -945,6 +946,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
   <meta name="generator" content="PlanetCF" />
   <meta name="keywords" content="Python weblog blog blogs blogger weblogger aggregator rss" />
   <meta name="description" content="{{ planet.description or 'Recent postings from Python-related blogs.' }}" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="alternate" type="application/rss+xml" title="RSS" href="{{ feed_links.rss or '/feed.rss' }}" />
   <link rel="alternate" type="application/atom+xml" title="Atom" href="{{ feed_links.atom or '/feed.atom' }}" />
   <link rel="icon" href="/static/favicon.ico" sizes="32x32" />
@@ -957,11 +959,11 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
 src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'homepage' }}" border="0" /></a>
   </h1>
   <!-- Skip to Navigation -->
-  <div class="skiptonav"><a href="#left-hand-navigation" accesskey="2"><img src="/static/images/trans.gif" id="skiptonav" alt="skip to navigation" border="0" /></a></div>
-  <div class="skiptonav"><a href="#content-body" accesskey="3"><img src="/static/images/trans.gif" id="skiptocontent" alt="skip to content" border="0" /></a></div>
+  <div class="skiptonav"><a href="#left-hand-navigation" accesskey="2"><img src="/static/images/trans.gif" id="skiptonav" alt="skip to navigation" border="0" width="1" height="1" /></a></div>
+  <div class="skiptonav"><a href="#content-body" accesskey="3"><img src="/static/images/trans.gif" id="skiptocontent" alt="skip to content" border="0" width="1" height="1" /></a></div>
 
   <div id="content-body">
-    <div id="body-main">
+    <main id="body-main">
 
 <h1 class="pageheading">{{ planet.name }}</h1>
 
@@ -992,7 +994,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
 {% endfor %}
 
 
-    </div>
+    </main>
   </div>
 
   <div id="left-hand-navigation">
@@ -1020,13 +1022,14 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
 </body>
 </html>
 """,
-        "search.html": """<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+        "search.html": """<!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
 <head>
   <meta http-equiv="content-type" content="text/html; charset=utf-8" />
   <title>Search Results - {{ planet.name }}</title>
   <link rel="stylesheet" type="text/css" href="/static/style.css" />
   <meta name="generator" content="PlanetCF" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" href="/static/favicon.ico" sizes="32x32" />
 </head>
 
@@ -1037,11 +1040,11 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
 src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'homepage' }}" border="0" /></a>
   </h1>
   <!-- Skip to Navigation -->
-  <div class="skiptonav"><a href="#left-hand-navigation" accesskey="2"><img src="/static/images/trans.gif" id="skiptonav" alt="skip to navigation" border="0" /></a></div>
-  <div class="skiptonav"><a href="#content-body" accesskey="3"><img src="/static/images/trans.gif" id="skiptocontent" alt="skip to content" border="0" /></a></div>
+  <div class="skiptonav"><a href="#left-hand-navigation" accesskey="2"><img src="/static/images/trans.gif" id="skiptonav" alt="skip to navigation" border="0" width="1" height="1" /></a></div>
+  <div class="skiptonav"><a href="#content-body" accesskey="3"><img src="/static/images/trans.gif" id="skiptocontent" alt="skip to content" border="0" width="1" height="1" /></a></div>
 
   <div id="content-body">
-    <div id="body-main">
+    <main id="body-main">
 
 <h1 class="pageheading">Search Results</h1>
 
@@ -1068,7 +1071,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
 {% endif %}
 {% endif %}
 
-    </div>
+    </main>
   </div>
 
   <div id="left-hand-navigation">
@@ -1095,7 +1098,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
     "planet-mozilla": {
         "index.html": """<?xml version="1.0"?>
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
 <head>
     <title>{{ planet.name }}</title>
     <meta charset="utf-8"/>
@@ -1131,7 +1134,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
         </div>
     </div>
     <div class="main-container">
-        <div class="main-content">
+        <main class="main-content">
 {% for date, day_entries in entries_by_date.items() %}
             <h2><time datetime="{{ date }}">{{ date_labels[date] }}</time></h2>
 {% for entry in day_entries %}
@@ -1146,7 +1149,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
 {% else %}
             <p>No entries yet.</p>
 {% endfor %}
-        </div>
+        </main>
         <div class="sidebar-content">
             <div class="disclaimer">
                 <h2>{{ planet.name }}</h2>
@@ -1191,7 +1194,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
                 <h2>Subscriptions</h2>
                 <ul class="subscriptions">
 {% for feed in feeds %}
-                    <li><a title="subscribe" href="{{ feed.url }}"><img src="/static/img/feed-icon-10x10.png" alt="(feed)"/></a> <a href="{{ feed.site_url or feed.url or '#' }}" title="{{ feed.title }}">{{ feed.title or 'Untitled' }}</a></li>
+                    <li><a title="subscribe" href="{{ feed.url }}"><img src="/static/img/feed-icon-10x10.png" alt="(feed)" width="10" height="10"/></a> <a href="{{ feed.site_url or feed.url or '#' }}" title="{{ feed.title }}">{{ feed.title or 'Untitled' }}</a></li>
 {% else %}
                     <li>No feeds configured</li>
 {% endfor %}
@@ -1210,7 +1213,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
 """,
         "titles.html": """<?xml version="1.0"?>
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
 <head>
     <title>{{ planet.name }} - Titles Only</title>
     <meta charset="utf-8"/>
@@ -1236,7 +1239,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
         </div>
     </div>
     <div class="main-container">
-        <div class="main-content">
+        <main class="main-content">
             <p><a href="/">View full content</a></p>
 {% for date, day_entries in entries_by_date.items() %}
             <h2><time datetime="{{ date }}">{{ date_labels[date] }}</time></h2>
@@ -1249,7 +1252,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
 {% else %}
             <p>No entries yet.</p>
 {% endfor %}
-        </div>
+        </main>
         <div class="sidebar-content">
             <div class="feeds">
                 <h2>Subscribe to Planet</h2>
@@ -1285,7 +1288,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
 """,
         "search.html": """<?xml version="1.0"?>
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
 <head>
     <title>Search Results - {{ planet.name }}</title>
     <meta charset="utf-8"/>
@@ -1310,7 +1313,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
         </div>
     </div>
     <div class="main-container">
-        <div class="main-content">
+        <main class="main-content">
             <h2>Search Results</h2>
 {% if error %}
             <div class="search-error">
@@ -1332,7 +1335,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
             <p>No results found for "{{ query }}"</p>
 {% endif %}
 {% endif %}
-        </div>
+        </main>
         <div class="sidebar-content">
             <div class="main">
                 <div id="sidebar">

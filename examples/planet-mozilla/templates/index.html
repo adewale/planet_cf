@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
 <head>
     <title>{{ planet.name }}</title>
     <meta charset="utf-8"/>
@@ -36,7 +36,7 @@
         </div>
     </div>
     <div class="main-container">
-        <div class="main-content">
+        <main class="main-content">
 {% for date, day_entries in entries_by_date.items() %}
             <h2><time datetime="{{ date }}">{{ date_labels[date] }}</time></h2>
 {% for entry in day_entries %}
@@ -51,7 +51,7 @@
 {% else %}
             <p>No entries yet.</p>
 {% endfor %}
-        </div>
+        </main>
         <div class="sidebar-content">
             <div class="disclaimer">
                 <h2>{{ planet.name }}</h2>
@@ -96,7 +96,7 @@
                 <h2>Subscriptions</h2>
                 <ul class="subscriptions">
 {% for feed in feeds %}
-                    <li><a title="subscribe" href="{{ feed.url }}"><img src="/static/img/feed-icon-10x10.png" alt="(feed)"/></a> <a href="{{ feed.site_url or feed.url or '#' }}" title="{{ feed.title }}">{{ feed.title or 'Untitled' }}</a></li>
+                    <li><a title="subscribe" href="{{ feed.url }}"><img src="/static/img/feed-icon-10x10.png" alt="(feed)" width="10" height="10"/></a> <a href="{{ feed.site_url or feed.url or '#' }}" title="{{ feed.title }}">{{ feed.title or 'Untitled' }}</a></li>
 {% else %}
                     <li>No feeds configured</li>
 {% endfor %}

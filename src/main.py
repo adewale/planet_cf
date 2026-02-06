@@ -484,6 +484,16 @@ class Default(WorkerEntrypoint):
                 sched_event.retention_days = retention_stats.get("retention_days", 0)
                 sched_event.retention_max_per_feed = retention_stats.get("max_per_feed", 0)
 
+                # Pre-warm edge cache for main pages so the next visitor gets a cache hit
+                try:
+                    base_url = (getattr(self.env, "PLANET_URL", None) or "").rstrip("/")
+                    if base_url:
+                        warm_headers = {"User-Agent": USER_AGENT}
+                        for path in ("/", "/titles", "/feed.atom", "/feed.rss"):
+                            await safe_http_fetch(f"{base_url}{path}", headers=warm_headers)
+                except Exception:
+                    _log_op("cache_prewarm_failed")
+
                 sched_event.outcome = "success"
 
             except Exception as e:

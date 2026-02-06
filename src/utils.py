@@ -198,7 +198,7 @@ DEFAULT_CSP = (
 
 def _build_cache_control(max_age: int) -> str:
     """Build Cache-Control header value with stale-while-revalidate."""
-    return f"public, max-age={max_age}, stale-while-revalidate=60"
+    return f"public, max-age={max_age}, stale-while-revalidate=3600"
 
 
 def html_response(content: str, cache_max_age: int = 3600) -> Response:

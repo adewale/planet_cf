@@ -8,6 +8,7 @@ import pytest
 from freezegun import freeze_time
 
 from src.models import (
+    BleachSanitizer,
     Err,
     FeedId,
     FeedJob,
@@ -276,3 +277,50 @@ class TestFetchError:
         """PARSE_ERROR is neither permanent nor transient."""
         assert not FetchError.PARSE_ERROR.is_permanent()
         assert not FetchError.PARSE_ERROR.is_transient()
+
+
+class TestBleachSanitizer:
+    """Tests for BleachSanitizer HTML sanitization."""
+
+    def setup_method(self):
+        """Create a sanitizer instance for each test."""
+        self.sanitizer = BleachSanitizer()
+
+    def test_strips_href_with_javascript_in_url_path(self):
+        """Links with javascript: in the URL path have their href removed."""
+        html = '<a href="https://example.com/path/javascript:void(0);">click</a>'
+        result = self.sanitizer.clean(html)
+        assert "javascript:" not in result
+        assert "click" in result
+        assert "href" not in result
+
+    def test_strips_href_with_javascript_as_protocol(self):
+        """Links with javascript: as protocol have their href removed."""
+        html = '<a href="javascript:void(0)">click</a>'
+        result = self.sanitizer.clean(html)
+        assert "javascript:" not in result
+        assert "click" in result
+
+    def test_preserves_normal_https_links(self):
+        """Normal https links are preserved unchanged."""
+        html = '<a href="https://example.com/page">click</a>'
+        result = self.sanitizer.clean(html)
+        assert 'href="https://example.com/page"' in result
+        assert "click" in result
+
+    def test_strips_javascript_href_case_insensitive(self):
+        """javascript: detection is case-insensitive."""
+        html = '<a href="https://example.com/JavaScript:void(0);">click</a>'
+        result = self.sanitizer.clean(html)
+        assert "JavaScript:" not in result
+        assert "javascript:" not in result.lower()
+        assert "click" in result
+        assert "href" not in result
+
+    def test_preserves_link_text_after_stripping(self):
+        """Link text is preserved when href is stripped."""
+        html = '<a href="https://example.com/javascript:alert(1)">important text</a>'
+        result = self.sanitizer.clean(html)
+        assert "important text" in result
+        assert "<a" in result
+        assert "</a>" in result

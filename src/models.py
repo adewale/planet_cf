@@ -338,6 +338,15 @@ class BleachSanitizer:
             flags=re.IGNORECASE,
         )
 
+        # Strip href from links containing javascript: anywhere in the URL
+        # (e.g., href="https://example.com/javascript:void(0);")
+        cleaned = re.sub(
+            r'\s*href="[^"]*javascript:[^"]*"',
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+
         # Add loading="lazy" to images and ensure alt exists
         def add_img_attrs(match: re.Match[str]) -> str:
             tag = match.group(0)

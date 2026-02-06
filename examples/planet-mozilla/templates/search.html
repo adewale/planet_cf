@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
 <head>
     <title>Search Results - {{ planet.name }}</title>
     <meta charset="utf-8"/>
@@ -25,7 +25,7 @@
         </div>
     </div>
     <div class="main-container">
-        <div class="main-content">
+        <main class="main-content">
             <h2>Search Results</h2>
 {% if error %}
             <div class="search-error">
@@ -47,7 +47,7 @@
             <p>No results found for "{{ query }}"</p>
 {% endif %}
 {% endif %}
-        </div>
+        </main>
         <div class="sidebar-content">
             <div class="main">
                 <div id="sidebar">

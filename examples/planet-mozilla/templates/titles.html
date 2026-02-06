@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
 <head>
     <title>{{ planet.name }} - Titles Only</title>
     <meta charset="utf-8"/>
@@ -26,7 +26,7 @@
         </div>
     </div>
     <div class="main-container">
-        <div class="main-content">
+        <main class="main-content">
             <p><a href="/">View full content</a></p>
 {% for date, day_entries in entries_by_date.items() %}
             <h2><time datetime="{{ date }}">{{ date_labels[date] }}</time></h2>
@@ -39,7 +39,7 @@
 {% else %}
             <p>No entries yet.</p>
 {% endfor %}
-        </div>
+        </main>
         <div class="sidebar-content">
             <div class="feeds">
                 <h2>Subscribe to Planet</h2>

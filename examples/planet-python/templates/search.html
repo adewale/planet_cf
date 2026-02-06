@@ -1,10 +1,11 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
 <head>
   <meta http-equiv="content-type" content="text/html; charset=utf-8" />
   <title>Search Results - {{ planet.name }}</title>
   <link rel="stylesheet" type="text/css" href="/static/style.css" />
   <meta name="generator" content="PlanetCF" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" href="/static/favicon.ico" sizes="32x32" />
 </head>
 
@@ -15,11 +16,11 @@
 src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'homepage' }}" border="0" /></a>
   </h1>
   <!-- Skip to Navigation -->
-  <div class="skiptonav"><a href="#left-hand-navigation" accesskey="2"><img src="/static/images/trans.gif" id="skiptonav" alt="skip to navigation" border="0" /></a></div>
-  <div class="skiptonav"><a href="#content-body" accesskey="3"><img src="/static/images/trans.gif" id="skiptocontent" alt="skip to content" border="0" /></a></div>
+  <div class="skiptonav"><a href="#left-hand-navigation" accesskey="2"><img src="/static/images/trans.gif" id="skiptonav" alt="skip to navigation" border="0" width="1" height="1" /></a></div>
+  <div class="skiptonav"><a href="#content-body" accesskey="3"><img src="/static/images/trans.gif" id="skiptocontent" alt="skip to content" border="0" width="1" height="1" /></a></div>
 
   <div id="content-body">
-    <div id="body-main">
+    <main id="body-main">
 
 <h1 class="pageheading">Search Results</h1>
 
@@ -46,7 +47,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
 {% endif %}
 {% endif %}
 
-    </div>
+    </main>
   </div>
 
   <div id="left-hand-navigation">
