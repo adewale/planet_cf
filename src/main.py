@@ -77,6 +77,7 @@ from templates import (
     TEMPLATE_FEED_ATOM,
     TEMPLATE_FEED_HEALTH,
     TEMPLATE_FEED_RSS,
+    TEMPLATE_FEED_RSS10,
     TEMPLATE_FEEDS_OPML,
     TEMPLATE_INDEX,
     TEMPLATE_SEARCH,
@@ -1238,6 +1239,7 @@ class Default(WorkerEntrypoint):
                 ),
                 Route(path="/feed.atom", content_type="atom", cacheable=True),
                 Route(path="/feed.rss", content_type="rss", cacheable=True),
+                Route(path="/feed.rss10", content_type="rss10", cacheable=True),
                 Route(path="/feeds.opml", content_type="opml", cacheable=True),
                 Route(
                     path="/search", content_type="search", cacheable=False, lite_mode_disabled=True
@@ -1385,6 +1387,8 @@ class Default(WorkerEntrypoint):
             return await self._serve_atom()
         elif route_path == "/feed.rss":
             return await self._serve_rss()
+        elif route_path == "/feed.rss10":
+            return await self._serve_rss10()
         elif route_path == "/feeds.opml":
             return await self._export_opml()
         elif route_path == "/search":
@@ -1624,6 +1628,7 @@ class Default(WorkerEntrypoint):
         feed_links: dict[str, str] = {
             "atom": "/feed.atom",
             "rss": "/feed.rss",
+            "rss10": "/feed.rss10",
             "opml": "/feeds.opml",
         }
         # Only include sidebar links for themes that use them
@@ -1774,6 +1779,13 @@ class Default(WorkerEntrypoint):
         rss = self._generate_rss_feed(planet, entries)
         return _feed_response(rss, "application/rss+xml")
 
+    async def _serve_rss10(self) -> Response:
+        """Generate and serve RSS 1.0 (RDF) feed on-demand."""
+        entries = await self._get_recent_entries(50)
+        planet = self._get_planet_config()
+        rss10 = self._generate_rss10_feed(planet, entries)
+        return _feed_response(rss10, "application/rdf+xml")
+
     async def _get_recent_entries(self, limit: int) -> list[dict[str, Any]]:
         """Query recent entries for feeds."""
         result = (
@@ -1915,6 +1927,31 @@ class Default(WorkerEntrypoint):
             planet=planet,
             entries=template_entries,
             last_build_date=datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000"),
+        )
+
+    def _generate_rss10_feed(self, planet: dict[str, str], entries: list[dict[str, Any]]) -> str:
+        """Generate RSS 1.0 (RDF) feed XML using template."""
+        # RSS 1.0 uses dc:date (ISO 8601) and truncated descriptions
+        # Strip illegal XML control characters as defense-in-depth for existing data
+        max_desc_chars = 500
+        template_entries = [
+            {
+                "title": strip_xml_control_chars(e.get("title", "")),
+                "url": e.get("url", ""),
+                "published_at_iso": e.get("published_at", ""),
+                "author": strip_xml_control_chars(e.get("author", e.get("feed_title", ""))),
+                # Truncate content for RSS 1.0 descriptions, escape CDATA boundary
+                "content_truncated": strip_xml_control_chars(
+                    e.get("content", "")[:max_desc_chars]
+                ).replace("]]>", "]]]]><![CDATA[>"),
+            }
+            for e in entries
+        ]
+        return render_template(
+            TEMPLATE_FEED_RSS10,
+            theme=self._get_theme(),
+            planet=planet,
+            entries=template_entries,
         )
 
     async def _export_opml(self) -> Response:

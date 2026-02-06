@@ -2297,6 +2297,7 @@ KEYBOARD_NAV_JS = """// Keyboard navigation for browsing entries
 # Admin JavaScript (for Workers environment)
 # =============================================================================
 
+
 ADMIN_JS = """
 // Admin dashboard functionality
 

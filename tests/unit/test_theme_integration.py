@@ -43,6 +43,7 @@ class TestThemeTemplatesGenerated:
         assert "_shared" in _EMBEDDED_TEMPLATES
         assert "feed.atom.xml" in _EMBEDDED_TEMPLATES["_shared"]
         assert "feed.rss.xml" in _EMBEDDED_TEMPLATES["_shared"]
+        assert "feed.rss10.xml" in _EMBEDDED_TEMPLATES["_shared"]
         assert "feeds.opml" in _EMBEDDED_TEMPLATES["_shared"]
 
     def test_each_theme_has_required_templates(self):

@@ -300,6 +300,7 @@ class TestCreateDefaultRoutes:
         assert "/search" in paths
         assert "/feed.atom" in paths
         assert "/feed.rss" in paths
+        assert "/feed.rss10" in paths
         assert "/feeds.opml" in paths
 
     def test_creates_auth_routes(self):

@@ -213,14 +213,33 @@ npx wrangler d1 execute planetcf --local --file=migrations/001_initial.sql
 ### Run Tests
 
 ```bash
-uv run pytest tests/ -v
+uv run pytest tests/unit tests/integration -x -q
 ```
 
-### Lint
+### Lint and Type Check
 
 ```bash
-uvx ruff check src/
+uvx ruff check .              # Lint
+uvx ruff format --check .     # Format check
+uvx ty check src/              # Type check
+uvx vulture src/ vulture_whitelist.py  # Dead code detection
 ```
+
+## Scripts
+
+| Script | Description |
+|--------|-------------|
+| `build_templates.py` | Compile HTML/CSS templates into `src/templates.py` (required after editing templates) |
+| `create_instance.py` | Provision a new Planet instance with all Cloudflare resources |
+| `deploy_instance.sh` | Deploy an instance to Cloudflare (D1, Vectorize, Queues, secrets, migrations) |
+| `validate_deployment_ready.py` | Pre-deploy check for common issues (missing files, config errors) |
+| `verify_deployment.py` | Post-deploy smoke tests (HTTP status, content type, feed validity) |
+| `convert_planet.py` | Convert a Planet/Venus site into a PlanetCF instance |
+| `seed_feeds_from_opml.py` | Import feeds from an OPML file into a D1 database |
+| `seed_admins.py` | Seed admin users from `config/admins.json` into D1 |
+| `seed_test_data.py` | Seed test fixtures into a test-planet D1 database |
+| `setup_test_planet.sh` | Set up the test-planet instance for E2E testing |
+| `visual_compare.py` | Screenshot comparison between PlanetCF instances and original sites |
 
 ## Examples and Multi-Instance Deployment
 

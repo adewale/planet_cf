@@ -7,6 +7,8 @@ These tests ensure that:
 2. Public endpoints return appropriate content types (HTML vs JSON)
 3. Error responses are user-friendly for browser-based requests
 4. JSON response shapes match what admin JavaScript expects (C1 prevention)
+5. Every registered route has a corresponding handler in _dispatch_route
+6. Every TEMPLATE_FEED_* constant is wired up to a route
 """
 
 import inspect
@@ -381,3 +383,60 @@ class TestJSONResponseContracts:
             f"Either add these to the expected_properties set (if intentional) "
             f"or fix the JS/backend mismatch."
         )
+
+
+# =============================================================================
+# Route-Handler Coverage Tests
+# =============================================================================
+
+
+class TestRouteHandlerCoverage:
+    """Verify every registered route has a corresponding handler in _dispatch_route.
+
+    This test class prevents the class of bug where a route is defined in
+    create_default_routes() but never wired to a handler in _dispatch_route(),
+    or where a TEMPLATE_FEED_* constant is defined but never used.
+    """
+
+    def test_all_routes_have_dispatch_handlers(self):
+        """Every route path in create_default_routes() must appear in _dispatch_route().
+
+        This would have caught the missing RSS 1.0 route handler: the route
+        existed in create_default_routes() but _dispatch_route() had no case for it.
+        """
+        from main import Default
+        from route_dispatcher import create_default_routes
+
+        routes = create_default_routes()
+        dispatch_source = inspect.getsource(Default._dispatch_route)
+
+        for route in routes:
+            path = route.path
+            # Prefix routes (like /admin, /static/) are matched by startswith,
+            # so we just check the path string appears in the source
+            assert f'"{path}"' in dispatch_source or f"'{path}'" in dispatch_source, (
+                f"Route '{path}' is registered in create_default_routes() but has no "
+                f"handler case in _dispatch_route(). Add an elif branch for it."
+            )
+
+    def test_all_feed_template_constants_are_used_in_main(self):
+        """Every TEMPLATE_FEED_* constant should be referenced in main.py.
+
+        This catches dead template constants that are defined in templates.py
+        but never imported or used in main.py, indicating a missing feature.
+        """
+        import importlib
+
+        import templates
+
+        # Find all TEMPLATE_FEED_* constants
+        feed_constants = [name for name in dir(templates) if name.startswith("TEMPLATE_FEED_")]
+
+        main_module = importlib.import_module("main")
+        main_source = inspect.getsource(main_module)
+
+        for const_name in feed_constants:
+            assert const_name in main_source, (
+                f"Template constant '{const_name}' from templates.py is not used in "
+                f"main.py. Either wire it up to a route handler or remove it."
+            )

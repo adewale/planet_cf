@@ -245,6 +245,7 @@ def create_default_routes() -> list[Route]:
         Route(path="/titles.html", content_type="html", cacheable=True),
         Route(path="/feed.atom", content_type="atom", cacheable=True),
         Route(path="/feed.rss", content_type="rss", cacheable=True),
+        Route(path="/feed.rss10", content_type="rss10", cacheable=True),
         Route(path="/feeds.opml", content_type="opml", cacheable=True),
         Route(path="/search", content_type="search", cacheable=False, lite_mode_disabled=True),
         Route(

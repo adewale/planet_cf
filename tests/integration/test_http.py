@@ -98,6 +98,22 @@ async def test_http_serves_rss_feed(mock_env_with_entries):
 
 
 @pytest.mark.asyncio
+async def test_http_serves_rss10_feed(mock_env_with_entries):
+    """HTTP handler should return RSS 1.0 (RDF) feed for /feed.rss10 route."""
+    from src.main import PlanetCF
+
+    worker = PlanetCF()
+    worker.env = mock_env_with_entries
+
+    request = MockRequest("https://planetcf.com/feed.rss10")
+
+    response = await worker.fetch(request)
+
+    assert response.status == 200
+    assert "application/rdf+xml" in response.headers.get("Content-Type", "")
+
+
+@pytest.mark.asyncio
 async def test_http_serves_opml_export(mock_env_with_feeds):
     """HTTP handler should return OPML for /feeds.opml route."""
     from src.main import PlanetCF
@@ -137,7 +153,7 @@ async def test_http_cache_control_headers(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    routes = ["/", "/feed.atom", "/feed.rss"]
+    routes = ["/", "/feed.atom", "/feed.rss", "/feed.rss10"]
 
     for route in routes:
         request = MockRequest(f"https://planetcf.com{route}")

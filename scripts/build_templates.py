@@ -267,6 +267,7 @@ KEYBOARD_NAV_JS = """'''
 # Admin JavaScript (for Workers environment)
 # =============================================================================
 
+
 ADMIN_JS = """
 // Admin dashboard functionality
 
@@ -444,6 +445,7 @@ function rebuildSearchIndex() {
 # Template Loader and Environment
 # =============================================================================
 
+
 class EmbeddedLoader(BaseLoader):
     """Jinja2 loader that loads templates from embedded strings with theme fallback."""
 
@@ -470,7 +472,11 @@ class EmbeddedLoader(BaseLoader):
             return source, f"{self.theme}/{template}", lambda: True
 
         # Fall back to default theme
-        if self.theme != "default" and "default" in _EMBEDDED_TEMPLATES and template in _EMBEDDED_TEMPLATES["default"]:
+        if (
+            self.theme != "default"
+            and "default" in _EMBEDDED_TEMPLATES
+            and template in _EMBEDDED_TEMPLATES["default"]
+        ):
             source = _EMBEDDED_TEMPLATES["default"][template]
             return source, f"default/{template}", lambda: True
 
