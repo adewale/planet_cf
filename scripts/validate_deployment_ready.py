@@ -146,6 +146,44 @@ def check_main_uses_theme() -> list[str]:
     return errors
 
 
+def check_theme_css_coverage() -> list[str]:
+    """Check that THEME_CSS has entries for all non-default themes in wrangler configs."""
+    errors = []
+    templates_py = PROJECT_ROOT / "src" / "templates.py"
+    examples_dir = PROJECT_ROOT / "examples"
+
+    if not templates_py.exists():
+        return ["templates.py not found - cannot verify THEME_CSS"]
+
+    content = templates_py.read_text()
+
+    # Extract themes that have THEME_CSS entries
+    css_themes: set[str] = set()
+    if "THEME_CSS" in content:
+        for match in re.finditer(r"THEME_CSS\s*=\s*\{(.*?)\n\}", content, re.DOTALL):
+            css_themes.update(re.findall(r'"([^"]+)":\s*"""', match.group(1)))
+
+    # Check each wrangler config's THEME value
+    for wrangler_file in examples_dir.glob("*/wrangler.jsonc"):
+        file_content = wrangler_file.read_text()
+        content_no_comments = re.sub(r"//.*$", "", file_content, flags=re.MULTILINE)
+
+        try:
+            config = json.loads(content_no_comments)
+        except json.JSONDecodeError:
+            continue
+
+        theme = config.get("vars", {}).get("THEME")
+        if theme and theme != "default" and theme not in css_themes:
+            errors.append(
+                f"{wrangler_file.relative_to(PROJECT_ROOT)}: "
+                f"THEME '{theme}' has no THEME_CSS entry in templates.py. "
+                "Run 'python scripts/build_templates.py' to regenerate."
+            )
+
+    return errors
+
+
 def check_example_symlinks() -> list[str]:
     """Check that example directories have python_modules symlinks."""
     errors = []
@@ -182,6 +220,7 @@ def main():
         ("Wrangler theme configs", check_wrangler_themes),
         ("Main.py theme integration", check_main_uses_theme),
         ("Example symlinks", check_example_symlinks),
+        ("Theme CSS coverage", check_theme_css_coverage),
     ]
 
     for name, check_fn in checks:

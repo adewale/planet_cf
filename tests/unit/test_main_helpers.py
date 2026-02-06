@@ -863,3 +863,60 @@ class TestFeedLinksConditionalSidebarRss:
 
         assert "planet-cloudflare" in _THEMES_HIDE_SIDEBAR_LINKS
         assert isinstance(_THEMES_HIDE_SIDEBAR_LINKS, frozenset)
+
+
+class TestFeedLinksConditionalRss10:
+    """Tests for conditional feed_links.rss10 based on theme."""
+
+    def test_planet_mozilla_includes_rss10(self):
+        """For planet-mozilla theme, feed_links should contain rss10."""
+        from src.main import _THEMES_WITH_RSS10
+
+        theme = "planet-mozilla"
+        feed_links: dict[str, str] = {
+            "atom": "/feed.atom",
+            "rss": "/feed.rss",
+            "opml": "/feeds.opml",
+        }
+        if theme in _THEMES_WITH_RSS10:
+            feed_links["rss10"] = "/feed.rss10"
+
+        assert "rss10" in feed_links
+        assert feed_links["rss10"] == "/feed.rss10"
+
+    def test_default_theme_excludes_rss10(self):
+        """For default theme, feed_links should NOT contain rss10."""
+        from src.main import _THEMES_WITH_RSS10
+
+        theme = "default"
+        feed_links: dict[str, str] = {
+            "atom": "/feed.atom",
+            "rss": "/feed.rss",
+            "opml": "/feeds.opml",
+        }
+        if theme in _THEMES_WITH_RSS10:
+            feed_links["rss10"] = "/feed.rss10"
+
+        assert "rss10" not in feed_links
+
+    def test_planet_cloudflare_excludes_rss10(self):
+        """For planet-cloudflare theme, feed_links should NOT contain rss10."""
+        from src.main import _THEMES_WITH_RSS10
+
+        theme = "planet-cloudflare"
+        feed_links: dict[str, str] = {
+            "atom": "/feed.atom",
+            "rss": "/feed.rss",
+            "opml": "/feeds.opml",
+        }
+        if theme in _THEMES_WITH_RSS10:
+            feed_links["rss10"] = "/feed.rss10"
+
+        assert "rss10" not in feed_links
+
+    def test_themes_with_rss10_is_frozenset(self):
+        """The _THEMES_WITH_RSS10 constant is a frozenset containing planet-mozilla."""
+        from src.main import _THEMES_WITH_RSS10
+
+        assert isinstance(_THEMES_WITH_RSS10, frozenset)
+        assert "planet-mozilla" in _THEMES_WITH_RSS10

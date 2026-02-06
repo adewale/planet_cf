@@ -367,6 +367,20 @@ The external JavaScript uses:
 - `addEventListener()` in `DOMContentLoaded` for initialization
 - `escapeHtml()` for all dynamic content to prevent XSS
 
+### Per-Theme Feed Format Configuration
+
+Feed formats are controlled by theme-based frozensets in `src/main.py`:
+
+| Frozenset | Controls | Themes |
+|-----------|----------|--------|
+| `_THEMES_HIDE_SIDEBAR_LINKS` | Hides RSS/titles-only sidebar links | `planet-cloudflare` |
+| `_THEMES_WITH_RSS10` | Enables RSS 1.0 (RDF) feed link | `planet-mozilla` |
+
+RSS 2.0, Atom, and OPML are available for all instances. RSS 1.0 is only linked in templates
+for themes in `_THEMES_WITH_RSS10`. All feed routes (`/feed.rss`, `/feed.atom`, `/feeds.opml`,
+`/feed.rss10`) are registered universally — the frozensets control what appears in `feed_links`
+(and thus in the rendered HTML), not whether the route exists.
+
 ### Static File Serving
 
 Static files are served from `/static/*` routes:

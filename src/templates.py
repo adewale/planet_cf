@@ -1179,6 +1179,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
                     <li><a href="https://planet.mozilla.org/ateam/">Planet Automation</a></li>
                     <li><a href="https://planet.mozilla.org/research/">Mozilla Research</a></li>
                 </ul>
+                {% if not is_lite_mode %}
                 <div id="sidebar">
                     <h2>Search</h2>
                     <form action="/search" method="GET">
@@ -1186,6 +1187,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
                         <button type="submit">Search</button>
                     </form>
                 </div>
+                {% endif %}
                 <h2>Subscriptions</h2>
                 <ul class="subscriptions">
 {% for feed in feeds %}

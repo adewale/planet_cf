@@ -207,6 +207,9 @@ _sanitizer = BleachSanitizer()
 # Themes that hide sidebar feed links (RSS, titles only) from the template
 _THEMES_HIDE_SIDEBAR_LINKS: frozenset[str] = frozenset({"planet-cloudflare"})
 
+# Themes that enable RSS 1.0 (RDF) feed format
+_THEMES_WITH_RSS10: frozenset[str] = frozenset({"planet-mozilla"})
+
 # Cloud metadata endpoints to block (SSRF protection)
 BLOCKED_METADATA_IPS = {
     "169.254.169.254",  # AWS/GCP/Azure metadata
@@ -1628,9 +1631,11 @@ class Default(WorkerEntrypoint):
         feed_links: dict[str, str] = {
             "atom": "/feed.atom",
             "rss": "/feed.rss",
-            "rss10": "/feed.rss10",
             "opml": "/feeds.opml",
         }
+        # Only include RSS 1.0 for themes that use it
+        if theme in _THEMES_WITH_RSS10:
+            feed_links["rss10"] = "/feed.rss10"
         # Only include sidebar links for themes that use them
         if theme not in _THEMES_HIDE_SIDEBAR_LINKS:
             feed_links["sidebar_rss"] = "/feed.rss"

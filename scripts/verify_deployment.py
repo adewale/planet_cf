@@ -7,6 +7,12 @@ This script performs post-deployment smoke tests to catch issues like:
 - Missing CSS/assets
 - Broken layouts
 - Missing required HTML elements
+- Broken feed endpoints (RSS, Atom, OPML, RSS 1.0)
+- Missing titles page or search functionality
+
+Feed verification is discovery-based: the script parses the homepage HTML
+to find which feeds/pages the instance advertises, then verifies each one.
+RSS 2.0 and Atom are always checked as a fallback.
 
 Usage:
     # Verify a single site
@@ -33,6 +39,14 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
+# Feed types and their expected content signatures
+FEED_VALIDATORS: dict[str, tuple[str, str]] = {
+    "atom": ("Atom", "<feed"),
+    "rss": ("RSS 2.0", "<rss"),
+    "rss10": ("RSS 1.0", "rdf:RDF"),
+    "opml": ("OPML", "<opml"),
+}
+
 
 def fetch_url(url: str, timeout: int = 30) -> tuple[int, str, dict]:
     """Fetch a URL and return (status_code, body, headers)."""
@@ -49,6 +63,52 @@ def fetch_url(url: str, timeout: int = 30) -> tuple[int, str, dict]:
         return 0, str(e.reason), {}
     except Exception as e:
         return 0, str(e), {}
+
+
+def discover_endpoints(html: str) -> dict[str, str]:
+    """Discover feed and page endpoints from homepage HTML.
+
+    Parses <link rel="alternate"> tags, sidebar links, and page structure
+    to find which feeds/pages the instance advertises.
+
+    Returns:
+        Dict mapping endpoint type to path, e.g.:
+        {"atom": "/feed.atom", "rss": "/feed.rss", "opml": "/feeds.opml"}
+    """
+    endpoints: dict[str, str] = {}
+
+    # Discover <link rel="alternate"> feeds (in <head>)
+    # Match both orderings: rel before href, and href before rel
+    for match in re.finditer(
+        r"<link[^>]*(?:rel=[\"']alternate[\"'])[^>]*href=[\"']([^\"']+)[\"'][^>]*>",
+        html,
+        re.IGNORECASE,
+    ):
+        href = match.group(1)
+        tag = match.group(0)
+        if "atom+xml" in tag:
+            endpoints["atom"] = href
+        elif "rss+xml" in tag:
+            endpoints["rss"] = href
+
+    # Discover OPML link
+    opml_match = re.search(r'href=["\']([^"\']*opml[^"\']*)["\']', html, re.IGNORECASE)
+    if opml_match:
+        endpoints["opml"] = opml_match.group(1)
+
+    # Discover RSS 1.0 link (planet-mozilla style)
+    if 'href="/feed.rss10"' in html:
+        endpoints["rss10"] = "/feed.rss10"
+
+    # Discover titles page
+    if 'href="/titles"' in html or 'href="/titles.html"' in html:
+        endpoints["titles"] = "/titles"
+
+    # Discover search (present in non-lite mode)
+    if 'action="/search"' in html or 'href="/search"' in html:
+        endpoints["search"] = "/search"
+
+    return endpoints
 
 
 def verify_site(base_url: str) -> tuple[bool, list[str]]:
@@ -70,7 +130,6 @@ def verify_site(base_url: str) -> tuple[bool, list[str]]:
     if status != 200:
         errors.append(f"Homepage returned HTTP {status} (expected 200)")
         if "Error" in body or "error" in body.lower():
-            # Extract error message
             error_match = re.search(r"(UndefinedError|TemplateError|Error)[^<]*", body)
             if error_match:
                 errors.append(f"Error detected: {error_match.group(0)[:100]}")
@@ -86,29 +145,22 @@ def verify_site(base_url: str) -> tuple[bool, list[str]]:
         if element not in body:
             errors.append(error_msg)
 
-    # Check for stylesheet (could be /static/style.css or /static/styles/*.css)
     if 'rel="stylesheet"' not in body and "rel='stylesheet'" not in body:
         errors.append("Missing CSS stylesheet link")
 
     # 3. Check for template errors in the HTML
-    # Check for obvious error messages
     if "UndefinedError" in body:
         errors.append("Jinja2 UndefinedError in rendered page")
     if "TemplateNotFound" in body:
         errors.append("Template not found error")
 
-    # Check for unrendered Jinja2 tags (but not in script blocks or CSS)
-    # Look for patterns like {{ variable }} that aren't in script/style tags
-    # Simple heuristic: count occurrences outside of obvious safe contexts
-    # Remove script and style blocks for this check
+    # Check for unrendered Jinja2 tags (outside script/style blocks)
     body_no_scripts = re.sub(
         r"<script[^>]*>.*?</script>", "", body, flags=re.DOTALL | re.IGNORECASE
     )
     body_no_scripts = re.sub(
         r"<style[^>]*>.*?</style>", "", body_no_scripts, flags=re.DOTALL | re.IGNORECASE
     )
-
-    # Now check for unrendered template tags
     if re.search(r"\{\{\s*\w+", body_no_scripts):
         errors.append("Possible unrendered Jinja2 template tag ({{ variable }})")
     if re.search(r"\{%\s*(if|for|block|extends|include|macro)", body_no_scripts):
@@ -120,32 +172,65 @@ def verify_site(base_url: str) -> tuple[bool, list[str]]:
     if css_status != 200:
         errors.append(f"CSS returned HTTP {css_status} (expected 200)")
 
-    # 5. Check feeds work
-    print("  Checking RSS feed...")
-    rss_status, rss_body, _ = fetch_url(base_url + "/feed.rss")
-    if rss_status != 200:
-        errors.append(f"RSS feed returned HTTP {rss_status}")
-    elif "<rss" not in rss_body and "<feed" not in rss_body:
-        errors.append("RSS feed doesn't contain valid RSS/Atom content")
-
-    # 6. Check Atom feed
-    print("  Checking Atom feed...")
-    atom_status, atom_body, _ = fetch_url(base_url + "/feed.atom")
-    if atom_status != 200:
-        errors.append(f"Atom feed returned HTTP {atom_status}")
-    elif "<feed" not in atom_body:
-        errors.append("Atom feed doesn't contain valid Atom content")
-
-    # 7. Extract and display page title
+    # 5. Extract and display page title
     title_match = re.search(r"<title>([^<]+)</title>", body)
     if title_match:
         print(f"  Page title: {title_match.group(1)}")
 
-    # 8. Check for entries (should have some content)
+    # 6. Check for entries (should have some content)
     entry_indicators = ["<article", 'class="entry"', 'class="item"', "<h2"]
     has_structure = any(indicator in body for indicator in entry_indicators)
     if not has_structure:
         errors.append("No entry/article structure found - page may be empty or broken")
+
+    # 7. Discover and verify feeds
+    discovered = discover_endpoints(body)
+    feed_types = [k for k in discovered if k in FEED_VALIDATORS]
+    print(f"  Discovered endpoints: {', '.join(sorted(discovered.keys())) or 'none'}")
+
+    for feed_type in feed_types:
+        path = discovered[feed_type]
+        label, expected_tag = FEED_VALIDATORS[feed_type]
+        print(f"  Checking {label} feed ({path})...")
+        feed_status, feed_body, _ = fetch_url(base_url + path)
+        if feed_status != 200:
+            errors.append(f"{label} feed returned HTTP {feed_status}")
+        elif expected_tag.lower() not in feed_body.lower():
+            errors.append(f"{label} feed missing expected <{expected_tag}> content")
+
+    # Fallback: always verify RSS and Atom even if not discovered
+    if "rss" not in discovered:
+        print("  Checking RSS feed (fallback)...")
+        rss_status, rss_body, _ = fetch_url(base_url + "/feed.rss")
+        if rss_status != 200:
+            errors.append(f"RSS feed returned HTTP {rss_status}")
+        elif "<rss" not in rss_body:
+            errors.append("RSS feed missing <rss> content")
+    if "atom" not in discovered:
+        print("  Checking Atom feed (fallback)...")
+        atom_status, atom_body, _ = fetch_url(base_url + "/feed.atom")
+        if atom_status != 200:
+            errors.append(f"Atom feed returned HTTP {atom_status}")
+        elif "<feed" not in atom_body:
+            errors.append("Atom feed missing <feed> content")
+
+    # 8. Check titles page if discovered
+    if "titles" in discovered:
+        print("  Checking titles page...")
+        titles_status, titles_body, _ = fetch_url(base_url + discovered["titles"])
+        if titles_status != 200:
+            errors.append(f"Titles page returned HTTP {titles_status}")
+        elif "<title>" not in titles_body:
+            errors.append("Titles page missing <title> tag")
+
+    # 9. Check search page if discovered (403/404 = lite mode, acceptable)
+    if "search" in discovered:
+        print("  Checking search endpoint...")
+        search_status, _, _ = fetch_url(base_url + "/search?q=test")
+        if search_status in (403, 404):
+            print("  Search disabled (lite mode)")
+        elif search_status != 200:
+            errors.append(f"Search returned HTTP {search_status}")
 
     if errors:
         print(f"  FAILED: {len(errors)} issue(s)")
