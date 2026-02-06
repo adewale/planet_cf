@@ -40,7 +40,7 @@ A feed aggregator built on Cloudflare Workers (Python) with D1, Queues, and Vect
 
 ## Request Flow
 
-### Public Pages (/, /feed.atom, /feed.rss)
+### Public Pages (/, /titles, /feed.atom, /feed.rss, /feed.rss10, /feeds.opml, /search)
 
 ```
 Browser Request
@@ -54,7 +54,7 @@ Browser Request
       │ (cache miss)
       ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  1. Query D1 for entries (last 90 days, max 100/feed)           │
+│  1. Query D1 for entries (last 90 days, max 50/feed)            │
 │  2. Query D1 for active feeds                                    │
 │  3. Render Jinja2 template                                       │
 │  4. Return HTML/XML with cache headers                           │
@@ -152,13 +152,15 @@ CREATE TABLE feeds (
     author_email TEXT,
     etag TEXT,
     last_modified TEXT,
-    is_active INTEGER DEFAULT 1,
-    consecutive_failures INTEGER DEFAULT 0,
     last_fetch_at TEXT,
     last_success_at TEXT,
     fetch_error TEXT,
+    fetch_error_count INTEGER DEFAULT 0,
+    consecutive_failures INTEGER DEFAULT 0,
+    is_active INTEGER DEFAULT 1,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    last_entry_at TEXT
 );
 
 -- Entries table
@@ -169,12 +171,12 @@ CREATE TABLE entries (
     url TEXT,
     title TEXT,
     author TEXT,
-    summary TEXT,
     content TEXT,
+    summary TEXT,
     published_at TEXT,
-    first_seen TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    first_seen TEXT,          -- Added by migration 003
     UNIQUE(feed_id, guid)
 );
 
@@ -183,8 +185,11 @@ CREATE TABLE admins (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     github_username TEXT UNIQUE NOT NULL,
     github_id INTEGER,
+    display_name TEXT,
+    avatar_url TEXT,
     is_active INTEGER DEFAULT 1,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    last_login_at TEXT
 );
 
 -- Audit log
@@ -505,14 +510,14 @@ messages, AI results) MUST convert through `_to_py_safe()` before use.
 
 ```
 src/
-├── templates.py         (3,700 lines) - Jinja2 templates + CSS + JS (embedded at build)
-├── main.py              (3,343 lines) - Worker entrypoint + core business logic
+├── templates.py         (3,703 lines) - Jinja2 templates + CSS + JS (embedded at build)
+├── main.py              (3,385 lines) - Worker entrypoint + core business logic
 ├── wrappers.py            (847 lines) - JS ↔ Python boundary converters
 ├── observability.py       (479 lines) - Wide events + structured logging
 ├── models.py              (362 lines) - Data models + sanitizer
 ├── oauth_handler.py       (335 lines) - GitHub OAuth flow handler
 ├── utils.py               (328 lines) - Utility functions (logging, responses, dates)
-├── route_dispatcher.py    (280 lines) - HTTP route matching + dispatch
+├── route_dispatcher.py    (281 lines) - HTTP route matching + dispatch
 ├── search_query.py        (234 lines) - SQL search query builder
 ├── admin_context.py       (220 lines) - Admin action context manager
 ├── content_processor.py   (204 lines) - Feed entry content extraction
@@ -523,7 +528,7 @@ src/
 ├── xml_sanitizer.py        (55 lines) - XML control character stripping
 └── __init__.py              (4 lines)
                           ───────
-                    Total: 11,065 lines
+                    Total: 11,111 lines
 ```
 
 ### Module Dependency Diagram
@@ -532,10 +537,10 @@ src/
 ┌──────────────────────────────────────────────────────────────────────────────────┐
 │                               CLOUDFLARE WORKERS                                  │
 │                                                                                   │
-│  ┌────────────┐   ┌────────────┐   ┌────────────┐   ┌────────────┐               │
-│  │ scheduled()│   │  queue()   │   │  fetch()   │   │   ASSETS   │               │
-│  │  (cron)    │   │ (consumer) │   │  (HTTP)    │   │  (static)  │               │
-│  └─────┬──────┘   └─────┬──────┘   └─────┬──────┘   └────────────┘               │
+│  ┌────────────┐   ┌────────────┐   ┌────────────┐                               │
+│  │ scheduled()│   │  queue()   │   │  fetch()   │                               │
+│  │  (cron)    │   │ (consumer) │   │  (HTTP)    │                               │
+│  └─────┬──────┘   └─────┬──────┘   └─────┬──────┘                               │
 │        │                │                │                                        │
 │        └────────────────┼────────────────┘                                        │
 │                         ▼                                                         │
@@ -625,12 +630,12 @@ src/
 
 ### Extraction Progress
 
-14 modules have been extracted from `main.py`. The extraction focused on
+15 modules have been extracted from `main.py`. The extraction focused on
 cross-cutting concerns, infrastructure, and self-contained logic. Core business
 logic (feed processing, rendering, search, admin CRUD) remains in `main.py`.
 
 ```
-Extracted (14 modules, ~7,722 lines total):
+Extracted (15 modules, ~7,722 lines total):
 
 Infrastructure / plumbing:
 ├── utils.py              (328 lines) - Logging, responses, validation, date formatting
@@ -638,7 +643,7 @@ Infrastructure / plumbing:
 ├── config.py             (172 lines) - Constants + env-based config getters
 ├── instance_config.py    (105 lines) - Lite mode detection + config loading
 ├── observability.py      (479 lines) - Wide events, structured logging, Timer
-├── route_dispatcher.py   (280 lines) - HTTP route table + pattern matching
+├── route_dispatcher.py   (281 lines) - HTTP route table + pattern matching
 └── xml_sanitizer.py       (55 lines) - XML control character stripping
 
 Authentication / authorization:
@@ -653,9 +658,9 @@ Domain logic helpers:
 
 Data + presentation:
 ├── models.py             (362 lines) - Data models, BleachSanitizer, typed dicts
-└── templates.py        (3,700 lines) - Jinja2 templates + CSS + JS (embedded at build)
+└── templates.py        (3,703 lines) - Jinja2 templates + CSS + JS (embedded at build)
 
-Still in main.py (3,343 lines):
+Still in main.py (3,385 lines):
 ├── Feed processing     - _process_single_feed(), _fetch_full_content(), _normalize_urls()
 ├── Entry management    - _upsert_entry(), _index_entry_for_search(), _apply_retention_policy()
 ├── HTML/feed rendering - _generate_html(), _generate_atom_feed(), _generate_rss_feed()
@@ -741,11 +746,10 @@ Still in main.py (3,343 lines):
 │  │─────────────────────────────────────────────────────────────────────────│ │
 │  │ Wraps WorkerEnv to provide safe access to bindings:                     │ │
 │  │   DB: SafeD1                  # D1 database (auto-converts results)      │ │
-│  │   FEED_QUEUE: SafeQueue       # Feed fetch queue                         │ │
-│  │   DEAD_LETTER_QUEUE: SafeQueue# Failed job queue                         │ │
-│  │   SEARCH_INDEX: SafeVectorize # Semantic search index                    │ │
-│  │   AI: SafeAI                  # Embedding generation                     │ │
-│  │   ASSETS: AssetsBinding       # Static file serving (passthrough)        │ │
+│  │   FEED_QUEUE: SafeQueue       # Feed fetch queue (optional)              │ │
+│  │   DEAD_LETTER_QUEUE: SafeQueue# Failed job queue (optional)              │ │
+│  │   SEARCH_INDEX: SafeVectorize # Semantic search index (optional)         │ │
+│  │   AI: SafeAI                  # Embedding generation (optional)          │ │
 │  └─────────────────────────────────────────────────────────────────────────┘ │
 │                                                                               │
 │  Safe Wrappers:                                                               │

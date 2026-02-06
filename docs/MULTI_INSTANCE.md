@@ -21,6 +21,7 @@ Planet CF supports configurable multi-instance deployment through the `examples/
 | `examples/planet-cloudflare/` | full | Full-featured with search and admin |
 | `examples/planet-python/` | full | 500+ Python community feeds |
 | `examples/planet-mozilla/` | full | 190 Mozilla community feeds |
+| `examples/test-planet/` | full | Test instance for CI/E2E testing |
 
 ## Quick Start
 
@@ -117,8 +118,8 @@ python scripts/create_instance.py \
 This creates:
 - `examples/planet-python/config.yaml` - Instance configuration
 - `examples/planet-python/wrangler.jsonc` - Cloudflare Workers config
-- `examples/planet-python/theme/` - Theme directory
-- `examples/planet-python/static/` - Static assets directory
+- `examples/planet-python/assets/` - Static assets directory
+- `examples/planet-python/theme/` - Theme directory (if applicable)
 
 ### Provision Cloudflare Resources Manually
 
@@ -354,25 +355,33 @@ planet_cf/
 │   ├── default/                 # Minimal lite-mode template
 │   │   ├── config.yaml
 │   │   ├── wrangler.jsonc
+│   │   ├── assets/
+│   │   ├── templates/
 │   │   └── README.md
 │   ├── planet-cloudflare/       # Full-featured template
 │   │   ├── config.yaml
 │   │   ├── wrangler.jsonc
-│   │   ├── theme/style.css
-│   │   ├── static/
+│   │   ├── assets/
+│   │   ├── theme/
 │   │   └── README.md
 │   ├── planet-python/           # Planet Python clone
 │   │   ├── config.yaml          # 500+ feeds
 │   │   ├── wrangler.jsonc
-│   │   ├── theme/style.css
-│   │   ├── static/
+│   │   ├── assets/
+│   │   ├── templates/
+│   │   ├── theme/
 │   │   └── README.md
-│   └── planet-mozilla/          # Planet Mozilla clone
-│       ├── config.yaml          # 190 feeds
+│   ├── planet-mozilla/          # Planet Mozilla clone
+│   │   ├── config.yaml          # 190 feeds
+│   │   ├── wrangler.jsonc
+│   │   ├── assets/
+│   │   ├── templates/
+│   │   ├── theme/
+│   │   └── README.md
+│   └── test-planet/             # Test instance for CI
+│       ├── config.yaml
 │       ├── wrangler.jsonc
-│       ├── theme/style.css
-│       ├── static/
-│       └── README.md
+│       └── assets/
 ├── themes/                      # Shared themes
 │   ├── default/style.css
 │   ├── classic/style.css

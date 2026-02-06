@@ -187,10 +187,12 @@ npx wrangler deploy
 | URL | Description |
 |-----|-------------|
 | `/` | Main aggregated feed page |
+| `/titles` | Titles-only view |
 | `/feed.atom` | Atom feed |
-| `/feed.rss` | RSS feed |
+| `/feed.rss` | RSS 2.0 feed |
+| `/feed.rss10` | RSS 1.0 (RDF) feed |
 | `/feeds.opml` | OPML export of all subscriptions |
-| `/search?q=query` | Semantic search |
+| `/search` | Semantic search |
 
 ### Admin Pages
 
@@ -251,6 +253,7 @@ Planet CF includes ready-to-deploy examples in the `examples/` directory:
 | `examples/planet-cloudflare/` | Full-featured configuration |
 | `examples/planet-python/` | Planet Python clone (500+ feeds) |
 | `examples/planet-mozilla/` | Planet Mozilla clone (190 feeds) |
+| `examples/test-planet/` | Test instance for CI/E2E testing |
 
 ### Quick Start with Examples
 

@@ -193,7 +193,7 @@ examples/{name}/
 ├── wrangler.jsonc          # Ready-to-deploy config
 ├── theme/
 │   └── style.css           # Adapted CSS
-├── static/
+├── assets/
 │   ├── images/             # Downloaded logos, icons
 │   └── styles/             # Original CSS files
 └── theme_assets.py         # Python dict for templates.py

@@ -21,7 +21,7 @@ uv run pytest tests/unit tests/integration -v
 
 Pure unit tests using mock Cloudflare bindings. No server needed.
 
-- **600+ tests**, runs in ~1 second
+- **739 tests**, runs in ~1 second
 - Uses `MockD1`, `MockVectorize`, `MockAI`, `MockQueue` from `tests/conftest.py`
 - Simulates JsProxy behavior to catch conversion issues
 - Covers: rendering, search, config, auth, feeds, entries, observability
