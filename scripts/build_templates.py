@@ -59,6 +59,7 @@ SHARED_TEMPLATE_FILES = [
     "feed.rss.xml",
     "feed.rss10.xml",
     "feeds.opml",
+    "foafroll.xml",
 ]
 
 CSS_FILE = "style.css"
@@ -534,6 +535,7 @@ TEMPLATE_FEED_ATOM = "feed.atom.xml"
 TEMPLATE_FEED_RSS = "feed.rss.xml"
 TEMPLATE_FEED_RSS10 = "feed.rss10.xml"
 TEMPLATE_FEEDS_OPML = "feeds.opml"
+TEMPLATE_FOAFROLL = "foafroll.xml"
 
 # =============================================================================
 # Theme-specific CSS and Logos (for multi-instance deployments)

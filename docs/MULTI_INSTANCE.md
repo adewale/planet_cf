@@ -231,8 +231,8 @@ All configuration can be overridden via environment variables:
 | `CONTENT_DAYS` | Days of entries to show | `7` |
 | `RETENTION_DAYS` | Database retention | `90` |
 | `OAUTH_PROVIDER` | Auth provider | `github` |
-| `OAUTH_CLIENT_ID` | OAuth app ID | (secret) |
-| `OAUTH_CLIENT_SECRET` | OAuth app secret | (secret) |
+| `GITHUB_CLIENT_ID` | GitHub OAuth app ID | (secret) |
+| `GITHUB_CLIENT_SECRET` | GitHub OAuth app secret | (secret) |
 | `SESSION_SECRET` | Cookie signing key | (secret) |
 
 ## Themes

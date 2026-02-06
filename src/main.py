@@ -79,6 +79,7 @@ from templates import (
     TEMPLATE_FEED_RSS,
     TEMPLATE_FEED_RSS10,
     TEMPLATE_FEEDS_OPML,
+    TEMPLATE_FOAFROLL,
     TEMPLATE_INDEX,
     TEMPLATE_SEARCH,
     TEMPLATE_TITLES,
@@ -209,6 +210,9 @@ _THEMES_HIDE_SIDEBAR_LINKS: frozenset[str] = frozenset({"planet-cloudflare"})
 
 # Themes that enable RSS 1.0 (RDF) feed format
 _THEMES_WITH_RSS10: frozenset[str] = frozenset({"planet-mozilla"})
+
+# Themes that enable FOAF (Friend of a Friend) feed
+_THEMES_WITH_FOAF: frozenset[str] = frozenset({"planet-mozilla"})
 
 # Cloud metadata endpoints to block (SSRF protection)
 BLOCKED_METADATA_IPS = {
@@ -1254,6 +1258,7 @@ class Default(WorkerEntrypoint):
                 Route(path="/feed.rss", content_type="rss", cacheable=True),
                 Route(path="/feed.rss10", content_type="rss10", cacheable=True),
                 Route(path="/feeds.opml", content_type="opml", cacheable=True),
+                Route(path="/foafroll.xml", content_type="foaf", cacheable=True),
                 Route(
                     path="/search", content_type="search", cacheable=False, lite_mode_disabled=True
                 ),
@@ -1404,6 +1409,8 @@ class Default(WorkerEntrypoint):
             return await self._serve_rss10()
         elif route_path == "/feeds.opml":
             return await self._export_opml()
+        elif route_path == "/foafroll.xml":
+            return await self._serve_foaf()
         elif route_path == "/search":
             return await self._search_entries(request, event)
         elif route_path == "/static/":
@@ -1524,7 +1531,7 @@ class Default(WorkerEntrypoint):
             feeds_result = (
                 await self.env.DB.prepare("""
                 SELECT
-                    id, title, site_url, url, last_success_at,
+                    id, title, site_url, url, last_success_at, fetch_error, consecutive_failures,
                     CASE WHEN consecutive_failures < ? THEN 1 ELSE 0 END as is_healthy
                 FROM feeds
                 WHERE is_active = 1
@@ -1534,6 +1541,16 @@ class Default(WorkerEntrypoint):
                 .all()
             )
 
+            # Get recent entries per feed (last 7 days) for sidebar
+            recent_entries_result = await self.env.DB.prepare("""
+                SELECT feed_id, title, url
+                FROM entries
+                WHERE feed_id IN (SELECT id FROM feeds WHERE is_active = 1)
+                  AND published_at >= datetime('now', '-7 days')
+                  AND title IS NOT NULL AND title != ''
+                ORDER BY feed_id, published_at DESC
+            """).all()
+
         # Populate generation metrics on the consolidated event
         if event:
             event.generation_d1_ms = d1_timer.elapsed_ms
@@ -1542,6 +1559,21 @@ class Default(WorkerEntrypoint):
         # Convert D1 results to typed Python dicts
         entries = entry_rows_from_d1(entries_result.results)
         feeds = feed_rows_from_d1(feeds_result.results)
+
+        # Build recent entries per feed (max 3 per feed) for sidebar
+        recent_by_feed: dict[int, list[dict[str, str]]] = {}
+        for row in _to_py_list(recent_entries_result.results):
+            py_row = _to_py_safe(row) if not isinstance(row, dict) else row
+            if not py_row:
+                continue
+            fid = int(py_row.get("feed_id", 0))
+            if fid and len(recent_by_feed.get(fid, [])) < 3:
+                recent_by_feed.setdefault(fid, []).append(
+                    {
+                        "title": _safe_str(py_row.get("title")) or "",
+                        "url": _safe_str(py_row.get("url")) or "",
+                    }
+                )
 
         # Smart default: Content display fallback
         # If no entries in configured date range, show the most recent entries instead
@@ -1629,8 +1661,28 @@ class Default(WorkerEntrypoint):
 
         entries_by_date = dict(sorted(entries_by_date.items(), key=get_sort_date, reverse=True))
 
+        stale_threshold = datetime.now(timezone.utc) - timedelta(days=90)
         for feed in feeds:
             feed["last_success_at_relative"] = _relative_time(feed["last_success_at"])
+            feed["recent_entries"] = recent_by_feed.get(feed["id"], [])
+            # Compute status message for sidebar tooltips
+            fetch_err = feed.get("fetch_error")
+            if fetch_err:
+                feed["message"] = fetch_err
+            elif feed.get("last_success_at"):
+                try:
+                    last_ok = datetime.fromisoformat(feed["last_success_at"].replace("Z", "+00:00"))
+                    if last_ok.tzinfo is None:
+                        last_ok = last_ok.replace(tzinfo=timezone.utc)
+                    if last_ok < stale_threshold:
+                        days_ago = (datetime.now(timezone.utc) - last_ok).days
+                        feed["message"] = f"no activity in {days_ago} days"
+                    else:
+                        feed["message"] = None
+                except (ValueError, AttributeError):
+                    feed["message"] = None
+            else:
+                feed["message"] = None
 
         # Render template - track template time
         # Check if running in lite mode (no search, no auth)
@@ -1646,6 +1698,8 @@ class Default(WorkerEntrypoint):
         # Only include RSS 1.0 for themes that use it
         if theme in _THEMES_WITH_RSS10:
             feed_links["rss10"] = "/feed.rss10"
+        if theme in _THEMES_WITH_FOAF:
+            feed_links["foaf"] = "/foafroll.xml"
         # Only include sidebar links for themes that use them
         if theme not in _THEMES_HIDE_SIDEBAR_LINKS:
             feed_links["sidebar_rss"] = "/feed.rss"
@@ -2007,6 +2061,34 @@ class Default(WorkerEntrypoint):
                 "Content-Disposition": 'attachment; filename="planetcf-feeds.opml"',
             },
         )
+
+    async def _serve_foaf(self) -> Response:
+        """Generate and serve FOAF (Friend of a Friend) RDF feed."""
+        feeds_result = await self.env.DB.prepare("""
+            SELECT url, title, site_url
+            FROM feeds
+            WHERE is_active = 1
+            ORDER BY title
+        """).all()
+
+        template_feeds = [
+            {
+                "title": f["title"] or f["url"],
+                "url": f["url"],
+                "site_url": f["site_url"] or f["url"],
+            }
+            for f in feed_rows_from_d1(feeds_result.results)
+        ]
+
+        planet = self._get_planet_config()
+        foaf = render_template(
+            TEMPLATE_FOAFROLL,
+            theme=self._get_theme(),
+            planet=planet,
+            feeds=template_feeds,
+        )
+
+        return _feed_response(foaf, "application/rdf+xml")
 
     async def _search_entries(
         self, request: WorkerRequest, event: RequestEvent | None = None

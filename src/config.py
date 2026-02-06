@@ -105,7 +105,7 @@ def get_planet_config(env: Any) -> dict[str, str]:
 # Registry of integer config values: (env_key, default_value)
 _INT_CONFIG_REGISTRY: dict[str, tuple[str, int]] = {
     "retention_days": ("RETENTION_DAYS", DEFAULT_RETENTION_DAYS),
-    "max_entries_per_feed": ("MAX_ENTRIES_PER_FEED", DEFAULT_MAX_ENTRIES_PER_FEED),
+    "max_entries_per_feed": ("RETENTION_MAX_ENTRIES_PER_FEED", DEFAULT_MAX_ENTRIES_PER_FEED),
     "embedding_max_chars": ("EMBEDDING_MAX_CHARS", DEFAULT_EMBEDDING_MAX_CHARS),
     "search_top_k": ("SEARCH_TOP_K", DEFAULT_SEARCH_TOP_K),
     "feed_auto_deactivate_threshold": (
@@ -113,8 +113,8 @@ _INT_CONFIG_REGISTRY: dict[str, tuple[str, int]] = {
         DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD,
     ),
     "feed_failure_threshold": ("FEED_FAILURE_THRESHOLD", DEFAULT_FEED_FAILURE_THRESHOLD),
-    "feed_timeout": ("FEED_TIMEOUT", FEED_TIMEOUT_SECONDS),
-    "http_timeout": ("HTTP_TIMEOUT", HTTP_TIMEOUT_SECONDS),
+    "feed_timeout": ("FEED_TIMEOUT_SECONDS", FEED_TIMEOUT_SECONDS),
+    "http_timeout": ("HTTP_TIMEOUT_SECONDS", HTTP_TIMEOUT_SECONDS),
 }
 
 

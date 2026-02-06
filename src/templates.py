@@ -1168,6 +1168,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
                 <p></p>
                 <p>Subscription list:</p>
                 <ul>
+                    {% if feed_links.foaf %}<li><a href="{{ feed_links.foaf }}">FOAF</a></li>{% endif %}
                     <li class="opml"><a href="{{ feed_links.opml or '/feeds.opml' }}">OPML</a></li>
                 </ul>
                 <p>Last update: <time datetime="{{ generated_at }}" title="GMT">{{ generated_at }}</time></p>
@@ -1194,7 +1195,21 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
                 <h2>Subscriptions</h2>
                 <ul class="subscriptions">
 {% for feed in feeds %}
-                    <li><a title="subscribe" href="{{ feed.url }}"><img src="/static/img/feed-icon-10x10.png" alt="(feed)" width="10" height="10"/></a> <a href="{{ feed.site_url or feed.url or '#' }}" title="{{ feed.title }}">{{ feed.title or 'Untitled' }}</a></li>
+                    <li>
+                        <a title="subscribe" href="{{ feed.url }}"><img src="/static/img/feed-icon-10x10.png" alt="(feed)" width="10" height="10"/></a>
+                        <a href="{{ feed.site_url or feed.url or '#' }}"
+                           {% if feed.message %}class="{{ 'active message' if feed.recent_entries else 'message' }}" title="{{ feed.message }}"
+                           {% elif feed.recent_entries %}class="active" title="{{ feed.title }}"
+                           {% else %}title="{{ feed.title }}"
+                           {% endif %}>{{ feed.title or 'Untitled' }}</a>
+                        {% if feed.recent_entries %}
+                        <ul>
+                            {% for entry in feed.recent_entries %}
+                            <li><a href="{{ entry.url or '#' }}">{{ entry.title }}</a></li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                    </li>
 {% else %}
                     <li>No feeds configured</li>
 {% endfor %}
@@ -1208,6 +1223,26 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
             <p>{{ footer_text }}{% if show_admin_link %} | <a href="/admin">Admin</a>{% endif %}</p>
         </div>
     </div>
+    <script>
+    // Localize UTC dates to the user's timezone
+    (function() {
+        var times = document.querySelectorAll('time[datetime]');
+        for (var i = 0; i < times.length; i++) {
+            var el = times[i];
+            var dt = el.getAttribute('datetime');
+            if (!dt) continue;
+            var d = new Date(dt.indexOf('T') === -1 && dt.indexOf('Z') === -1 ? dt + 'T00:00:00Z' : dt);
+            if (isNaN(d.getTime())) continue;
+            var parent = el.parentElement;
+            if (parent && parent.tagName === 'H2') {
+                el.textContent = d.toLocaleDateString(undefined, {weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'});
+            } else {
+                el.textContent = d.toLocaleString(undefined, {year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short'});
+            }
+            el.setAttribute('title', dt + ' UTC');
+        }
+    })();
+    </script>
 </body>
 </html>
 """,
@@ -1262,6 +1297,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
                     {% if feed_links.rss10 %}<li><a href="{{ feed_links.rss10 }}">RSS 1.0</a></li>{% endif %}
                 </ul>
                 <ul>
+                    {% if feed_links.foaf %}<li><a href="{{ feed_links.foaf }}">FOAF</a></li>{% endif %}
                     <li class="opml"><a href="{{ feed_links.opml or '/feeds.opml' }}">OPML</a></li>
                 </ul>
             </div>
@@ -1283,6 +1319,26 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
             <p>Last updated: {{ generated_at }}</p>
         </div>
     </div>
+    <script>
+    // Localize UTC dates to the user's timezone
+    (function() {
+        var times = document.querySelectorAll('time[datetime]');
+        for (var i = 0; i < times.length; i++) {
+            var el = times[i];
+            var dt = el.getAttribute('datetime');
+            if (!dt) continue;
+            var d = new Date(dt.indexOf('T') === -1 && dt.indexOf('Z') === -1 ? dt + 'T00:00:00Z' : dt);
+            if (isNaN(d.getTime())) continue;
+            var parent = el.parentElement;
+            if (parent && parent.tagName === 'H2') {
+                el.textContent = d.toLocaleDateString(undefined, {weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'});
+            } else {
+                el.textContent = d.toLocaleString(undefined, {year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short'});
+            }
+            el.setAttribute('title', dt + ' UTC');
+        }
+    })();
+    </script>
 </body>
 </html>
 """,
@@ -1442,6 +1498,31 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
     </outline>
   </body>
 </opml>
+""",
+        "foafroll.xml": """<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:foaf="http://xmlns.com/foaf/0.1/"
+         xmlns:rss="http://purl.org/rss/1.0/"
+         xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <foaf:Group>
+    <foaf:name>{{ planet.name | e }}</foaf:name>
+    <foaf:homepage rdf:resource="{{ planet.link }}"/>
+{% for feed in feeds %}
+    <foaf:member>
+      <foaf:Agent>
+        <foaf:name>{{ feed.title | e }}</foaf:name>
+        <foaf:weblog rdf:resource="{{ feed.site_url | e }}"/>
+        <foaf:member_weblog>
+          <foaf:Document rdf:about="{{ feed.site_url | e }}">
+            <dc:title>{{ feed.title | e }}</dc:title>
+            <rss:channel rdf:resource="{{ feed.url | e }}"/>
+          </foaf:Document>
+        </foaf:member_weblog>
+      </foaf:Agent>
+    </foaf:member>
+{% endfor %}
+  </foaf:Group>
+</rdf:RDF>
 """,
     },
 }
@@ -2569,6 +2650,7 @@ TEMPLATE_FEED_ATOM = "feed.atom.xml"
 TEMPLATE_FEED_RSS = "feed.rss.xml"
 TEMPLATE_FEED_RSS10 = "feed.rss10.xml"
 TEMPLATE_FEEDS_OPML = "feeds.opml"
+TEMPLATE_FOAFROLL = "foafroll.xml"
 
 # =============================================================================
 # Theme-specific CSS and Logos (for multi-instance deployments)

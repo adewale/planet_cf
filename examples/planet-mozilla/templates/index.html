@@ -70,6 +70,7 @@
                 <p></p>
                 <p>Subscription list:</p>
                 <ul>
+                    {% if feed_links.foaf %}<li><a href="{{ feed_links.foaf }}">FOAF</a></li>{% endif %}
                     <li class="opml"><a href="{{ feed_links.opml or '/feeds.opml' }}">OPML</a></li>
                 </ul>
                 <p>Last update: <time datetime="{{ generated_at }}" title="GMT">{{ generated_at }}</time></p>
@@ -96,7 +97,21 @@
                 <h2>Subscriptions</h2>
                 <ul class="subscriptions">
 {% for feed in feeds %}
-                    <li><a title="subscribe" href="{{ feed.url }}"><img src="/static/img/feed-icon-10x10.png" alt="(feed)" width="10" height="10"/></a> <a href="{{ feed.site_url or feed.url or '#' }}" title="{{ feed.title }}">{{ feed.title or 'Untitled' }}</a></li>
+                    <li>
+                        <a title="subscribe" href="{{ feed.url }}"><img src="/static/img/feed-icon-10x10.png" alt="(feed)" width="10" height="10"/></a>
+                        <a href="{{ feed.site_url or feed.url or '#' }}"
+                           {% if feed.message %}class="{{ 'active message' if feed.recent_entries else 'message' }}" title="{{ feed.message }}"
+                           {% elif feed.recent_entries %}class="active" title="{{ feed.title }}"
+                           {% else %}title="{{ feed.title }}"
+                           {% endif %}>{{ feed.title or 'Untitled' }}</a>
+                        {% if feed.recent_entries %}
+                        <ul>
+                            {% for entry in feed.recent_entries %}
+                            <li><a href="{{ entry.url or '#' }}">{{ entry.title }}</a></li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                    </li>
 {% else %}
                     <li>No feeds configured</li>
 {% endfor %}
@@ -110,5 +125,25 @@
             <p>{{ footer_text }}{% if show_admin_link %} | <a href="/admin">Admin</a>{% endif %}</p>
         </div>
     </div>
+    <script>
+    // Localize UTC dates to the user's timezone
+    (function() {
+        var times = document.querySelectorAll('time[datetime]');
+        for (var i = 0; i < times.length; i++) {
+            var el = times[i];
+            var dt = el.getAttribute('datetime');
+            if (!dt) continue;
+            var d = new Date(dt.indexOf('T') === -1 && dt.indexOf('Z') === -1 ? dt + 'T00:00:00Z' : dt);
+            if (isNaN(d.getTime())) continue;
+            var parent = el.parentElement;
+            if (parent && parent.tagName === 'H2') {
+                el.textContent = d.toLocaleDateString(undefined, {weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'});
+            } else {
+                el.textContent = d.toLocaleString(undefined, {year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short'});
+            }
+            el.setAttribute('title', dt + ' UTC');
+        }
+    })();
+    </script>
 </body>
 </html>

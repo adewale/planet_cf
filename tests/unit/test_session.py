@@ -1,5 +1,8 @@
 # tests/unit/test_session.py
-"""Unit tests for session signing and verification."""
+"""Unit tests for session signing and verification.
+
+Tests the HMAC-signed session cookie functions from src.auth.
+"""
 
 import base64
 import hashlib
@@ -9,37 +12,15 @@ import time
 
 from freezegun import freeze_time
 
+from src.auth import create_signed_cookie
+from src.auth import verify_signed_cookie as _verify_signed_cookie
+
 SECRET = "test-secret-key-for-testing-only-32chars"
 
 
-def create_signed_cookie(payload: dict, secret: str) -> str:
-    """Create an HMAC-signed cookie."""
-    payload_json = json.dumps(payload)
-    payload_b64 = base64.urlsafe_b64encode(payload_json.encode()).decode()
-    signature = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).hexdigest()
-    return f"{payload_b64}.{signature}"
-
-
 def verify_signed_cookie(cookie: str, secret: str) -> dict | None:
-    """Verify and decode a signed cookie."""
-    if "." not in cookie:
-        return None
-
-    try:
-        payload_b64, signature = cookie.rsplit(".", 1)
-        expected_sig = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).hexdigest()
-
-        if not hmac.compare_digest(signature, expected_sig):
-            return None
-
-        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
-
-        if payload.get("exp", 0) < time.time():
-            return None
-
-        return payload
-    except Exception:
-        return None
+    """Wrapper around src.auth.verify_signed_cookie with grace_seconds=0 for exact expiry tests."""
+    return _verify_signed_cookie(cookie, secret, grace_seconds=0)
 
 
 class TestSignedCookies:

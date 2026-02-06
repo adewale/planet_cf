@@ -313,7 +313,7 @@ def generate_wrangler_config(
     config = {
         "$schema": "node_modules/wrangler/config-schema.json",
         "name": instance_id,
-        "main": "src/main.py",
+        "main": "../../src/main.py",
         "compatibility_date": "2026-01-01",
         "compatibility_flags": ["python_workers", "python_dedicated_snapshot"],
         "limits": {"cpu_ms": 60000},

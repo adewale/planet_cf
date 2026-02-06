@@ -135,7 +135,7 @@ class TestConfigGetterOverrides:
         assert isinstance(result, float)
 
     def test_get_max_entries_per_feed_override(self):
-        env = MockEnv(MAX_ENTRIES_PER_FEED="200")
+        env = MockEnv(RETENTION_MAX_ENTRIES_PER_FEED="200")
         assert get_max_entries_per_feed(env) == 200
 
 
