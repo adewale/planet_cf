@@ -3,7 +3,7 @@
 API Contract Tests - Verify frontend/backend agreements.
 
 These tests ensure that:
-1. Embedded JavaScript uses correct HTTP methods for backend routes
+1. Static JavaScript files use correct HTTP methods for backend routes
 2. Public endpoints return appropriate content types (HTML vs JSON)
 3. Error responses are user-friendly for browser-based requests
 4. JSON response shapes match what admin JavaScript expects (C1 prevention)
@@ -19,7 +19,7 @@ ADMIN_JS = (Path(__file__).parent.parent.parent / "static" / "admin.js").read_te
 
 
 class TestAdminJSHttpMethods:
-    """Verify ADMIN_JS uses correct HTTP methods matching backend routes."""
+    """Verify admin.js (static file) uses correct HTTP methods matching backend routes."""
 
     def test_feed_title_update_uses_put_method(self):
         """Feed title editing must use PUT to match backend route.

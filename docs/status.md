@@ -45,7 +45,7 @@
 | /feed.rss10 | GET | ✅ | _serve_rss10() |
 | /feeds.opml | GET | ✅ | _export_opml() |
 | /search | GET | ✅ | _search_entries() |
-| /static/* | GET | ✅ | _serve_static() |
+| /static/* | GET | ✅ | Workers Static Assets (edge-served, no Worker code) |
 
 ---
 

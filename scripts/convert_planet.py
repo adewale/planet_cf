@@ -628,9 +628,9 @@ class PlanetConverter:
             json.dump(wrangler_config, f, indent=2)
         print(f"  Saved: {instance_dir / 'wrangler.jsonc'}")
 
-        # Save theme assets as Python dict (for manual integration)
+        # Save theme assets as Python dict (for reference)
         assets_py = f'''# Theme assets for {self.name}
-# Add this to src/templates.py THEME_ASSETS dictionary
+# These assets are now served via Workers Static Assets (assets/static/ directory)
 
 THEME_ASSETS["{self.name}"] = {json.dumps(theme_assets, indent=4)}
 '''

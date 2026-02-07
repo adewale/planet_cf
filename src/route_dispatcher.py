@@ -9,12 +9,11 @@ the routing logic from the fetch() handler:
 - Route metadata (content type, cache status)
 
 Usage:
-    # Define routes
+    # Define routes (static files are served by Workers Static Assets, not the Worker)
     routes = [
         Route(path="/", handler=serve_html, content_type="html", cacheable=True),
         Route(path="/search", handler=search, content_type="search", cacheable=False),
         Route(path="/admin", handler=admin, prefix=True, content_type="admin"),
-        Route(path="/static/", handler=static, prefix=True, content_type="static"),
     ]
 
     dispatcher = RouteDispatcher(routes)

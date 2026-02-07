@@ -1,5 +1,5 @@
 // Admin dashboard functionality
-// This file is the source of truth - ADMIN_JS in templates.py should match
+// Served via Workers Static Assets from each instance's assets/static/ directory
 
 // =============================================================================
 // Feed Title Editing

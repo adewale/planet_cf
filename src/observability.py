@@ -84,7 +84,7 @@ class RequestEvent:
     response_size_bytes: int = 0
     wall_time_ms: float = 0
     cache_status: str = ""  # "hit" | "miss" | "bypass"
-    content_type: str = ""  # "html" | "atom" | "rss" | "search" | "admin" | "static"
+    content_type: str = ""  # "html" | "atom" | "rss" | "search" | "admin"
 
     # === Search fields (null for non-search routes) ===
     search_query: str | None = None

@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """
-Build script to compile HTML/CSS templates into src/templates.py
+Build script to compile HTML templates into src/templates.py
 
 This is necessary because Cloudflare Workers Python runs in WebAssembly
 and doesn't have filesystem access for loading templates at runtime.
+
+CSS and JS are NOT compiled into templates.py. They are served as static
+files via Workers Static Assets from each instance's assets/static/ directory.
 
 Usage:
     python scripts/build_templates.py
@@ -12,13 +15,8 @@ Usage:
     python scripts/build_templates.py --example planet-mozilla
 
 Options:
-    --theme <name>    Use CSS from themes/<name>/style.css
-    --example <name>  Use CSS from examples/<name>/theme/style.css
-
-Theme resolution order:
-  1. examples/<name>/theme/style.css (if --example is used)
-  2. themes/<name>/style.css (if --theme is used)
-  3. themes/default/style.css (fallback)
+    --theme <name>    Select theme for template resolution
+    --example <name>  Select example for template resolution
 
 After editing any file in templates/, run this script to regenerate
 src/templates.py, then deploy with `wrangler deploy`.
@@ -62,9 +60,6 @@ SHARED_TEMPLATE_FILES = [
     "foafroll.xml",
 ]
 
-CSS_FILE = "style.css"
-KEYBOARD_NAV_JS_FILE = "keyboard-nav.js"
-
 
 def read_template(path: Path) -> str:
     """Read a template file and return its contents."""
@@ -79,96 +74,16 @@ def escape_for_python(content: str) -> str:
     return content.replace('"""', r"\"\"\"")
 
 
-def get_theme_css(
-    theme: str | None, example: str | None = None, fallback: bool = True
-) -> tuple[str, str]:
-    """Get CSS content for the specified theme or example.
-
-    Args:
-        theme: Theme name (e.g., 'planet-python', 'dark') or None for default.
-        example: Example name (e.g., 'planet-mozilla'). If provided, check
-                 examples/<name>/theme/style.css first.
-        fallback: If True (default), fall back to 'default' theme when specified
-                  theme doesn't exist. If False, raise FileNotFoundError.
-
-    Returns:
-        Tuple of (css_content, source_description)
-
-    Resolution order:
-      1. examples/<example>/theme/style.css (if example is provided)
-      2. themes/<theme>/style.css (if theme is provided)
-      3. themes/default/style.css (fallback)
-    """
-    # First, check examples directory if example is specified
-    if example:
-        example_css_path = EXAMPLES_DIR / example / "theme" / "style.css"
-        if example_css_path.exists():
-            return example_css_path.read_text(
-                encoding="utf-8"
-            ), f"examples/{example}/theme/style.css"
-        else:
-            # List available examples for helpful message
-            available_examples = [
-                d.name
-                for d in EXAMPLES_DIR.iterdir()
-                if d.is_dir() and (d / "theme" / "style.css").exists()
-            ]
-            if fallback:
-                print(
-                    f"Warning: Example '{example}' theme not found at {example_css_path}\n"
-                    f"  Available examples with themes: {', '.join(sorted(available_examples))}\n"
-                    f"  Falling back to 'default' theme.",
-                    file=sys.stderr,
-                )
-            else:
-                raise FileNotFoundError(
-                    f"Example '{example}' theme not found at {example_css_path}\n"
-                    f"Available examples with themes: {', '.join(sorted(available_examples))}"
-                )
-
-    # Then check themes directory
-    if theme and theme != "default":
-        theme_css_path = THEMES_DIR / theme / "style.css"
-        if theme_css_path.exists():
-            return theme_css_path.read_text(encoding="utf-8"), f"themes/{theme}/style.css"
-        else:
-            # List available themes for helpful message
-            available = [
-                d.name for d in THEMES_DIR.iterdir() if d.is_dir() and (d / "style.css").exists()
-            ]
-
-            if fallback:
-                # Smart default: Fall back to default theme
-                print(
-                    f"Warning: Theme '{theme}' not found at {theme_css_path}\n"
-                    f"  Available themes: {', '.join(sorted(available))}\n"
-                    f"  Falling back to 'default' theme.",
-                    file=sys.stderr,
-                )
-                default_css_path = THEMES_DIR / "default" / "style.css"
-                if default_css_path.exists():
-                    return default_css_path.read_text(
-                        encoding="utf-8"
-                    ), "themes/default/style.css (fallback)"
-                # Ultimate fallback: use templates/style.css
-                return read_template(TEMPLATE_DIR / CSS_FILE), "templates/style.css (fallback)"
-            else:
-                raise FileNotFoundError(
-                    f"Theme '{theme}' not found at {theme_css_path}\n"
-                    f"Available themes: {', '.join(sorted(available))}"
-                )
-    # Default: use templates/style.css
-    return read_template(TEMPLATE_DIR / CSS_FILE), "templates/style.css"
-
-
 def build_templates(theme: str | None = None, example: str | None = None):
-    """Generate src/templates.py from template files.
+    """Generate src/templates.py from HTML template files.
+
+    CSS and JS are NOT compiled into templates.py. They are served as
+    static files via Workers Static Assets from each instance's
+    assets/static/ directory.
 
     Args:
-        theme: Optional theme name. If provided, CSS is loaded from
-               themes/<name>/style.css instead of templates/style.css.
-        example: Optional example name. If provided, CSS is loaded from
-               examples/<name>/theme/style.css first.
+        theme: Optional theme name for template resolution.
+        example: Optional example name for template resolution.
     """
 
     # Read all templates organized by theme
@@ -434,29 +349,29 @@ def main():
     available_examples = list_available_examples()
 
     theme_help = (
-        f"Theme to use for CSS. Loads CSS from themes/<name>/style.css. "
+        f"Theme to use for template resolution. "
         f"Available: {', '.join(available_themes) if available_themes else 'none found'}"
     )
     example_help = (
-        f"Example to use for CSS. Loads CSS from examples/<name>/theme/style.css. "
+        f"Example to use for template resolution. "
         f"Available: {', '.join(available_examples) if available_examples else 'none found'}"
     )
 
     parser = argparse.ArgumentParser(
-        description="Build HTML/CSS templates into src/templates.py for Cloudflare Workers.",
+        description="Build HTML templates into src/templates.py for Cloudflare Workers.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Use default CSS from templates/style.css
+  # Build with default templates
   python scripts/build_templates.py
 
-  # Use Planet Python theme from themes/
+  # Build with Planet Python theme templates
   python scripts/build_templates.py --theme planet-python
 
-  # Use Planet Mozilla example from examples/
+  # Build with Planet Mozilla example templates
   python scripts/build_templates.py --example planet-mozilla
 
-  # Use dark theme
+  # Build with dark theme templates
   python scripts/build_templates.py --theme dark
 """,
     )

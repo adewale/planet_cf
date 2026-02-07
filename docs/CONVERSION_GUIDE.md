@@ -410,8 +410,8 @@ The remaining 5-15% difference is dynamic content (different blog posts), not st
 |------|---------|
 | `scripts/convert_planet.py` | Automated converter |
 | `scripts/visual_compare.py` | Visual comparison |
-| `scripts/build_templates.py` | Template/asset builder |
+| `scripts/build_templates.py` | HTML template compiler |
 | `examples/planet-python/` | Planet Python instance |
 | `examples/planet-mozilla/` | Planet Mozilla instance |
-| `src/templates.py` | Theme CSS and assets |
-| `src/main.py` | Asset serving logic |
+| `src/templates.py` | Embedded HTML templates (generated) |
+| `src/main.py` | Worker entrypoint and business logic |

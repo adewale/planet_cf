@@ -57,24 +57,23 @@ Each instance configures a [Workers Static Assets](https://developers.cloudflare
 
 With the default `run_worker_first = false`, Cloudflare serves matching files from the assets directory at the edge **before the Worker runs**. A request for `/static/style.css` that matches a file at `assets/static/style.css` is served directly from the CDN with zero Pyodide cold start, zero Worker CPU cost, and automatic tiered edge caching.
 
-Binary assets (images, fonts, favicons) are already served this way. CSS and JS files should be too — see the [migration note](#planned-migration-css-and-js-to-static-assets) below.
+All static assets -- CSS, JS, images, fonts, and favicons -- are served this way. The Worker has no `/static/` route and no `_serve_static()` method; Cloudflare's edge handles all static file requests before Pyodide starts.
 
 ### HTML templates compiled into Python
 
-Cloudflare Workers have no filesystem at runtime. Pyodide cannot read files from disk, so Jinja2 templates must be in Python memory. The build step (`scripts/build_templates.py`) compiles HTML templates into string constants in `src/templates.py`. This is necessary and correct — Jinja2 needs the template strings to render HTML.
+Cloudflare Workers have no filesystem at runtime. Pyodide cannot read files from disk, so Jinja2 templates must be in Python memory. The build step (`scripts/build_templates.py`) compiles HTML templates into string constants in `src/templates.py`. This is necessary and correct -- Jinja2 needs the template strings to render HTML. CSS and JS are **not** compiled into `templates.py`; they live in each instance's `assets/static/` directory and are served by Workers Static Assets.
 
-### Planned migration: CSS and JS to Static Assets
+### Static asset files per instance
 
-CSS and JS are currently also compiled into `templates.py` as Python string constants (`STATIC_CSS`, `THEME_CSS`, `ADMIN_JS`, `KEYBOARD_NAV_JS`) and served through a `_serve_static()` method in the Worker. This means every request for `/static/style.css` boots the Pyodide WASM runtime to return a string from memory — the slowest possible way to serve a static file on Cloudflare.
+Each instance's `assets/static/` directory contains:
 
-This was an early design shortcut. The correct approach is to place CSS and JS files in each instance's `assets/` directory and let Static Assets serve them. The [official Python Workers assets example](https://github.com/cloudflare/python-workers-examples/tree/main/06-assets) demonstrates this pattern. Some instances (planet-cloudflare, planet-mozilla) already have CSS files in their assets directories, but the Worker also serves its own compiled copy, creating two divergent sources of truth.
+- `style.css` -- Main stylesheet (per-instance, supports theming)
+- `keyboard-nav.js` -- Keyboard navigation script
+- `admin.js` -- Admin dashboard JavaScript (full mode only)
+- Favicons (`favicon.ico`, `favicon.svg`, `apple-touch-icon.png`)
+- Theme-specific images (logos, backgrounds)
 
-The migration will:
-- Make each instance's `assets/static/style.css` the single source of CSS
-- Add `keyboard-nav.js` and `admin.js` to each instance's assets directory
-- Remove `STATIC_CSS`, `THEME_CSS`, `ADMIN_JS`, `KEYBOARD_NAV_JS` from `templates.py`
-- Remove `_serve_static()` and the `/static/` route from the Worker
-- Shrink `templates.py` to contain only HTML templates (its actual purpose)
+When creating a new instance, `scripts/create_instance.py` copies default static files from `templates/` and `static/` into `assets/static/`. Instances can then customize their CSS independently.
 
 ### Inline SVG icons
 
@@ -110,7 +109,7 @@ These are served from Workers Static Assets via each instance's `assets/` direct
 
 ### System font stacks (no web fonts)
 
-All themes use system font stacks with no web font downloads (`src/templates.py:1569, 1586`):
+All themes use system font stacks with no web font downloads (see `assets/static/style.css` in each instance):
 
 ```css
 /* Body text */

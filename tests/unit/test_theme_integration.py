@@ -9,6 +9,8 @@ These tests verify that:
 4. Templates receive all required variables
 """
 
+from pathlib import Path
+
 import pytest
 
 from templates import (
@@ -192,3 +194,175 @@ class TestTemplateVariableContracts:
         """Titles template should render without UndefinedError."""
         html = render_template(TEMPLATE_TITLES, theme=theme, **full_context)
         assert "Test Planet" in html
+
+
+# =============================================================================
+# Static Assets Integrity Tests
+# =============================================================================
+# These tests prevent the CSS divergence bug that shipped wrong stylesheets.
+# Two CSS files existed for planet-cloudflare (theme/style.css vs
+# assets/static/style.css) with different content. Static Assets silently
+# served the wrong one. These tests ensure that can never happen again.
+
+
+class TestStaticAssetsIntegrity:
+    """Verify static asset files exist and are consistent across instances."""
+
+    PROJECT_ROOT = Path(__file__).parent.parent.parent
+
+    # Every instance with a wrangler.jsonc that has an assets binding
+    # must have these files in its assets/static/ directory.
+    REQUIRED_STATIC_FILES = ["style.css", "keyboard-nav.js"]
+
+    def _get_instance_dirs(self):
+        """Return list of (name, path) for all deployable instances."""
+        instances = []
+        # Root instance (planetcf)
+        root_wrangler = self.PROJECT_ROOT / "wrangler.jsonc"
+        if root_wrangler.exists():
+            instances.append(("root", self.PROJECT_ROOT))
+        # Example instances
+        examples_dir = self.PROJECT_ROOT / "examples"
+        for wrangler in sorted(examples_dir.glob("*/wrangler.jsonc")):
+            instances.append((wrangler.parent.name, wrangler.parent))
+        return instances
+
+    def _has_assets_binding(self, instance_dir):
+        """Check if a wrangler.jsonc has an assets binding."""
+        wrangler = instance_dir / "wrangler.jsonc"
+        content = wrangler.read_text()
+        return '"ASSETS"' in content
+
+    def test_every_instance_has_style_css(self):
+        """Every instance with an assets binding must have assets/static/style.css."""
+        for name, path in self._get_instance_dirs():
+            if not self._has_assets_binding(path):
+                continue
+            style = path / "assets" / "static" / "style.css"
+            assert style.exists(), (
+                f"Instance '{name}' has ASSETS binding but no assets/static/style.css. "
+                f"Static Assets will return 404 for /static/style.css."
+            )
+
+    def test_every_instance_has_keyboard_nav_js(self):
+        """Every instance with an assets binding must have keyboard-nav.js."""
+        for name, path in self._get_instance_dirs():
+            if not self._has_assets_binding(path):
+                continue
+            js = path / "assets" / "static" / "keyboard-nav.js"
+            assert js.exists(), (
+                f"Instance '{name}' has ASSETS binding but no assets/static/keyboard-nav.js."
+            )
+
+    def test_no_divergent_theme_css(self):
+        """If both theme/style.css and assets/static/style.css exist, they must match.
+
+        This is the exact bug that caused planetcf to serve the wrong stylesheet.
+        theme/style.css was the "correct" CSS compiled into THEME_CSS, but
+        assets/static/style.css (different content) was what Static Assets
+        actually served. Two sources of truth = silent divergence.
+        """
+        for name, path in self._get_instance_dirs():
+            theme_css = path / "theme" / "style.css"
+            assets_css = path / "assets" / "static" / "style.css"
+            if theme_css.exists() and assets_css.exists():
+                theme_content = theme_css.read_text()
+                assets_content = assets_css.read_text()
+                assert theme_content == assets_content, (
+                    f"Instance '{name}': theme/style.css and assets/static/style.css "
+                    f"have DIFFERENT content! Only assets/static/style.css is served "
+                    f"by Workers Static Assets. Either sync them or delete theme/style.css."
+                )
+
+    def test_root_assets_match_planet_cloudflare(self):
+        """Root assets/ must match examples/planet-cloudflare/assets/ for shared files.
+
+        Root wrangler.jsonc deploys 'planetcf' using assets/ at the repo root.
+        examples/planet-cloudflare/ has its own assets/. If both have style.css,
+        they must match — otherwise updating one and forgetting the other
+        silently deploys different CSS.
+        """
+        root_static = self.PROJECT_ROOT / "assets" / "static"
+        pcf_static = self.PROJECT_ROOT / "examples" / "planet-cloudflare" / "assets" / "static"
+        if not root_static.exists() or not pcf_static.exists():
+            pytest.skip("One of root/planet-cloudflare assets dirs missing")
+
+        for filename in ["style.css", "admin.js", "keyboard-nav.js"]:
+            root_file = root_static / filename
+            pcf_file = pcf_static / filename
+            if root_file.exists() and pcf_file.exists():
+                assert root_file.read_text() == pcf_file.read_text(), (
+                    f"root assets/static/{filename} differs from "
+                    f"examples/planet-cloudflare/assets/static/{filename}. "
+                    f"Root wrangler.jsonc uses THEME='planet-cloudflare' but serves "
+                    f"from assets/ at repo root, not examples/planet-cloudflare/assets/."
+                )
+
+    def test_css_files_are_not_empty(self):
+        """CSS files must have actual content, not be empty placeholders."""
+        for name, path in self._get_instance_dirs():
+            css = path / "assets" / "static" / "style.css"
+            if css.exists():
+                content = css.read_text().strip()
+                assert len(content) > 100, (
+                    f"Instance '{name}': assets/static/style.css is suspiciously small "
+                    f"({len(content)} chars). Expected a real stylesheet."
+                )
+
+    def test_css_has_valid_structure(self):
+        """CSS files must contain valid CSS structure (not Python or HTML)."""
+        for name, path in self._get_instance_dirs():
+            css = path / "assets" / "static" / "style.css"
+            if css.exists():
+                content = css.read_text()
+                # Should not contain Python artifacts
+                assert "def " not in content, (
+                    f"Instance '{name}': style.css contains 'def ' — "
+                    f"looks like Python was written to a CSS file."
+                )
+                assert "import " not in content, (
+                    f"Instance '{name}': style.css contains 'import ' — "
+                    f"looks like Python was written to a CSS file."
+                )
+                # Should contain CSS
+                assert "{" in content and "}" in content, (
+                    f"Instance '{name}': style.css has no CSS rule blocks."
+                )
+
+    def test_admin_js_consistent_across_instances(self):
+        """admin.js must be identical across all instances that have it.
+
+        There is one canonical admin.js (static/admin.js at repo root).
+        All copies in assets/static/ must match it.
+        """
+        canonical = self.PROJECT_ROOT / "static" / "admin.js"
+        if not canonical.exists():
+            pytest.skip("static/admin.js not found")
+        canonical_content = canonical.read_text()
+
+        for name, path in self._get_instance_dirs():
+            admin_js = path / "assets" / "static" / "admin.js"
+            if admin_js.exists():
+                assert admin_js.read_text() == canonical_content, (
+                    f"Instance '{name}': assets/static/admin.js differs from "
+                    f"static/admin.js (the canonical source). They must match."
+                )
+
+    def test_keyboard_nav_js_consistent_across_instances(self):
+        """keyboard-nav.js must be identical across all instances.
+
+        There is one canonical keyboard-nav.js (templates/keyboard-nav.js).
+        All copies in assets/static/ must match it.
+        """
+        canonical = self.PROJECT_ROOT / "templates" / "keyboard-nav.js"
+        if not canonical.exists():
+            pytest.skip("templates/keyboard-nav.js not found")
+        canonical_content = canonical.read_text()
+
+        for name, path in self._get_instance_dirs():
+            kb_js = path / "assets" / "static" / "keyboard-nav.js"
+            if kb_js.exists():
+                assert kb_js.read_text() == canonical_content, (
+                    f"Instance '{name}': assets/static/keyboard-nav.js differs from "
+                    f"templates/keyboard-nav.js (the canonical source). They must match."
+                )

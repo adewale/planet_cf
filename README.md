@@ -231,7 +231,7 @@ uvx vulture src/ vulture_whitelist.py  # Dead code detection
 
 | Script | Description |
 |--------|-------------|
-| `build_templates.py` | Compile HTML/CSS templates into `src/templates.py` (required after editing templates) |
+| `build_templates.py` | Compile HTML templates into `src/templates.py` (required after editing templates) |
 | `create_instance.py` | Provision a new Planet instance with all Cloudflare resources |
 | `deploy_instance.sh` | Deploy an instance to Cloudflare (D1, Vectorize, Queues, secrets, migrations) |
 | `validate_deployment_ready.py` | Pre-deploy check for common issues (missing files, config errors) |

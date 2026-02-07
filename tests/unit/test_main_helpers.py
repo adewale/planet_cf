@@ -729,7 +729,7 @@ class TestNormalizeEntryContent:
 
 
 # =============================================================================
-# Theme-aware CSS Serving Tests
+# Theme-aware Template Rendering Tests
 # =============================================================================
 
 

@@ -179,7 +179,7 @@ class TestTemplateXSSPrevention:
             feed_links={"atom": "/feed.atom", "rss": "/feed.rss", "opml": "/feeds.opml"},
         )
         # Check that the XSS payload is escaped (not that there are no script tags,
-        # since we have a legitimate inline script for keyboard navigation)
+        # since templates include legitimate scripts for date localization and external JS)
         assert "<script>alert" not in html
         assert "&lt;script&gt;" in html
 
