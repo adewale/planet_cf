@@ -4,8 +4,6 @@
 import pytest
 
 from src.templates import (
-    ADMIN_JS,
-    STATIC_CSS,
     TEMPLATE_ADMIN_DASHBOARD,
     TEMPLATE_ADMIN_ERROR,
     TEMPLATE_ADMIN_LOGIN,
@@ -237,45 +235,6 @@ class TestTemplateEmptyEntries:
             search_time_ms=50,
         )
         assert "No results" in html or "0" in html
-
-
-# =============================================================================
-# Static Asset Tests
-# =============================================================================
-
-
-class TestStaticCSS:
-    """Tests for embedded CSS."""
-
-    def test_css_is_not_empty(self):
-        """CSS content is not empty."""
-        assert len(STATIC_CSS) > 100
-
-    def test_css_contains_basic_rules(self):
-        """CSS contains expected selectors."""
-        assert "body" in STATIC_CSS
-        assert "header" in STATIC_CSS
-
-    def test_css_has_no_script_injection(self):
-        """CSS doesn't contain script injection."""
-        assert "<script>" not in STATIC_CSS.lower()
-        assert "javascript:" not in STATIC_CSS.lower()
-
-
-class TestAdminJS:
-    """Tests for embedded admin JavaScript."""
-
-    def test_js_is_not_empty(self):
-        """JavaScript content is not empty."""
-        assert len(ADMIN_JS) > 100
-
-    def test_js_contains_functions(self):
-        """JavaScript contains expected functions."""
-        assert "function" in ADMIN_JS or "=>" in ADMIN_JS
-
-    def test_js_no_eval(self):
-        """JavaScript doesn't use eval (security)."""
-        assert "eval(" not in ADMIN_JS
 
 
 # =============================================================================

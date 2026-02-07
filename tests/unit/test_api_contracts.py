@@ -13,6 +13,9 @@ These tests ensure that:
 
 import inspect
 import re
+from pathlib import Path
+
+ADMIN_JS = (Path(__file__).parent.parent.parent / "static" / "admin.js").read_text()
 
 
 class TestAdminJSHttpMethods:
@@ -27,7 +30,6 @@ class TestAdminJSHttpMethods:
 
         Frontend must use: method: 'PUT'
         """
-        from templates import ADMIN_JS
 
         # Find the fetch call for updating feed title (NOT the toggle endpoint)
         # Pattern: fetch('/admin/feeds/' + feedId, { method: '...'
@@ -73,7 +75,6 @@ class TestAdminJSHttpMethods:
         Backend route (main.py):
             if path.startswith("/admin/feeds/") and path.endswith("/toggle") and method == "POST":
         """
-        from templates import ADMIN_JS
 
         # Find the fetch call for toggling feed
         pattern = r"fetch\s*\(\s*['\"]?/admin/feeds/['\"]?\s*\+\s*feedId\s*\+\s*['\"]?/toggle['\"]?\s*,\s*\{[^}]*method:\s*['\"](\w+)['\"]"
@@ -88,7 +89,6 @@ class TestAdminJSHttpMethods:
         Backend route (main.py):
             if path == "/admin/reindex" and method == "POST":
         """
-        from templates import ADMIN_JS
 
         pattern = r"fetch\s*\(\s*['\"]?/admin/reindex['\"]?\s*,\s*\{[^}]*method:\s*['\"](\w+)['\"]"
         matches = re.findall(pattern, ADMIN_JS, re.DOTALL)
@@ -194,7 +194,6 @@ class TestJSONResponseContracts:
         Returns:
             Dict mapping JS function name to set of data.X property names accessed
         """
-        from templates import ADMIN_JS
 
         # Map JS functions to their data property accesses
         functions: dict[str, set[str]] = {}
@@ -257,7 +256,6 @@ class TestJSONResponseContracts:
 
     def test_dlq_js_expects_feeds_key(self):
         """Verify admin JS loadDLQ() accesses data.feeds."""
-        from templates import ADMIN_JS
 
         # Find loadDLQ function body
         func_match = re.search(
@@ -296,7 +294,6 @@ class TestJSONResponseContracts:
 
     def test_audit_log_js_expects_entries_key(self):
         """Verify admin JS loadAuditLog() accesses data.entries."""
-        from templates import ADMIN_JS
 
         func_match = re.search(
             r"function\s+loadAuditLog\s*\(\s*\)\s*\{(.*?)^\}",
@@ -344,7 +341,6 @@ class TestJSONResponseContracts:
 
     def test_reindex_js_expects_success_and_indexed(self):
         """Verify admin JS rebuildSearchIndex() accesses data.success and data.indexed."""
-        from templates import ADMIN_JS
 
         func_match = re.search(
             r"function\s+rebuildSearchIndex\s*\(\s*\)\s*\{(.*?)^\}",
@@ -362,7 +358,6 @@ class TestJSONResponseContracts:
 
         This test serves as a living document of the frontend-backend contract.
         """
-        from templates import ADMIN_JS
 
         # Extract all data.X accesses from the entire JS
         all_accesses = set(re.findall(r"data\.(\w+)", ADMIN_JS))
@@ -412,7 +407,7 @@ class TestRouteHandlerCoverage:
 
         for route in routes:
             path = route.path
-            # Prefix routes (like /admin, /static/) are matched by startswith,
+            # Prefix routes (like /admin) are matched by startswith,
             # so we just check the path string appears in the source
             assert f'"{path}"' in dispatch_source or f"'{path}'" in dispatch_source, (
                 f"Route '{path}' is registered in create_default_routes() but has no "

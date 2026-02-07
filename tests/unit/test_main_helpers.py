@@ -770,44 +770,6 @@ class _MockDB:
         return None
 
 
-class TestGetDefaultCss:
-    """Tests for _get_default_css() theme-aware CSS serving."""
-
-    def test_returns_theme_css_for_known_theme(self):
-        """When THEME is planet-cloudflare, returns THEME_CSS['planet-cloudflare']."""
-        from src.main import Default
-        from src.templates import THEME_CSS
-
-        worker = Default()
-        worker.env = _MinimalEnv(theme="planet-cloudflare")
-
-        result = worker._get_default_css()
-        assert result == THEME_CSS["planet-cloudflare"]
-        assert len(result) > 0
-
-    def test_returns_static_css_for_unknown_theme(self):
-        """When THEME is an unknown value, returns STATIC_CSS."""
-        from src.main import Default
-        from src.templates import STATIC_CSS
-
-        worker = Default()
-        worker.env = _MinimalEnv(theme="nonexistent-theme")
-
-        result = worker._get_default_css()
-        assert result == STATIC_CSS
-
-    def test_returns_static_css_when_theme_not_set(self):
-        """When THEME is not set, returns STATIC_CSS (default theme)."""
-        from src.main import Default
-        from src.templates import STATIC_CSS
-
-        worker = Default()
-        worker.env = _MinimalEnv()  # No THEME attribute
-
-        result = worker._get_default_css()
-        assert result == STATIC_CSS
-
-
 # =============================================================================
 # Conditional feed_links Tests
 # =============================================================================

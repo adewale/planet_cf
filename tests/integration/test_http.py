@@ -210,16 +210,13 @@ async def test_admin_requires_authentication(mock_env):
 
 
 @pytest.mark.asyncio
-async def test_static_css_served(mock_env):
-    """Static CSS should be served."""
-    from src.main import PlanetCF
-
-    worker = PlanetCF()
-    worker.env = mock_env
-
+async def test_static_css_served_by_assets(mock_env):
+    """Static CSS is served by Workers Static Assets binding, not the Worker."""
     request = MockRequest("https://planetcf.com/static/style.css")
 
-    response = await worker.fetch(request)
+    # In production, Static Assets intercepts /static/ before the Worker runs.
+    # Test that the ASSETS binding serves the file correctly.
+    response = await mock_env.ASSETS.fetch(request)
 
     assert response.status == 200
     assert "text/css" in response.headers.get("Content-Type", "")

@@ -147,38 +147,18 @@ def check_main_uses_theme() -> list[str]:
 
 
 def check_theme_css_coverage() -> list[str]:
-    """Check that THEME_CSS has entries for all non-default themes in wrangler configs."""
+    """Check that each instance has assets/static/style.css for Workers Static Assets."""
     errors = []
-    templates_py = PROJECT_ROOT / "src" / "templates.py"
     examples_dir = PROJECT_ROOT / "examples"
 
-    if not templates_py.exists():
-        return ["templates.py not found - cannot verify THEME_CSS"]
+    for wrangler_file in sorted(examples_dir.glob("*/wrangler.jsonc")):
+        instance_name = wrangler_file.parent.name
+        style_css = wrangler_file.parent / "assets" / "static" / "style.css"
 
-    content = templates_py.read_text()
-
-    # Extract themes that have THEME_CSS entries
-    css_themes: set[str] = set()
-    if "THEME_CSS" in content:
-        for match in re.finditer(r"THEME_CSS\s*=\s*\{(.*?)\n\}", content, re.DOTALL):
-            css_themes.update(re.findall(r'"([^"]+)":\s*"""', match.group(1)))
-
-    # Check each wrangler config's THEME value
-    for wrangler_file in examples_dir.glob("*/wrangler.jsonc"):
-        file_content = wrangler_file.read_text()
-        content_no_comments = re.sub(r"//.*$", "", file_content, flags=re.MULTILINE)
-
-        try:
-            config = json.loads(content_no_comments)
-        except json.JSONDecodeError:
-            continue
-
-        theme = config.get("vars", {}).get("THEME")
-        if theme and theme != "default" and theme not in css_themes:
+        if not style_css.exists():
             errors.append(
-                f"{wrangler_file.relative_to(PROJECT_ROOT)}: "
-                f"THEME '{theme}' has no THEME_CSS entry in templates.py. "
-                "Run 'python scripts/build_templates.py' to regenerate."
+                f"examples/{instance_name}/assets/static/style.css not found. "
+                "Each instance must have its own static CSS for Workers Static Assets serving."
             )
 
     return errors

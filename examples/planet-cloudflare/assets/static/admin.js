@@ -97,25 +97,33 @@ function escapeHtml(text) {
 
 function rebuildSearchIndex() {
     var btn = document.getElementById('reindex-btn');
+    var originalText = btn.textContent;
     btn.disabled = true;
-    btn.textContent = 'Reindexing...';
+    btn.textContent = 'Rebuilding...';
+    btn.style.opacity = '0.7';
 
-    fetch('/admin/reindex', { method: 'POST' })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            btn.textContent = data.success ? 'Done!' : 'Failed';
-            setTimeout(function() {
-                btn.disabled = false;
-                btn.textContent = 'Reindex';
-            }, 2000);
-        })
-        .catch(function() {
-            btn.textContent = 'Failed';
-            setTimeout(function() {
-                btn.disabled = false;
-                btn.textContent = 'Reindex';
-            }, 2000);
-        });
+    fetch('/admin/reindex', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        if (data.success) {
+            btn.textContent = 'Done! (' + data.indexed + ' indexed)';
+            setTimeout(function() { btn.textContent = originalText; }, 3000);
+        } else {
+            btn.textContent = 'Error: ' + (data.error || 'Unknown');
+            setTimeout(function() { btn.textContent = originalText; }, 3000);
+        }
+    })
+    .catch(function(err) {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.textContent = 'Error';
+        setTimeout(function() { btn.textContent = originalText; }, 3000);
+    });
 }
 
 // =============================================================================

@@ -248,13 +248,7 @@ def create_default_routes() -> list[Route]:
         Route(path="/feed.rss10", content_type="rss10", cacheable=True),
         Route(path="/feeds.opml", content_type="opml", cacheable=True),
         Route(path="/search", content_type="search", cacheable=False, lite_mode_disabled=True),
-        Route(
-            path="/static/",
-            prefix=True,
-            content_type="static",
-            cacheable=True,
-            route_name="/static/*",
-        ),
+        # Static files are served by Workers Static Assets at the edge (no Worker needed)
         # OAuth routes (not cacheable)
         Route(
             path="/auth/github",

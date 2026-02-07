@@ -20,6 +20,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -131,6 +132,19 @@ def create_instance_config(
     (instance_dir / "static").mkdir(exist_ok=True)
     # Create assets directory for ASSETS binding
     (instance_dir / "assets").mkdir(exist_ok=True)
+    # Create assets/static/ subdirectory and copy default static files
+    (instance_dir / "assets" / "static").mkdir(parents=True, exist_ok=True)
+    shutil.copy2(
+        PROJECT_ROOT / "templates" / "style.css", instance_dir / "assets" / "static" / "style.css"
+    )
+    shutil.copy2(
+        PROJECT_ROOT / "templates" / "keyboard-nav.js",
+        instance_dir / "assets" / "static" / "keyboard-nav.js",
+    )
+    if not lite_mode:
+        shutil.copy2(
+            PROJECT_ROOT / "static" / "admin.js", instance_dir / "assets" / "static" / "admin.js"
+        )
 
     # In lite mode, create a starter feeds.opml file
     if lite_mode:

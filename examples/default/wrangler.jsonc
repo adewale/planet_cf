@@ -109,6 +109,12 @@
     ]
   },
 
+  // Static assets served via Cloudflare's ASSETS binding
+  "assets": {
+    "directory": "./assets/",
+    "binding": "ASSETS"
+  },
+
   // Cron trigger: Hourly feed fetch
   "triggers": {
     "crons": ["0 * * * *"]

@@ -388,13 +388,20 @@ for themes in `_THEMES_WITH_RSS10`. All feed routes (`/feed.rss`, `/feed.atom`, 
 
 ### Static File Serving
 
-Static files are served from `/static/*` routes:
-- `/static/style.css` - Main stylesheet
-- `/static/admin.js` - Admin dashboard JavaScript
+Static assets (CSS, JS) are served via **Workers Static Assets** from each instance's
+`assets/` directory. Each instance has its own copy of static files under `assets/static/`:
 
-Templates (HTML) are embedded in `src/templates.py` at build time (Workers has no filesystem).
-Static files (CSS, JS) exist as separate files in the `static/` directory and are served
-by the Worker at runtime. In production, consider using Cloudflare Pages or R2 for static assets.
+- `/static/style.css` - Main stylesheet (per-instance, supports theming)
+- `/static/keyboard-nav.js` - Keyboard navigation script
+- `/static/admin.js` - Admin dashboard JavaScript (full mode only)
+
+The `assets` binding in `wrangler.jsonc` maps the `assets/` directory so Cloudflare
+serves these files directly from the edge CDN, without hitting the Worker. Templates
+(HTML) are still embedded in `src/templates.py` at build time (Workers has no filesystem).
+
+When creating a new instance, `scripts/create_instance.py` copies default static files
+from `templates/` and `static/` into `assets/static/`. Instances can then customize
+their CSS independently.
 
 ## Security Measures
 
@@ -510,7 +517,7 @@ messages, AI results) MUST convert through `_to_py_safe()` before use.
 
 ```
 src/
-├── templates.py         (3,703 lines) - Jinja2 templates + CSS + JS (embedded at build)
+├── templates.py         (3,703 lines) - Jinja2 templates (embedded at build); CSS/JS served via Static Assets
 ├── main.py              (3,385 lines) - Worker entrypoint + core business logic
 ├── wrappers.py            (847 lines) - JS ↔ Python boundary converters
 ├── observability.py       (479 lines) - Wide events + structured logging
@@ -574,9 +581,9 @@ src/
 │  │          │ │                 │ │.py       │ │                  │              │
 │  │constants │ │ RequestEvent    │ │SafeEnv   │ │render_template   │              │
 │  │get_config│ │ FeedFetchEvent  │ │SafeHeaders│ │TEMPLATE_*        │              │
-│  │_value()  │ │ SchedulerEvent  │ │SafeFeed  │ │THEME_CSS         │              │
-│  │          │ │ AdminActionEvent│ │Info      │ │ADMIN_JS          │              │
-│  │          │ │ Timer           │ │safe_http │ │STATIC_CSS        │              │
+│  │_value()  │ │ SchedulerEvent  │ │SafeFeed  │ │THEME_LOGOS       │              │
+│  │          │ │ AdminActionEvent│ │Info      │ │THEME_ASSETS      │              │
+│  │          │ │ Timer           │ │safe_http │ │EmbeddedLoader    │              │
 │  │          │ │ emit_event      │ │_fetch    │ │                  │              │
 │  └────┬─────┘ └───────┬────────┘ └──────────┘ └──────────────────┘              │
 │       │               │           (no local)    (no local deps)                  │
@@ -658,7 +665,7 @@ Domain logic helpers:
 
 Data + presentation:
 ├── models.py             (362 lines) - Data models, BleachSanitizer, typed dicts
-└── templates.py        (3,703 lines) - Jinja2 templates + CSS + JS (embedded at build)
+└── templates.py        (3,703 lines) - Jinja2 templates (embedded at build); CSS/JS via Static Assets
 
 Still in main.py (3,385 lines):
 ├── Feed processing     - _process_single_feed(), _fetch_full_content(), _normalize_urls()
@@ -819,7 +826,7 @@ Still in main.py (3,385 lines):
 planet_cf/
 ├── src/                           # Worker source code (16 modules)
 │   ├── main.py                    #   Worker entrypoint + core business logic
-│   ├── templates.py               #   Jinja2 templates + CSS + JS (embedded at build)
+│   ├── templates.py               #   Jinja2 templates (embedded at build); CSS/JS via Static Assets
 │   ├── wrappers.py                #   JS ↔ Python boundary converters
 │   ├── observability.py           #   Structured logging and wide event emission
 │   ├── models.py                  #   Data models, BleachSanitizer, typed dicts
@@ -840,11 +847,10 @@ planet_cf/
 │   ├── feed.rss.xml
 │   ├── feed.rss10.xml
 │   ├── feeds.opml
-│   ├── style.css
-│   └── keyboard-nav.js
-├── static/                        # Static assets served at /static/*
+│   ├── style.css                  #   Default CSS (copied to instances' assets/static/)
+│   └── keyboard-nav.js            #   Keyboard nav JS (copied to instances' assets/static/)
+├── static/                        # Source static assets (copied to instances' assets/static/)
 │   ├── admin.js                   #   Admin dashboard JavaScript
-│   ├── style.css                  #   Main stylesheet
 │   ├── favicon.ico
 │   ├── favicon.svg
 │   ├── favicon-32x32.png
@@ -857,7 +863,7 @@ planet_cf/
 ├── config/                        # Instance configuration
 │   ├── admins.json                #   Authorized GitHub usernames
 │   └── instance.example.yaml      #   Example instance config
-├── examples/                      # Example planet instances
+├── examples/                      # Example planet instances (each has assets/static/)
 │   ├── default/                   #   Minimal starter instance
 │   ├── planet-cloudflare/         #   Cloudflare blog aggregator
 │   ├── planet-mozilla/            #   Mozilla blog aggregator

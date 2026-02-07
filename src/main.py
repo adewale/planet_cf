@@ -70,9 +70,6 @@ from route_dispatcher import Route, RouteDispatcher, RouteMatch
 from search_query import SearchQueryBuilder
 from templates import (
     _EMBEDDED_TEMPLATES,
-    ADMIN_JS,
-    KEYBOARD_NAV_JS,
-    STATIC_CSS,
     TEMPLATE_ADMIN_DASHBOARD,
     TEMPLATE_ADMIN_LOGIN,
     TEMPLATE_FEED_ATOM,
@@ -84,15 +81,11 @@ from templates import (
     TEMPLATE_INDEX,
     TEMPLATE_SEARCH,
     TEMPLATE_TITLES,
-    THEME_CSS,
     THEME_LOGOS,
     render_template,
 )
 from utils import (
     ERROR_MESSAGE_MAX_LENGTH,
-)
-from utils import (
-    SECURITY_HEADERS as _SECURITY_HEADERS,
 )
 from utils import (
     feed_response as _feed_response,
@@ -1273,13 +1266,6 @@ class Default(WorkerEntrypoint):
                 Route(
                     path="/search", content_type="search", cacheable=False, lite_mode_disabled=True
                 ),
-                Route(
-                    path="/static/",
-                    prefix=True,
-                    content_type="static",
-                    cacheable=True,
-                    route_name="/static/*",
-                ),
                 # OAuth routes
                 Route(
                     path="/auth/github",
@@ -1424,9 +1410,6 @@ class Default(WorkerEntrypoint):
             return await self._serve_foaf()
         elif route_path == "/search":
             return await self._search_entries(request, event)
-        elif route_path == "/static/":
-            return await self._serve_static(path)
-
         # OAuth routes
         elif route_path == "/auth/github":
             secret_error = self._check_auth_secrets()
@@ -2378,57 +2361,6 @@ class Default(WorkerEntrypoint):
             max_search_words=MAX_SEARCH_WORDS,
         )
         return _html_response(html, cache_max_age=0)
-
-    async def _serve_static(self, path: str) -> Response:
-        """Serve static files."""
-        # In production, static files would be served via assets binding
-        # For now, serve CSS and JS inline
-        if path == "/static/style.css":
-            css = self._get_default_css()
-            return Response(
-                css,
-                headers={
-                    "Content-Type": "text/css",
-                    "Cache-Control": "public, max-age=86400",
-                    **_SECURITY_HEADERS,
-                },
-            )
-        if path == "/static/admin.js":
-            js = self._get_admin_js()
-            return Response(
-                js,
-                headers={
-                    "Content-Type": "application/javascript",
-                    "Cache-Control": "public, max-age=86400",
-                    **_SECURITY_HEADERS,
-                },
-            )
-        if path == "/static/keyboard-nav.js":
-            js = self._get_keyboard_nav_js()
-            return Response(
-                js,
-                headers={
-                    "Content-Type": "application/javascript",
-                    "Cache-Control": "public, max-age=86400",
-                    **_SECURITY_HEADERS,
-                },
-            )
-        return _json_error("Not Found", status=404)
-
-    def _get_default_css(self) -> str:
-        """Return CSS styling for the current theme, falling back to STATIC_CSS."""
-        theme = self._get_theme()
-        if theme in THEME_CSS:
-            return THEME_CSS[theme]
-        return STATIC_CSS
-
-    def _get_admin_js(self) -> str:
-        """Return admin dashboard JavaScript from templates module."""
-        return ADMIN_JS
-
-    def _get_keyboard_nav_js(self) -> str:
-        """Return keyboard navigation JavaScript from templates module."""
-        return KEYBOARD_NAV_JS
 
     # =========================================================================
     # Admin Routes
