@@ -179,7 +179,7 @@ planet:
     email: planet@python.org
 
 branding:
-  theme: default  # default, planet-python, planet-mozilla, planet-cloudflare
+  theme: default  # default, planet-python, planet-mozilla
   user_agent: "{name}/1.0 (+{url}; {email})"
   footer_text: "Powered by {name}"
   show_admin_link: true
@@ -242,7 +242,6 @@ All configuration can be overridden via environment variables:
 | `default` | Modern, clean design with accent colors |
 | `planet-python` | Planet Python theme with Python branding |
 | `planet-mozilla` | Planet Mozilla theme with Mozilla branding |
-| `planet-cloudflare` | Planet Cloudflare theme with Cloudflare branding |
 
 ### Using a Theme
 
@@ -309,7 +308,7 @@ Required secrets:
 |---------|--------------|-----------|
 | Architecture | Static site generator | Dynamic Workers app |
 | Config format | INI | YAML + env vars |
-| Themes | 5 built-in | 4 built-in (default, planet-python, planet-mozilla, planet-cloudflare) |
+| Themes | 5 built-in | 3 built-in (default, planet-python, planet-mozilla) |
 | Search | N/A | Semantic (Vectorize) |
 | Auth | None | OAuth (GitHub) |
 | Database | SQLite file | D1 (managed SQLite) |
@@ -372,7 +371,7 @@ If you have an existing Planet CF deployment:
 
 1. **One instance per Cloudflare account** - Each instance needs its own D1, Vectorize, and Queues
 2. **Use separate GitHub OAuth apps** - Each instance should have its own OAuth credentials
-3. **Version control instance configs** - Keep `config/instances/*.yaml` in git
+3. **Version control instance configs** - Keep `examples/<instance>/config.yaml` in git
 4. **Don't commit secrets** - Use `wrangler secret put` for credentials
 5. **Test themes locally** - Use `wrangler dev` before deploying
 

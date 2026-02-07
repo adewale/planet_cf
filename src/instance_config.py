@@ -11,7 +11,7 @@ Configuration hierarchy (highest priority first):
 3. Defaults defined here
 
 For local development, you can use config/instance.yaml with the
-generate_wrangler_config.py script to generate wrangler.jsonc.
+create_instance.py script to generate wrangler.jsonc.
 """
 
 from wrappers import SafeEnv

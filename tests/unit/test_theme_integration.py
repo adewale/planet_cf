@@ -257,10 +257,8 @@ class TestStaticAssetsIntegrity:
     def test_no_divergent_theme_css(self):
         """If both theme/style.css and assets/static/style.css exist, they must match.
 
-        This is the exact bug that caused planetcf to serve the wrong stylesheet.
-        theme/style.css was the "correct" CSS compiled into THEME_CSS, but
-        assets/static/style.css (different content) was what Static Assets
-        actually served. Two sources of truth = silent divergence.
+        Guards against leftover theme/ directories that could cause confusion.
+        assets/static/style.css is the only file served by Workers Static Assets.
         """
         for name, path in self._get_instance_dirs():
             theme_css = path / "theme" / "style.css"
@@ -296,6 +294,39 @@ class TestStaticAssetsIntegrity:
                     f"examples/planet-cloudflare/assets/static/{filename}. "
                     f"Root wrangler.jsonc uses THEME='planet-cloudflare' but serves "
                     f"from assets/ at repo root, not examples/planet-cloudflare/assets/."
+                )
+
+    def test_default_theme_instances_match_canonical_css(self):
+        """Instances using the default theme must have CSS matching templates/style.css.
+
+        This prevents the bug where the canonical CSS (733 lines) diverged from
+        the deployed CSS (333 lines), causing missing styles for keyboard shortcuts,
+        search results, admin buttons, and content formatting.
+        """
+        canonical = self.PROJECT_ROOT / "templates" / "style.css"
+        if not canonical.exists():
+            pytest.skip("templates/style.css not found")
+        canonical_content = canonical.read_text()
+
+        # Instances that use the default theme CSS (no custom templates/style.css)
+        default_theme_instances = [
+            self.PROJECT_ROOT / "assets" / "static" / "style.css",  # root deployment
+            self.PROJECT_ROOT / "examples" / "default" / "assets" / "static" / "style.css",
+            self.PROJECT_ROOT
+            / "examples"
+            / "planet-cloudflare"
+            / "assets"
+            / "static"
+            / "style.css",
+            self.PROJECT_ROOT / "examples" / "test-planet" / "assets" / "static" / "style.css",
+        ]
+
+        for css_path in default_theme_instances:
+            if css_path.exists():
+                assert css_path.read_text() == canonical_content, (
+                    f"{css_path.relative_to(self.PROJECT_ROOT)} differs from "
+                    f"templates/style.css (the canonical source). "
+                    f"Run: cp templates/style.css {css_path.relative_to(self.PROJECT_ROOT)}"
                 )
 
     def test_css_files_are_not_empty(self):

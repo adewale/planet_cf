@@ -231,8 +231,7 @@ planet:
 # Branding & Theme
 # =============================================================================
 branding:
-  # Available themes: default, classic, dark, minimal
-  # Or path to custom theme directory
+  # Available themes: default, planet-python, planet-mozilla
   theme: {theme}
 
   # User-Agent string for feed fetching
@@ -722,7 +721,7 @@ Modes:
     parser.add_argument(
         "--theme",
         default="default",
-        help="Theme to use (default: default). Built-in: default, classic, dark, minimal. Or use a custom theme name.",
+        help="Theme to use (default: default). Built-in: default, planet-python, planet-mozilla.",
     )
     parser.add_argument(
         "--auto-provision",

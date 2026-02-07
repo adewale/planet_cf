@@ -301,10 +301,6 @@ THEME_LOGOS = {
 '''
 
     output += """}
-
-# Static assets are served via Cloudflare's ASSETS binding.
-# Each example has an assets/ directory configured in wrangler.jsonc.
-THEME_ASSETS = {}
 """
 
     # Write output

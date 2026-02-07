@@ -517,25 +517,25 @@ messages, AI results) MUST convert through `_to_py_safe()` before use.
 
 ```
 src/
-├── templates.py         (3,703 lines) - Jinja2 templates (embedded at build); CSS/JS served via Static Assets
-├── main.py              (3,385 lines) - Worker entrypoint + core business logic
+├── main.py              (3,462 lines) - Worker entrypoint + core business logic
+├── templates.py         (1,650 lines) - Jinja2 templates (embedded at build); CSS/JS served via Static Assets
 ├── wrappers.py            (847 lines) - JS ↔ Python boundary converters
 ├── observability.py       (479 lines) - Wide events + structured logging
-├── models.py              (362 lines) - Data models + sanitizer
+├── models.py              (371 lines) - Data models + sanitizer
 ├── oauth_handler.py       (335 lines) - GitHub OAuth flow handler
 ├── utils.py               (328 lines) - Utility functions (logging, responses, dates)
-├── route_dispatcher.py    (281 lines) - HTTP route matching + dispatch
+├── route_dispatcher.py    (274 lines) - HTTP route matching + dispatch
 ├── search_query.py        (234 lines) - SQL search query builder
 ├── admin_context.py       (220 lines) - Admin action context manager
+├── config.py              (207 lines) - Constants + env-based config getters
 ├── content_processor.py   (204 lines) - Feed entry content extraction
-├── admin.py               (194 lines) - Admin error responses + OPML parsing
 ├── auth.py                (203 lines) - Session cookies + HMAC signing
-├── config.py              (172 lines) - Constants + env-based config getters
-├── instance_config.py     (105 lines) - Lite mode detection + config loading
+├── admin.py               (194 lines) - Admin error responses + OPML parsing
+├── instance_config.py      (70 lines) - Lite mode detection + config loading
 ├── xml_sanitizer.py        (55 lines) - XML control character stripping
 └── __init__.py              (4 lines)
                           ───────
-                    Total: 11,111 lines
+                    Total: 9,137 lines
 ```
 
 ### Module Dependency Diagram
@@ -664,10 +664,10 @@ Domain logic helpers:
 └── search_query.py       (234 lines) - SQL search query builder (phrase/multi-word)
 
 Data + presentation:
-├── models.py             (362 lines) - Data models, BleachSanitizer, typed dicts
-└── templates.py        (3,703 lines) - Jinja2 templates (embedded at build); CSS/JS via Static Assets
+├── models.py             (371 lines) - Data models, BleachSanitizer, typed dicts
+└── templates.py        (1,650 lines) - Jinja2 templates (embedded at build); CSS/JS via Static Assets
 
-Still in main.py (3,385 lines):
+Still in main.py (3,462 lines):
 ├── Feed processing     - _process_single_feed(), _fetch_full_content(), _normalize_urls()
 ├── Entry management    - _upsert_entry(), _index_entry_for_search(), _apply_retention_policy()
 ├── HTML/feed rendering - _generate_html(), _generate_atom_feed(), _generate_rss_feed()

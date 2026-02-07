@@ -31,8 +31,8 @@ Sensible defaults for reliable feed fetching:
 |---------|---------|----------|
 | HTTP timeout | 30 seconds | `HTTP_TIMEOUT_SECONDS` |
 | Feed processing timeout | 60 seconds | `FEED_TIMEOUT_SECONDS` |
-| Max entries per feed | 50 | `MAX_ENTRIES_PER_FEED` |
-| Retry attempts | 3 | `FEED_FAILURE_THRESHOLD` |
+| Max entries per feed | 100 | `RETENTION_MAX_ENTRIES_PER_FEED` |
+| Unhealthy threshold | 3 failures | `FEED_FAILURE_THRESHOLD` |
 | Retention period | 90 days | `RETENTION_DAYS` |
 | Auto-deactivate after | 10 failures | `FEED_AUTO_DEACTIVATE_THRESHOLD` |
 

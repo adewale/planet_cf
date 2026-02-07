@@ -134,7 +134,7 @@ ignore = [
 "src/main.py" = [
     "S608",  # SQL uses bind() parameters, not string formatting
     "S314",  # XML parsing for admin OPML import (authenticated only)
-    "UP040",  # Can't use PEP 695 `type` keyword - Pyodide uses Python 3.11
+    "UP040",  # Can't use PEP 695 `type` keyword - Pyodide runtime may not support it
     "UP017",  # Keep timezone.utc for consistency across the codebase
 ]
 "src/utils.py" = [
