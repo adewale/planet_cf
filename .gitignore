@@ -53,3 +53,6 @@ node_modules/
 .hypothesis/
 .dev.vars
 visual_comparison_output/
+
+# Generated outputs
+lighthouse-results/

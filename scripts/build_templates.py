@@ -29,7 +29,6 @@ from pathlib import Path
 # Directories relative to this script
 PROJECT_ROOT = Path(__file__).parent.parent
 TEMPLATE_DIR = PROJECT_ROOT / "templates"
-THEMES_DIR = PROJECT_ROOT / "themes"
 EXAMPLES_DIR = PROJECT_ROOT / "examples"
 OUTPUT_FILE = PROJECT_ROOT / "src" / "templates.py"
 
@@ -321,41 +320,9 @@ THEME_ASSETS = {}
     print(f"  - {len(shared_templates)} shared templates")
 
 
-def list_available_themes() -> list[str]:
-    """Return list of available theme names."""
-    if not THEMES_DIR.exists():
-        return []
-    return sorted(
-        [d.name for d in THEMES_DIR.iterdir() if d.is_dir() and (d / "style.css").exists()]
-    )
-
-
-def list_available_examples() -> list[str]:
-    """Return list of available example names with themes."""
-    if not EXAMPLES_DIR.exists():
-        return []
-    return sorted(
-        [
-            d.name
-            for d in EXAMPLES_DIR.iterdir()
-            if d.is_dir() and (d / "theme" / "style.css").exists()
-        ]
-    )
-
-
 def main():
     """Parse arguments and build templates."""
-    available_themes = list_available_themes()
-    available_examples = list_available_examples()
-
-    theme_help = (
-        f"Theme to use for template resolution. "
-        f"Available: {', '.join(available_themes) if available_themes else 'none found'}"
-    )
-    example_help = (
-        f"Example to use for template resolution. "
-        f"Available: {', '.join(available_examples) if available_examples else 'none found'}"
-    )
+    available_examples = THEME_TEMPLATE_DIRS
 
     parser = argparse.ArgumentParser(
         description="Build HTML templates into src/templates.py for Cloudflare Workers.",
@@ -365,41 +332,35 @@ Examples:
   # Build with default templates
   python scripts/build_templates.py
 
-  # Build with Planet Python theme templates
-  python scripts/build_templates.py --theme planet-python
+  # Build with Planet Python example templates
+  python scripts/build_templates.py --example planet-python
 
   # Build with Planet Mozilla example templates
   python scripts/build_templates.py --example planet-mozilla
-
-  # Build with dark theme templates
-  python scripts/build_templates.py --theme dark
 """,
     )
     parser.add_argument(
         "--theme",
         "-t",
         metavar="NAME",
-        help=theme_help,
+        help="Theme to use for template resolution (alias for --example).",
     )
     parser.add_argument(
         "--example",
         "-e",
         metavar="NAME",
-        help=example_help,
+        help=f"Example to use for template resolution. Available: {', '.join(available_examples)}",
     )
     parser.add_argument(
         "--list-themes",
         action="store_true",
-        help="List available themes and examples and exit",
+        help="List available examples and exit",
     )
 
     args = parser.parse_args()
 
     if args.list_themes:
-        print("Available themes (themes/<name>/style.css):")
-        for theme in available_themes:
-            print(f"  - {theme}")
-        print("\nAvailable examples (examples/<name>/theme/style.css):")
+        print("Available examples (examples/<name>/templates/):")
         for example in available_examples:
             print(f"  - {example}")
         return

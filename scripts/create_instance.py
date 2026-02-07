@@ -10,7 +10,7 @@ Usage:
     python scripts/create_instance.py --id my-planet --from-example planet-cloudflare
 
 This will:
-1. Create examples/{id}/ directory with config.yaml, wrangler.jsonc, theme/, static/
+1. Create examples/{id}/ directory with config.yaml, wrangler.jsonc, assets/
 2. Print instructions for creating Cloudflare resources
 
 For full automated provisioning, you'll need wrangler CLI installed.
@@ -29,7 +29,6 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 EXAMPLES_DIR = PROJECT_ROOT / "examples"
-THEMES_DIR = PROJECT_ROOT / "themes"
 CONFIG_DIR = PROJECT_ROOT / "config"
 TEMPLATE_FILE = CONFIG_DIR / "instance.example.yaml"
 
@@ -127,10 +126,7 @@ def create_instance_config(
     """Create instance configuration file from template."""
     instance_dir = EXAMPLES_DIR / instance_id
     instance_dir.mkdir(parents=True, exist_ok=True)
-    # Create theme and static subdirectories
-    (instance_dir / "theme").mkdir(exist_ok=True)
-    (instance_dir / "static").mkdir(exist_ok=True)
-    # Create assets directory for ASSETS binding
+    # Create assets directory for Workers Static Assets binding
     (instance_dir / "assets").mkdir(exist_ok=True)
     # Create assets/static/ subdirectory and copy default static files
     (instance_dir / "assets" / "static").mkdir(parents=True, exist_ok=True)
@@ -881,8 +877,7 @@ Modes:
         print("\n📁 Files that would be created:")
         print(f"   - examples/{args.id}/config.yaml")
         print(f"   - examples/{args.id}/wrangler.jsonc")
-        print(f"   - examples/{args.id}/theme/")
-        print(f"   - examples/{args.id}/static/")
+        print(f"   - examples/{args.id}/assets/static/")
         print(f"   - examples/{args.id}/python_modules -> ../../python_modules (symlink)")
         print("\n☁️  Cloudflare resources that would be needed:")
         print(f"   - D1 database: {args.id}-db")

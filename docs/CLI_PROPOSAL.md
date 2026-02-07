@@ -1220,10 +1220,8 @@ Available themes:
 $ planet build --theme dark
 
 Building templates with theme: dark
-  Loaded CSS from themes/dark/style.css
   Generated src/templates.py
     - 9 templates
-    - 12,456 bytes of CSS
 
 # Rebuild after editing templates
 $ planet build

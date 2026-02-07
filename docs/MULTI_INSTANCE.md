@@ -8,7 +8,7 @@ Planet CF supports configurable multi-instance deployment through the `examples/
 
 - **Examples-Based Structure**: Each instance has its own directory in `examples/`
 - **Ready-to-Deploy Instances**: Planet Python and Planet Mozilla included
-- **Multiple Themes**: Per-instance themes in `examples/<id>/theme/`
+- **Multiple Themes**: Per-instance templates in `examples/<id>/templates/`
 - **OAuth Abstraction**: Support for GitHub OAuth (Google and custom OIDC not yet implemented)
 - **CLI Tooling**: Scripts to provision and deploy new instances
 - **One-Command Deployment**: Single script handles all Cloudflare resources
@@ -118,8 +118,7 @@ python scripts/create_instance.py \
 This creates:
 - `examples/planet-python/config.yaml` - Instance configuration
 - `examples/planet-python/wrangler.jsonc` - Cloudflare Workers config
-- `examples/planet-python/assets/` - Static assets directory
-- `examples/planet-python/theme/` - Theme directory (if applicable)
+- `examples/planet-python/assets/` - Static assets directory (CSS, JS served at edge)
 
 ### Provision Cloudflare Resources Manually
 
@@ -262,32 +261,22 @@ branding:
 
 ### Creating Custom Themes
 
-1. Create a theme directory:
+1. Create an instance with its assets directory:
 ```bash
-mkdir -p themes/my-theme
+python scripts/create_instance.py --id my-planet --name "My Planet" ...
 ```
 
-2. Add your CSS:
-```bash
-# themes/my-theme/style.css
+2. Customize the CSS in `assets/static/style.css`:
+```css
+/* examples/my-planet/assets/static/style.css */
 :root {
   --accent: #your-color;
   /* ... */
 }
 ```
 
-3. Reference in config:
-```yaml
-branding:
-  theme: my-theme
-```
-
-4. Rebuild templates:
+3. For custom HTML templates, add files to `examples/my-planet/templates/` and rebuild:
 ```bash
-# For themes in themes/<name>/
-python scripts/build_templates.py --theme my-theme
-
-# For themes in examples/<name>/theme/
 python scripts/build_templates.py --example my-planet
 ```
 
@@ -342,31 +331,23 @@ planet_cf/
 │   │   ├── config.yaml
 │   │   ├── wrangler.jsonc
 │   │   ├── assets/
-│   │   ├── theme/
 │   │   └── README.md
 │   ├── planet-python/           # Planet Python clone
 │   │   ├── config.yaml          # 500+ feeds
 │   │   ├── wrangler.jsonc
 │   │   ├── assets/
 │   │   ├── templates/
-│   │   ├── theme/
 │   │   └── README.md
 │   ├── planet-mozilla/          # Planet Mozilla clone
 │   │   ├── config.yaml          # 190 feeds
 │   │   ├── wrangler.jsonc
 │   │   ├── assets/
 │   │   ├── templates/
-│   │   ├── theme/
 │   │   └── README.md
 │   └── test-planet/             # Test instance for CI
 │       ├── config.yaml
 │       ├── wrangler.jsonc
 │       └── assets/
-├── themes/                      # Shared themes
-│   ├── default/style.css
-│   ├── classic/style.css
-│   ├── dark/style.css
-│   └── minimal/style.css
 ├── scripts/
 │   ├── create_instance.py       # Instance configuration generator
 │   ├── deploy_instance.sh       # One-command deployment script

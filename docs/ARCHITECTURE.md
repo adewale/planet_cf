@@ -855,11 +855,6 @@ planet_cf/
 │   ├── favicon.svg
 │   ├── favicon-32x32.png
 │   └── apple-touch-icon.png
-├── themes/                        # Theme CSS variants
-│   ├── classic/style.css
-│   ├── dark/style.css
-│   ├── default/style.css
-│   └── minimal/style.css
 ├── config/                        # Instance configuration
 │   ├── admins.json                #   Authorized GitHub usernames
 │   └── instance.example.yaml      #   Example instance config
