@@ -2,7 +2,6 @@
 """Shared fixtures for Planet CF tests."""
 
 import sys
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
@@ -87,8 +86,6 @@ _mock_workers.WorkerEntrypoint = MockWorkerEntrypoint
 # Install the mock before any imports of src.main
 sys.modules["workers"] = _mock_workers
 
-
-from src.models import EntryRow, FeedRow, Session
 
 # =============================================================================
 # Mock Cloudflare Bindings
@@ -414,72 +411,10 @@ def mock_env_with_admins(mock_env: MockEnv) -> MockEnv:
 
 
 # =============================================================================
-# Test Data Factories
+# Test Data Factories (imported from canonical source)
 # =============================================================================
 
-
-class FeedFactory:
-    """Factory for creating test feed data."""
-
-    _counter = 0
-
-    @classmethod
-    def create(cls, **overrides) -> FeedRow:
-        cls._counter += 1
-        defaults: FeedRow = {
-            "id": cls._counter,
-            "url": f"https://feed{cls._counter}.example.com/rss",
-            "title": f"Test Feed {cls._counter}",
-            "site_url": f"https://feed{cls._counter}.example.com",
-            "is_active": 1,
-            "consecutive_failures": 0,
-            "created_at": "2026-01-01T00:00:00Z",
-            "updated_at": "2026-01-01T00:00:00Z",
-        }
-        return {**defaults, **overrides}
-
-    @classmethod
-    def reset(cls):
-        cls._counter = 0
-
-
-class EntryFactory:
-    """Factory for creating test entry data."""
-
-    _counter = 0
-
-    @classmethod
-    def create(cls, feed_id: int = 1, **overrides) -> EntryRow:
-        cls._counter += 1
-        defaults: EntryRow = {
-            "id": cls._counter,
-            "feed_id": feed_id,
-            "guid": f"entry-{cls._counter}",
-            "url": f"https://example.com/post/{cls._counter}",
-            "title": f"Test Entry {cls._counter}",
-            "content": "<p>Test content</p>",
-            "published_at": "2026-01-01T12:00:00Z",
-            "created_at": "2026-01-01T12:00:00Z",
-        }
-        return {**defaults, **overrides}
-
-    @classmethod
-    def reset(cls):
-        cls._counter = 0
-
-
-class SessionFactory:
-    """Factory for creating test session data."""
-
-    @classmethod
-    def create(cls, **overrides) -> Session:
-        defaults = {
-            "github_username": "testuser",
-            "github_id": 12345,
-            "avatar_url": "https://github.com/testuser.png",
-            "exp": int(time.time()) + 3600,  # 1 hour from now
-        }
-        return Session(**{**defaults, **overrides})
+from tests.fixtures.factories import EntryFactory, FeedFactory, FeedJobFactory
 
 
 # Reset factories before each test module
@@ -488,4 +423,5 @@ def reset_factories():
     """Reset factory counters before each test."""
     FeedFactory.reset()
     EntryFactory.reset()
+    FeedJobFactory.reset()
     yield

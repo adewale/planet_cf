@@ -71,8 +71,8 @@ class TestGetEnv:
     def test_returns_defaults_dict_value_when_no_explicit_default(self):
         """Returns the DEFAULTS dict value when env var is not set and no explicit default."""
         env = MockEnv()
-        result = _get_env(env, "PLANET_ID")
-        assert result == DEFAULTS["PLANET_ID"]
+        result = _get_env(env, "INSTANCE_MODE")
+        assert result == DEFAULTS["INSTANCE_MODE"]
 
     def test_returns_empty_string_when_no_default_found(self):
         """Returns empty string when key is not in env, no explicit default, and not in DEFAULTS."""

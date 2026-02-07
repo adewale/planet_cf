@@ -9,7 +9,7 @@ Planet CF supports configurable multi-instance deployment through the `examples/
 - **Examples-Based Structure**: Each instance has its own directory in `examples/`
 - **Ready-to-Deploy Instances**: Planet Python and Planet Mozilla included
 - **Multiple Themes**: Per-instance themes in `examples/<id>/theme/`
-- **OAuth Abstraction**: Support for GitHub, Google, and custom OIDC providers
+- **OAuth Abstraction**: Support for GitHub OAuth (Google and custom OIDC not yet implemented)
 - **CLI Tooling**: Scripts to provision and deploy new instances
 - **One-Command Deployment**: Single script handles all Cloudflare resources
 
@@ -19,8 +19,8 @@ Planet CF supports configurable multi-instance deployment through the `examples/
 |---------|------|-------------|
 | `examples/default/` | lite | Minimal starting point, no search/auth |
 | `examples/planet-cloudflare/` | full | Full-featured with search and admin |
-| `examples/planet-python/` | full | 500+ Python community feeds |
-| `examples/planet-mozilla/` | full | 190 Mozilla community feeds |
+| `examples/planet-python/` | lite | 500+ Python community feeds, no search/auth |
+| `examples/planet-mozilla/` | lite | 190 Mozilla community feeds, no search/auth |
 | `examples/test-planet/` | full | Test instance for CI/E2E testing |
 
 ## Quick Start
@@ -180,7 +180,7 @@ planet:
     email: planet@python.org
 
 branding:
-  theme: default  # default, classic, dark, minimal
+  theme: default  # default, planet-python, planet-mozilla, planet-cloudflare
   user_agent: "{name}/1.0 (+{url}; {email})"
   footer_text: "Powered by {name}"
   show_admin_link: true
@@ -203,7 +203,7 @@ feeds:
   auto_deactivate_threshold: 10
 
 auth:
-  provider: github  # or google, oidc
+  provider: github
   scopes:
     - user:email
   session_ttl_seconds: 604800
@@ -219,18 +219,17 @@ All configuration can be overridden via environment variables:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `PLANET_ID` | Instance identifier | `planet` |
 | `PLANET_NAME` | Display name | `Planet` |
 | `PLANET_DESCRIPTION` | Tagline | `A feed aggregator` |
 | `PLANET_URL` | Public URL | - |
 | `PLANET_OWNER_NAME` | Owner name | - |
-| `PLANET_OWNER_EMAIL` | Contact email | - |
 | `THEME` | Theme name or path | `default` |
-| `USER_AGENT_TEMPLATE` | Feed fetcher UA | `{name}/1.0 (+{url}; {email})` |
-| `FOOTER_TEXT` | Footer message | `Powered by {name}` |
-| `CONTENT_DAYS` | Days of entries to show | `7` |
+| `FOOTER_TEXT` | Footer message displayed at bottom of page | `Powered by Planet CF` |
+| `SHOW_ADMIN_LINK` | Show admin link in footer (`true`/`false`) | Based on instance mode |
+| `ENABLE_RSS10` | Enable RSS 1.0 feed format (`true`/`false`) | Theme-dependent |
+| `ENABLE_FOAF` | Enable FOAF feed (`true`/`false`) | Theme-dependent |
+| `HIDE_SIDEBAR_LINKS` | Hide sidebar RSS/titles links (`true`/`false`) | Theme-dependent |
 | `RETENTION_DAYS` | Database retention | `90` |
-| `OAUTH_PROVIDER` | Auth provider | `github` |
 | `GITHUB_CLIENT_ID` | GitHub OAuth app ID | (secret) |
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth app secret | (secret) |
 | `SESSION_SECRET` | Cookie signing key | (secret) |
@@ -242,9 +241,9 @@ All configuration can be overridden via environment variables:
 | Theme | Description |
 |-------|-------------|
 | `default` | Modern, clean design with accent colors |
-| `classic` | Planet Venus-style with right sidebar |
-| `dark` | Dark mode with vibrant accents |
-| `minimal` | Typography-focused single column |
+| `planet-python` | Planet Python theme with Python branding |
+| `planet-mozilla` | Planet Mozilla theme with Mozilla branding |
+| `planet-cloudflare` | Planet Cloudflare theme with Cloudflare branding |
 
 ### Using a Theme
 
@@ -307,32 +306,13 @@ Required secrets:
 - `GITHUB_CLIENT_ID`
 - `GITHUB_CLIENT_SECRET`
 
-### Google
+### Google (NOT YET IMPLEMENTED)
 
-```yaml
-auth:
-  provider: google
-  scopes:
-    - email
-    - profile
-```
+> Google OAuth is not yet supported. Only GitHub OAuth is currently implemented.
 
-Required secrets:
-- `OAUTH_CLIENT_ID`
-- `OAUTH_CLIENT_SECRET`
+### Custom OIDC (NOT YET IMPLEMENTED)
 
-### Custom OIDC
-
-```yaml
-auth:
-  provider: oidc
-  authorize_url: https://your-idp.com/authorize
-  token_url: https://your-idp.com/token
-  user_info_url: https://your-idp.com/userinfo
-  scopes:
-    - openid
-    - email
-```
+> Custom OIDC providers are not yet supported. Only GitHub OAuth is currently implemented.
 
 ## Comparison with Rogue Planet
 
@@ -340,9 +320,9 @@ auth:
 |---------|--------------|-----------|
 | Architecture | Static site generator | Dynamic Workers app |
 | Config format | INI | YAML + env vars |
-| Themes | 5 built-in | 4 built-in |
+| Themes | 5 built-in | 4 built-in (default, planet-python, planet-mozilla, planet-cloudflare) |
 | Search | N/A | Semantic (Vectorize) |
-| Auth | None | OAuth (GitHub, Google) |
+| Auth | None | OAuth (GitHub) |
 | Database | SQLite file | D1 (managed SQLite) |
 | Deployment | Any web server | Cloudflare Workers |
 | CLI | `rp` commands | Python scripts |

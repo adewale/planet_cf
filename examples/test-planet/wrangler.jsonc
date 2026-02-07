@@ -21,12 +21,10 @@
   },
 
   "vars": {
-    "PLANET_ID": "test-planet",
     "PLANET_NAME": "Test Planet",
     "PLANET_DESCRIPTION": "E2E test instance for PlanetCF",
     "PLANET_URL": "https://test-planet.example.workers.dev",
     "PLANET_OWNER_NAME": "PlanetCF Tests",
-    "PLANET_OWNER_EMAIL": "test@planetcf.dev",
     "INSTANCE_MODE": "full",
     "RETENTION_DAYS": "30",
     "RETENTION_MAX_ENTRIES_PER_FEED": "50",

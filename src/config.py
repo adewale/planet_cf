@@ -26,9 +26,12 @@ MAX_SEARCH_WORDS = 10  # Max words in multi-word search
 MAX_OPML_FEEDS = 100  # Max feeds per OPML import
 REINDEX_COOLDOWN_SECONDS = 300  # 5 minute cooldown between reindex
 
+# Content display defaults
+DEFAULT_CONTENT_DAYS = 7  # Days of entries to display on homepage
+
 # Retention policy defaults
 DEFAULT_RETENTION_DAYS = 90
-DEFAULT_MAX_ENTRIES_PER_FEED = 50
+DEFAULT_MAX_ENTRIES_PER_FEED = 100
 
 # Search defaults
 DEFAULT_EMBEDDING_MAX_CHARS = 2000
@@ -104,6 +107,7 @@ def get_planet_config(env: Any) -> dict[str, str]:
 
 # Registry of integer config values: (env_key, default_value)
 _INT_CONFIG_REGISTRY: dict[str, tuple[str, int]] = {
+    "content_days": ("CONTENT_DAYS", DEFAULT_CONTENT_DAYS),
     "retention_days": ("RETENTION_DAYS", DEFAULT_RETENTION_DAYS),
     "max_entries_per_feed": ("RETENTION_MAX_ENTRIES_PER_FEED", DEFAULT_MAX_ENTRIES_PER_FEED),
     "embedding_max_chars": ("EMBEDDING_MAX_CHARS", DEFAULT_EMBEDDING_MAX_CHARS),
@@ -170,3 +174,34 @@ def get_feed_timeout(env: Any) -> int:
 def get_http_timeout(env: Any) -> int:
     """Get HTTP request timeout in seconds."""
     return _get_int_config(env, "http_timeout")
+
+
+def get_content_days(env: Any) -> int:
+    """Get number of days of entries to display on homepage."""
+    return _get_int_config(env, "content_days")
+
+
+def get_user_agent(env: Any) -> str:
+    """Get user agent string, optionally customized via USER_AGENT_TEMPLATE.
+
+    The template can use {name}, {url}, and {email} placeholders which are
+    resolved from the planet config.
+
+    Returns:
+        The formatted user agent string, or the default USER_AGENT constant.
+    """
+    template = getattr(env, "USER_AGENT_TEMPLATE", None)
+    if not template:
+        return USER_AGENT
+    try:
+        planet = get_planet_config(env)
+        owner_name = getattr(env, "PLANET_OWNER_NAME", None) or ""
+        owner_email = getattr(env, "PLANET_OWNER_EMAIL", None) or ""
+        return template.format(
+            name=planet["name"],
+            url=planet["link"],
+            email=owner_email or owner_name,
+        )
+    except (KeyError, ValueError) as e:
+        log_op("user_agent_template_error", error=str(e))
+        return USER_AGENT

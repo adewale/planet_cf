@@ -34,26 +34,26 @@ from auth import (
     get_session_from_cookies,
 )
 from config import (
-    DEFAULT_EMBEDDING_MAX_CHARS,
-    DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD,
     DEFAULT_FEED_FAILURE_THRESHOLD,
-    DEFAULT_MAX_ENTRIES_PER_FEED,
     DEFAULT_QUERY_LIMIT,
-    DEFAULT_RETENTION_DAYS,
-    DEFAULT_SEARCH_SCORE_THRESHOLD,
-    DEFAULT_SEARCH_TOP_K,
     FALLBACK_ENTRIES_LIMIT,
-    FEED_TIMEOUT_SECONDS,
-    HTTP_TIMEOUT_SECONDS,
     MAX_OPML_FEEDS,
     MAX_SEARCH_QUERY_LENGTH,
     MAX_SEARCH_WORDS,
     REINDEX_COOLDOWN_SECONDS,
     SESSION_TTL_SECONDS,
-    USER_AGENT,
-)
-from config import (
-    get_config_value as _get_config_value_fn,
+    get_content_days,
+    get_embedding_max_chars,
+    get_feed_auto_deactivate_threshold,
+    get_feed_failure_threshold,
+    get_feed_timeout,
+    get_http_timeout,
+    get_max_entries_per_feed,
+    get_planet_config,
+    get_retention_days,
+    get_search_score_threshold,
+    get_search_top_k,
+    get_user_agent,
 )
 from content_processor import EntryContentProcessor
 from instance_config import is_lite_mode as check_lite_mode
@@ -69,6 +69,7 @@ from observability import (
 from route_dispatcher import Route, RouteDispatcher, RouteMatch
 from search_query import SearchQueryBuilder
 from templates import (
+    _EMBEDDED_TEMPLATES,
     ADMIN_JS,
     KEYBOARD_NAV_JS,
     STATIC_CSS,
@@ -84,6 +85,7 @@ from templates import (
     TEMPLATE_SEARCH,
     TEMPLATE_TITLES,
     THEME_CSS,
+    THEME_LOGOS,
     render_template,
 )
 from utils import (
@@ -222,6 +224,59 @@ BLOCKED_METADATA_IPS = {
 }
 
 
+def is_safe_url(url: str) -> bool:
+    """SSRF protection - reject internal/private URLs.
+
+    Module-level function so it can be tested directly and reused.
+    """
+    try:
+        parsed = urlparse(url)
+    except Exception as e:
+        _log_error("url_parse_error", e, url=url)
+        return False
+
+    # Only allow http/https
+    if parsed.scheme not in ("http", "https"):
+        return False
+
+    hostname = parsed.hostname.lower() if parsed.hostname else ""
+
+    if not hostname:
+        return False
+
+    # Block localhost variants
+    if hostname in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+        return False
+
+    # Block cloud metadata endpoints
+    if hostname in BLOCKED_METADATA_IPS:
+        return False
+
+    # Block private IP ranges
+    try:
+        ip = ipaddress.ip_address(hostname)
+        if ip.is_private or ip.is_loopback or ip.is_link_local:
+            return False
+        # Block IPv6 unique local addresses (fc00::/7, which includes fd00::/8)
+        # Check first byte: 0xFC or 0xFD (binary: 1111110x)
+        if ip.version == 6 and (ip.packed[0] & 0xFE) == 0xFC:
+            return False
+    except ValueError:
+        pass  # Not an IP address
+
+    # Block internal domain patterns
+    if hostname.endswith(".internal") or hostname.endswith(".local"):
+        return False
+
+    # Block cloud metadata hostnames
+    metadata_hosts = [
+        "metadata.google.internal",
+        "metadata.azure.internal",
+        "instance-data",
+    ]
+    return not any(hostname == h or hostname.endswith("." + h) for h in metadata_hosts)
+
+
 # =============================================================================
 # Main Worker Class
 # =============================================================================
@@ -283,13 +338,11 @@ class Default(WorkerEntrypoint):
 
     def _get_feed_timeout(self) -> int:
         """Get feed timeout from environment, default 60 seconds."""
-        val = getattr(self.env, "FEED_TIMEOUT_SECONDS", None)
-        return int(val) if val else FEED_TIMEOUT_SECONDS
+        return get_feed_timeout(self.env)
 
     def _get_http_timeout(self) -> int:
         """Get HTTP timeout from environment, default 30 seconds."""
-        val = getattr(self.env, "HTTP_TIMEOUT_SECONDS", None)
-        return int(val) if val else HTTP_TIMEOUT_SECONDS
+        return get_http_timeout(self.env)
 
     # Track if database has been initialized (per-isolate state)
     _db_initialized: bool = False
@@ -492,7 +545,7 @@ class Default(WorkerEntrypoint):
                 try:
                     base_url = (getattr(self.env, "PLANET_URL", None) or "").rstrip("/")
                     if base_url:
-                        warm_headers = {"User-Agent": USER_AGENT}
+                        warm_headers = {"User-Agent": self._get_user_agent()}
                         for path in ("/", "/titles", "/feed.atom", "/feed.rss"):
                             await safe_http_fetch(f"{base_url}{path}", headers=warm_headers)
                 except Exception:
@@ -623,7 +676,7 @@ class Default(WorkerEntrypoint):
             raise ValueError(f"URL failed SSRF validation: {url}")
 
         # Build conditional request headers (good netizen behavior)
-        headers = {"User-Agent": USER_AGENT}
+        headers = {"User-Agent": self._get_user_agent()}
         if etag:
             headers["If-None-Match"] = str(etag)
         if last_modified:
@@ -786,7 +839,7 @@ class Default(WorkerEntrypoint):
         try:
             response = await safe_http_fetch(
                 url,
-                headers={"User-Agent": USER_AGENT},
+                headers={"User-Agent": self._get_user_agent()},
                 timeout_seconds=self._get_http_timeout(),
             )
 
@@ -1032,53 +1085,11 @@ class Default(WorkerEntrypoint):
         return _sanitizer.clean(html_content)
 
     def _is_safe_url(self, url: str) -> bool:
-        """SSRF protection - reject internal/private URLs."""
-        try:
-            parsed = urlparse(url)
-        except Exception as e:
-            _log_error("url_parse_error", e, url=url)
-            return False
+        """SSRF protection - reject internal/private URLs.
 
-        # Only allow http/https
-        if parsed.scheme not in ("http", "https"):
-            return False
-
-        hostname = parsed.hostname.lower() if parsed.hostname else ""
-
-        if not hostname:
-            return False
-
-        # Block localhost variants
-        if hostname in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
-            return False
-
-        # Block cloud metadata endpoints
-        if hostname in BLOCKED_METADATA_IPS:
-            return False
-
-        # Block private IP ranges
-        try:
-            ip = ipaddress.ip_address(hostname)
-            if ip.is_private or ip.is_loopback or ip.is_link_local:
-                return False
-            # Block IPv6 unique local addresses (fc00::/7, which includes fd00::/8)
-            # Check first byte: 0xFC or 0xFD (binary: 1111110x)
-            if ip.version == 6 and (ip.packed[0] & 0xFE) == 0xFC:
-                return False
-        except ValueError:
-            pass  # Not an IP address
-
-        # Block internal domain patterns
-        if hostname.endswith(".internal") or hostname.endswith(".local"):
-            return False
-
-        # Block cloud metadata hostnames
-        metadata_hosts = [
-            "metadata.google.internal",
-            "metadata.azure.internal",
-            "instance-data",
-        ]
-        return not any(hostname == h or hostname.endswith("." + h) for h in metadata_hosts)
+        Delegates to the module-level is_safe_url() function.
+        """
+        return is_safe_url(url)
 
     async def _update_feed_success(
         self, feed_id: int, etag: str | None, last_modified: str | None
@@ -1418,11 +1429,17 @@ class Default(WorkerEntrypoint):
 
         # OAuth routes
         elif route_path == "/auth/github":
+            secret_error = self._check_auth_secrets()
+            if secret_error:
+                return secret_error
             event.oauth_stage = "redirect"
             event.oauth_provider = "github"
             event.oauth_success = None  # Redirect phase, not callback
             return self._redirect_to_github_oauth(request)
         elif route_path == "/auth/github/callback":
+            secret_error = self._check_auth_secrets()
+            if secret_error:
+                return secret_error
             event.oauth_stage = "callback"
             event.oauth_provider = "github"
             return await self._handle_github_callback(request, event)
@@ -1541,15 +1558,23 @@ class Default(WorkerEntrypoint):
                 .all()
             )
 
-            # Get recent entries per feed (last 7 days) for sidebar
-            recent_entries_result = await self.env.DB.prepare("""
+            # Get recent entries per feed for sidebar (configurable via CONTENT_DAYS)
+            content_days = get_content_days(self.env)
+            content_cutoff = (datetime.now(timezone.utc) - timedelta(days=content_days)).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+            recent_entries_result = (
+                await self.env.DB.prepare("""
                 SELECT feed_id, title, url
                 FROM entries
                 WHERE feed_id IN (SELECT id FROM feeds WHERE is_active = 1)
-                  AND published_at >= datetime('now', '-7 days')
+                  AND published_at >= ?
                   AND title IS NOT NULL AND title != ''
                 ORDER BY feed_id, published_at DESC
-            """).all()
+            """)
+                .bind(content_cutoff)
+                .all()
+            )
 
         # Populate generation metrics on the consolidated event
         if event:
@@ -1695,18 +1720,27 @@ class Default(WorkerEntrypoint):
             "rss": "/feed.rss",
             "opml": "/feeds.opml",
         }
-        # Only include RSS 1.0 for themes that use it
-        if theme in _THEMES_WITH_RSS10:
+        # Only include RSS 1.0 for themes that use it (or env var override)
+        enable_rss10 = str(getattr(self.env, "ENABLE_RSS10", "") or "").lower()
+        if theme in _THEMES_WITH_RSS10 or enable_rss10 == "true":
             feed_links["rss10"] = "/feed.rss10"
-        if theme in _THEMES_WITH_FOAF:
+        enable_foaf = str(getattr(self.env, "ENABLE_FOAF", "") or "").lower()
+        if theme in _THEMES_WITH_FOAF or enable_foaf == "true":
             feed_links["foaf"] = "/foafroll.xml"
-        # Only include sidebar links for themes that use them
-        if theme not in _THEMES_HIDE_SIDEBAR_LINKS:
+        # Only include sidebar links for themes that use them (or env var override)
+        hide_sidebar = str(getattr(self.env, "HIDE_SIDEBAR_LINKS", "") or "").lower()
+        if theme not in _THEMES_HIDE_SIDEBAR_LINKS and hide_sidebar != "true":
             feed_links["sidebar_rss"] = "/feed.rss"
             feed_links["titles_only"] = "/titles"
 
-        # Check if admin link should be shown (default: True in full mode)
-        show_admin_link = not is_lite
+        # Check if admin link should be shown (env var override, else default: True in full mode)
+        show_admin_link_env = getattr(self.env, "SHOW_ADMIN_LINK", None)
+        if show_admin_link_env is not None and str(show_admin_link_env).lower() == "false":
+            show_admin_link = False
+        elif show_admin_link_env is not None and str(show_admin_link_env).lower() == "true":
+            show_admin_link = True
+        else:
+            show_admin_link = not is_lite
 
         # Build date_labels for themes (identity mapping since keys are already formatted)
         date_labels = {date_key: date_key for date_key in entries_by_date}
@@ -1723,10 +1757,10 @@ class Default(WorkerEntrypoint):
                 generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
                 is_lite_mode=is_lite,
                 show_admin_link=show_admin_link,
-                logo=None,
+                logo=THEME_LOGOS.get(theme),
                 submission=None,
                 related_sites=None,
-                footer_text="Powered by Planet CF",
+                footer_text=getattr(self.env, "FOOTER_TEXT", None) or "Powered by Planet CF",
             )
 
         # Populate remaining generation metrics
@@ -1874,16 +1908,23 @@ class Default(WorkerEntrypoint):
 
     def _get_planet_config(self) -> dict[str, str]:
         """Get planet configuration from environment."""
-        return {
-            "name": getattr(self.env, "PLANET_NAME", None) or "Planet CF",
-            "description": getattr(self.env, "PLANET_DESCRIPTION", None)
-            or "Aggregated posts from Cloudflare employees and community",
-            "link": getattr(self.env, "PLANET_URL", None) or "https://planetcf.com",
-        }
+        return get_planet_config(self.env)
 
     def _get_theme(self) -> str:
-        """Get the theme name from environment (default: 'default')."""
-        return getattr(self.env, "THEME", None) or "default"
+        """Get the theme name from environment (default: 'default').
+
+        Logs a warning if the theme is not found in embedded templates,
+        since it will fall back to the default theme at render time.
+        """
+        raw = getattr(self.env, "THEME", None)
+        theme = str(raw) if raw and isinstance(raw, str) else "default"
+        if theme not in _EMBEDDED_TEMPLATES:
+            _log_op("theme_not_found", theme=theme, fallback="default")
+        return theme
+
+    def _get_user_agent(self) -> str:
+        """Get user agent string, supporting USER_AGENT_TEMPLATE env var."""
+        return get_user_agent(self.env)
 
     def _admin_error_response(
         self,
@@ -1902,50 +1943,33 @@ class Default(WorkerEntrypoint):
             theme=self._get_theme(),
         )
 
-    def _get_config_value(
-        self,
-        env_key: str,
-        default: int | float,
-        value_type: type[int] | type[float] = int,
-    ) -> int | float:
-        """Get a configuration value from environment with type conversion."""
-        return _get_config_value_fn(self.env, env_key, default, value_type)
-
     def _get_retention_days(self) -> int:
         """Get retention days from environment, default 90."""
-        return int(self._get_config_value("RETENTION_DAYS", DEFAULT_RETENTION_DAYS))
+        return get_retention_days(self.env)
 
     def _get_max_entries_per_feed(self) -> int:
-        """Get max entries per feed from environment, default 50."""
-        return int(
-            self._get_config_value("RETENTION_MAX_ENTRIES_PER_FEED", DEFAULT_MAX_ENTRIES_PER_FEED)
-        )
+        """Get max entries per feed from environment, default 100."""
+        return get_max_entries_per_feed(self.env)
 
     def _get_embedding_max_chars(self) -> int:
         """Get max chars to embed per entry from environment, default 2000."""
-        return int(self._get_config_value("EMBEDDING_MAX_CHARS", DEFAULT_EMBEDDING_MAX_CHARS))
+        return get_embedding_max_chars(self.env)
 
     def _get_search_score_threshold(self) -> float:
         """Get minimum similarity score threshold from environment, default 0.3."""
-        return float(
-            self._get_config_value("SEARCH_SCORE_THRESHOLD", DEFAULT_SEARCH_SCORE_THRESHOLD, float)
-        )
+        return get_search_score_threshold(self.env)
 
     def _get_search_top_k(self) -> int:
         """Get max semantic search results from environment, default 50."""
-        return int(self._get_config_value("SEARCH_TOP_K", DEFAULT_SEARCH_TOP_K))
+        return get_search_top_k(self.env)
 
     def _get_feed_auto_deactivate_threshold(self) -> int:
         """Get threshold for auto-deactivating feeds from environment, default 10."""
-        return int(
-            self._get_config_value(
-                "FEED_AUTO_DEACTIVATE_THRESHOLD", DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD
-            )
-        )
+        return get_feed_auto_deactivate_threshold(self.env)
 
     def _get_feed_failure_threshold(self) -> int:
         """Get threshold for DLQ display from environment, default 3."""
-        return int(self._get_config_value("FEED_FAILURE_THRESHOLD", DEFAULT_FEED_FAILURE_THRESHOLD))
+        return get_feed_failure_threshold(self.env)
 
     def _generate_atom_feed(self, planet: dict[str, str], entries: list[dict[str, Any]]) -> str:
         """Generate Atom 1.0 feed XML using template."""
@@ -2410,10 +2434,37 @@ class Default(WorkerEntrypoint):
     # Admin Routes
     # =========================================================================
 
+    def _check_auth_secrets(self) -> Response | None:
+        """Check that required auth secrets are configured.
+
+        Returns an error Response if secrets are missing, or None if all OK.
+        """
+        missing = []
+        if not getattr(self.env, "SESSION_SECRET", None):
+            missing.append("SESSION_SECRET")
+        if not getattr(self.env, "GITHUB_CLIENT_ID", None):
+            missing.append("GITHUB_CLIENT_ID")
+        if not getattr(self.env, "GITHUB_CLIENT_SECRET", None):
+            missing.append("GITHUB_CLIENT_SECRET")
+        if missing:
+            return Response(
+                f"<h1>Server Configuration Error</h1>"
+                f"<p>{', '.join(missing)} not configured. "
+                f"Set the required secrets for admin/auth functionality.</p>",
+                status=500,
+                headers={"Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store"},
+            )
+        return None
+
     async def _handle_admin(
         self, request: WorkerRequest, path: str, event: RequestEvent | None = None
     ) -> Response:
         """Handle admin routes with GitHub OAuth."""
+        # Validate required secrets before proceeding
+        secret_error = self._check_auth_secrets()
+        if secret_error:
+            return secret_error
+
         # Verify signed session cookie (stateless, no KV)
         session = self._verify_signed_cookie(request)
         if not session:
@@ -2552,7 +2603,7 @@ class Default(WorkerEntrypoint):
         - error: str or None (if invalid)
         """
         try:
-            headers = {"User-Agent": USER_AGENT}
+            headers = {"User-Agent": self._get_user_agent()}
 
             # Use centralized safe_http_fetch for boundary-safe HTTP
             http_response = await safe_http_fetch(url, headers=headers, timeout_seconds=10)
@@ -2612,7 +2663,9 @@ class Default(WorkerEntrypoint):
 
         except Exception as e:
             error_msg = _truncate_error(e)
-            if "timeout" in error_msg.lower():
+            error_lower = error_msg.lower()
+            is_timeout = isinstance(e, TimeoutError) or "timeout" in error_lower
+            if is_timeout or "timed out" in error_lower:
                 return {"valid": False, "error": "Timeout fetching feed (10s)"}
             return {"valid": False, "error": error_msg}
 
@@ -3345,7 +3398,7 @@ class Default(WorkerEntrypoint):
             # Use GitHubOAuthHandler for OAuth flow
             client_id = getattr(self.env, "GITHUB_CLIENT_ID", "")
             client_secret = getattr(self.env, "GITHUB_CLIENT_SECRET", "")
-            oauth_handler = GitHubOAuthHandler(client_id, client_secret, USER_AGENT)
+            oauth_handler = GitHubOAuthHandler(client_id, client_secret, self._get_user_agent())
 
             # Authenticate: verify state, exchange code, get user info
             user_result, token_result = await oauth_handler.authenticate(

@@ -1,7 +1,7 @@
 # Makefile for Planet CF development tasks
 # Usage: make <target>
 
-.PHONY: test test-cov lint vulture check fmt help
+.PHONY: test test-cov test-coverage lint vulture check fmt help
 
 # Default target
 help: ## Show this help message
@@ -22,6 +22,9 @@ test-unit: ## Run only unit tests
 
 test-integration: ## Run only integration tests
 	uv run pytest tests/integration -x -q
+
+test-coverage: ## Run tests with coverage report (no floor set)
+	uv run pytest tests/unit tests/integration --cov=src --cov-report=term-missing
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Linting & Formatting

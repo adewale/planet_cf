@@ -296,12 +296,10 @@ def generate_wrangler_config(
 
     # Base vars
     vars_config = {
-        "PLANET_ID": instance_id,
         "PLANET_NAME": name,
         "PLANET_DESCRIPTION": description,
         "PLANET_URL": url,
         "PLANET_OWNER_NAME": owner_name,
-        "PLANET_OWNER_EMAIL": owner_email,
         "THEME": theme,
         "INSTANCE_MODE": mode,
         "RETENTION_DAYS": "90",
@@ -503,7 +501,7 @@ def validate_wrangler_config(instance_id: str) -> dict:
         issues.append("database_id is empty. Create the D1 database and update the config.")
 
     # Check that required vars exist
-    required_vars = ["PLANET_ID", "PLANET_NAME", "PLANET_URL"]
+    required_vars = ["PLANET_NAME", "PLANET_URL"]
     for var in required_vars:
         if f'"{var}"' not in content:
             issues.append(f"Missing required environment variable: {var}")

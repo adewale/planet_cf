@@ -1,11 +1,9 @@
 # tests/unit/test_security.py
 """Unit tests for security functions (sanitization, URL validation)."""
 
-import ipaddress
-from urllib.parse import urlparse
-
 import pytest
 
+from src.main import is_safe_url
 from src.models import BleachSanitizer, NoOpSanitizer
 
 # =============================================================================
@@ -207,66 +205,6 @@ class TestNoOpSanitizer:
 # =============================================================================
 # URL Validation Tests (SSRF Protection)
 # =============================================================================
-
-
-def is_safe_url(url: str) -> bool:
-    """
-    Check if URL is safe to fetch (no SSRF).
-
-    This is a copy of the validation logic from main.py for testing.
-    """
-    blocked_metadata_ips = {
-        "169.254.169.254",
-        "100.100.100.200",
-        "192.0.0.192",
-    }
-
-    try:
-        parsed = urlparse(url)
-    except Exception:
-        return False
-
-    # Must be http or https
-    if parsed.scheme not in ("http", "https"):
-        return False
-
-    # Must have a host
-    if not parsed.hostname:
-        return False
-
-    hostname = parsed.hostname.lower()
-
-    # Block localhost
-    if hostname in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
-        return False
-
-    # Block cloud metadata endpoints
-    if hostname in blocked_metadata_ips:
-        return False
-
-    # Block internal networks
-    try:
-        ip = ipaddress.ip_address(hostname)
-        if ip.is_private or ip.is_loopback or ip.is_link_local:
-            return False
-        # Block IPv6 unique local addresses (fc00::/7, which includes fd00::/8)
-        # Check first byte: 0xFC or 0xFD (binary: 1111110x)
-        if ip.version == 6 and (ip.packed[0] & 0xFE) == 0xFC:
-            return False
-    except ValueError:
-        pass  # Not an IP, that's fine
-
-    # Block cloud metadata hostnames
-    metadata_hosts = [
-        "metadata.google.internal",
-        "metadata.azure.internal",  # Azure IMDS hostname
-        "instance-data",
-    ]
-    if any(hostname == h or hostname.endswith("." + h) for h in metadata_hosts):
-        return False
-
-    # Block internal domain patterns
-    return not (hostname.endswith(".internal") or hostname.endswith(".local"))
 
 
 class TestUrlValidation:

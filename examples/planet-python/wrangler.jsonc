@@ -63,18 +63,16 @@
   },
   "vars": {
     "INSTANCE_MODE": "lite",
-    "PLANET_ID": "planet-python",
     "PLANET_NAME": "Planet Python",
     "PLANET_DESCRIPTION": "Python community feed aggregator",
     "PLANET_URL": "https://planetpython.org",
     "PLANET_OWNER_NAME": "Python Software Foundation",
-    "PLANET_OWNER_EMAIL": "planet@python.org",
     "THEME": "planet-python",
     "RETENTION_DAYS": "90",
     "RETENTION_MAX_ENTRIES_PER_FEED": "100",
     "FEED_TIMEOUT_SECONDS": "60",
     "HTTP_TIMEOUT_SECONDS": "30",
-    "OPML_SOURCE_URL": "https://planetpython.org/opml.xml"
+    "DEPLOYMENT_ENVIRONMENT": "production"
   },
   "observability": {
     "enabled": true,

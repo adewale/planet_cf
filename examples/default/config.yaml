@@ -1,3 +1,7 @@
+# WARNING: This file is for documentation/reference only.
+# Runtime configuration comes from wrangler.jsonc vars and Cloudflare secrets.
+# Changes to this file have NO effect on the running instance.
+#
 # Minimal Planet Configuration - Lite Mode
 # Inspired by Rogue Planet's simplicity
 #
