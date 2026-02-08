@@ -37,7 +37,8 @@ Which binding?
 │   ├─ None ≠ null ≠ undefined           -> gotchas.md (#4)
 │   └─ Convert at boundary, not inline   -> patterns.md (FFI Boundary Layer)
 ├─ Static Assets (special — no Worker!)  -> patterns.md (Static Assets)
-└─ Pass Python callable to JS API        -> api.md (create_proxy)
+├─ Pass Python callable to JS API        -> api.md (create_proxy)
+└─ JS API rejects wrapped request/resp   -> patterns.md (request.js_object)
 ```
 
 ### "I need to cross the JS/Python boundary"
@@ -71,7 +72,7 @@ Common issues?
 ├─ Dict rejected by Cloudflare API       -> gotchas.md (#6) — dict_converter
 ├─ None vs null in D1                    -> gotchas.md (#4)
 ├─ Sync HTTP library fails               -> gotchas.md (#2)
-├─ Cold start too slow                   -> gotchas.md (#7)
+├─ Cold start too slow                   -> gotchas.md (#7) + patterns.md (Per-Isolate Init)
 ├─ PRNG fails at module level            -> gotchas.md (#8)
 ├─ Package not found / won't install     -> gotchas.md (#13, #14)
 ├─ "python_workers flag required"        -> configuration.md
@@ -89,7 +90,7 @@ All in `references/python-workers/`:
 | `README.md` | Runtime overview, quick start, how Pyodide works, project structure |
 | `api.md` | Python-specific handler signatures, FFI functions (to_js/to_py/create_proxy), binding access patterns, Response |
 | `configuration.md` | Python-specific config (compatibility flags, pyproject.toml, packages, CPU limits, test setup) |
-| `patterns.md` | FFI boundary layer, D1 row conversion, queue message handling, Static Assets architecture, testing (3-tier with mocks), Jinja2 without filesystem, FastAPI ASGI bridge |
+| `patterns.md` | FFI boundary layer, D1 row conversion, queue message handling, Static Assets architecture, per-isolate initialization, `request.js_object` unwrapping, testing (3-tier with mocks), Jinja2 without filesystem, FastAPI ASGI bridge |
 | `gotchas.md` | 14 Python-specific issues with error signatures and fixes |
 
 ## Anti-Patterns

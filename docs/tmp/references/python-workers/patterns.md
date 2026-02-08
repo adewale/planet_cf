@@ -11,9 +11,9 @@ Production patterns that are **specific to Python Workers**. For general pattern
 - [Queue Message Handling](#queue-message-handling)
 - [Static Assets Architecture](#static-assets-architecture) — critical for cold starts
 - [Jinja2 SSR Without Filesystem](#jinja2-ssr-without-filesystem)
-- [FastAPI ASGI Bridge](#fastapi-asgi-bridge)
-- [HTMLRewriter From Python](#htmlrewriter-from-python)
+- [`request.js_object` — Unwrapping the Python Wrapper](#requestjs_object--unwrapping-the-python-wrapper)
 - [Durable Object WebSockets From Python](#durable-object-websockets-from-python)
+- [Per-Isolate Initialization](#per-isolate-initialization)
 - [Cold Start Mitigation](#cold-start-mitigation)
 - [Testing](#testing)
 
@@ -303,7 +303,22 @@ This works but adds parsing time to cold starts.
 
 ---
 
-## FastAPI ASGI Bridge
+## `request.js_object` — Unwrapping the Python Wrapper
+
+The `request` parameter in `fetch(self, request)` and the `workers.Response` you return are Python wrappers around JavaScript objects. Most of the time the wrappers are fine. But some JavaScript APIs need the **raw underlying JS object**, not the wrapper.
+
+### When you need `.js_object`
+
+| API | Why | Code |
+|-----|-----|------|
+| `asgi.fetch()` (FastAPI bridge) | ASGI bridge expects a raw JS Request | `asgi.fetch(app, request.js_object, self.env)` |
+| `HTMLRewriter.transform()` | JS API, doesn't understand the Python wrapper | `rewriter.transform(response.js_object)` |
+
+### When you DON'T need it
+
+For normal handler code — reading `request.url`, `request.method`, `request.headers`, `await request.json()` — the Python wrapper works fine. Only reach for `.js_object` when passing to a JS API that rejects the wrapper.
+
+### FastAPI ASGI Bridge
 
 ```python
 from fastapi import FastAPI, Request
@@ -322,19 +337,17 @@ async def env(req: Request):
 
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
-        import asgi                                          # Built-in bridge module
+        import asgi                                          # Built-in module, not PyPI
         return await asgi.fetch(app, request.js_object, self.env)
+        #                            ^^^^^^^^^^^^^^^^
+        #                            Raw JS Request — ASGI bridge needs this
 ```
 
-**Python-specific details**:
-- `import asgi` — built-in module, not from PyPI
-- `request.js_object` — pass the underlying JS Request, not the Python wrapper
+- `import asgi` — built-in module provided by the Workers runtime, not from PyPI
 - `req.scope["env"]` — how FastAPI handlers access Cloudflare bindings
 - Add `python_dedicated_snapshot` flag — FastAPI cold starts are ~1s with it, ~10s without
 
----
-
-## HTMLRewriter From Python
+### HTMLRewriter
 
 ```python
 from js import HTMLRewriter
@@ -347,10 +360,12 @@ class MetaInjector:
 handler = create_proxy(MetaInjector())  # Must use create_proxy!
 rewriter = HTMLRewriter.new()           # .new() for JS constructors
 rewriter.on("head", handler)
-return rewriter.transform(response.js_object)  # .js_object for underlying JS
+return rewriter.transform(response.js_object)
+#                         ^^^^^^^^^^^^^^^^^^
+#                         Raw JS Response — HTMLRewriter needs this
 ```
 
-**Python-specific**: `create_proxy` is required. `HTMLRewriter.new()` (not `HTMLRewriter()`). Pass `.js_object`, not the Python wrapper.
+`create_proxy` is required for the handler. `HTMLRewriter.new()` (not `HTMLRewriter()`). Pass `.js_object`, not the wrapper.
 
 ---
 
@@ -375,6 +390,75 @@ class ChatRoom(DurableObject):
 
 ---
 
+## Per-Isolate Initialization
+
+A `WorkerEntrypoint` instance persists across requests within the same V8 isolate. Class attributes are the place for per-isolate state — things you want to compute once and reuse for subsequent requests without paying the cost again.
+
+**Why this is Python-specific**: In JS Workers you'd use a module-level variable. In Python Workers, module-level code runs at snapshot time (deploy), but the `WorkerEntrypoint` instance is created per isolate at request time. So per-isolate state lives on `self`, not in module scope.
+
+### Pattern: one-time flag
+
+```python
+class Default(WorkerEntrypoint):
+    _db_initialized: bool = False          # Persists across requests in this isolate
+
+    async def _ensure_database_initialized(self):
+        if self._db_initialized:
+            return                          # 2nd+ request — skip entirely
+
+        # Expensive: query sqlite_master, maybe run CREATE TABLE DDL
+        result = await self.env.DB.prepare(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='feeds'"
+        ).first()
+
+        if result is None:
+            await self.env.DB.exec("CREATE TABLE IF NOT EXISTS feeds (...)")
+
+        self._db_initialized = True         # Even on error — don't retry every request
+```
+
+### Pattern: cached computed object
+
+```python
+class Default(WorkerEntrypoint):
+    _router: RouteDispatcher | None = None  # Built once per isolate
+
+    def _create_router(self) -> RouteDispatcher:
+        if self._router is not None:
+            return self._router             # Already compiled for this isolate
+        self._router = RouteDispatcher([
+            Route(path="/", content_type="html", cacheable=True),
+            Route(path="/search", content_type="html"),
+            # ... 13 routes with regex patterns to compile
+        ])
+        return self._router
+```
+
+### Pattern: cached wrapper
+
+```python
+class Default(WorkerEntrypoint):
+    _cached_safe_env: SafeEnv | None = None
+
+    @property
+    def env(self) -> SafeEnv:
+        raw_env = super().__getattribute__("_env_from_runtime")
+        if self._cached_safe_env is None:
+            self._cached_safe_env = SafeEnv(raw_env)
+        return self._cached_safe_env
+```
+
+### What you can and can't cache
+
+| OK to cache per-isolate | NOT OK |
+|-------------------------|--------|
+| Route dispatcher (compiled regexes) | Request-specific data |
+| SafeEnv wrapper | User sessions |
+| "DB initialized" flag | Query results |
+| Jinja2 Environment | Mutable shared state (no locking in Workers) |
+
+---
+
 ## Cold Start Mitigation
 
 Python Workers cold start at ~1s (with snapshots). Strategies:
@@ -382,10 +466,11 @@ Python Workers cold start at ~1s (with snapshots). Strategies:
 1. **`python_dedicated_snapshot`** — worker-specific Wasm snapshot (biggest win)
 2. **Static Assets without binding** — CSS/JS/images never wake the Worker
 3. **Pre-compiled templates** — Jinja2 parsing in snapshot, not at request time
-4. **Module-level constants** — captured in snapshot (but NO PRNG calls)
-5. **`stale-while-revalidate` cache** — serve stale content instantly while refreshing
-6. **Cron cache pre-warming** — scheduled handler fetches own routes to keep cache hot
-7. **Minimize top-level imports** — lazy import heavy modules inside handlers
+4. **Per-isolate initialization** — compute expensive objects once, reuse across requests
+5. **Module-level constants** — captured in snapshot (but NO PRNG calls)
+6. **`stale-while-revalidate` cache** — serve stale content instantly while refreshing
+7. **Cron cache pre-warming** — scheduled handler fetches own routes to keep cache hot
+8. **Minimize top-level imports** — lazy import heavy modules inside handlers
 
 ### Edge cache with stale-while-revalidate
 
