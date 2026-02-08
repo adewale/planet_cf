@@ -2,33 +2,36 @@
 
 ## Overview
 
-Cloudflare Python Workers run Python 3.12+ via **Pyodide** (CPython compiled to WebAssembly) inside V8 isolates. No special toolchain or precompilation is needed — the Workers runtime provides the Python execution environment directly.
+Cloudflare Python Workers run Python 3.12+ via **Pyodide** (CPython compiled to WebAssembly) inside V8 isolates. The Cloudflare bindings API is identical to JavaScript Workers — the differences are in the **runtime**, the **FFI boundary**, and the **constraints** of running Python in WebAssembly.
 
 **Status**: Open Beta (requires `python_workers` compatibility flag)
-**Runtime**: Pyodide (CPython 3.12+ → WebAssembly inside V8)
-**Pricing**: Free tier 100,000 requests/day, 10ms CPU; Paid unlimited requests, configurable CPU
 
-## Key Characteristics
+## What's Different From JavaScript Workers
 
-- **Async-only** — all handlers are `async def`, only async I/O libraries work
-- **Full binding access** — D1, KV, R2, Queues, Vectorize, Workers AI, Durable Objects, Workflows via `self.env`
-- **Pyodide FFI** — seamless bridge to JavaScript APIs, but requires careful type conversion
-- **WebAssembly memory snapshots** — fast cold starts via three-tier snapshot system
-- **Pure Python + Pyodide packages** — PyPI packages that are pure Python or in Pyodide's ecosystem
+| Aspect | JS Workers | Python Workers |
+|--------|-----------|----------------|
+| Cold start | ~50ms | ~1s (with snapshot) to ~10s (without) |
+| Handler pattern | `export default { fetch() {} }` | `class Default(WorkerEntrypoint): async def fetch()` |
+| Binding results | Native JS objects | JsProxy (must convert with `.to_py()`) |
+| Dict→JS object | Automatic | Requires `to_js(dict, dict_converter=Object.fromEntries)` |
+| `None` | N/A | Maps to JS `undefined`, NOT `null` |
+| HTTP clients | `fetch()`, any npm package | Only async: `httpx`, `aiohttp` (no `requests`) |
+| Packages | npm (anything) | Pure Python + Pyodide-compiled only |
+| PRNG at init | Works | Fails (breaks Wasm snapshot) |
+| Templates | File I/O | No writable FS; bundle at deploy time |
+| Testing | Miniflare / Vitest | pytest with mock bindings + HAS_PYODIDE guard |
 
 ## Quick Start
 
 ```bash
-# Prerequisites: uv (Python package manager) + Node.js (for wrangler)
 mkdir my-worker && cd my-worker
 uv init
 uv tool install workers-py
-uv run pywrangler init       # creates wrangler config, selects template
+uv run pywrangler init
 ```
 
-Create `src/entry.py`:
-
 ```python
+# src/entry.py
 from workers import WorkerEntrypoint, Response
 
 class Default(WorkerEntrypoint):
@@ -37,132 +40,60 @@ class Default(WorkerEntrypoint):
 ```
 
 ```bash
-uv run pywrangler dev        # local dev server at http://localhost:8787
-uv run pywrangler deploy     # deploy to Cloudflare's global network
+uv run pywrangler dev        # http://localhost:8787
+uv run pywrangler deploy     # deploy to Cloudflare
 ```
 
 ## How It Works
 
-### Runtime Architecture
+1. Python code runs inside **Pyodide** (CPython compiled to WebAssembly) in a V8 isolate
+2. Pyodide's **FFI** bridges JavaScript and Python — all bindings work through JsProxy objects
+3. At deploy time, Cloudflare takes a **WebAssembly memory snapshot** (imports pre-resolved)
+4. At request time, the snapshot is restored (fast), then your handler runs
 
-1. Python code runs inside Pyodide (CPython compiled to WebAssembly) in a V8 isolate
-2. Pyodide's FFI bridges JavaScript and Python — all Cloudflare bindings work via this bridge
-3. JavaScript objects appear as `JsProxy` in Python; conversion must be explicit for mutable types
+### The snapshot matters
 
-### Deployment Lifecycle
-
-1. `pywrangler deploy` uploads Python code + packages to the Workers API
-2. Cloudflare validates the code, creates a V8 isolate, injects Pyodide
-3. Scans and executes import statements, takes a **WebAssembly memory snapshot**
-4. Deploys the snapshot alongside code to the global network
-5. On request: restores snapshot (fast), then runs handler
-
-### Cold Start Optimization
-
-Three-tier snapshot system:
-- **Baseline**: Shared Pyodide runtime
-- **Package**: Pyodide + common package imports
-- **Dedicated**: Worker-specific snapshot (add `python_dedicated_snapshot` flag)
-
-Performance: ~1s with snapshots (down from ~10s without). Still ~20x slower than JS Workers (~50ms).
+Module-level code runs at deploy time and is captured in the snapshot. This means:
+- **DO**: Define constants, import libraries, create Jinja2 environments
+- **DON'T**: Call `random.seed()`, `secrets.token_hex()`, `uuid.uuid4()` — PRNG calls break snapshots
 
 ## Project Structure
 
 ```
 project-root/
 ├── src/
-│   ├── main.py              # Worker entrypoint (fetch/scheduled/queue handlers)
-│   ├── models.py            # Type definitions, domain models
+│   ├── main.py              # WorkerEntrypoint class (fetch/scheduled/queue)
 │   ├── wrappers.py          # JS/Python FFI boundary layer
-│   ├── config.py            # Configuration getters from env
 │   └── ...                  # Feature modules
 ├── tests/
-│   ├── unit/                # Fast tests with mock bindings (~1s)
-│   ├── integration/         # End-to-end flows with mock bindings (~2s)
-│   └── e2e/                 # Against live Cloudflare infrastructure
-├── migrations/              # D1 SQL migration files
-├── assets/                  # Static files (CSS, JS, images)
-├── templates/               # Jinja2 HTML templates (if doing SSR)
-├── scripts/                 # Build, deploy, seed scripts
-├── wrangler.jsonc           # Cloudflare Workers configuration
-├── pyproject.toml           # Python dependencies
-├── Makefile                 # Dev commands (test, lint, deploy)
-└── package.json             # Node deps (just wrangler)
+│   ├── unit/                # Mock-based (~1s)
+│   ├── integration/         # Mock bindings (~2s)
+│   └── e2e/                 # Live Cloudflare (~30s)
+├── assets/                  # Static files (served without waking Worker)
+├── migrations/              # D1 SQL files
+├── wrangler.jsonc           # Workers config (main = "src/main.py")
+├── pyproject.toml           # Python deps (only async HTTP, Pyodide-compat)
+└── Makefile                 # test, lint, deploy commands
 ```
 
-**Important**: When `main = "src/main.py"`, import sibling modules as `from models import ...` (NOT `from src.models import ...`). The `src/` directory is the import root.
+**Import root**: When `main = "src/main.py"`, import as `from models import ...` (not `from src.models`).
 
 ## The `workers` Module
 
 | Export | Purpose |
 |--------|---------|
-| `WorkerEntrypoint` | Base class for Worker entrypoint (has `fetch`, `scheduled`, `queue`) |
-| `DurableObject` | Base class for Durable Object classes |
-| `WorkflowEntrypoint` | Base class for Workflow definitions |
-| `Response` | Python-friendly wrapper around JS Response |
-| `Request` | Type hint for the request parameter |
-| `fetch` | Python wrapper for the JS `fetch()` API |
-
-## Handler Types
-
-A single `WorkerEntrypoint` class can handle all three trigger types:
-
-| Handler | Trigger | Signature |
-|---------|---------|-----------|
-| `fetch` | HTTP request | `async def fetch(self, request)` |
-| `scheduled` | Cron trigger | `async def scheduled(self, controller)` |
-| `queue` | Queue message batch | `async def queue(self, batch)` |
-
-```python
-class Default(WorkerEntrypoint):
-    async def fetch(self, request):
-        """HTTP requests — serve web pages, API endpoints."""
-        return Response("Hello!")
-
-    async def scheduled(self, controller):
-        """Cron triggers — periodic tasks like feed scheduling."""
-        await self.env.QUEUE.send({"action": "refresh"})
-
-    async def queue(self, batch):
-        """Queue consumer — process enqueued work."""
-        for msg in batch.messages:
-            body = msg.body.to_py()
-            await self.process(body)
-            msg.ack()
-```
-
-## Supported Packages
-
-- **Pure Python packages** from PyPI
-- **Pyodide packages** (compiled to WebAssembly): numpy, pandas, pillow, matplotlib, etc.
-- Only **async** HTTP clients: `httpx`, `aiohttp` (NOT `requests`, `urllib3`)
-- Full list: https://pyodide.org/en/stable/usage/packages-in-pyodide.html
-
-## Python Standard Library
-
-Full stdlib available **except**:
-- **Not functional**: `multiprocessing`, `threading`, `socket` (can import, won't work)
-- **Cannot import**: `pty`, `tty` (depend on removed `termios`)
-- **Limited**: `decimal` (C impl only), `webbrowser` (unavailable)
-- **Excluded**: `curses`, `dbm`, `tkinter`, `venv`, `idlelib`, and other OS-specific modules
-
-## Primary Use Cases
-
-- HTTP APIs and web applications
-- Feed/content aggregation with scheduled processing
-- AI/ML pipelines (embeddings, inference, RAG search)
-- Queue-driven async data processing
-- Full-stack SSR apps (Jinja2, FastAPI)
-- Durable stateful objects (chat, counters, coordination)
+| `WorkerEntrypoint` | Base class — has `fetch`, `scheduled`, `queue` methods |
+| `DurableObject` | Base class for Durable Objects |
+| `WorkflowEntrypoint` | Base class for Workflows |
+| `Response` | Python wrapper around JS Response |
+| `fetch` | Python wrapper around JS `fetch()` |
 
 ## Official Resources
 
-- [Python Workers Overview](https://developers.cloudflare.com/workers/languages/python/)
-- [Python Workers Basics](https://developers.cloudflare.com/workers/languages/python/basics/)
+- [Python Workers Docs](https://developers.cloudflare.com/workers/languages/python/)
 - [How Python Workers Work](https://developers.cloudflare.com/workers/languages/python/how-python-workers-work/)
-- [Python Packages](https://developers.cloudflare.com/workers/languages/python/packages/)
 - [Python FFI](https://developers.cloudflare.com/workers/languages/python/ffi/)
-- [Python Workflows](https://developers.cloudflare.com/workflows/python/)
-- [pywrangler CLI](https://github.com/cloudflare/workers-py)
+- [Python Packages](https://developers.cloudflare.com/workers/languages/python/packages/)
 - [Python Workers Examples](https://github.com/cloudflare/python-workers-examples)
+- [pywrangler CLI](https://github.com/cloudflare/workers-py)
 - [Pyodide Package List](https://pyodide.org/en/stable/usage/packages-in-pyodide.html)
