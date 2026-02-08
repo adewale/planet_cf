@@ -226,10 +226,10 @@ Always verify deployments work:
 
 ```bash
 # Must return 200
-curl -s -o /dev/null -w "%{http_code}" https://planet-python.adewale-883.workers.dev/
+curl -s -o /dev/null -w "%{http_code}" https://your-instance.workers.dev/
 
 # Verify assets load
-curl -sI https://planet-python.adewale-883.workers.dev/static/images/python-logo.gif | head -3
+curl -sI https://your-instance.workers.dev/static/images/python-logo.gif | head -3
 ```
 
 ---

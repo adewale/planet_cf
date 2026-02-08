@@ -1,8 +1,7 @@
 # Planet CF Specification
 
-**Version:** 1.0 Draft  
-**Date:** January 2026  
-**Status:** Proposal  
+**Version:** 1.0 Draft
+**Status:** Proposal
 **Domain:** https://planetcf.com
 
 ## 1. Overview

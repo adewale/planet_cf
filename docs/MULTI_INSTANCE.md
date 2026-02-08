@@ -20,7 +20,7 @@ Planet CF supports configurable multi-instance deployment through the `examples/
 | `examples/default/` | lite | Minimal starting point, no search/auth |
 | `examples/planet-cloudflare/` | full | Full-featured with search and admin |
 | `examples/planet-python/` | lite | 500+ Python community feeds, no search/auth |
-| `examples/planet-mozilla/` | lite | 190 Mozilla community feeds, no search/auth |
+| `examples/planet-mozilla/` | lite | ~190 Mozilla community feeds, no search/auth |
 | `examples/test-planet/` | full | Test instance for CI/E2E testing |
 
 ## Quick Start
@@ -33,7 +33,7 @@ The fastest way to get started is to deploy one of the included examples:
 # Deploy Planet Python (500+ feeds)
 ./scripts/deploy_instance.sh planet-python
 
-# Deploy Planet Mozilla (190 feeds)
+# Deploy Planet Mozilla (~190 feeds)
 ./scripts/deploy_instance.sh planet-mozilla
 
 # Skip interactive secret prompts (set later)
@@ -338,7 +338,7 @@ planet_cf/
 │   │   ├── templates/
 │   │   └── README.md
 │   ├── planet-mozilla/          # Planet Mozilla clone
-│   │   ├── config.yaml          # 190 feeds
+│   │   ├── config.yaml          # ~190 feeds
 │   │   ├── wrangler.jsonc
 │   │   ├── assets/
 │   │   ├── templates/

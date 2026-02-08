@@ -561,29 +561,27 @@ messages, AI results) MUST convert through `_to_py_safe()` before use.
 
 ## Module Structure
 
-### Current Module Layout (as of 2026-02)
+### Current Module Layout
 
 ```
 src/
-├── main.py              (3,462 lines) - Worker entrypoint + core business logic
-├── templates.py         (1,646 lines) - Jinja2 templates (embedded at build); CSS/JS served via Static Assets
-├── wrappers.py            (847 lines) - JS ↔ Python boundary converters
-├── observability.py       (479 lines) - Wide events + structured logging
-├── models.py              (371 lines) - Data models + sanitizer
-├── oauth_handler.py       (335 lines) - GitHub OAuth flow handler
-├── utils.py               (328 lines) - Utility functions (logging, responses, dates)
-├── route_dispatcher.py    (274 lines) - HTTP route matching + dispatch
-├── search_query.py        (234 lines) - SQL search query builder
-├── admin_context.py       (220 lines) - Admin action context manager
-├── config.py              (207 lines) - Constants + env-based config getters
-├── content_processor.py   (204 lines) - Feed entry content extraction
-├── auth.py                (203 lines) - Session cookies + HMAC signing
-├── admin.py               (194 lines) - Admin error responses + OPML parsing
-├── instance_config.py      (70 lines) - Lite mode detection + config loading
-├── xml_sanitizer.py        (55 lines) - XML control character stripping
-└── __init__.py              (4 lines)
-                          ───────
-                    Total: 9,133 lines
+├── main.py              - Worker entrypoint + core business logic
+├── templates.py         - Jinja2 templates (embedded at build); CSS/JS served via Static Assets
+├── wrappers.py          - JS ↔ Python boundary converters
+├── observability.py     - Wide events + structured logging
+├── models.py            - Data models + sanitizer
+├── oauth_handler.py     - GitHub OAuth flow handler
+├── utils.py             - Utility functions (logging, responses, dates)
+├── route_dispatcher.py  - HTTP route matching + dispatch
+├── search_query.py      - SQL search query builder
+├── admin_context.py     - Admin action context manager
+├── config.py            - Constants + env-based config getters
+├── content_processor.py - Feed entry content extraction
+├── auth.py              - Session cookies + HMAC signing
+├── admin.py             - Admin error responses + OPML parsing
+├── instance_config.py   - Lite mode detection + config loading
+├── xml_sanitizer.py     - XML control character stripping
+└── __init__.py
 ```
 
 ### Module Dependency Diagram
@@ -681,48 +679,6 @@ src/
 │      templates.py, utils.py, wrappers.py, xml_sanitizer.py ──► (none)             │
 │                                                                                   │
 └──────────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Extraction Progress
-
-15 modules have been extracted from `main.py`. The extraction focused on
-cross-cutting concerns, infrastructure, and self-contained logic. Core business
-logic (feed processing, rendering, search, admin CRUD) remains in `main.py`.
-
-```
-Extracted (15 modules, ~5,671 lines total):
-
-Infrastructure / plumbing:
-├── utils.py              (328 lines) - Logging, responses, validation, date formatting
-├── wrappers.py           (847 lines) - JS/Python boundary layer (SafeEnv, SafeHeaders, etc.)
-├── config.py             (207 lines) - Constants + env-based config getters
-├── instance_config.py     (70 lines) - Lite mode detection + config loading
-├── observability.py      (479 lines) - Wide events, structured logging, Timer
-├── route_dispatcher.py   (274 lines) - HTTP route table + pattern matching
-└── xml_sanitizer.py       (55 lines) - XML control character stripping
-
-Authentication / authorization:
-├── auth.py               (203 lines) - Session cookies, HMAC signing
-├── oauth_handler.py      (335 lines) - GitHub OAuth code exchange + user info
-└── admin_context.py      (220 lines) - Admin action context manager + audit emit
-
-Domain logic helpers:
-├── admin.py              (194 lines) - Admin error responses + OPML XML parsing
-├── content_processor.py  (204 lines) - Feed entry content extraction + GUID generation
-└── search_query.py       (234 lines) - SQL search query builder (phrase/multi-word)
-
-Data + presentation:
-├── models.py             (371 lines) - Data models, BleachSanitizer, typed dicts
-└── templates.py        (1,646 lines) - Jinja2 templates (embedded at build); CSS/JS via Static Assets
-
-Still in main.py (3,462 lines):
-├── Feed processing     - _process_single_feed(), _fetch_full_content(), _normalize_urls()
-├── Entry management    - _upsert_entry(), _index_entry_for_search(), _apply_retention_policy()
-├── HTML/feed rendering - _generate_html(), _generate_atom_feed(), _generate_rss_feed()
-├── Search              - _search_entries() (semantic + keyword)
-├── Admin CRUD          - _handle_admin(), _add_feed(), _remove_feed(), _import_opml()
-├── SSRF validation     - _validate_feed_url(), _is_private_ip()
-└── Worker entrypoint   - class Default: scheduled(), queue(), fetch()
 ```
 
 ### Class Diagram
@@ -872,79 +828,25 @@ Still in main.py (3,462 lines):
 
 ```
 planet_cf/
-├── src/                           # Worker source code (16 modules + __init__.py)
-│   ├── main.py                    #   Worker entrypoint + core business logic
-│   ├── templates.py               #   Jinja2 templates (embedded at build); CSS/JS via Static Assets
-│   ├── wrappers.py                #   JS ↔ Python boundary converters
-│   ├── observability.py           #   Structured logging and wide event emission
-│   ├── models.py                  #   Data models, BleachSanitizer, typed dicts
-│   ├── oauth_handler.py           #   GitHub OAuth code exchange + user info
-│   ├── utils.py                   #   Utility functions (logging, validation, responses)
-│   ├── route_dispatcher.py        #   HTTP route table + pattern matching
-│   ├── search_query.py            #   SQL search query builder (phrase/multi-word)
-│   ├── admin_context.py           #   Admin action context manager + audit emit
-│   ├── content_processor.py       #   Feed entry content extraction + GUID generation
-│   ├── admin.py                   #   Admin error responses + OPML XML parsing
-│   ├── auth.py                    #   Session cookies + HMAC signing
-│   ├── config.py                  #   Constants + env-based config getters
-│   ├── instance_config.py         #   Lite mode detection + config loading
-│   ├── xml_sanitizer.py           #   XML control character stripping
-│   └── __init__.py
-├── templates/                     # Default Jinja2 templates (built into templates.py)
-│   ├── feed.atom.xml
-│   ├── feed.rss.xml
-│   ├── feed.rss10.xml
-│   ├── feeds.opml
-│   ├── style.css                  #   Default CSS (copied to instances' assets/static/)
-│   └── keyboard-nav.js            #   Keyboard nav JS (copied to instances' assets/static/)
-├── static/                        # Source static assets (copied to instances' assets/static/)
-│   ├── admin.js                   #   Admin dashboard JavaScript
-│   ├── favicon.ico
-│   ├── favicon.svg
-│   ├── favicon-32x32.png
-│   └── apple-touch-icon.png
-├── config/                        # Instance configuration
-│   ├── admins.json                #   Authorized GitHub usernames
-│   └── instance.example.yaml      #   Example instance config
-├── examples/                      # Example planet instances (each has assets/static/)
-│   ├── default/                   #   Minimal starter instance
-│   ├── planet-cloudflare/         #   Cloudflare blog aggregator
-│   ├── planet-mozilla/            #   Mozilla blog aggregator
-│   ├── planet-python/             #   Python blog aggregator
-│   └── test-planet/               #   Test instance for CI
-├── scripts/                       # Build + deployment scripts
-│   ├── build_templates.py         #   Embed templates into templates.py
-│   ├── convert_planet.py          #   Convert legacy planet configs
-│   ├── create_instance.py         #   Create new planet instance
-│   ├── deploy_instance.sh         #   Deploy an instance to Cloudflare
-│   ├── seed_admins.py             #   Seed admin users from admins.json
-│   ├── seed_feeds_from_opml.py    #   Import feeds from OPML file
-│   ├── seed_test_data.py          #   Generate test data
-│   ├── setup_test_planet.sh       #   Set up test planet for CI
-│   ├── validate_deployment_ready.py # Pre-deploy validation
-│   ├── verify_deployment.py       #   Post-deploy verification
-│   └── visual_compare.py          #   Visual comparison tool
-├── migrations/                    # D1 database migrations
-│   ├── 001_initial.sql
-│   ├── 002_seed_admins.sql
-│   ├── 003_add_first_seen.sql
-│   └── 004_add_last_entry_at.sql
-├── tests/                         # Test suite
-│   ├── unit/                      #   Unit tests (pure Python, no external deps)
-│   ├── integration/               #   Integration tests (require wrangler dev)
-│   ├── e2e/                       #   End-to-end tests (production-like)
-│   ├── js/                        #   JavaScript/Vitest tests
-│   ├── mocks/                     #   Mock implementations for testing
-│   ├── fixtures/                  #   Test fixtures
-│   └── conftest.py                #   Shared pytest configuration
-├── stubs/                         # Type stubs
-│   └── workers.pyi                #   Cloudflare Workers Python API stubs
-├── docs/                          # Documentation
-│   └── ARCHITECTURE.md            #   This file (+ other docs)
-├── wrangler.jsonc                 # Cloudflare Workers configuration
-├── pyproject.toml                 # Python project config (uv, ruff, pytest)
-├── Makefile                       # Development shortcuts
-└── vitest.config.js               # JavaScript test configuration
+├── src/                    # Worker source code (16 modules + __init__.py)
+├── tests/                  # Unit, integration, and E2E tests
+│   ├── unit/               # ~855 tests with mock bindings
+│   ├── integration/        # ~86 end-to-end flow tests
+│   └── e2e/                # 34 tests against real Cloudflare infrastructure
+├── templates/              # Jinja2 HTML/XML templates + canonical CSS/JS sources
+├── examples/               # Deployable instance configurations
+│   ├── default/            # Default theme instance
+│   ├── planet-cloudflare/  # planetcf.com (uses default theme)
+│   ├── planet-python/      # Planet Python clone
+│   ├── planet-mozilla/     # Planet Mozilla clone
+│   └── test-planet/        # E2E test instance
+├── scripts/                # Build, deploy, and validation scripts
+├── docs/                   # Architecture, performance, and operations docs
+├── config/                 # Admin users and instance config templates
+├── migrations/             # Database migration SQL files
+├── stubs/                  # Type stubs for Cloudflare Workers runtime
+├── static/                 # Source static assets (admin.js, favicons)
+└── assets/                 # Root instance static files (CSS, JS, favicons)
 ```
 
 ## Deployment

@@ -422,7 +422,7 @@ HAVING failed > 0
 
 ---
 
-## Known Gaps (Updated 2026-01-16)
+## Known Gaps
 
 ### 1. ~~Retention Policy Timing~~ (FIXED)
 

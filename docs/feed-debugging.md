@@ -145,5 +145,5 @@ curl -s "https://example.com/article" | grep -E "<article|<main|class=.*content"
 
 5. **Check rendered output**:
    ```bash
-   curl -s "https://planetcf.adewale-883.workers.dev" | grep -A10 "example.com"
+   curl -s "https://your-instance.workers.dev" | grep -A10 "example.com"
    ```
