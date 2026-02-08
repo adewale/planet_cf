@@ -133,10 +133,14 @@ def create_instance_config(
     shutil.copy2(
         PROJECT_ROOT / "templates" / "style.css", instance_dir / "assets" / "static" / "style.css"
     )
-    shutil.copy2(
-        PROJECT_ROOT / "templates" / "keyboard-nav.js",
-        instance_dir / "assets" / "static" / "keyboard-nav.js",
-    )
+    # Only copy keyboard-nav.js for default theme instances.
+    # Replica themes (planet-python, planet-mozilla) don't load it — the originals
+    # have no keyboard navigation, so replicas shouldn't either.
+    if theme == "default":
+        shutil.copy2(
+            PROJECT_ROOT / "templates" / "keyboard-nav.js",
+            instance_dir / "assets" / "static" / "keyboard-nav.js",
+        )
     if not lite_mode:
         shutil.copy2(
             PROJECT_ROOT / "static" / "admin.js", instance_dir / "assets" / "static" / "admin.js"

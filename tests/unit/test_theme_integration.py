@@ -244,15 +244,28 @@ class TestStaticAssetsIntegrity:
                 f"Static Assets will return 404 for /static/style.css."
             )
 
-    def test_every_instance_has_keyboard_nav_js(self):
-        """Every instance with an assets binding must have keyboard-nav.js."""
+    def test_default_theme_instances_have_keyboard_nav_js(self):
+        """Instances using the default theme must have keyboard-nav.js.
+
+        Replica themes (planet-python, planet-mozilla) don't include keyboard
+        navigation because the original sites have no JavaScript at all.
+        """
+        # Instances that use the default theme and should have keyboard-nav.js
+        default_theme_instances = ["root", "default", "planet-cloudflare", "test-planet"]
         for name, path in self._get_instance_dirs():
             if not self._has_assets_binding(path):
                 continue
             js = path / "assets" / "static" / "keyboard-nav.js"
-            assert js.exists(), (
-                f"Instance '{name}' has ASSETS binding but no assets/static/keyboard-nav.js."
-            )
+            if name in default_theme_instances:
+                assert js.exists(), (
+                    f"Instance '{name}' uses default theme but has no "
+                    f"assets/static/keyboard-nav.js."
+                )
+            else:
+                assert not js.exists(), (
+                    f"Instance '{name}' is a replica theme and should NOT have "
+                    f"keyboard-nav.js (the originals have no keyboard navigation)."
+                )
 
     def test_no_divergent_theme_css(self):
         """If both theme/style.css and assets/static/style.css exist, they must match.
