@@ -59,8 +59,8 @@ All configuration values have sensible defaults so minimal setup works:
 
 | Setting | Default | Notes |
 |---------|---------|-------|
-| Planet name | Derived from ID | `planet-python` becomes "Planet Python" |
-| Planet description | "A feed aggregator" | `PLANET_DESCRIPTION` |
+| Planet name | "Planet CF" | `PLANET_NAME` |
+| Planet description | "Aggregated posts from Cloudflare employees and community" | `PLANET_DESCRIPTION` |
 | Theme | `default` | `THEME` |
 | Group by date | true | `GROUP_BY_DATE` |
 | Show admin link | true | `SHOW_ADMIN_LINK` |
@@ -76,12 +76,12 @@ All defaults can be overridden via environment variables in `wrangler.jsonc`:
     "PLANET_NAME": "My Custom Planet",
     "CONTENT_DAYS": "14",
     "RETENTION_DAYS": "180",
-    "MAX_ENTRIES_PER_FEED": "100"
+    "RETENTION_MAX_ENTRIES_PER_FEED": "100"
   }
 }
 ```
 
-Or via the `config/instance.yaml` for multi-instance deployments.
+Or via the instance's `config.yaml` for multi-instance deployments (see `examples/`).
 
 ## Quick Start
 

@@ -59,7 +59,7 @@ planet [OPTIONS] COMMAND [ARGS]...
 
 Options:
   -i, --instance TEXT   Instance ID to operate on (default: auto-detect)
-  -c, --config PATH     Path to config file (default: config/instances/<instance>.yaml)
+  -c, --config PATH     Path to config file (default: examples/<instance>.yaml)
   -v, --verbose         Enable verbose output
   --version             Show version and exit
   --help                Show help and exit
@@ -122,12 +122,12 @@ planet init my-planet \
 #   --url TEXT           Public URL
 #   --owner-name TEXT    Owner name
 #   --owner-email TEXT   Owner email
-#   --theme TEXT         Theme to use [default|classic|dark|minimal|custom]
+#   --theme TEXT         Theme to use [default|planet-python|planet-mozilla|custom]
 #   --dry-run            Preview without creating files
 #   --force              Overwrite existing configuration
 
 # Output:
-# Created: config/instances/my-planet.yaml
+# Created: examples/my-planet.yaml
 # Created: wrangler.my-planet.jsonc
 #
 # Next steps:
@@ -314,7 +314,7 @@ planet admin list
 planet admin seed
 
 # This replaces: python scripts/seed_admins.py
-# Reads from config/instances/<instance>.yaml
+# Reads from examples/<instance>.yaml
 ```
 
 #### 3.4 Database Commands
@@ -378,7 +378,7 @@ The CLI needs to know which instance to operate on. Resolution order:
 1. **Explicit flag**: `planet --instance my-planet status`
 2. **Environment variable**: `PLANET_INSTANCE=my-planet planet status`
 3. **Config file in current directory**: If `planet.yaml` or `instance.yaml` exists
-4. **Single instance detection**: If only one instance in `config/instances/`
+4. **Single instance detection**: If only one instance in `examples/`
 5. **Default**: Falls back to `planetcf` (the original default)
 
 ```python
@@ -628,7 +628,7 @@ class PlanetContext:
                 self._resolved_instance = config.get("planet", {}).get("id", "planetcf")
                 return self._resolved_instance
 
-        # 4. Single instance in config/instances/
+        # 4. Single instance in examples/
         instances_dir = self.project_root / "config" / "instances"
         if instances_dir.exists():
             instances = list(instances_dir.glob("*.yaml"))
@@ -1055,11 +1055,11 @@ $ planet init planet-python \
     --theme planet-python
 
 Creating instance: planet-python
-  Created: config/instances/planet-python.yaml
+  Created: examples/planet-python.yaml
   Created: wrangler.planet-python.jsonc
 
 Next steps:
-  1. Review configuration: config/instances/planet-python.yaml
+  1. Review configuration: examples/planet-python.yaml
   2. Deploy: planet deploy planet-python
 
 # 2. Validate configuration
@@ -1168,7 +1168,7 @@ Added admin: bdfl
 # Seed admins from config (for new deployment)
 $ planet admin seed
 
-Seeding admins from config/instances/planet-python.yaml...
+Seeding admins from examples/planet-python.yaml...
   [OK] Seeded: python (Python Software Foundation)
 
 # Remove an admin
@@ -1210,16 +1210,14 @@ Opening D1 shell for planet-python-db...
 $ planet build --list-themes
 
 Available themes:
-  default     - Modern, clean design with accent colors
-  classic     - Planet Venus-style with right sidebar
-  dark        - Dark mode with vibrant accents
-  minimal     - Typography-focused single column
-  planet-python - Planet Python custom theme
+  default        - Modern, clean design with accent colors
+  planet-python  - Planet Python custom theme
+  planet-mozilla - Planet Mozilla custom theme
 
 # Build with a specific theme
-$ planet build --theme dark
+$ planet build --theme planet-mozilla
 
-Building templates with theme: dark
+Building templates with theme: planet-mozilla
   Generated src/templates.py
     - 9 templates
 

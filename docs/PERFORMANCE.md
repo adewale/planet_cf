@@ -1,6 +1,6 @@
 # Performance Guide
 
-Planet CF runs on Cloudflare Workers with Python via Pyodide (WebAssembly). The main performance constraint is Pyodide's cold-start latency (~1.8-3s TTFB on the first request to a cold isolate). Every optimization in this document exists either to hide that cold start from real users or to make the warm path as fast as possible.
+Planet CF runs on Cloudflare Workers with Python via Pyodide (WebAssembly). The main performance constraint is Pyodide's cold-start latency (~1-3s TTFB on the first request to a cold isolate). Every optimization in this document exists either to hide that cold start from real users or to make the warm path as fast as possible.
 
 ## Caching Strategy
 
@@ -20,7 +20,7 @@ This means visitors almost always get an edge-cached response (~20-50ms), even w
 
 ### Edge cache pre-warming
 
-The hourly cron scheduler, after enqueueing feed fetches and running retention cleanup, requests the 4 most important pages on itself (`src/main.py:544-552`):
+The hourly cron scheduler, after enqueueing feed fetches and running retention cleanup, requests the 4 most important pages on itself (`src/main.py:538-545`):
 
 ```python
 for path in ("/", "/titles", "/feed.atom", "/feed.rss"):
@@ -38,7 +38,7 @@ This ensures the edge cache always has a fresh copy, even if no real user has vi
 
 ### Conditional GETs
 
-Feed fetches store ETag and Last-Modified from each response (`src/main.py:678-683`). On the next fetch, we send `If-None-Match` and `If-Modified-Since` headers. If the feed hasn't changed, the server returns 304 Not Modified with no body, saving bandwidth and parse time.
+Feed fetches store ETag and Last-Modified from each response (`src/main.py:671-676`). On the next fetch, we send `If-None-Match` and `If-Modified-Since` headers. If the feed hasn't changed, the server returns 304 Not Modified with no body, saving bandwidth and parse time.
 
 ## Asset Delivery
 
@@ -101,7 +101,7 @@ Three favicon formats cover all browsers and platforms (`src/templates.py:31-33`
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 ```
 
-- **favicon.ico** (32x32 PNG): Legacy browser support, tiny file size.
+- **favicon.ico** (32x32 ICO): Legacy browser support, tiny file size.
 - **favicon.svg**: Modern browsers use this. Scales perfectly to any size, typically smaller than equivalent PNGs at high resolutions.
 - **apple-touch-icon.png**: iOS home screen icon.
 
@@ -128,7 +128,7 @@ Web fonts (Google Fonts, Adobe Fonts, self-hosted WOFF2) typically add 50-200 Ki
 
 ### Queue isolation
 
-Each feed is enqueued as a separate queue message (`src/main.py:507-527`). This gives us:
+Each feed is enqueued as a separate queue message (`src/main.py:500-522`). This gives us:
 
 - **Isolated retries:** Only the failed feed is retried, not the entire batch.
 - **Isolated timeouts:** A slow feed doesn't block others. Each gets its own `asyncio.wait_for()` with a configurable timeout (default 60s).
@@ -137,17 +137,17 @@ Each feed is enqueued as a separate queue message (`src/main.py:507-527`). This 
 
 ### Rate limit compliance
 
-HTTP 429/503 responses with `Retry-After` headers are handled specially (`src/main.py:712-720`). They don't increment the consecutive failure counter and trigger a queue retry instead. This prevents well-behaved feeds from being auto-deactivated due to temporary rate limiting.
+HTTP 429/503 responses with `Retry-After` headers are handled specially (`src/main.py:705-713`). They don't increment the consecutive failure counter and trigger a queue retry instead. This prevents well-behaved feeds from being auto-deactivated due to temporary rate limiting.
 
 ### Auto-deactivation
 
-After a configurable number of consecutive failures (default 10), feeds are automatically deactivated (`src/main.py:1131-1158`). This prevents permanently broken feeds from wasting queue capacity and CPU time every hour.
+After a configurable number of consecutive failures (default 10), feeds are automatically deactivated (`src/main.py:1107-1136`). This prevents permanently broken feeds from wasting queue capacity and CPU time every hour.
 
 ## Database Optimization
 
 ### Indexes
 
-Five indexes on the two main tables (`src/main.py:393-415`):
+Five indexes on the two main tables (`src/main.py:386-408`):
 
 - `idx_feeds_active` on `feeds(is_active)` for filtering active feeds
 - `idx_feeds_url` on `feeds(url)` for URL lookups
@@ -157,13 +157,13 @@ Five indexes on the two main tables (`src/main.py:393-415`):
 
 ### Window functions for smart result limiting
 
-The homepage query uses `ROW_NUMBER() OVER (PARTITION BY feed_id, date(...))` to limit entries to 5 per feed per day and 100 per feed total (`src/main.py:1518-1545`). This prevents any single prolific feed from dominating the page without requiring multiple queries.
+The homepage query uses `ROW_NUMBER() OVER (PARTITION BY feed_id, date(...))` to limit entries to 5 per feed per day and 100 per feed total (`src/main.py:1498-1528`). This prevents any single prolific feed from dominating the page without requiring multiple queries.
 
-The same pattern is used for retention cleanup (`src/main.py:1808-1828`), identifying excess entries in a single query rather than looping per-feed.
+The same pattern is used for retention cleanup (`src/main.py:1789-1812`), identifying excess entries in a single query rather than looping per-feed.
 
 ### Per-isolate initialization
 
-Database schema checks and auto-migration run only once per Worker isolate via a `_db_initialized` flag (`src/main.py:347-452`). Subsequent requests skip the check entirely.
+Database schema checks and auto-migration run only once per Worker isolate via a `_db_initialized` flag (`src/main.py:341-446`). Subsequent requests skip the check entirely.
 
 ## Worker Runtime
 
@@ -173,7 +173,7 @@ The `python_dedicated_snapshot` compatibility flag (`wrangler.jsonc:23`) uses Cl
 
 ### Per-isolate caching
 
-The `SafeEnv` wrapper and `RouteDispatcher` are cached as instance variables (`src/main.py:294-316, 1255-1308`). Route matching is computed once per isolate, not per request.
+The `SafeEnv` wrapper and `RouteDispatcher` are cached as instance variables (`src/main.py:287-309, 1248-1294`). Route matching is computed once per isolate, not per request.
 
 ### Async I/O throughout
 
@@ -202,7 +202,7 @@ Three layers of result limiting prevent unbounded response sizes:
 
 ## Known Bottleneck: TTFB
 
-The ~1.8-3s TTFB on true cold starts is the biggest performance gap. This is inherent to Pyodide on Workers. Mitigations:
+The ~1-3s TTFB on true cold starts is the biggest performance gap. This is inherent to Pyodide on Workers. Mitigations:
 
 1. **stale-while-revalidate + cron pre-warming** ensures real visitors almost never hit a cold Worker.
 2. **Dedicated Pyodide snapshot** reduces cold-start overhead.

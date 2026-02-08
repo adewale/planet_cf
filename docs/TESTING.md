@@ -21,7 +21,7 @@ uv run pytest tests/unit tests/integration -v
 
 Pure unit tests using mock Cloudflare bindings. No server needed.
 
-- **739 tests**, runs in ~1 second
+- **855 tests**, runs in ~1 second
 - Uses `MockD1`, `MockVectorize`, `MockAI`, `MockQueue` from `tests/conftest.py`
 - Simulates JsProxy behavior to catch conversion issues
 - Covers: rendering, search, config, auth, feeds, entries, observability
@@ -30,7 +30,7 @@ Pure unit tests using mock Cloudflare bindings. No server needed.
 
 Tests that verify end-to-end flows using mock bindings. No external services needed.
 
-- **85+ tests**, runs in ~2 seconds
+- **86 tests**, runs in ~2 seconds
 - Covers: HTTP endpoints, feed processing, search, admin UI, scheduler
 - Uses factory fixtures (`FeedFactory`, `EntryFactory`, `SessionFactory`)
 

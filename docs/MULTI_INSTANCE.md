@@ -218,8 +218,8 @@ All configuration can be overridden via environment variables:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `PLANET_NAME` | Display name | `Planet` |
-| `PLANET_DESCRIPTION` | Tagline | `A feed aggregator` |
+| `PLANET_NAME` | Display name | `Planet CF` |
+| `PLANET_DESCRIPTION` | Tagline | `Aggregated posts from Cloudflare employees and community` |
 | `PLANET_URL` | Public URL | - |
 | `PLANET_OWNER_NAME` | Owner name | - |
 | `THEME` | Theme name or path | `default` |
@@ -248,14 +248,14 @@ All configuration can be overridden via environment variables:
 Set in `wrangler.jsonc`:
 ```json
 "vars": {
-  "THEME": "dark"
+  "THEME": "planet-mozilla"
 }
 ```
 
 Or in instance config:
 ```yaml
 branding:
-  theme: dark
+  theme: planet-mozilla
 ```
 
 ### Creating Custom Themes

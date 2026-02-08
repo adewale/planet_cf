@@ -118,6 +118,7 @@ Emitted once per HTTP request. Route-specific fields are null for non-applicable
 |-------|------|-------------|
 | `event_type` | string | Always "request" |
 | `request_id` | string | 16-char hex unique ID |
+| `correlation_id` | string | For tracing request chains (e.g., from scheduler) |
 | `timestamp` | string | ISO 8601 UTC |
 | `method` | string | HTTP method |
 | `path` | string | Request path |
@@ -132,6 +133,8 @@ Emitted once per HTTP request. Route-specific fields are null for non-applicable
 | `outcome` | string | success/error |
 | `error_type` | string? | Exception class name |
 | `error_message` | string? | Truncated to 200 chars |
+| `worker_version` | string | Worker version from DEPLOYMENT_VERSION env var |
+| `deployment_environment` | string | Deployment environment from DEPLOYMENT_ENVIRONMENT env var |
 
 **Search fields** (null unless route=/search):
 
@@ -145,7 +148,12 @@ Emitted once per HTTP request. Route-specific fields are null for non-applicable
 | `search_results_total` | int? | Final result count |
 | `search_semantic_matches` | int? | Vectorize matches after threshold |
 | `search_keyword_matches` | int? | D1 LIKE matches |
+| `search_words_truncated` | bool? | True if query exceeded MAX_SEARCH_WORDS |
 | `search_exact_title_matches` | int? | Exact title matches |
+| `search_title_in_query_matches` | int? | Title-in-query matches |
+| `search_query_in_title_matches` | int? | Query-in-title matches |
+| `search_semantic_error` | string? | Error from semantic search |
+| `search_keyword_error` | string? | Error from keyword search |
 
 **Generation fields** (null unless route=/):
 
@@ -156,6 +164,7 @@ Emitted once per HTTP request. Route-specific fields are null for non-applicable
 | `generation_entries_total` | int? | Entries in response |
 | `generation_feeds_healthy` | int? | Feeds without errors |
 | `generation_trigger` | string? | http/cron/admin_manual |
+| `generation_used_fallback` | bool? | True if fallback entries shown |
 
 **OAuth fields** (null unless route=/auth/*):
 
@@ -178,9 +187,11 @@ Emitted once per queue message (one feed fetch).
 | `timestamp` | string | ISO 8601 UTC |
 | `feed_id` | int | Database feed ID |
 | `feed_url` | string | Feed URL |
+| `feed_url_original` | string? | URL before redirect (if redirected) |
 | `feed_domain` | string | Extracted domain |
 | `feed_title` | string? | Feed title |
 | `feed_consecutive_failures` | int | Failure streak count |
+| `feed_auto_deactivated` | bool | True if feed was auto-deactivated this fetch |
 | `http_latency_ms` | float | HTTP request time |
 | `http_status` | int? | HTTP response status |
 | `http_cached` | bool | 304 Not Modified |
@@ -191,6 +202,8 @@ Emitted once per queue message (one feed fetch).
 | `entries_found` | int | Entries parsed from feed |
 | `entries_added` | int | New entries stored |
 | `parse_errors` | int | Parsing error count |
+| `upsert_failures` | int | Count of failed entry upserts |
+| `content_fetched_count` | int | Count of entries where full content was fetched |
 | `indexing_attempted` | int | Entries sent for indexing |
 | `indexing_succeeded` | int | Successfully indexed |
 | `indexing_failed` | int | Indexing failures |
@@ -204,7 +217,9 @@ Emitted once per queue message (one feed fetch).
 | `error_message` | string? | Truncated error |
 | `error_retriable` | bool? | Should retry |
 | `worker_version` | string | Worker version |
+| `deployment_environment` | string | Deployment environment from DEPLOYMENT_ENVIRONMENT env var |
 | `queue_attempt` | int | Retry attempt number |
+| `correlation_id` | string | Propagated from scheduler through queue for tracing |
 
 ### SchedulerEvent
 
@@ -230,6 +245,11 @@ Emitted once per cron invocation.
 | `retention_max_per_feed` | int | Max entries config |
 | `wall_time_ms` | float | Total cron duration |
 | `outcome` | string | success/error |
+| `error_type` | string? | Exception class name |
+| `error_message` | string? | Truncated error |
+| `worker_version` | string | Worker version from DEPLOYMENT_VERSION env var |
+| `deployment_environment` | string | Deployment environment from DEPLOYMENT_ENVIRONMENT env var |
+| `correlation_id` | string | Generated per scheduler run, propagated to feeds |
 
 ### AdminActionEvent
 
@@ -247,6 +267,10 @@ Emitted once per admin action.
 | `target_id` | int? | Target resource ID |
 | `wall_time_ms` | float | Operation duration |
 | `outcome` | string | success/error |
+| `error_type` | string? | Exception class name |
+| `error_message` | string? | Truncated error |
+| `worker_version` | string | Worker version from DEPLOYMENT_VERSION env var |
+| `deployment_environment` | string | Deployment environment from DEPLOYMENT_ENVIRONMENT env var |
 
 **OPML import fields** (action=import_opml):
 

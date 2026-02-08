@@ -48,7 +48,7 @@ A feed aggregator built on Cloudflare Workers (Python) with D1, Queues, and Vect
 
 ## Request Flow
 
-### Public Pages (/, /titles, /feed.atom, /feed.rss, /feed.rss10, /feeds.opml, /search)
+### Public Pages (/, /titles, /feed.atom, /feed.rss, /feed.rss10, /feeds.opml, /foafroll.xml, /search)
 
 ```
 Browser Request
@@ -331,7 +331,7 @@ Authentication uses HMAC-signed cookies instead of server-side sessions:
 Cookie: session=base64(json_payload).hmac_sha256_signature
 ```
 
-Payload contains: `{github_username, github_id, exp}`
+Payload contains: `{github_username, github_id, avatar_url, exp}`
 
 ### Edge Caching Strategy
 
@@ -347,9 +347,12 @@ The CSP must allow this JavaScript to execute while blocking XSS attacks.
 
 ```
 default-src 'self';
+script-src 'self';
 style-src 'self' 'unsafe-inline';
 img-src https: data:;
-frame-ancestors 'none'
+frame-ancestors 'none';
+base-uri 'self';
+form-action 'self'
 ```
 
 **Why External JavaScript (not inline)**:
@@ -391,7 +394,7 @@ Feed formats are controlled by theme-based frozensets in `src/main.py`:
 
 RSS 2.0, Atom, and OPML are available for all instances. RSS 1.0 is only linked in templates
 for themes in `_THEMES_WITH_RSS10`. All feed routes (`/feed.rss`, `/feed.atom`, `/feeds.opml`,
-`/feed.rss10`) are registered universally — the frozensets control what appears in `feed_links`
+`/feed.rss10`, `/foafroll.xml`) are registered universally — the frozensets control what appears in `feed_links`
 (and thus in the rendered HTML), not whether the route exists.
 
 ### Two-Tier Serving Architecture
@@ -416,6 +419,8 @@ Static files per instance:
 | `style.css` | Main stylesheet (per-theme) | `templates/style.css` (default theme) |
 | `keyboard-nav.js` | Keyboard navigation (j/k/o) | `templates/keyboard-nav.js` |
 | `admin.js` | Admin dashboard (full mode only) | `static/admin.js` |
+| `favicon.ico`, `favicon.svg`, etc. | Favicons | Per-instance |
+| Theme-specific images | Logos, banners (e.g., `images/python-logo.gif`) | Per-instance |
 
 **Tier 2: Python Worker (HTML, feeds, API, admin)**
 
@@ -453,7 +458,7 @@ their CSS independently.
 All HTML responses include comprehensive security headers:
 
 ```
-Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; img-src https: data:; frame-ancestors 'none'
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src https: data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
 X-Frame-Options: DENY
 X-Content-Type-Options: nosniff
 Referrer-Policy: strict-origin-when-cross-origin
@@ -561,7 +566,7 @@ messages, AI results) MUST convert through `_to_py_safe()` before use.
 ```
 src/
 ├── main.py              (3,462 lines) - Worker entrypoint + core business logic
-├── templates.py         (1,650 lines) - Jinja2 templates (embedded at build); CSS/JS served via Static Assets
+├── templates.py         (1,646 lines) - Jinja2 templates (embedded at build); CSS/JS served via Static Assets
 ├── wrappers.py            (847 lines) - JS ↔ Python boundary converters
 ├── observability.py       (479 lines) - Wide events + structured logging
 ├── models.py              (371 lines) - Data models + sanitizer
@@ -578,7 +583,7 @@ src/
 ├── xml_sanitizer.py        (55 lines) - XML control character stripping
 └── __init__.py              (4 lines)
                           ───────
-                    Total: 9,137 lines
+                    Total: 9,133 lines
 ```
 
 ### Module Dependency Diagram
@@ -685,15 +690,15 @@ cross-cutting concerns, infrastructure, and self-contained logic. Core business
 logic (feed processing, rendering, search, admin CRUD) remains in `main.py`.
 
 ```
-Extracted (15 modules, ~7,722 lines total):
+Extracted (15 modules, ~5,671 lines total):
 
 Infrastructure / plumbing:
 ├── utils.py              (328 lines) - Logging, responses, validation, date formatting
 ├── wrappers.py           (847 lines) - JS/Python boundary layer (SafeEnv, SafeHeaders, etc.)
-├── config.py             (172 lines) - Constants + env-based config getters
-├── instance_config.py    (105 lines) - Lite mode detection + config loading
+├── config.py             (207 lines) - Constants + env-based config getters
+├── instance_config.py     (70 lines) - Lite mode detection + config loading
 ├── observability.py      (479 lines) - Wide events, structured logging, Timer
-├── route_dispatcher.py   (281 lines) - HTTP route table + pattern matching
+├── route_dispatcher.py   (274 lines) - HTTP route table + pattern matching
 └── xml_sanitizer.py       (55 lines) - XML control character stripping
 
 Authentication / authorization:
@@ -708,7 +713,7 @@ Domain logic helpers:
 
 Data + presentation:
 ├── models.py             (371 lines) - Data models, BleachSanitizer, typed dicts
-└── templates.py        (1,650 lines) - Jinja2 templates (embedded at build); CSS/JS via Static Assets
+└── templates.py        (1,646 lines) - Jinja2 templates (embedded at build); CSS/JS via Static Assets
 
 Still in main.py (3,462 lines):
 ├── Feed processing     - _process_single_feed(), _fetch_full_content(), _normalize_urls()
@@ -867,7 +872,7 @@ Still in main.py (3,462 lines):
 
 ```
 planet_cf/
-├── src/                           # Worker source code (16 modules)
+├── src/                           # Worker source code (16 modules + __init__.py)
 │   ├── main.py                    #   Worker entrypoint + core business logic
 │   ├── templates.py               #   Jinja2 templates (embedded at build); CSS/JS via Static Assets
 │   ├── wrappers.py                #   JS ↔ Python boundary converters
