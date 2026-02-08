@@ -417,7 +417,7 @@ Static files per instance:
 | File | Purpose | Canonical Source |
 |------|---------|-----------------|
 | `style.css` | Main stylesheet (per-theme) | `templates/style.css` (default theme) |
-| `keyboard-nav.js` | Keyboard navigation (j/k/o) | `templates/keyboard-nav.js` |
+| `keyboard-nav.js` | Keyboard navigation (n/p/o) | `templates/keyboard-nav.js` |
 | `admin.js` | Admin dashboard (full mode only) | `static/admin.js` |
 | `favicon.ico`, `favicon.svg`, etc. | Favicons | Per-instance |
 | Theme-specific images | Logos, banners (e.g., `images/python-logo.gif`) | Per-instance |
