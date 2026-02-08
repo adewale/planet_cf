@@ -5,37 +5,45 @@ A feed aggregator built on Cloudflare Workers (Python) with D1, Queues, and Vect
 ## System Overview
 
 ```
-                                    ┌─────────────────────────────────────┐
-                                    │         Cloudflare Edge             │
-                                    │  (Global CDN, 1-hour edge cache)    │
-                                    └─────────────────────────────────────┘
-                                                     │
-                                                     ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              Planet CF Worker                                    │
-│                         (Python via Pyodide runtime)                            │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                  │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
-│  │    fetch()   │    │   queue()    │    │ scheduled()  │    │   Admin UI   │  │
-│  │  HTTP Handler│    │Queue Consumer│    │Cron Scheduler│    │  Dashboard   │  │
-│  └──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘  │
-│         │                   │                   │                   │           │
-│         └───────────────────┴───────────────────┴───────────────────┘           │
-│                                      │                                           │
-└──────────────────────────────────────┼───────────────────────────────────────────┘
-                                       │
-         ┌─────────────────────────────┼─────────────────────────────┐
-         │                             │                             │
-         ▼                             ▼                             ▼
-┌─────────────────┐          ┌─────────────────┐          ┌─────────────────┐
-│   D1 Database   │          │   FEED_QUEUE    │          │   Vectorize     │
-│                 │          │   (Cloudflare   │          │   (Semantic     │
-│  - feeds        │          │    Queues)      │          │    Search)      │
-│  - entries      │          │                 │          │                 │
-│  - admins       │          └─────────────────┘          └─────────────────┘
-│  - audit_log    │
-└─────────────────┘
+                         ┌──────────────────────────────────────────┐
+                         │            Cloudflare Edge                │
+                         │     (Global CDN, 1-hour edge cache)      │
+                         └──────────────────────────────────────────┘
+                                            │
+                              ┌─────────────┴─────────────┐
+                              │                           │
+                     /static/* requests           All other requests
+                              │                           │
+                              ▼                           ▼
+               ┌────────────────────────┐  ┌────────────────────────────────────┐
+               │  Workers Static Assets │  │      Planet CF Python Worker       │
+               │                        │  │     (Python via Pyodide/WASM)      │
+               │  Serves CSS, JS, fonts │  ├────────────────────────────────────┤
+               │  images from assets/   │  │                                    │
+               │                        │  │  ┌──────────┐  ┌──────────────┐   │
+               │  TTFB: ~15-90ms        │  │  │  fetch() │  │ scheduled()  │   │
+               │  No Worker boots       │  │  │  (HTTP)  │  │   (cron)     │   │
+               │  No Pyodide cold start │  │  └──────────┘  └──────────────┘   │
+               │  Edge-cached (24h)     │  │  ┌──────────┐  ┌──────────────┐   │
+               └────────────────────────┘  │  │  queue() │  │  Admin UI    │   │
+                                           │  │(consumer)│  │  Dashboard   │   │
+                                           │  └──────────┘  └──────────────┘   │
+                                           │                                    │
+                                           │  TTFB: ~1000-1400ms (cold start)  │
+                                           │  TTFB: ~90ms (warm/cached)        │
+                                           └──────────────┬─────────────────────┘
+                                                          │
+                    ┌─────────────────────────────────────┼──────────────────┐
+                    │                                     │                  │
+                    ▼                                     ▼                  ▼
+          ┌─────────────────┐                   ┌─────────────────┐ ┌───────────────┐
+          │   D1 Database   │                   │   FEED_QUEUE    │ │   Vectorize   │
+          │                 │                   │   (Cloudflare   │ │   (Semantic   │
+          │  - feeds        │                   │    Queues)      │ │    Search)    │
+          │  - entries      │                   │                 │ │               │
+          │  - admins       │                   └─────────────────┘ └───────────────┘
+          │  - audit_log    │
+          └─────────────────┘
 ```
 
 ## Request Flow
@@ -386,18 +394,53 @@ for themes in `_THEMES_WITH_RSS10`. All feed routes (`/feed.rss`, `/feed.atom`, 
 `/feed.rss10`) are registered universally — the frozensets control what appears in `feed_links`
 (and thus in the rendered HTML), not whether the route exists.
 
-### Static File Serving
+### Two-Tier Serving Architecture
 
-Static assets (CSS, JS) are served via **Workers Static Assets** from each instance's
-`assets/` directory. Each instance has its own copy of static files under `assets/static/`:
+Planet CF has two fundamentally different serving paths, visible in the System Overview
+diagram above. Understanding this split is critical for performance tuning and debugging.
 
-- `/static/style.css` - Main stylesheet (per-instance, supports theming)
-- `/static/keyboard-nav.js` - Keyboard navigation script
-- `/static/admin.js` - Admin dashboard JavaScript (full mode only)
+**Tier 1: Workers Static Assets (CSS, JS, fonts, images)**
 
-The `assets` binding in `wrangler.jsonc` maps the `assets/` directory so Cloudflare
-serves these files directly from the edge CDN, without hitting the Worker. Templates
-(HTML) are still embedded in `src/templates.py` at build time (Workers has no filesystem).
+Requests matching files in an instance's `assets/` directory are served by Cloudflare's
+Workers Static Assets infrastructure at the edge. The Python Worker never boots.
+
+- TTFB: ~15–90ms (edge-served, no cold start)
+- Configured via the `assets` binding in each `wrangler.jsonc`
+- Files live under `assets/static/` in each instance directory
+- Edge-cached with long TTLs; no Pyodide/WASM overhead
+
+Static files per instance:
+
+| File | Purpose | Canonical Source |
+|------|---------|-----------------|
+| `style.css` | Main stylesheet (per-theme) | `templates/style.css` (default theme) |
+| `keyboard-nav.js` | Keyboard navigation (j/k/o) | `templates/keyboard-nav.js` |
+| `admin.js` | Admin dashboard (full mode only) | `static/admin.js` |
+
+**Tier 2: Python Worker (HTML, feeds, API, admin)**
+
+All other requests — HTML pages, feed XML, search, admin actions — hit the Python
+Worker running via Pyodide (Python compiled to WebAssembly).
+
+- TTFB: ~1000–1400ms cold start (Pyodide runtime initialization)
+- TTFB: ~90ms warm (Worker already running, reuses runtime)
+- Mitigated by `stale-while-revalidate=3600` and cron-based cache pre-warming
+- HTML templates are compiled into `src/templates.py` at build time (Workers has no filesystem)
+
+**Why this matters:**
+
+The cold-start penalty is the dominant performance bottleneck. Lighthouse scores show
+~15–90ms TTFB for static assets vs ~1000–1400ms for HTML. The caching strategy
+(`Cache-Control: public, max-age=3600, stale-while-revalidate=3600`) ensures most
+visitors get a cached HTML response while the Worker regenerates in the background.
+
+**Canonical source enforcement:**
+
+Each instance's `assets/static/` is the deployed truth for CSS/JS. For instances using
+the default theme, `templates/style.css` is the canonical source — a test in
+`test_theme_integration.py::TestStaticAssetsIntegrity::test_default_theme_instances_match_canonical_css`
+enforces that all default-theme copies match. Similarly, `keyboard-nav.js` and `admin.js`
+have their own consistency tests.
 
 When creating a new instance, `scripts/create_instance.py` copies default static files
 from `templates/` and `static/` into `assets/static/`. Instances can then customize
@@ -582,7 +625,7 @@ src/
 │  │constants │ │ RequestEvent    │ │SafeEnv   │ │render_template   │              │
 │  │get_config│ │ FeedFetchEvent  │ │SafeHeaders│ │TEMPLATE_*        │              │
 │  │_value()  │ │ SchedulerEvent  │ │SafeFeed  │ │THEME_LOGOS       │              │
-│  │          │ │ AdminActionEvent│ │Info      │ │THEME_ASSETS      │              │
+│  │          │ │ AdminActionEvent│ │Info      │ │_EMBEDDED_         │              │
 │  │          │ │ Timer           │ │safe_http │ │EmbeddedLoader    │              │
 │  │          │ │ emit_event      │ │_fetch    │ │                  │              │
 │  └────┬─────┘ └───────┬────────┘ └──────────┘ └──────────────────┘              │
