@@ -10,7 +10,6 @@ Main Worker entrypoint handling all triggers:
 import asyncio
 import ipaddress
 import json
-import re
 import secrets
 import time
 import xml.etree.ElementTree as ET
@@ -1010,103 +1009,6 @@ class Default(WorkerEntrypoint):
         _log_op("feed_processed", feed_url=url, entries_added=entries_added)
         return {"status": "ok", "entries_added": entries_added, "entries_found": entries_found}
 
-    def _normalize_urls(self, content: str, base_url: str) -> str:
-        """Convert relative URLs in content to absolute URLs.
-
-        Handles href and src attributes with relative paths like:
-        - /images/foo.png -> https://example.com/images/foo.png
-        - ../assets/bar.css -> https://example.com/assets/bar.css
-        - image.jpg -> https://example.com/path/image.jpg
-        """
-        parsed_base = urlparse(base_url)
-        base_origin = f"{parsed_base.scheme}://{parsed_base.netloc}"
-        base_path = parsed_base.path.rsplit("/", 1)[0] if "/" in parsed_base.path else ""
-
-        def _resolve_url(match: re.Match[str]) -> str:
-            attr = match.group(1)  # href or src
-            quote = match.group(2)  # ' or "
-            url = match.group(3)  # the URL value
-
-            # Skip if already absolute or special protocol
-            if url.startswith(("http://", "https://", "//", "data:", "mailto:", "#")):
-                return match.group(0)
-
-            # Resolve relative URL
-            if url.startswith("/"):
-                # Absolute path relative to origin
-                resolved = f"{base_origin}{url}"
-            else:
-                # Relative path
-                resolved = f"{base_origin}{base_path}/{url}"
-
-            return f"{attr}={quote}{resolved}{quote}"
-
-        # Match href="..." or src="..." with relative URLs
-        pattern = r'(href|src)=(["\'])([^"\']+)\2'
-        return re.sub(pattern, _resolve_url, content, flags=re.I)
-
-    async def _fetch_full_content(self, url: str) -> str | None:
-        """Fetch full article content from a URL when feed only provides summary.
-
-        Uses regex-based extraction for Pyodide compatibility (no BeautifulSoup).
-        Returns None if extraction fails, so caller can fall back to summary.
-        """
-        if not url or not self._is_safe_url(url):
-            return None
-
-        try:
-            response = await safe_http_fetch(
-                url,
-                headers={"User-Agent": self._get_user_agent()},
-                timeout_seconds=self._get_http_timeout(),
-            )
-
-            if response.status_code != 200:
-                return None
-
-            html = response.text
-
-            # Remove script and style tags with their content
-            html = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL | re.I)
-            html = re.sub(r"<style[^>]*>.*?</style>", "", html, flags=re.DOTALL | re.I)
-            html = re.sub(r"<nav[^>]*>.*?</nav>", "", html, flags=re.DOTALL | re.I)
-            html = re.sub(r"<footer[^>]*>.*?</footer>", "", html, flags=re.DOTALL | re.I)
-
-            # Try to extract content from common article containers
-            # Order matters - more specific patterns first
-            patterns = [
-                r"<article[^>]*>(.*?)</article>",
-                r"<main[^>]*>(.*?)</main>",
-                r'<div[^>]*class="[^"]*(?:post-content|entry-content|article-content)[^"]*"[^>]*>(.*?)</div>',
-                r'<div[^>]*class="[^"]*content[^"]*"[^>]*>(.*?)</div>',
-                r'<div[^>]*id="content"[^>]*>(.*?)</div>',
-            ]
-
-            content = None
-            for pattern in patterns:
-                match = re.search(pattern, html, flags=re.DOTALL | re.I)
-                if match:
-                    content = match.group(1)
-                    break
-
-            if not content:
-                # Fallback: extract all paragraphs
-                paragraphs = re.findall(r"<p[^>]*>(.*?)</p>", html, flags=re.DOTALL | re.I)
-                if len(paragraphs) >= 3:
-                    # Join paragraphs into content
-                    content = "".join(f"<p>{p}</p>" for p in paragraphs[:50])
-
-            if content and len(content) > 500:
-                # Normalize relative URLs to absolute URLs
-                content = self._normalize_urls(content, url)
-                return content
-
-            return None
-
-        except Exception as e:
-            _log_op("content_fetch_error", url=url, error=_truncate_error(e))
-            return None
-
     async def _upsert_entry(self, feed_id: int, entry: dict[str, Any]) -> dict[str, Any]:
         """Insert or update a single entry with sanitized content."""
         # Use EntryContentProcessor for GUID generation, content extraction, and date parsing
@@ -1118,19 +1020,6 @@ class Default(WorkerEntrypoint):
         title = processed.title
         summary = processed.summary
         published_at = processed.published_at
-
-        # If content is just a short summary, try to fetch full article content
-        # This handles feeds that only provide <description> without <content:encoded>
-        entry_url = entry.get("link")
-        if len(content) < 500 and entry_url:
-            fetched_content = await self._fetch_full_content(entry_url)
-            if fetched_content:
-                content = fetched_content
-                _log_op(
-                    "full_content_fetched",
-                    url=entry_url[:100],
-                    content_len=len(content),
-                )
 
         # Sanitize HTML (XSS prevention)
         sanitized_content = self._sanitize_html(content)

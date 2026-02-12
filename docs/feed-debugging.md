@@ -96,22 +96,19 @@ curl -s "https://example.com/rss.xml" | head -50
 
 ---
 
-### 5. Content Not Being Fetched (Summary-Only Feeds)
+### 5. Summary-Only Feeds
 
-**Symptoms**: Entries exist but only have short descriptions, no full content.
+**Symptoms**: Entries only have short descriptions, no full content.
 
-**Root Cause**: RSS feed only has `<description>` (summary), not `<content:encoded>`. Full content fetch from article URL may be failing.
+**Root Cause**: RSS feed only has `<description>` (summary), not `<content:encoded>`.
 
 **Diagnosis**:
 ```bash
 # Check if feed has full content
 curl -s "https://example.com/rss.xml" | grep -E "content:encoded|<content"
-
-# Check article page structure (for full content extraction)
-curl -s "https://example.com/article" | grep -E "<article|<main|class=.*content"
 ```
 
-**Fix**: The `_fetch_full_content()` function in `main.py` extracts content from `<article>`, `<main>`, or common content divs. If the site uses unusual structure, the patterns may need updating.
+**Note**: Planet CF displays whatever content the feed provides. It does not fetch full article content from the original URL. If a feed only provides summaries, entries will show summaries.
 
 ---
 

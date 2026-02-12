@@ -704,8 +704,6 @@ src/
 │  │                                                                          │ │
 │  │ Feed Processing:                                                         │ │
 │  │   _process_single_feed()        # Fetch + parse + store                  │ │
-│  │   _fetch_full_content()         # Follow links for full text             │ │
-│  │   _normalize_urls()             # Make relative URLs absolute            │ │
 │  │   _sanitize_html()              # Bleach sanitization                    │ │
 │  │   _validate_feed_url()          # SSRF protection                        │ │
 │  │                                                                          │ │
