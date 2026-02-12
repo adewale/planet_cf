@@ -46,6 +46,8 @@ from config import (
     get_embedding_max_chars,
     get_feed_auto_deactivate_threshold,
     get_feed_failure_threshold,
+    get_feed_recovery_enabled,
+    get_feed_recovery_limit,
     get_feed_timeout,
     get_http_timeout,
     get_max_entries_per_feed,
@@ -189,6 +191,23 @@ class RateLimitError(Exception):
         """Initialize rate limit error with optional retry-after value."""
         super().__init__(message)
         self.retry_after = retry_after
+
+
+def _classify_error(exc: Exception) -> str:
+    """Classify an exception into an error category for observability."""
+    error_type = type(exc).__name__
+    error_str = str(exc).lower()
+    if isinstance(exc, TimeoutError) or "timeout" in error_str:
+        return "timeout"
+    if "d1" in error_str or "database" in error_str or "sql" in error_str:
+        return "database"
+    if "parse" in error_str or "xml" in error_str or "feed" in error_type.lower():
+        return "parse"
+    if isinstance(exc, ConnectionError | OSError) or "fetch" in error_str:
+        return "network"
+    if isinstance(exc, ValueError) or "ssrf" in error_str or "invalid" in error_str:
+        return "validation"
+    return "unknown"
 
 
 # =============================================================================
@@ -432,10 +451,19 @@ class Default(WorkerEntrypoint):
                         FOREIGN KEY (admin_id) REFERENCES admins(id)
                     );
                     CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC);
+
+                    -- Migration tracking
+                    CREATE TABLE IF NOT EXISTS applied_migrations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        migration_name TEXT UNIQUE NOT NULL,
+                        applied_at TEXT DEFAULT CURRENT_TIMESTAMP
+                    );
                 """)
                 _log_op("database_auto_init", status="completed")
             else:
                 _log_op("database_auto_init", status="already_initialized")
+                # Validate existing schema has all expected columns
+                await self._check_schema_drift()
 
             self._db_initialized = True
 
@@ -443,6 +471,93 @@ class Default(WorkerEntrypoint):
             _log_error("database_auto_init_error", e)
             # Don't prevent the request from proceeding
             self._db_initialized = True  # Avoid retrying on every request
+
+    # Expected columns for each table (must match CREATE TABLE above)
+    _EXPECTED_COLUMNS: dict[str, set[str]] = {
+        "feeds": {
+            "id",
+            "url",
+            "title",
+            "site_url",
+            "author_name",
+            "author_email",
+            "etag",
+            "last_modified",
+            "last_fetch_at",
+            "last_success_at",
+            "last_entry_at",
+            "fetch_error",
+            "fetch_error_count",
+            "consecutive_failures",
+            "is_active",
+            "created_at",
+            "updated_at",
+        },
+        "entries": {
+            "id",
+            "feed_id",
+            "guid",
+            "url",
+            "title",
+            "author",
+            "content",
+            "summary",
+            "published_at",
+            "updated_at",
+            "first_seen",
+            "created_at",
+        },
+        "admins": {
+            "id",
+            "github_username",
+            "github_id",
+            "display_name",
+            "avatar_url",
+            "is_active",
+            "created_at",
+            "last_login_at",
+        },
+        "audit_log": {
+            "id",
+            "admin_id",
+            "action",
+            "target_type",
+            "target_id",
+            "details",
+            "created_at",
+        },
+    }
+
+    async def _check_schema_drift(self) -> None:
+        """Check that existing database schema has all expected columns.
+
+        Runs once on startup for existing databases. Logs a warning for
+        any missing columns — this means a migration hasn't been applied.
+        Does not block requests; this is observability only.
+        """
+        try:
+            for table_name, expected_cols in self._EXPECTED_COLUMNS.items():
+                result = await self.env.DB.prepare(
+                    f"PRAGMA table_info({table_name})"  # noqa: S608
+                ).all()
+                if not result or not result.results:
+                    continue
+                actual_cols = set()
+                for row in result.results:
+                    # PRAGMA table_info returns: cid, name, type, notnull, dflt_value, pk
+                    col_name = row.name if hasattr(row, "name") else row.get("name")
+                    if col_name:
+                        actual_cols.add(col_name)
+                missing = expected_cols - actual_cols
+                if missing:
+                    _log_op(
+                        "schema_drift_detected",
+                        table=table_name,
+                        missing_columns=sorted(missing),
+                        hint="Run pending migrations: see migrations/ directory",
+                    )
+        except Exception as e:
+            _log_error("schema_drift_check_error", e)
 
     # =========================================================================
     # Cron Handler - Scheduler
@@ -522,6 +637,95 @@ class Default(WorkerEntrypoint):
                 sched_event.scheduler_queue_ms = queue_timer.elapsed_ms
                 sched_event.feeds_enqueued = enqueue_count
 
+                # Auto-recovery: retry a small number of disabled feeds per hour
+                if get_feed_recovery_enabled(self.env) and self.env.FEED_QUEUE is not None:
+                    recovery_limit = get_feed_recovery_limit(self.env)
+                    if recovery_limit > 0:
+                        disabled_result = (
+                            await self.env.DB.prepare("""
+                            SELECT id, url, etag, last_modified
+                            FROM feeds
+                            WHERE is_active = 0
+                            ORDER BY updated_at DESC
+                            LIMIT ?
+                        """)
+                            .bind(recovery_limit)
+                            .all()
+                        )
+                        disabled_feeds = feed_rows_from_d1(disabled_result.results)
+
+                        for feed in disabled_feeds:
+                            await (
+                                self.env.DB.prepare("""
+                                UPDATE feeds SET
+                                    is_active = 1,
+                                    consecutive_failures = 0,
+                                    fetch_error = NULL,
+                                    updated_at = CURRENT_TIMESTAMP
+                                WHERE id = ?
+                            """)
+                                .bind(feed["id"])
+                                .run()
+                            )
+                            await self.env.FEED_QUEUE.send(
+                                {
+                                    "feed_id": feed["id"],
+                                    "url": feed["url"],
+                                    "etag": feed.get("etag"),
+                                    "last_modified": feed.get("last_modified"),
+                                    "scheduled_at": datetime.now(timezone.utc).isoformat(),
+                                    "correlation_id": sched_event.correlation_id,
+                                    "is_recovery_attempt": True,
+                                }
+                            )
+                            enqueue_count += 1
+                            _log_op(
+                                "feed_recovery_attempt",
+                                feed_id=feed["id"],
+                                feed_url=feed["url"],
+                            )
+
+                        sched_event.feeds_recovery_attempted = len(disabled_feeds)
+
+                # Feed health summary for observability (#11, #12, #18)
+                try:
+                    health_result = (
+                        await self.env.DB.prepare("""
+                        SELECT
+                            SUM(CASE WHEN is_active = 0 THEN 1 ELSE 0 END) as disabled,
+                            SUM(CASE WHEN is_active = 0
+                                AND updated_at >= datetime('now', '-1 hour')
+                                THEN 1 ELSE 0 END) as newly_disabled,
+                            SUM(CASE WHEN consecutive_failures >= ? THEN 1 ELSE 0 END) as dlq_depth
+                        FROM feeds
+                    """)
+                        .bind(self._get_feed_failure_threshold())
+                        .first()
+                    )
+                    if health_result:
+                        health = _to_py_safe(health_result)
+                        sched_event.feeds_disabled = health.get("disabled") or 0
+                        sched_event.feeds_newly_disabled = health.get("newly_disabled") or 0
+                        sched_event.dlq_depth = health.get("dlq_depth") or 0
+
+                    # Error clustering: find error patterns affecting 2+ feeds
+                    cluster_result = await self.env.DB.prepare("""
+                        SELECT fetch_error, COUNT(*) as cnt
+                        FROM feeds
+                        WHERE fetch_error IS NOT NULL AND consecutive_failures > 0
+                        GROUP BY fetch_error
+                        HAVING COUNT(*) >= 2
+                        ORDER BY cnt DESC
+                    """).all()
+                    clusters = _to_py_safe(cluster_result.results) if cluster_result else []
+                    if clusters:
+                        sched_event.error_clusters = len(clusters)
+                        top = clusters[0] if isinstance(clusters, list) and clusters else None
+                        if top and isinstance(top, dict):
+                            sched_event.error_cluster_top = str(top.get("fetch_error", ""))[:200]
+                except Exception as e:
+                    _log_error("health_summary_error", e)
+
                 # Run retention policy after enqueueing feeds
                 # This ensures old entries are cleaned up once per cron cycle
                 retention_stats = await self._apply_retention_policy()
@@ -569,7 +773,23 @@ class Default(WorkerEntrypoint):
 
         Note: Workers Python runtime passes (batch, env, ctx) but we use self.env from __init__.
         """
-        _log_op("queue_batch_received", batch_size=len(batch.messages))
+        batch_queue = _safe_str(getattr(batch, "queue", "")) or ""
+        _log_op("queue_batch_received", batch_size=len(batch.messages), queue=batch_queue)
+
+        # DLQ consumer: log permanently failed messages and ack them
+        if "dlq" in batch_queue.lower():
+            for message in batch.messages:
+                body = _to_py_safe(message.body)
+                feed_id = body.get("feed_id", 0) if isinstance(body, dict) else 0
+                feed_url = body.get("url", "unknown") if isinstance(body, dict) else "unknown"
+                _log_op(
+                    "dlq_message_consumed",
+                    feed_id=feed_id,
+                    feed_url=feed_url,
+                    attempts=getattr(message, "attempts", "?"),
+                )
+                message.ack()
+            return
 
         for message in batch.messages:
             # CRITICAL: Convert JsProxy message body to Python dict
@@ -621,7 +841,9 @@ class Default(WorkerEntrypoint):
                     event.error_type = "TimeoutError"
                     event.error_message = f"Timeout after {feed_timeout}s"
                     event.error_retriable = True
-                    await self._record_feed_error(feed_id, "Timeout")
+                    event.error_category = "timeout"
+                    deactivated = await self._record_feed_error(feed_id, "Timeout")
+                    event.feed_auto_deactivated = deactivated
                     message.retry()
 
                 except RateLimitError as e:
@@ -632,6 +854,7 @@ class Default(WorkerEntrypoint):
                     event.error_type = "RateLimitError"
                     event.error_message = _truncate_error(e)
                     event.error_retriable = True
+                    event.error_category = "rate_limit"
                     # Don't call _record_feed_error - feed is not failing
                     message.retry()
 
@@ -641,7 +864,9 @@ class Default(WorkerEntrypoint):
                     event.error_type = type(e).__name__
                     event.error_message = _truncate_error(e)
                     event.error_retriable = not isinstance(e, ValueError)
-                    await self._record_feed_error(feed_id, str(e))
+                    event.error_category = _classify_error(e)
+                    deactivated = await self._record_feed_error(feed_id, str(e))
+                    event.feed_auto_deactivated = deactivated
                     message.retry()
 
             # Emit wide event (sampling applied)
@@ -1104,8 +1329,11 @@ class Default(WorkerEntrypoint):
             .run()
         )
 
-    async def _record_feed_error(self, feed_id: int, error_message: str) -> None:
-        """Record a feed fetch error and auto-deactivate after too many failures."""
+    async def _record_feed_error(self, feed_id: int, error_message: str) -> bool:
+        """Record a feed fetch error and auto-deactivate after too many failures.
+
+        Returns True if the feed was auto-deactivated by this call.
+        """
         # Issue 9.4: Auto-deactivate feeds after configurable consecutive failures
         threshold = self._get_feed_auto_deactivate_threshold()
         # Note: Check consecutive_failures + 1 (the NEW value after increment) against threshold
@@ -1134,6 +1362,8 @@ class Default(WorkerEntrypoint):
                 consecutive_failures=result.get("consecutive_failures"),
                 reason="Too many consecutive failures",
             )
+            return True
+        return False
 
     async def _update_feed_url(
         self, feed_id: int, new_url: str, old_url: str | None = None
@@ -1408,6 +1638,8 @@ class Default(WorkerEntrypoint):
             return await self._export_opml()
         elif route_path == "/foafroll.xml":
             return await self._serve_foaf()
+        elif route_path == "/health":
+            return await self._serve_health()
         elif route_path == "/search":
             return await self._search_entries(request, event)
         # OAuth routes
@@ -1515,7 +1747,6 @@ class Default(WorkerEntrypoint):
                     FROM entries e
                     JOIN feeds f ON e.feed_id = f.id
                     WHERE COALESCE(e.published_at, e.first_seen) >= ?
-                    AND f.is_active = 1
                 )
                 SELECT * FROM ranked
                 WHERE rn_per_day <= 5 AND rn_total <= ?
@@ -1531,10 +1762,10 @@ class Default(WorkerEntrypoint):
             feeds_result = (
                 await self.env.DB.prepare("""
                 SELECT
-                    id, title, site_url, url, last_success_at, fetch_error, consecutive_failures,
+                    id, title, site_url, url, last_success_at, fetch_error,
+                    consecutive_failures, is_active,
                     CASE WHEN consecutive_failures < ? THEN 1 ELSE 0 END as is_healthy
                 FROM feeds
-                WHERE is_active = 1
                 ORDER BY title
             """)
                 .bind(DEFAULT_FEED_FAILURE_THRESHOLD)
@@ -1550,8 +1781,7 @@ class Default(WorkerEntrypoint):
                 await self.env.DB.prepare("""
                 SELECT feed_id, title, url
                 FROM entries
-                WHERE feed_id IN (SELECT id FROM feeds WHERE is_active = 1)
-                  AND published_at >= ?
+                WHERE published_at >= ?
                   AND title IS NOT NULL AND title != ''
                 ORDER BY feed_id, published_at DESC
             """)
@@ -1606,7 +1836,6 @@ class Default(WorkerEntrypoint):
                         ) as rn_total
                     FROM entries e
                     JOIN feeds f ON e.feed_id = f.id
-                    WHERE f.is_active = 1
                 )
                 SELECT * FROM ranked
                 WHERE rn_total <= ?
@@ -1691,6 +1920,8 @@ class Default(WorkerEntrypoint):
                     feed["message"] = None
             else:
                 feed["message"] = None
+            # Flag for template CSS class (is_active controls fetching, not display)
+            feed["is_inactive"] = not feed.get("is_active", 1)
 
         # Render template - track template time
         # Check if running in lite mode (no search, no auth)
@@ -1879,7 +2110,6 @@ class Default(WorkerEntrypoint):
             SELECT e.*, f.title as feed_title, f.site_url as feed_site_url
             FROM entries e
             JOIN feeds f ON e.feed_id = f.id
-            WHERE f.is_active = 1
             ORDER BY e.published_at DESC
             LIMIT ?
         """)
@@ -2035,7 +2265,6 @@ class Default(WorkerEntrypoint):
         feeds_result = await self.env.DB.prepare("""
             SELECT url, title, site_url
             FROM feeds
-            WHERE is_active = 1
             ORDER BY title
         """).all()
 
@@ -2074,7 +2303,6 @@ class Default(WorkerEntrypoint):
         feeds_result = await self.env.DB.prepare("""
             SELECT url, title, site_url
             FROM feeds
-            WHERE is_active = 1
             ORDER BY title
         """).all()
 
@@ -2096,6 +2324,55 @@ class Default(WorkerEntrypoint):
         )
 
         return _feed_response(foaf, "application/rdf+xml")
+
+    async def _serve_health(self) -> Response:
+        """Public health endpoint returning JSON feed health summary.
+
+        No authentication required. Returns non-sensitive aggregate data only.
+        Used by post-deploy verification and monitoring.
+        """
+        result = await self.env.DB.prepare("""
+            SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN is_active = 1
+                    AND consecutive_failures = 0
+                    THEN 1 ELSE 0 END) as healthy,
+                SUM(CASE WHEN is_active = 1
+                    AND consecutive_failures > 0
+                    AND consecutive_failures < 3
+                    THEN 1 ELSE 0 END) as warning,
+                SUM(CASE WHEN is_active = 1
+                    AND consecutive_failures >= 3
+                    THEN 1 ELSE 0 END) as failing,
+                SUM(CASE WHEN is_active = 0
+                    THEN 1 ELSE 0 END) as inactive
+            FROM feeds
+        """).first()
+        health = _to_py_safe(result) if result else {}
+        total = health.get("total") or 0
+        healthy = health.get("healthy") or 0
+        warning = health.get("warning") or 0
+        failing = health.get("failing") or 0
+        inactive = health.get("inactive") or 0
+
+        status = "healthy"
+        if inactive > 0 or failing > 0:
+            status = "degraded"
+        if total == 0 or (healthy == 0 and total > 0):
+            status = "unhealthy"
+
+        return _json_response(
+            {
+                "status": status,
+                "feeds": {
+                    "total": total,
+                    "healthy": healthy,
+                    "warning": warning,
+                    "failing": failing,
+                    "inactive": inactive,
+                },
+            }
+        )
 
     async def _search_entries(
         self, request: WorkerRequest, event: RequestEvent | None = None
@@ -2502,10 +2779,24 @@ class Default(WorkerEntrypoint):
         return _html_response(html, cache_max_age=0)
 
     async def _serve_admin_dashboard(self, admin: dict[str, Any]) -> Response:
-        """Serve the admin dashboard."""
+        """Serve the admin dashboard with feed health warnings."""
         feeds_result = await self.env.DB.prepare("""
             SELECT * FROM feeds ORDER BY title
         """).all()
+        feeds = feed_rows_from_d1(feeds_result.results)
+
+        # Calculate health warnings for banner (#16)
+        failing = [f for f in feeds if f.get("is_active") and f.get("consecutive_failures", 0) >= 3]
+        inactive = [f for f in feeds if not f.get("is_active")]
+        health_warnings: list[str] = []
+        if inactive:
+            names = ", ".join(f.get("title") or f.get("url", "?") for f in inactive[:3])
+            suffix = f" and {len(inactive) - 3} more" if len(inactive) > 3 else ""
+            health_warnings.append(f"{len(inactive)} feed(s) inactive: {names}{suffix}")
+        if failing:
+            names = ", ".join(f.get("title") or f.get("url", "?") for f in failing[:3])
+            suffix = f" and {len(failing) - 3} more" if len(failing) > 3 else ""
+            health_warnings.append(f"{len(failing)} feed(s) failing: {names}{suffix}")
 
         planet = self._get_planet_config()
         html = render_template(
@@ -2513,7 +2804,8 @@ class Default(WorkerEntrypoint):
             theme=self._get_theme(),
             planet=planet,
             admin=admin,
-            feeds=feed_rows_from_d1(feeds_result.results),
+            feeds=feeds,
+            health_warnings=health_warnings,
         )
         return _html_response(html, cache_max_age=0)
 

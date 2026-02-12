@@ -155,6 +155,10 @@ a:hover {
   border-top: 0;
 }
 
+#menu ul.level-two li.feed-inactive {
+  opacity: 0.5;
+}
+
 #menu ul.level-two a {
   background-image: none;
   background-color: transparent;

@@ -232,6 +232,30 @@ def verify_site(base_url: str) -> tuple[bool, list[str]]:
         elif search_status != 200:
             errors.append(f"Search returned HTTP {search_status}")
 
+    # 10. Check /health endpoint for feed status
+    print("  Checking health endpoint...")
+    health_status, health_body, _ = fetch_url(base_url + "/health")
+    if health_status == 200:
+        try:
+            import json as json_mod
+
+            health = json_mod.loads(health_body)
+            feed_status = health.get("status", "unknown")
+            feeds_info = health.get("feeds", {})
+            print(
+                f"  Health: {feed_status} "
+                f"(total={feeds_info.get('total', '?')}, "
+                f"healthy={feeds_info.get('healthy', '?')}, "
+                f"failing={feeds_info.get('failing', '?')}, "
+                f"inactive={feeds_info.get('inactive', '?')})"
+            )
+            if feed_status == "unhealthy":
+                errors.append("Health endpoint reports unhealthy status (no healthy feeds)")
+        except (json_mod.JSONDecodeError, KeyError):
+            pass  # Health endpoint returned non-JSON, skip
+    else:
+        print(f"  Health endpoint returned HTTP {health_status} (non-critical)")
+
     if errors:
         print(f"  FAILED: {len(errors)} issue(s)")
         for error in errors:

@@ -89,7 +89,7 @@ _EMBEDDED_TEMPLATES = {
             <h2>Subscriptions</h2>
             <ul class="feeds">
                 {% for feed in feeds %}
-                <li class="{{ 'healthy' if feed.is_healthy else 'unhealthy' }}">
+                <li class="{{ 'feed-inactive' if feed.is_inactive else ('healthy' if feed.is_healthy else 'unhealthy') }}"{% if feed.is_inactive %} title="Feed temporarily unavailable"{% endif %}>
                     {% if feed.url %}<a href="{{ feed.url }}" class="feed-icon" title="RSS Feed"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="6.18" cy="17.82" r="2.18"/><path d="M4 4.44v2.83c7.03 0 12.73 5.7 12.73 12.73h2.83c0-8.59-6.97-15.56-15.56-15.56zm0 5.66v2.83c3.9 0 7.07 3.17 7.07 7.07h2.83c0-5.47-4.43-9.9-9.9-9.9z"/></svg></a>{% endif %}
                     {% if feed.site_url %}<a href="{{ feed.site_url }}">{{ feed.title or 'Untitled' }}</a>{% else %}{{ feed.title or 'Untitled' }}{% endif %}
                 </li>
@@ -914,7 +914,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
           <ul class="level-two">
 <li><a href="{{ feed_links.opml or '/feeds.opml' }}">[OPML feed]</a></li>
 {% for feed in feeds %}
-<li><a href="{{ feed.site_url or feed.url or '#' }}" title="{{ feed.title }}">{{ feed.title or 'Untitled' }}</a>
+<li{% if feed.is_inactive %} class="feed-inactive" title="Feed temporarily unavailable"{% endif %}><a href="{{ feed.site_url or feed.url or '#' }}" title="{{ feed.title }}">{{ feed.title or 'Untitled' }}</a>
 </li>
 {% else %}
 <li>No feeds configured</li>
@@ -1195,7 +1195,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
                 <h2>Subscriptions</h2>
                 <ul class="subscriptions">
 {% for feed in feeds %}
-                    <li>
+                    <li{% if feed.is_inactive %} class="feed-inactive" title="Feed temporarily unavailable"{% endif %}>
                         <a title="subscribe" href="{{ feed.url }}"><img src="/static/img/feed-icon-10x10.png" alt="(feed)" width="10" height="10"/></a>
                         <a href="{{ feed.site_url or feed.url or '#' }}"
                            {% if feed.message %}class="{{ 'active message' if feed.recent_entries else 'message' }}" title="{{ feed.message }}"

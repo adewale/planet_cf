@@ -171,7 +171,7 @@ class TestQueueBatchProcessing:
 
         with (
             patch.object(worker, "_process_single_feed", side_effect=mock_process),
-            patch.object(worker, "_record_feed_error", new_callable=AsyncMock),
+            patch.object(worker, "_record_feed_error", new_callable=AsyncMock, return_value=False),
         ):
             await worker.queue(batch)
 
@@ -233,7 +233,7 @@ class TestQueueBatchProcessing:
 
         with (
             patch.object(worker, "_process_single_feed", side_effect=mock_slow_process),
-            patch.object(worker, "_record_feed_error", new_callable=AsyncMock),
+            patch.object(worker, "_record_feed_error", new_callable=AsyncMock, return_value=False),
             patch("asyncio.wait_for", side_effect=TimeoutError("Timeout")),
         ):
             await worker.queue(batch)

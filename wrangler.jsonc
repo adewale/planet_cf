@@ -113,6 +113,11 @@
         "max_retries": 3,
         "dead_letter_queue": "planetcf-feed-dlq",
         "retry_delay": 300
+      },
+      {
+        "queue": "planetcf-feed-dlq",
+        "max_batch_size": 10,
+        "max_batch_timeout": 60
       }
     ]
   },

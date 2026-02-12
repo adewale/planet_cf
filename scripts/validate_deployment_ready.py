@@ -188,6 +188,37 @@ def check_example_symlinks() -> list[str]:
     return errors
 
 
+def check_migration_files() -> list[str]:
+    """Check that migration files exist and are sequentially numbered."""
+    errors = []
+    migrations_dir = PROJECT_ROOT / "migrations"
+
+    if not migrations_dir.exists():
+        errors.append("migrations/ directory not found")
+        return errors
+
+    sql_files = sorted(migrations_dir.glob("*.sql"))
+    if not sql_files:
+        errors.append("No migration files found in migrations/")
+        return errors
+
+    expected_num = 1
+    for sql_file in sql_files:
+        name = sql_file.name
+        try:
+            num = int(name.split("_")[0])
+        except (ValueError, IndexError):
+            errors.append(f"Migration file '{name}' does not start with a number prefix")
+            continue
+        if num != expected_num:
+            errors.append(
+                f"Gap in migration numbering: expected {expected_num:03d}_*, found {name}"
+            )
+        expected_num = num + 1
+
+    return errors
+
+
 def main():
     """Run all validation checks."""
     print("Validating deployment readiness...\n")
@@ -201,6 +232,7 @@ def main():
         ("Main.py theme integration", check_main_uses_theme),
         ("Example symlinks", check_example_symlinks),
         ("Theme CSS coverage", check_theme_css_coverage),
+        ("Migration files", check_migration_files),
     ]
 
     for name, check_fn in checks:

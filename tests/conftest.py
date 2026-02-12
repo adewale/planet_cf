@@ -148,10 +148,22 @@ class MockD1Statement:
 
 
 class MockD1:
-    """Mock D1 database."""
+    """Mock D1 database.
 
-    def __init__(self, data: dict[str, list[dict]] | None = None):
+    Args:
+        data: Pre-loaded table data for query results.
+        schema: Optional dict mapping table names to sets of column names.
+            When provided, INSERT/UPDATE SQL is validated against the schema
+            and errors are raised for unknown columns (strict mode).
+    """
+
+    def __init__(
+        self,
+        data: dict[str, list[dict]] | None = None,
+        schema: dict[str, set[str]] | None = None,
+    ):
         self._data = data or {}
+        self._schema = schema
 
     def prepare(self, sql: str) -> MockD1Statement:
         """
@@ -163,10 +175,17 @@ class MockD1:
         3. UPDATE table_name
         4. FROM table_name (the primary table in SELECT)
         5. Simple table name match as fallback
+
+        When schema is provided (strict mode), validates that INSERT/UPDATE
+        columns exist in the schema.
         """
         import re
 
         sql_lower = sql.lower()
+
+        # Strict mode: validate column names in INSERT/UPDATE
+        if self._schema:
+            self._validate_sql_columns(sql)
 
         # Try to find the primary table from SQL patterns
         patterns = [
@@ -189,6 +208,47 @@ class MockD1:
                 return MockD1Statement(rows, sql)
 
         return MockD1Statement([], sql)
+
+    def _validate_sql_columns(self, sql: str) -> None:
+        """Validate that SQL column references exist in the schema."""
+        import re
+
+        sql_lower = sql.lower()
+
+        # Skip PRAGMA and CREATE TABLE statements
+        if sql_lower.strip().startswith(("pragma", "create table")):
+            return
+
+        # Validate INSERT INTO table (col1, col2, ...) columns
+        insert_match = re.search(r"insert\s+into\s+(\w+)\s*\(([^)]+)\)", sql_lower)
+        if insert_match:
+            table = insert_match.group(1)
+            if table in self._schema:
+                cols = [c.strip() for c in insert_match.group(2).split(",")]
+                for col in cols:
+                    if col and col not in self._schema[table]:
+                        raise ValueError(
+                            f"MockD1 strict mode: INSERT INTO {table} "
+                            f"references unknown column '{col}'. "
+                            f"Schema columns: {sorted(self._schema[table])}"
+                        )
+
+        # Validate UPDATE table SET col = ... columns
+        update_match = re.search(r"update\s+(\w+)\s+set\s+(.*?)(?:where|$)", sql_lower, re.DOTALL)
+        if update_match:
+            table = update_match.group(1)
+            if table in self._schema:
+                set_clause = update_match.group(2)
+                for assignment in set_clause.split(","):
+                    col_match = re.match(r"\s*(\w+)\s*=", assignment)
+                    if col_match:
+                        col = col_match.group(1)
+                        if col not in ("current_timestamp",) and col not in self._schema[table]:
+                            raise ValueError(
+                                f"MockD1 strict mode: UPDATE {table} "
+                                f"references unknown column '{col}'. "
+                                f"Schema columns: {sorted(self._schema[table])}"
+                            )
 
 
 class MockQueue:

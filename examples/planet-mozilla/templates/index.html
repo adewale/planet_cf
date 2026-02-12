@@ -97,7 +97,7 @@
                 <h2>Subscriptions</h2>
                 <ul class="subscriptions">
 {% for feed in feeds %}
-                    <li>
+                    <li{% if feed.is_inactive %} class="feed-inactive" title="Feed temporarily unavailable"{% endif %}>
                         <a title="subscribe" href="{{ feed.url }}"><img src="/static/img/feed-icon-10x10.png" alt="(feed)" width="10" height="10"/></a>
                         <a href="{{ feed.site_url or feed.url or '#' }}"
                            {% if feed.message %}class="{{ 'active message' if feed.recent_entries else 'message' }}" title="{{ feed.message }}"

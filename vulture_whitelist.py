@@ -275,6 +275,7 @@ FeedFetchEvent.indexing_text_truncated
 FeedFetchEvent.outcome
 FeedFetchEvent.error_retriable
 FeedFetchEvent.deployment_environment
+FeedFetchEvent.error_category
 FeedFetchEvent.queue_attempt
 
 # SchedulerEvent fields
@@ -283,6 +284,12 @@ SchedulerEvent.scheduler_queue_ms
 SchedulerEvent.feeds_queried
 SchedulerEvent.feeds_active
 SchedulerEvent.feeds_enqueued
+SchedulerEvent.feeds_recovery_attempted
+SchedulerEvent.feeds_disabled
+SchedulerEvent.feeds_newly_disabled
+SchedulerEvent.error_clusters
+SchedulerEvent.error_cluster_top
+SchedulerEvent.dlq_depth
 SchedulerEvent.retention_d1_ms
 SchedulerEvent.retention_vectorize_ms
 SchedulerEvent.retention_entries_scanned
@@ -318,6 +325,11 @@ Timer.__exit__  # exc_type, exc_val, exc_tb are required by __exit__ signature
 from main import Default as _Default
 
 _Default._generate_html  # triggered_by parameter used at runtime
+_Default._serve_health  # public /health endpoint
+
+from main import _classify_error
+
+_classify_error  # unused function (used in queue handler)
 
 # PlanetCF alias in main.py (used by tests that import PlanetCF)
 from main import PlanetCF  # noqa: F811

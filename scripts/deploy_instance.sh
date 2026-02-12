@@ -264,16 +264,36 @@ echo ""
 echo -e "${YELLOW}Step 5/7: Running database migrations...${NC}"
 MIGRATIONS_DIR="$PROJECT_ROOT/migrations"
 
+FAILED_MIGRATIONS=()
 if [[ -d "$MIGRATIONS_DIR" ]]; then
     for MIGRATION in "$MIGRATIONS_DIR"/*.sql; do
         if [[ -f "$MIGRATION" ]]; then
             MIGRATION_NAME=$(basename "$MIGRATION")
             echo -e "  Running: ${MIGRATION_NAME}"
-            npx wrangler d1 execute "$DB_NAME" --remote --file "$MIGRATION" --config "$CONFIG_FILE" 2>&1 || {
-                echo -e "  ${YELLOW}Warning: Migration may have already been applied${NC}"
-            }
+            OUTPUT=$(npx wrangler d1 execute "$DB_NAME" --remote --file "$MIGRATION" --config "$CONFIG_FILE" 2>&1)
+            EXIT_CODE=$?
+            if [[ $EXIT_CODE -ne 0 ]]; then
+                if echo "$OUTPUT" | grep -qi "already exists\|duplicate column"; then
+                    echo -e "  ${YELLOW}Already applied: ${MIGRATION_NAME}${NC}"
+                else
+                    echo -e "  ${RED}FAILED: ${MIGRATION_NAME}${NC}"
+                    echo "$OUTPUT"
+                    FAILED_MIGRATIONS+=("$MIGRATION_NAME")
+                fi
+            else
+                echo -e "  ${GREEN}Applied: ${MIGRATION_NAME}${NC}"
+            fi
         fi
     done
+
+    if [[ ${#FAILED_MIGRATIONS[@]} -gt 0 ]]; then
+        echo -e "${RED}ERROR: ${#FAILED_MIGRATIONS[@]} migration(s) failed:${NC}"
+        for m in "${FAILED_MIGRATIONS[@]}"; do
+            echo -e "  ${RED}- $m${NC}"
+        done
+        echo -e "${RED}Aborting deployment.${NC}"
+        exit 1
+    fi
     echo -e "  ${GREEN}Migrations complete${NC}"
 else
     echo -e "  ${YELLOW}No migrations directory found${NC}"
@@ -338,7 +358,8 @@ echo ""
 
 # Step 7: Deploy
 echo -e "${YELLOW}Step 7/8: Deploying worker...${NC}"
-DEPLOY_OUTPUT=$(npx wrangler deploy --config "$CONFIG_FILE" 2>&1) || {
+DEPLOY_MSG="deploy_instance.sh $(date +%Y%m%dT%H%M%S) ${INSTANCE_NAME}"
+DEPLOY_OUTPUT=$(npx wrangler deploy --config "$CONFIG_FILE" --message "$DEPLOY_MSG" 2>&1) || {
     echo -e "${RED}Deployment failed${NC}"
     echo "$DEPLOY_OUTPUT"
     exit 1
@@ -359,6 +380,14 @@ if [[ -n "$DEPLOYED_URL" ]]; then
     else
         echo -e "  ${YELLOW}Warning: Deployment verification failed${NC}"
         echo -e "  ${YELLOW}The site may still be initializing. Check manually: $DEPLOYED_URL${NC}"
+    fi
+    # Check /health endpoint for feed status
+    echo -e "  Checking feed health..."
+    HEALTH_OUTPUT=$(curl -sf "${DEPLOYED_URL}/health" 2>&1) || true
+    if echo "$HEALTH_OUTPUT" | grep -q '"status"'; then
+        echo -e "  ${GREEN}Health check: $HEALTH_OUTPUT${NC}"
+    else
+        echo -e "  ${YELLOW}Health endpoint not reachable yet (worker may still be initializing)${NC}"
     fi
 else
     echo -e "  ${YELLOW}Could not extract deployed URL from output${NC}"

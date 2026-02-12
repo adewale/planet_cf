@@ -124,7 +124,7 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
           <ul class="level-two">
 <li><a href="{{ feed_links.opml or '/feeds.opml' }}">[OPML feed]</a></li>
 {% for feed in feeds %}
-<li><a href="{{ feed.site_url or feed.url or '#' }}" title="{{ feed.title }}">{{ feed.title or 'Untitled' }}</a>
+<li{% if feed.is_inactive %} class="feed-inactive" title="Feed temporarily unavailable"{% endif %}><a href="{{ feed.site_url or feed.url or '#' }}" title="{{ feed.title }}">{{ feed.title or 'Untitled' }}</a>
 </li>
 {% else %}
 <li>No feeds configured</li>

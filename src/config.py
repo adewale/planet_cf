@@ -42,6 +42,10 @@ DEFAULT_SEARCH_TOP_K = 50
 DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD = 10
 DEFAULT_FEED_FAILURE_THRESHOLD = 3
 
+# Feed auto-recovery
+DEFAULT_FEED_RECOVERY_ENABLED = True
+DEFAULT_FEED_RECOVERY_LIMIT = 2  # Disabled feeds to retry per scheduler run
+
 # SQL query limits (prevent unbounded result sets)
 DEFAULT_QUERY_LIMIT = 500  # Maximum entries returned in a single query
 
@@ -119,6 +123,7 @@ _INT_CONFIG_REGISTRY: dict[str, tuple[str, int]] = {
     "feed_failure_threshold": ("FEED_FAILURE_THRESHOLD", DEFAULT_FEED_FAILURE_THRESHOLD),
     "feed_timeout": ("FEED_TIMEOUT_SECONDS", FEED_TIMEOUT_SECONDS),
     "http_timeout": ("HTTP_TIMEOUT_SECONDS", HTTP_TIMEOUT_SECONDS),
+    "feed_recovery_limit": ("FEED_RECOVERY_LIMIT", DEFAULT_FEED_RECOVERY_LIMIT),
 }
 
 
@@ -179,6 +184,19 @@ def get_http_timeout(env: Any) -> int:
 def get_content_days(env: Any) -> int:
     """Get number of days of entries to display on homepage."""
     return _get_int_config(env, "content_days")
+
+
+def get_feed_recovery_enabled(env: Any) -> bool:
+    """Check if automatic feed recovery is enabled."""
+    val = getattr(env, "FEED_RECOVERY_ENABLED", None)
+    if val is None:
+        return DEFAULT_FEED_RECOVERY_ENABLED
+    return str(val).lower() not in ("false", "0", "no")
+
+
+def get_feed_recovery_limit(env: Any) -> int:
+    """Get max disabled feeds to attempt recovery per scheduler run."""
+    return _get_int_config(env, "feed_recovery_limit")
 
 
 def get_user_agent(env: Any) -> str:

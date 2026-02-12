@@ -319,3 +319,23 @@ class TestSchemaConsistency:
             f"entries table is missing expected columns: {sorted(missing)}. "
             f"Actual columns: {sorted(schema_columns)}"
         )
+
+    def test_runtime_expected_columns_match_schema(self):
+        """_EXPECTED_COLUMNS in PlanetCF must match the CREATE TABLE schema.
+
+        The runtime schema drift check uses _EXPECTED_COLUMNS to detect
+        missing columns in production. If this dict drifts from the actual
+        CREATE TABLE schema, the check becomes ineffective.
+        """
+        from src.main import PlanetCF
+
+        schema_sql = _get_schema_sql()
+        tables = _extract_create_table_columns(schema_sql)
+
+        for table_name, expected_cols in PlanetCF._EXPECTED_COLUMNS.items():
+            schema_cols = set(tables.get(table_name, []))
+            assert expected_cols == schema_cols, (
+                f"_EXPECTED_COLUMNS['{table_name}'] does not match CREATE TABLE schema.\n"
+                f"  In _EXPECTED_COLUMNS but not in schema: {sorted(expected_cols - schema_cols)}\n"
+                f"  In schema but not in _EXPECTED_COLUMNS: {sorted(schema_cols - expected_cols)}"
+            )

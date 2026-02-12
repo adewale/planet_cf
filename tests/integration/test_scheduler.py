@@ -57,10 +57,12 @@ async def test_scheduler_skips_inactive_feeds(mock_env):
 
     result = await worker._run_scheduler()
 
-    # Only active feeds should be enqueued
-    assert result["enqueued"] == 1
-    assert len(mock_env.FEED_QUEUE.messages) == 1
+    # Active feed enqueued for normal fetch + inactive feed enqueued for recovery
+    assert result["enqueued"] == 2
+    assert len(mock_env.FEED_QUEUE.messages) == 2
     assert mock_env.FEED_QUEUE.messages[0]["url"] == "https://active.com/feed"
+    assert mock_env.FEED_QUEUE.messages[1]["url"] == "https://inactive.com/feed"
+    assert mock_env.FEED_QUEUE.messages[1].get("is_recovery_attempt") is True
 
 
 @pytest.mark.asyncio

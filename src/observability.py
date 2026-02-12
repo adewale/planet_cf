@@ -197,6 +197,8 @@ class FeedFetchEvent:
     error_type: str | None = None
     error_message: str | None = None
     error_retriable: bool | None = None
+    # "network" | "parse" | "database" | "timeout" | "rate_limit" | "validation"
+    error_category: str | None = None
 
     # Context / Deployment
     worker_version: str = ""  # Set from DEPLOYMENT_VERSION env var
@@ -245,6 +247,14 @@ class SchedulerEvent:
     feeds_queried: int = 0
     feeds_active: int = 0
     feeds_enqueued: int = 0
+
+    # === Feed health summary ===
+    feeds_disabled: int = 0  # Total disabled feeds at time of cron
+    feeds_newly_disabled: int = 0  # Feeds disabled since last successful cron
+    feeds_recovery_attempted: int = 0
+    error_clusters: int = 0  # Distinct error patterns affecting 2+ feeds
+    error_cluster_top: str | None = None  # Most common error pattern
+    dlq_depth: int = 0  # Feeds with consecutive_failures >= threshold
 
     # === Retention phase (absorbed) ===
     retention_d1_ms: float = 0

@@ -253,6 +253,10 @@ h4 a {
   border: 0;
 }
 
+.subscriptions li.feed-inactive {
+  opacity: 0.5;
+}
+
 .sidebar-content .main .bottom {
   height: 28px;
   width: 100%;
