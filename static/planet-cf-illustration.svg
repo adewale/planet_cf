@@ -1,0 +1,323 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
+  <defs>
+    <!-- Background gradient: deep space -->
+    <radialGradient id="bgGrad" cx="50%" cy="48%">
+      <stop offset="0%" stop-color="#1a1f2e"/>
+      <stop offset="100%" stop-color="#0d1117"/>
+    </radialGradient>
+
+    <!-- Planet: warm Cloudflare orange sphere -->
+    <radialGradient id="planetGrad" cx="42%" cy="36%">
+      <stop offset="0%" stop-color="#ffad5c"/>
+      <stop offset="35%" stop-color="#f6821f"/>
+      <stop offset="100%" stop-color="#b85a0a"/>
+    </radialGradient>
+
+    <!-- Planet atmosphere glow -->
+    <radialGradient id="glowOuter" cx="50%" cy="50%">
+      <stop offset="0%" stop-color="#f6821f" stop-opacity="0.18"/>
+      <stop offset="40%" stop-color="#f6821f" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#f6821f" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Inner halo right at the planet edge -->
+    <radialGradient id="glowInner" cx="50%" cy="50%">
+      <stop offset="60%" stop-color="#f6821f" stop-opacity="0"/>
+      <stop offset="82%" stop-color="#f6821f" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#f6821f" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Feed node gradients (diverse blog identities) -->
+    <radialGradient id="nodeBlue" cx="38%" cy="32%">
+      <stop offset="0%" stop-color="#93c5fd"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </radialGradient>
+    <radialGradient id="nodeGreen" cx="38%" cy="32%">
+      <stop offset="0%" stop-color="#6ee7b7"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </radialGradient>
+    <radialGradient id="nodePurple" cx="38%" cy="32%">
+      <stop offset="0%" stop-color="#c4b5fd"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </radialGradient>
+    <radialGradient id="nodeTeal" cx="38%" cy="32%">
+      <stop offset="0%" stop-color="#5eead4"/>
+      <stop offset="100%" stop-color="#0d9488"/>
+    </radialGradient>
+    <radialGradient id="nodeRose" cx="38%" cy="32%">
+      <stop offset="0%" stop-color="#fda4af"/>
+      <stop offset="100%" stop-color="#e11d48"/>
+    </radialGradient>
+    <radialGradient id="nodeAmber" cx="38%" cy="32%">
+      <stop offset="0%" stop-color="#fde68a"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </radialGradient>
+    <radialGradient id="nodeSky" cx="38%" cy="32%">
+      <stop offset="0%" stop-color="#7dd3fc"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </radialGradient>
+    <radialGradient id="nodeIndigo" cx="38%" cy="32%">
+      <stop offset="0%" stop-color="#a5b4fc"/>
+      <stop offset="100%" stop-color="#4f46e5"/>
+    </radialGradient>
+
+    <!-- Particle glow filter -->
+    <filter id="particleGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="1.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Node glow filter -->
+    <filter id="nodeGlow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- ==================== BACKGROUND ==================== -->
+  <rect width="800" height="500" fill="url(#bgGrad)"/>
+
+  <!-- Stars: distant web of content -->
+  <!-- Layer 1: faint background stars -->
+  <g opacity="0.25">
+    <circle cx="45" cy="28" r="0.7" fill="#fff"/>
+    <circle cx="132" cy="72" r="0.5" fill="#fff"/>
+    <circle cx="88" cy="145" r="0.6" fill="#fff"/>
+    <circle cx="210" cy="35" r="0.8" fill="#fff"/>
+    <circle cx="305" cy="18" r="0.5" fill="#fff"/>
+    <circle cx="480" cy="42" r="0.7" fill="#fff"/>
+    <circle cx="555" cy="15" r="0.6" fill="#fff"/>
+    <circle cx="650" cy="55" r="0.5" fill="#fff"/>
+    <circle cx="720" cy="30" r="0.7" fill="#fff"/>
+    <circle cx="770" cy="88" r="0.5" fill="#fff"/>
+    <circle cx="35" cy="310" r="0.6" fill="#fff"/>
+    <circle cx="90" cy="420" r="0.7" fill="#fff"/>
+    <circle cx="160" cy="470" r="0.5" fill="#fff"/>
+    <circle cx="340" cy="475" r="0.6" fill="#fff"/>
+    <circle cx="500" cy="460" r="0.7" fill="#fff"/>
+    <circle cx="620" cy="445" r="0.5" fill="#fff"/>
+    <circle cx="710" cy="410" r="0.6" fill="#fff"/>
+    <circle cx="760" cy="350" r="0.7" fill="#fff"/>
+    <circle cx="780" cy="250" r="0.5" fill="#fff"/>
+    <circle cx="25" cy="200" r="0.6" fill="#fff"/>
+  </g>
+
+  <!-- Layer 2: brighter scattered stars -->
+  <g opacity="0.45">
+    <circle cx="72" cy="62" r="0.9" fill="#fff"/>
+    <circle cx="175" cy="108" r="0.7" fill="#fff"/>
+    <circle cx="260" cy="58" r="1.0" fill="#fff"/>
+    <circle cx="390" cy="22" r="0.8" fill="#fff"/>
+    <circle cx="520" cy="68" r="0.7" fill="#fff"/>
+    <circle cx="680" cy="95" r="0.9" fill="#fff"/>
+    <circle cx="740" cy="150" r="0.7" fill="#fff"/>
+    <circle cx="55" cy="380" r="0.8" fill="#fff"/>
+    <circle cx="145" cy="365" r="0.7" fill="#fff"/>
+    <circle cx="250" cy="440" r="0.9" fill="#fff"/>
+    <circle cx="430" cy="468" r="0.7" fill="#fff"/>
+    <circle cx="580" cy="420" r="0.8" fill="#fff"/>
+    <circle cx="690" cy="330" r="0.7" fill="#fff"/>
+    <circle cx="15" cy="130" r="0.8" fill="#fff"/>
+    <circle cx="770" cy="180" r="0.7" fill="#fff"/>
+  </g>
+
+  <!-- Layer 3: a few prominent stars -->
+  <g opacity="0.7">
+    <circle cx="110" cy="38" r="1.2" fill="#fff"/>
+    <circle cx="330" cy="45" r="1.0" fill="#fff"/>
+    <circle cx="610" cy="32" r="1.1" fill="#fff"/>
+    <circle cx="750" cy="120" r="1.0" fill="#fff"/>
+    <circle cx="40" cy="250" r="1.1" fill="#fff"/>
+    <circle cx="105" cy="455" r="1.0" fill="#fff"/>
+    <circle cx="460" cy="480" r="1.1" fill="#fff"/>
+    <circle cx="700" cy="460" r="1.0" fill="#fff"/>
+  </g>
+
+  <!-- ==================== ORBITAL PATHS ==================== -->
+  <!-- These represent the reliable, predictable paths that RSS feeds follow -->
+
+  <!-- Orbit 3: outermost -->
+  <ellipse cx="400" cy="250" rx="320" ry="130"
+    fill="none" stroke="#374151" stroke-width="0.6"
+    stroke-dasharray="6,8" opacity="0.3"
+    transform="rotate(-8, 400, 250)"/>
+
+  <!-- Orbit 2: middle -->
+  <ellipse cx="400" cy="250" rx="230" ry="90"
+    fill="none" stroke="#4b5563" stroke-width="0.6"
+    stroke-dasharray="5,7" opacity="0.35"
+    transform="rotate(5, 400, 250)"/>
+
+  <!-- Orbit 1: innermost -->
+  <ellipse cx="400" cy="250" rx="148" ry="58"
+    fill="none" stroke="#6b7280" stroke-width="0.6"
+    stroke-dasharray="4,6" opacity="0.3"
+    transform="rotate(-15, 400, 250)"/>
+
+  <!-- ==================== CONTENT STREAMS ==================== -->
+  <!-- Particles flowing from feed nodes toward the planet — content being aggregated -->
+  <!-- Each stream: 3-4 dots getting smaller and more transparent toward the center -->
+
+  <!-- Stream from node A (blue, upper right, orbit 3) ~(692, 164) toward planet -->
+  <circle cx="635" cy="185" r="2.5" fill="#60a5fa" opacity="0.5" filter="url(#particleGlow)"/>
+  <circle cx="580" cy="205" r="2.0" fill="#60a5fa" opacity="0.35"/>
+  <circle cx="525" cy="222" r="1.5" fill="#60a5fa" opacity="0.2"/>
+  <circle cx="475" cy="238" r="1.0" fill="#60a5fa" opacity="0.1"/>
+
+  <!-- Stream from node B (green, left, orbit 3) ~(96, 248) toward planet -->
+  <circle cx="165" cy="248" r="2.5" fill="#34d399" opacity="0.5" filter="url(#particleGlow)"/>
+  <circle cx="230" cy="248" r="2.0" fill="#34d399" opacity="0.35"/>
+  <circle cx="290" cy="249" r="1.5" fill="#34d399" opacity="0.2"/>
+  <circle cx="340" cy="249" r="1.0" fill="#34d399" opacity="0.1"/>
+
+  <!-- Stream from node C (purple, lower left, orbit 3) ~(150, 370) toward planet -->
+  <circle cx="205" cy="345" r="2.5" fill="#a78bfa" opacity="0.5" filter="url(#particleGlow)"/>
+  <circle cx="260" cy="320" r="2.0" fill="#a78bfa" opacity="0.35"/>
+  <circle cx="310" cy="295" r="1.5" fill="#a78bfa" opacity="0.2"/>
+  <circle cx="355" cy="273" r="1.0" fill="#a78bfa" opacity="0.1"/>
+
+  <!-- Stream from node D (teal, right, orbit 2) ~(586, 311) toward planet -->
+  <circle cx="545" cy="298" r="2.2" fill="#2dd4bf" opacity="0.5" filter="url(#particleGlow)"/>
+  <circle cx="505" cy="285" r="1.7" fill="#2dd4bf" opacity="0.35"/>
+  <circle cx="465" cy="272" r="1.2" fill="#2dd4bf" opacity="0.2"/>
+
+  <!-- Stream from node E (rose, left, orbit 2) ~(206, 278) toward planet -->
+  <circle cx="260" cy="270" r="2.2" fill="#fb7185" opacity="0.5" filter="url(#particleGlow)"/>
+  <circle cx="310" cy="264" r="1.7" fill="#fb7185" opacity="0.35"/>
+  <circle cx="355" cy="258" r="1.2" fill="#fb7185" opacity="0.2"/>
+
+  <!-- Stream from node F (amber, upper, orbit 2) ~(516, 182) toward planet -->
+  <circle cx="490" cy="198" r="2.2" fill="#fbbf24" opacity="0.5" filter="url(#particleGlow)"/>
+  <circle cx="460" cy="215" r="1.7" fill="#fbbf24" opacity="0.35"/>
+  <circle cx="435" cy="230" r="1.2" fill="#fbbf24" opacity="0.2"/>
+
+  <!-- Stream from node G (sky, lower right, orbit 1) ~(480, 278) toward planet -->
+  <circle cx="455" cy="270" r="2.0" fill="#38bdf8" opacity="0.45" filter="url(#particleGlow)"/>
+  <circle cx="435" cy="263" r="1.4" fill="#38bdf8" opacity="0.25"/>
+
+  <!-- Stream from node H (indigo, upper left, orbit 1) ~(276, 255) toward planet -->
+  <circle cx="310" cy="254" r="2.0" fill="#818cf8" opacity="0.45" filter="url(#particleGlow)"/>
+  <circle cx="340" cy="253" r="1.4" fill="#818cf8" opacity="0.25"/>
+
+  <!-- ==================== PLANET ==================== -->
+
+  <!-- Outer atmospheric glow -->
+  <circle cx="400" cy="250" r="140" fill="url(#glowOuter)"/>
+
+  <!-- Inner halo -->
+  <circle cx="400" cy="250" r="75" fill="url(#glowInner)"/>
+
+  <!-- Planet body -->
+  <circle cx="400" cy="250" r="52" fill="url(#planetGrad)"/>
+
+  <!-- Surface highlight (specular) -->
+  <ellipse cx="388" cy="237" rx="22" ry="16" fill="#ffcc80" opacity="0.18"/>
+
+  <!-- Atmospheric bands (subtle detail suggesting activity) -->
+  <ellipse cx="400" cy="240" rx="46" ry="5" fill="none" stroke="#e5731a" stroke-width="0.7" opacity="0.25"/>
+  <ellipse cx="400" cy="255" rx="42" ry="4" fill="none" stroke="#c55a0a" stroke-width="0.5" opacity="0.18"/>
+  <ellipse cx="400" cy="265" rx="35" ry="3" fill="none" stroke="#c55a0a" stroke-width="0.5" opacity="0.12"/>
+
+  <!-- The serif "P" brand mark on the planet surface -->
+  <g transform="translate(400, 250)" opacity="0.2">
+    <text x="-10" y="8" font-family="'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif"
+      font-size="26" font-weight="700" fill="#fff" text-anchor="middle">P</text>
+  </g>
+
+  <!-- ==================== FEED NODES ==================== -->
+  <!-- Each node is a unique "world" — a blog with its own identity and voice -->
+
+  <!-- Node A: Blue — upper right on orbit 3 -->
+  <g filter="url(#nodeGlow)">
+    <circle cx="692" cy="164" r="9" fill="url(#nodeBlue)"/>
+  </g>
+  <circle cx="689" cy="161" r="3" fill="#bfdbfe" opacity="0.3"/>
+
+  <!-- Node B: Green — far left on orbit 3 -->
+  <g filter="url(#nodeGlow)">
+    <circle cx="96" cy="248" r="10" fill="url(#nodeGreen)"/>
+  </g>
+  <circle cx="93" cy="244" r="3.5" fill="#a7f3d0" opacity="0.3"/>
+
+  <!-- Node C: Purple — lower left on orbit 3 -->
+  <g filter="url(#nodeGlow)">
+    <circle cx="150" cy="370" r="8" fill="url(#nodePurple)"/>
+  </g>
+  <circle cx="147" cy="367" r="2.8" fill="#ddd6fe" opacity="0.3"/>
+
+  <!-- Node D: Teal — right on orbit 2 -->
+  <g filter="url(#nodeGlow)">
+    <circle cx="586" cy="311" r="8" fill="url(#nodeTeal)"/>
+  </g>
+  <circle cx="583" cy="308" r="2.8" fill="#99f6e4" opacity="0.3"/>
+
+  <!-- Node E: Rose — left on orbit 2 -->
+  <g filter="url(#nodeGlow)">
+    <circle cx="206" cy="278" r="9" fill="url(#nodeRose)"/>
+  </g>
+  <circle cx="203" cy="275" r="3" fill="#fecdd3" opacity="0.3"/>
+
+  <!-- Node F: Amber — upper on orbit 2 -->
+  <g filter="url(#nodeGlow)">
+    <circle cx="516" cy="182" r="7" fill="url(#nodeAmber)"/>
+  </g>
+  <circle cx="514" cy="179" r="2.5" fill="#fef3c7" opacity="0.3"/>
+
+  <!-- Node G: Sky — lower right on orbit 1 (closer to planet) -->
+  <g filter="url(#nodeGlow)">
+    <circle cx="480" cy="278" r="7" fill="url(#nodeSky)"/>
+  </g>
+  <circle cx="478" cy="275" r="2.5" fill="#bae6fd" opacity="0.3"/>
+
+  <!-- Node H: Indigo — upper left on orbit 1 -->
+  <g filter="url(#nodeGlow)">
+    <circle cx="276" cy="255" r="7" fill="url(#nodeIndigo)"/>
+  </g>
+  <circle cx="274" cy="252" r="2.5" fill="#c7d2fe" opacity="0.3"/>
+
+  <!-- ==================== RSS EMANATIONS ==================== -->
+  <!-- Small wave arcs near some nodes, evoking the RSS broadcast symbol -->
+  <!-- This is the cultural symbol developers recognize -->
+
+  <!-- RSS waves from Node B (green, large) -->
+  <g transform="translate(96, 248)" opacity="0.35">
+    <path d="M 14,0 A 14,14 0 0,1 0,14" fill="none" stroke="#34d399" stroke-width="1.2" stroke-linecap="round"/>
+    <path d="M 19,0 A 19,19 0 0,1 0,19" fill="none" stroke="#34d399" stroke-width="0.8" stroke-linecap="round"/>
+  </g>
+
+  <!-- RSS waves from Node A (blue) -->
+  <g transform="translate(692, 164)" opacity="0.3">
+    <path d="M -14,0 A 14,14 0 0,0 0,14" fill="none" stroke="#60a5fa" stroke-width="1.2" stroke-linecap="round"/>
+    <path d="M -19,0 A 19,19 0 0,0 0,19" fill="none" stroke="#60a5fa" stroke-width="0.8" stroke-linecap="round"/>
+  </g>
+
+  <!-- RSS waves from Node E (rose) -->
+  <g transform="translate(206, 278)" opacity="0.3">
+    <path d="M 14,0 A 14,14 0 0,1 0,-14" fill="none" stroke="#fb7185" stroke-width="1.0" stroke-linecap="round"/>
+    <path d="M 19,0 A 19,19 0 0,1 0,-19" fill="none" stroke="#fb7185" stroke-width="0.7" stroke-linecap="round"/>
+  </g>
+
+  <!-- RSS waves from Node D (teal) -->
+  <g transform="translate(586, 311)" opacity="0.3">
+    <path d="M -14,0 A 14,14 0 0,0 0,-14" fill="none" stroke="#2dd4bf" stroke-width="1.0" stroke-linecap="round"/>
+  </g>
+
+  <!-- ==================== TYPOGRAPHY ==================== -->
+  <!-- Title: clean, elegant, anchoring the illustration -->
+  <text x="400" y="468" text-anchor="middle"
+    font-family="'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif"
+    font-size="15" font-weight="600" fill="#9ca3af" letter-spacing="0.12em"
+    opacity="0.7">PLANET CF</text>
+
+  <!-- Subtle tagline -->
+  <text x="400" y="486" text-anchor="middle"
+    font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+    font-size="9.5" fill="#6b7280" letter-spacing="0.06em"
+    opacity="0.5">aggregating voices from across the web</text>
+</svg>
