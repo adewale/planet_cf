@@ -358,8 +358,7 @@ echo ""
 
 # Step 7: Deploy
 echo -e "${YELLOW}Step 7/8: Deploying worker...${NC}"
-DEPLOY_MSG="deploy_instance.sh $(date +%Y%m%dT%H%M%S) ${INSTANCE_NAME}"
-DEPLOY_OUTPUT=$(npx wrangler deploy --config "$CONFIG_FILE" --message "$DEPLOY_MSG" 2>&1) || {
+DEPLOY_OUTPUT=$(npx wrangler deploy --config "$CONFIG_FILE" 2>&1) || {
     echo -e "${RED}Deployment failed${NC}"
     echo "$DEPLOY_OUTPUT"
     exit 1

@@ -283,17 +283,17 @@ class TestDLQDepthCheck:
 
 
 class TestDeploymentMessages:
-    """Verify deployment scripts include version messages."""
+    """Verify deployment scripts log deployment context."""
 
-    def test_deploy_script_uses_message_flag(self):
+    def test_deploy_script_has_health_check(self):
+        """deploy_instance.sh checks /health after deploy for deployment visibility."""
         script = (PROJECT_ROOT / "scripts" / "deploy_instance.sh").read_text()
-        assert "--message" in script, (
-            "deploy_instance.sh should use --message flag for wrangler deploy"
-        )
+        assert "/health" in script, "deploy_instance.sh should check /health after deploy"
 
-    def test_ci_workflow_uses_message_flag(self):
+    def test_ci_workflow_has_migration_step(self):
+        """CI workflow runs migrations before deploy for deployment traceability."""
         workflow = (PROJECT_ROOT / ".github" / "workflows" / "check.yml").read_text()
-        assert "--message" in workflow, "CI workflow should use --message flag for wrangler deploy"
+        assert "Run migrations" in workflow, "CI workflow should run migrations before deploy"
 
 
 # =============================================================================

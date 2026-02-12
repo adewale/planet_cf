@@ -1493,6 +1493,7 @@ class Default(WorkerEntrypoint):
                 Route(path="/feed.rss10", content_type="rss10", cacheable=True),
                 Route(path="/feeds.opml", content_type="opml", cacheable=True),
                 Route(path="/foafroll.xml", content_type="foaf", cacheable=True),
+                Route(path="/health", content_type="health", cacheable=False),
                 Route(
                     path="/search", content_type="search", cacheable=False, lite_mode_disabled=True
                 ),
