@@ -78,6 +78,18 @@
         <feMergeNode in="SourceGraphic"/>
       </feMerge>
     </filter>
+
+    <!-- Clip to planet sphere -->
+    <clipPath id="planetClip">
+      <circle cx="400" cy="250" r="52"/>
+    </clipPath>
+
+    <!-- Terminator shadow gradient (day/night) -->
+    <linearGradient id="terminator" x1="0.6" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#0d1117" stop-opacity="0"/>
+      <stop offset="70%" stop-color="#0d1117" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#0d1117" stop-opacity="0.45"/>
+    </linearGradient>
   </defs>
 
   <!-- ==================== BACKGROUND ==================== -->
@@ -216,13 +228,42 @@
   <!-- Planet body -->
   <circle cx="400" cy="250" r="52" fill="url(#planetGrad)"/>
 
-  <!-- Surface highlight (specular) -->
-  <ellipse cx="388" cy="237" rx="22" ry="16" fill="#ffcc80" opacity="0.18"/>
+  <!-- Surface detail clipped to the sphere -->
+  <g clip-path="url(#planetClip)">
+    <!--
+      Atmospheric bands as filled latitude strips.
+      For a sphere of radius R=52 centered at (400,250):
+        At latitude offset dy from center, the visible half-width is sqrt(R² - dy²).
+      Each band is a rect spanning the full chord width at that latitude.
+    -->
 
-  <!-- Atmospheric bands (subtle detail suggesting activity) -->
-  <ellipse cx="400" cy="240" rx="46" ry="5" fill="none" stroke="#e5731a" stroke-width="0.7" opacity="0.25"/>
-  <ellipse cx="400" cy="255" rx="42" ry="4" fill="none" stroke="#c55a0a" stroke-width="0.5" opacity="0.18"/>
-  <ellipse cx="400" cy="265" rx="35" ry="3" fill="none" stroke="#c55a0a" stroke-width="0.5" opacity="0.12"/>
+    <!-- Band at dy=-15 (above equator): half-width = sqrt(2704-225) ≈ 49.8 -->
+    <rect x="350" y="232" width="100" height="5" fill="#e5731a" opacity="0.14"/>
+
+    <!-- Band at dy=-5 (just above equator): half-width ≈ 51.8 — nearly full width -->
+    <rect x="348" y="243" width="104" height="4" fill="#d4690f" opacity="0.10"/>
+
+    <!-- Band at dy=+8 (just below equator): half-width ≈ 51.4 -->
+    <rect x="348" y="256" width="104" height="5" fill="#c55a0a" opacity="0.12"/>
+
+    <!-- Band at dy=+18 (southern mid-lat): half-width ≈ 48.8 -->
+    <rect x="351" y="266" width="98" height="4" fill="#c55a0a" opacity="0.09"/>
+
+    <!-- Band at dy=+30 (southern high-lat): half-width ≈ 42.5 -->
+    <rect x="357" y="278" width="86" height="3" fill="#b04e08" opacity="0.07"/>
+
+    <!-- Band at dy=-30 (northern high-lat): half-width ≈ 42.5 -->
+    <rect x="357" y="218" width="86" height="3" fill="#e5731a" opacity="0.08"/>
+
+    <!-- Terminator: darkening on the right limb (day/night boundary) -->
+    <rect x="348" y="198" width="104" height="104" fill="url(#terminator)"/>
+
+    <!-- Surface highlight (specular reflection, upper-left — toward the light source) -->
+    <ellipse cx="384" cy="234" rx="20" ry="14" fill="#ffcc80" opacity="0.15"/>
+  </g>
+
+  <!-- Subtle limb darkening around the edge -->
+  <circle cx="400" cy="250" r="52" fill="none" stroke="#0d1117" stroke-width="2" opacity="0.15"/>
 
   <!-- The serif "P" brand mark on the planet surface -->
   <g transform="translate(400, 250)" opacity="0.2">
