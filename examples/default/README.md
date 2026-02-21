@@ -62,12 +62,16 @@ npx wrangler d1 execute my-planet-db --remote --file migrations/001_initial.sql
 npx wrangler deploy --config examples/my-planet/wrangler.jsonc
 ```
 
-## Upgrading to Full Mode
+## Upgrading
 
-To enable semantic search and admin interface, copy from `examples/planet-cloudflare/` instead, which includes:
+### To Admin Mode (add web-based feed management)
 
-- Vectorize binding for semantic search
-- AI binding for embedding generation
-- OAuth configuration for admin authentication
+1. Set OAuth secrets (`GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `SESSION_SECRET`)
+2. Change `INSTANCE_MODE` from `"lite"` to `"admin"` in `wrangler.jsonc`
+3. Redeploy
 
-See the [Multi-Instance Guide](../../docs/MULTI_INSTANCE.md) for more details.
+### To Full Mode (add semantic search)
+
+Copy from `examples/planet-cloudflare/` instead, which includes Vectorize and AI bindings.
+
+See the [Instance Modes Guide](../../docs/INSTANCE_MODES.md) for more details.

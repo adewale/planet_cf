@@ -140,8 +140,8 @@ Cron Trigger (0 * * * *)
 │    3. Fetch with conditional headers (ETag, Last-Modified)       │
 │    4. Parse RSS/Atom with feedparser                             │
 │    5. Upsert entries to D1                                       │
-│    6. Generate embeddings via Workers AI                         │
-│    7. Index in Vectorize for semantic search                     │
+│    6. Generate embeddings via Workers AI (full mode only)        │
+│    7. Index in Vectorize for semantic search (full mode only)    │
 │    8. Update feed metadata (title, last_success_at)              │
 │    9. ACK message on success, RETRY on failure                   │
 └─────────────────────────────────────────────────────────────────┘
@@ -579,7 +579,7 @@ src/
 ├── content_processor.py - Feed entry content extraction
 ├── auth.py              - Session cookies + HMAC signing
 ├── admin.py             - Admin error responses + OPML parsing
-├── instance_config.py   - Lite mode detection + config loading
+├── instance_config.py   - Instance mode detection (lite/admin/full) + config loading
 ├── xml_sanitizer.py     - XML control character stripping
 └── __init__.py
 ```
@@ -638,7 +638,7 @@ src/
 │  ┌────────────────────────┐  ┌──────────────────┐  ┌──────────────────────────┐  │
 │  │       utils.py         │  │    models.py     │  │  instance_config.py      │  │
 │  │                        │  │                  │  │                          │  │
-│  │ log_op, log_error      │  │ BleachSanitizer  │  │ is_lite_mode()           │  │
+│  │ log_op, log_error      │  │ BleachSanitizer  │  │ get_instance_mode()      │  │
 │  │ html/json/feed_response│  │ EntryRow,FeedRow │  │ theme loading            │  │
 │  │ format_date, xml_escape│  │ Session          │  │                          │  │
 │  │ validate_feed_id       │  │ (no local deps)  │  │ imports: config,         │  │

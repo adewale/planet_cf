@@ -575,7 +575,7 @@ class PlanetConverter:
             "compatibility_date": "2026-01-01",
             "compatibility_flags": ["python_workers", "python_dedicated_snapshot"],
             "vars": {
-                "INSTANCE_MODE": "lite",
+                "INSTANCE_MODE": "admin",
                 "PLANET_ID": self.name,
                 "PLANET_NAME": template.title or self.name,
                 "PLANET_DESCRIPTION": template.description or f"{self.name} feed aggregator",

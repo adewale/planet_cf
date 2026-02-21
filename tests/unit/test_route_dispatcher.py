@@ -35,7 +35,7 @@ class TestRoute:
         assert route.content_type == "html"
         assert route.cacheable is True
         assert route.requires_auth is False
-        assert route.lite_mode_disabled is False
+        assert route.requires_mode is None
 
     def test_route_name_defaults_to_path(self):
         """Route name defaults to path."""
@@ -333,15 +333,21 @@ class TestCreateDefaultRoutes:
 
         assert auth_route.cacheable is False
 
-    def test_lite_mode_flags(self):
-        """Correct routes are marked as lite mode disabled."""
+    def test_requires_mode_flags(self):
+        """Correct routes have requires_mode set."""
         routes = create_default_routes()
 
         search_route = next(r for r in routes if r.path == "/search")
-        assert search_route.lite_mode_disabled is True
+        assert search_route.requires_mode == "full"
+
+        auth_route = next(r for r in routes if r.path == "/auth/github")
+        assert auth_route.requires_mode == "admin"
+
+        admin_route = next(r for r in routes if r.path.startswith("/admin") and r.prefix)
+        assert admin_route.requires_mode == "admin"
 
         home_route = next(r for r in routes if r.path == "/")
-        assert home_route.lite_mode_disabled is False
+        assert home_route.requires_mode is None
 
 
 class TestRouteDispatcher404:

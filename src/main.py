@@ -57,7 +57,7 @@ from config import (
     get_user_agent,
 )
 from content_processor import EntryContentProcessor
-from instance_config import is_lite_mode as check_lite_mode
+from instance_config import get_instance_mode, is_admin_enabled, is_lite_mode as check_lite_mode, is_search_enabled
 from models import BleachSanitizer
 from oauth_handler import GitHubOAuthHandler, extract_oauth_state_from_cookies
 from observability import (
@@ -1384,20 +1384,20 @@ class Default(WorkerEntrypoint):
                 Route(path="/foafroll.xml", content_type="foaf", cacheable=True),
                 Route(path="/health", content_type="health", cacheable=False),
                 Route(
-                    path="/search", content_type="search", cacheable=False, lite_mode_disabled=True
+                    path="/search", content_type="search", cacheable=False, requires_mode="full"
                 ),
                 # OAuth routes
                 Route(
                     path="/auth/github",
                     content_type="auth",
                     cacheable=False,
-                    lite_mode_disabled=True,
+                    requires_mode="admin",
                 ),
                 Route(
                     path="/auth/github/callback",
                     content_type="auth",
                     cacheable=False,
-                    lite_mode_disabled=True,
+                    requires_mode="admin",
                 ),
                 # Admin routes
                 Route(
@@ -1407,7 +1407,7 @@ class Default(WorkerEntrypoint):
                     cacheable=False,
                     requires_auth=True,
                     route_name="/admin/*",
-                    lite_mode_disabled=True,
+                    requires_mode="admin",
                 ),
             ]
         )
@@ -1459,14 +1459,20 @@ class Default(WorkerEntrypoint):
                     event.route = match.route_name
                     event.cache_status = match.cache_status
 
-                    # Check lite mode for disabled routes
-                    if match.lite_mode_disabled and check_lite_mode(self.env):
-                        response = _json_error(
-                            f"{match.content_type.title()} is not available in lite mode",
-                            status=404,
-                        )
-                        event.content_type = "error"
-                    else:
+                    # Check if the route's required mode is met
+                    if match.requires_mode:
+                        current_mode = get_instance_mode(self.env)
+                        mode_levels = {"lite": 0, "admin": 1, "full": 2}
+                        required_level = mode_levels.get(match.requires_mode, 0)
+                        current_level = mode_levels.get(current_mode, 2)
+                        if current_level < required_level:
+                            response = _json_error(
+                                f"{match.content_type.title()} requires {match.requires_mode} mode (current: {current_mode})",
+                                status=404,
+                            )
+                            event.content_type = "error"
+
+                    if response is None:
                         # Dispatch to appropriate handler based on route
                         response = await self._dispatch_route(match, request, path, event)
                         event.content_type = match.content_type
@@ -1844,7 +1850,7 @@ class Default(WorkerEntrypoint):
         elif show_admin_link_env is not None and str(show_admin_link_env).lower() == "true":
             show_admin_link = True
         else:
-            show_admin_link = not is_lite
+            show_admin_link = is_admin_enabled(self.env)
 
         # Build date_labels for themes (identity mapping since keys are already formatted)
         date_labels = {date_key: date_key for date_key in entries_by_date}

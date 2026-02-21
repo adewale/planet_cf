@@ -121,7 +121,7 @@ def create_instance_config(
     owner_name: str,
     owner_email: str,
     theme: str = "default",
-    lite_mode: bool = False,
+    mode: str = "full",
 ) -> Path:
     """Create instance configuration file from template."""
     instance_dir = EXAMPLES_DIR / instance_id
@@ -141,13 +141,13 @@ def create_instance_config(
             PROJECT_ROOT / "templates" / "keyboard-nav.js",
             instance_dir / "assets" / "static" / "keyboard-nav.js",
         )
-    if not lite_mode:
+    if mode != "lite":
         shutil.copy2(
             PROJECT_ROOT / "static" / "admin.js", instance_dir / "assets" / "static" / "admin.js"
         )
 
-    # In lite mode, create a starter feeds.opml file
-    if lite_mode:
+    # In lite/admin mode, create a starter feeds.opml file
+    if mode in ("lite", "admin"):
         feeds_opml = instance_dir / "assets" / "feeds.opml"
         if not feeds_opml.exists():
             feeds_opml.write_text(f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -164,9 +164,8 @@ def create_instance_config(
 </opml>
 """)
 
-    mode = "lite" if lite_mode else "full"
-    search_enabled = "false" if lite_mode else "true"
-    show_admin_link = "false" if lite_mode else "true"
+    search_enabled = "true" if mode == "full" else "false"
+    show_admin_link = "false" if mode == "lite" else "true"
 
     # Build config sections
     mode_section = f"""# =============================================================================
@@ -177,7 +176,7 @@ mode: {mode}
 """
 
     auth_section = ""
-    if not lite_mode:
+    if mode != "lite":
         auth_section = """
 # =============================================================================
 # Authentication
@@ -195,7 +194,7 @@ auth:
 cloudflare:
   database_name: {instance_id}-db"""
 
-    if not lite_mode:
+    if mode == "full":
         cloudflare_section += f"""
   vectorize_index: {instance_id}-entries"""
 
@@ -205,7 +204,7 @@ cloudflare:
 """
 
     admin_section = ""
-    if not lite_mode:
+    if mode != "lite":
         admin_section = """
 # =============================================================================
 # Admin Users
@@ -290,7 +289,7 @@ def generate_wrangler_config(
     owner_email: str,
     theme: str = "default",
     database_id: str = "YOUR_DATABASE_ID",
-    lite_mode: bool = False,
+    mode: str = "full",
 ) -> Path:
     """Generate wrangler configuration file for the instance.
 
@@ -303,9 +302,8 @@ def generate_wrangler_config(
         owner_email: Owner email
         theme: Theme name
         database_id: D1 database ID (or placeholder)
-        lite_mode: If True, omit Vectorize and auth-related config
+        mode: Instance mode - "lite", "admin", or "full"
     """
-    mode = "lite" if lite_mode else "full"
 
     # Base vars
     vars_config = {
@@ -359,7 +357,7 @@ def generate_wrangler_config(
     }
 
     # Add Vectorize and AI bindings only in full mode
-    if not lite_mode:
+    if mode == "full":
         config["vectorize"] = [{"binding": "SEARCH_INDEX", "index_name": f"{instance_id}-entries"}]
         config["ai"] = {"binding": "AI"}
 
@@ -369,7 +367,7 @@ def generate_wrangler_config(
     wrangler_path = instance_dir / "wrangler.jsonc"
 
     # Build manual deploy instructions based on mode
-    if lite_mode:
+    if mode == "lite":
         manual_deploy_steps = f"""// =============================================================================
 // MANUAL DEPLOY (Alternative) - LITE MODE
 // =============================================================================
@@ -383,6 +381,25 @@ def generate_wrangler_config(
 // 4. Run migrations:
 //    npx wrangler d1 execute {instance_id}-db --remote --file migrations/001_initial.sql
 // 5. Deploy: npx wrangler deploy --config examples/{instance_id}/wrangler.jsonc
+// ============================================================================="""
+    elif mode == "admin":
+        manual_deploy_steps = f"""// =============================================================================
+// MANUAL DEPLOY (Alternative) - ADMIN MODE
+// =============================================================================
+// Admin mode: OAuth + admin dashboard, no Vectorize/AI needed
+//
+// 1. Create D1 database: npx wrangler d1 create {instance_id}-db
+// 2. Update database_id below with the ID from step 1
+// 3. Create queues:
+//    npx wrangler queues create {instance_id}-feed-queue
+//    npx wrangler queues create {instance_id}-feed-dlq
+// 4. Set secrets:
+//    npx wrangler secret put GITHUB_CLIENT_ID --config examples/{instance_id}/wrangler.jsonc
+//    npx wrangler secret put GITHUB_CLIENT_SECRET --config examples/{instance_id}/wrangler.jsonc
+//    npx wrangler secret put SESSION_SECRET --config examples/{instance_id}/wrangler.jsonc
+// 5. Run migrations:
+//    npx wrangler d1 execute {instance_id}-db --remote --file migrations/001_initial.sql
+// 6. Deploy: npx wrangler deploy --config examples/{instance_id}/wrangler.jsonc
 // ============================================================================="""
     else:
         manual_deploy_steps = f"""// =============================================================================
@@ -403,10 +420,10 @@ def generate_wrangler_config(
 // 7. Deploy: npx wrangler deploy --config examples/{instance_id}/wrangler.jsonc
 // ============================================================================="""
 
-    mode_label = "LITE MODE" if lite_mode else "FULL MODE"
+    mode_label = f"{mode.upper()} MODE"
 
     # Build quick deploy section based on mode
-    if lite_mode:
+    if mode == "lite":
         quick_deploy_options = ""
     else:
         quick_deploy_options = """
@@ -499,8 +516,13 @@ def validate_wrangler_config(instance_id: str) -> dict:
 
     content = wrangler_path.read_text()
 
-    # Detect if this is a lite mode config
-    is_lite = '"INSTANCE_MODE": "lite"' in content
+    # Detect instance mode from config
+    if '"INSTANCE_MODE": "lite"' in content:
+        detected_mode = "lite"
+    elif '"INSTANCE_MODE": "admin"' in content:
+        detected_mode = "admin"
+    else:
+        detected_mode = "full"
 
     # Check database_id is not placeholder
     if "YOUR_DATABASE_ID" in content:
@@ -519,8 +541,8 @@ def validate_wrangler_config(instance_id: str) -> dict:
         if f'"{var}"' not in content:
             issues.append(f"Missing required environment variable: {var}")
 
-    # Warnings for secrets (only for full mode - lite mode doesn't need auth secrets)
-    if not is_lite:
+    # Warnings for secrets (only for non-lite modes - lite mode doesn't need auth secrets)
+    if detected_mode != "lite":
         warnings.append(
             "Remember to set secrets before deploying:\n"
             f"    npx wrangler secret put GITHUB_CLIENT_ID --config {wrangler_path.name}\n"
@@ -543,7 +565,7 @@ def provision_cloudflare_resources(
     instance_id: str,
     auto_provision: bool = False,
     update_config: bool = True,
-    lite_mode: bool = False,
+    mode: str = "full",
 ) -> dict:
     """Provision Cloudflare resources for the instance.
 
@@ -552,7 +574,7 @@ def provision_cloudflare_resources(
         auto_provision: If True, actually create resources via wrangler CLI
         update_config: If True and auto_provision is True, update wrangler config
                       with extracted database_id
-        lite_mode: If True, skip Vectorize index creation and OAuth secret setup
+        mode: Instance mode - "lite", "admin", or "full"
 
     Returns:
         Dict with resource IDs if auto_provision is True.
@@ -563,20 +585,20 @@ def provision_cloudflare_resources(
         print("\n📋 Manual provisioning steps:")
         print("\n  # 1. Create D1 database")
         print(f"  npx wrangler d1 create {instance_id}-db")
-        if not lite_mode:
+        if mode == "full":
             print("\n  # 2. Create Vectorize index")
             print(
                 f"  npx wrangler vectorize create {instance_id}-entries --dimensions 768 --metric cosine"
             )
             step_num = 3
         else:
-            print("\n  # (Skipping Vectorize index - lite mode)")
+            print(f"\n  # (Skipping Vectorize index - {mode} mode)")
             step_num = 2
         print(f"\n  # {step_num}. Create queues")
         print(f"  npx wrangler queues create {instance_id}-feed-queue")
         print(f"  npx wrangler queues create {instance_id}-feed-dlq")
         step_num += 1
-        if not lite_mode:
+        if mode != "lite":
             print(f"\n  # {step_num}. Set secrets")
             print(
                 f"  npx wrangler secret put GITHUB_CLIENT_ID --config examples/{instance_id}/wrangler.jsonc"
@@ -599,7 +621,7 @@ def provision_cloudflare_resources(
         print(f"  npx wrangler deploy --config examples/{instance_id}/wrangler.jsonc")
         return resources
 
-    mode_label = "lite" if lite_mode else "full"
+    mode_label = mode
     print(f"\n🚀 Auto-provisioning Cloudflare resources ({mode_label} mode)...")
 
     # Create D1 database
@@ -629,8 +651,8 @@ def provision_cloudflare_resources(
     else:
         print(f"    ✗ Failed to create database: {result.stderr}")
 
-    # Create Vectorize index (skip in lite mode)
-    if not lite_mode:
+    # Create Vectorize index (only in full mode)
+    if mode == "full":
         print("\n  Creating Vectorize index...")
         result = run_wrangler_command(
             [
@@ -650,7 +672,7 @@ def provision_cloudflare_resources(
         else:
             print(f"    ✗ Failed to create Vectorize index: {result.stderr}")
     else:
-        print("\n  Skipping Vectorize index (lite mode)")
+        print(f"\n  Skipping Vectorize index ({mode} mode)")
 
     # Create queues
     print("\n  Creating queues...")
@@ -758,6 +780,12 @@ Modes:
         help="Create a lite mode instance (no search, no auth, simplified UI)",
     )
     parser.add_argument(
+        "--mode",
+        choices=["lite", "admin", "full"],
+        default=None,
+        help="Instance mode: lite (no search/auth), admin (auth but no search), full (all features)",
+    )
+    parser.add_argument(
         "--from-example",
         metavar="EXAMPLE",
         help="Copy from an existing example (default, planet-cloudflare, planet-python, planet-mozilla)",
@@ -863,7 +891,15 @@ Modes:
     if not args.owner_email:
         args.owner_email = f"planet@{slug}.example.com"
 
-    mode_label = "LITE" if args.lite else "FULL"
+    # Resolve mode: --mode takes precedence, --lite is shorthand for --mode lite
+    if args.mode:
+        resolved_mode = args.mode
+    elif args.lite:
+        resolved_mode = "lite"
+    else:
+        resolved_mode = "full"
+
+    mode_label = resolved_mode.upper()
     print(f"\n📝 {'[DRY RUN] Would create' if args.dry_run else 'Creating'} instance: {args.name}")
     print(f"   ID: {args.id}")
     print(f"   URL: {args.url}")
@@ -884,17 +920,17 @@ Modes:
         print(f"   - examples/{args.id}/python_modules -> ../../python_modules (symlink)")
         print("\n☁️  Cloudflare resources that would be needed:")
         print(f"   - D1 database: {args.id}-db")
-        if not args.lite:
+        if resolved_mode == "full":
             print(f"   - Vectorize index: {args.id}-entries")
         print(f"   - Queue: {args.id}-feed-queue")
         print(f"   - Queue: {args.id}-feed-dlq")
-        if not args.lite:
+        if resolved_mode != "lite":
             print("\n🔐 Secrets that would need to be configured:")
             print("   - GITHUB_CLIENT_ID")
             print("   - GITHUB_CLIENT_SECRET")
             print("   - SESSION_SECRET")
         else:
-            print("\n🔐 No secrets required (lite mode)")
+            print(f"\n🔐 No secrets required ({resolved_mode} mode)")
         print("\n✅ Dry run complete. No files were created.")
         return
 
@@ -907,7 +943,7 @@ Modes:
         owner_name=args.owner_name,
         owner_email=args.owner_email,
         theme=args.theme,
-        lite_mode=args.lite,
+        mode=resolved_mode,
     )
     print(f"\n✓ Created instance config: {config_path.relative_to(PROJECT_ROOT)}")
 
@@ -921,7 +957,7 @@ Modes:
         owner_email=args.owner_email,
         theme=args.theme,
         database_id="YOUR_DATABASE_ID",  # Will be updated by auto-provision
-        lite_mode=args.lite,
+        mode=resolved_mode,
     )
     print(f"\n✓ Created wrangler config: {wrangler_path.relative_to(PROJECT_ROOT)}")
 
@@ -931,7 +967,7 @@ Modes:
     create_python_modules_symlink(instance_dir)
 
     # Provision or print instructions (this may update wrangler config with database_id)
-    resources = provision_cloudflare_resources(args.id, args.auto_provision, lite_mode=args.lite)
+    resources = provision_cloudflare_resources(args.id, args.auto_provision, mode=resolved_mode)
 
     database_id = resources.get("database_id")
     if not database_id:

@@ -24,7 +24,7 @@ from wrappers import SafeEnv
 # and src/config.py with their own defaults.
 
 DEFAULTS = {
-    # Instance mode (full or lite) - used by is_lite_mode()
+    # Instance mode (full, admin, or lite)
     "INSTANCE_MODE": "full",
 }
 
@@ -45,26 +45,70 @@ def _get_env(env: SafeEnv, key: str, default: str | None = None) -> str:
 
 
 # =============================================================================
-# Lite Mode Helper Functions
+# Instance Mode Helper Functions
 # =============================================================================
+
+_VALID_MODES = {"lite", "admin", "full"}
+
+
+def get_instance_mode(env: SafeEnv) -> str:
+    """Return the normalised instance mode string.
+
+    Reads INSTANCE_MODE from the environment and normalises it to one of
+    the three recognised values: ``"lite"``, ``"admin"``, or ``"full"``.
+    Unrecognised values fall back to ``"full"``.
+
+    Args:
+        env: SafeEnv wrapper around Worker environment bindings.
+
+    Returns:
+        One of ``"lite"``, ``"admin"``, or ``"full"``.
+    """
+    mode = _get_env(env, "INSTANCE_MODE", "full").lower()
+    if mode not in _VALID_MODES:
+        return "full"
+    return mode
+
+
+def is_admin_enabled(env: SafeEnv) -> bool:
+    """Check whether the admin dashboard and OAuth are available.
+
+    Returns ``True`` for the ``"admin"`` and ``"full"`` instance modes.
+    In ``"lite"`` mode the admin surface is disabled.
+
+    Args:
+        env: SafeEnv wrapper around Worker environment bindings.
+
+    Returns:
+        True if admin features are enabled, False otherwise.
+    """
+    return get_instance_mode(env) in {"admin", "full"}
+
+
+def is_search_enabled(env: SafeEnv) -> bool:
+    """Check whether Vectorize semantic search and AI features are available.
+
+    Returns ``True`` only for the ``"full"`` instance mode, which is the
+    only mode that provisions Vectorize indexes and AI bindings.
+
+    Args:
+        env: SafeEnv wrapper around Worker environment bindings.
+
+    Returns:
+        True if search features are enabled, False otherwise.
+    """
+    return get_instance_mode(env) == "full"
 
 
 def is_lite_mode(env: SafeEnv) -> bool:
     """Check if the instance is running in lite mode.
 
-    This is a convenience function for checking lite mode without loading
-    the full configuration. Useful for early checks in request handling.
-
-    Lite mode disables:
-    - Semantic search (Vectorize)
-    - OAuth authentication
-    - Admin dashboard
+    Thin backward-compatible wrapper around :func:`get_instance_mode`.
 
     Args:
-        env: SafeEnv wrapper around Worker environment bindings
+        env: SafeEnv wrapper around Worker environment bindings.
 
     Returns:
-        True if running in lite mode, False for full mode.
+        True if running in lite mode, False otherwise.
     """
-    mode = _get_env(env, "INSTANCE_MODE", "full").lower()
-    return mode == "lite"
+    return get_instance_mode(env) == "lite"

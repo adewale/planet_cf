@@ -19,8 +19,8 @@ Planet CF supports configurable multi-instance deployment through the `examples/
 |---------|------|-------------|
 | `examples/default/` | lite | Minimal starting point, no search/auth |
 | `examples/planet-cloudflare/` | full | Full-featured with search and admin |
-| `examples/planet-python/` | lite | 500+ Python community feeds, no search/auth |
-| `examples/planet-mozilla/` | lite | ~190 Mozilla community feeds, no search/auth |
+| `examples/planet-python/` | admin | 500+ Python community feeds, no search/auth |
+| `examples/planet-mozilla/` | admin | ~190 Mozilla community feeds, no search/auth |
 | `examples/test-planet/` | full | Test instance for CI/E2E testing |
 
 ## Quick Start
@@ -82,7 +82,7 @@ This will:
 1. Create `examples/my-planet/` directory with config and wrangler files
 2. Create all Cloudflare resources (D1, Vectorize, Queues)
 3. Auto-update database_id in wrangler config
-4. Prompt for GitHub OAuth secrets (unless --lite)
+4. Prompt for GitHub OAuth secrets (unless lite mode)
 5. Run database migrations
 6. Deploy the worker
 
