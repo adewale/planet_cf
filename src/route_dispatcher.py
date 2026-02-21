@@ -43,7 +43,7 @@ class Route:
         cacheable: Whether this route's response can be cached
         route_name: Name for the route (for logging), defaults to path
         requires_auth: Whether this route requires authentication
-        lite_mode_disabled: Whether this route is disabled in lite mode
+        requires_mode: Minimum mode required for this route (None=always, 'admin', or 'full')
     """
 
     path: str
@@ -55,7 +55,7 @@ class Route:
     cacheable: bool = True
     route_name: str | None = None
     requires_auth: bool = False
-    lite_mode_disabled: bool = False
+    requires_mode: str | None = None
 
     def __post_init__(self) -> None:
         """Set default route name if not provided."""
@@ -113,9 +113,9 @@ class RouteMatch:
         return self.route.requires_auth
 
     @property
-    def lite_mode_disabled(self) -> bool:
-        """Get whether this route is disabled in lite mode."""
-        return self.route.lite_mode_disabled
+    def requires_mode(self) -> str | None:
+        """Get the minimum mode required for this route."""
+        return self.route.requires_mode
 
 
 class RouteDispatcher:
@@ -247,20 +247,20 @@ def create_default_routes() -> list[Route]:
         Route(path="/feed.rss10", content_type="rss10", cacheable=True),
         Route(path="/feeds.opml", content_type="opml", cacheable=True),
         Route(path="/health", content_type="health", cacheable=False),
-        Route(path="/search", content_type="search", cacheable=False, lite_mode_disabled=True),
+        Route(path="/search", content_type="search", cacheable=False, requires_mode="full"),
         # Static files are served by Workers Static Assets at the edge (no Worker needed)
         # OAuth routes (not cacheable)
         Route(
             path="/auth/github",
             content_type="auth",
             cacheable=False,
-            lite_mode_disabled=True,
+            requires_mode="admin",
         ),
         Route(
             path="/auth/github/callback",
             content_type="auth",
             cacheable=False,
-            lite_mode_disabled=True,
+            requires_mode="admin",
         ),
         # Admin routes (not cacheable, requires auth)
         Route(
@@ -270,6 +270,6 @@ def create_default_routes() -> list[Route]:
             cacheable=False,
             requires_auth=True,
             route_name="/admin/*",
-            lite_mode_disabled=True,
+            requires_mode="admin",
         ),
     ]

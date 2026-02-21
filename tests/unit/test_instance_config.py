@@ -1,7 +1,15 @@
 # tests/unit/test_instance_config.py
 """Tests for instance_config module."""
 
-from src.instance_config import DEFAULTS, _get_env, is_lite_mode
+from src.instance_config import (
+    DEFAULTS,
+    _VALID_MODES,
+    _get_env,
+    get_instance_mode,
+    is_admin_enabled,
+    is_lite_mode,
+    is_search_enabled,
+)
 
 
 class MockEnv:
@@ -51,6 +59,78 @@ class TestIsLiteMode:
         """FULL (uppercase) returns False."""
         env = MockEnv(INSTANCE_MODE="FULL")
         assert is_lite_mode(env) is False
+
+
+class TestGetInstanceMode:
+    """Tests for the get_instance_mode() function."""
+
+    def test_returns_full_by_default(self):
+        """When INSTANCE_MODE is not set, defaults to 'full'."""
+        env = MockEnv()
+        assert get_instance_mode(env) == "full"
+
+    def test_returns_lite(self):
+        """INSTANCE_MODE='lite' returns 'lite'."""
+        env = MockEnv(INSTANCE_MODE="lite")
+        assert get_instance_mode(env) == "lite"
+
+    def test_returns_admin(self):
+        """INSTANCE_MODE='admin' returns 'admin'."""
+        env = MockEnv(INSTANCE_MODE="admin")
+        assert get_instance_mode(env) == "admin"
+
+    def test_returns_full(self):
+        """INSTANCE_MODE='full' returns 'full'."""
+        env = MockEnv(INSTANCE_MODE="full")
+        assert get_instance_mode(env) == "full"
+
+    def test_case_insensitive(self):
+        """INSTANCE_MODE='ADMIN' returns 'admin'."""
+        env = MockEnv(INSTANCE_MODE="ADMIN")
+        assert get_instance_mode(env) == "admin"
+
+    def test_unknown_value_defaults_to_full(self):
+        """Unrecognized INSTANCE_MODE values default to 'full'."""
+        env = MockEnv(INSTANCE_MODE="invalid")
+        assert get_instance_mode(env) == "full"
+
+
+class TestIsAdminEnabled:
+    """Tests for the is_admin_enabled() function."""
+
+    def test_true_for_full(self):
+        """Admin is enabled in full mode."""
+        env = MockEnv(INSTANCE_MODE="full")
+        assert is_admin_enabled(env) is True
+
+    def test_true_for_admin(self):
+        """Admin is enabled in admin mode."""
+        env = MockEnv(INSTANCE_MODE="admin")
+        assert is_admin_enabled(env) is True
+
+    def test_false_for_lite(self):
+        """Admin is disabled in lite mode."""
+        env = MockEnv(INSTANCE_MODE="lite")
+        assert is_admin_enabled(env) is False
+
+
+class TestIsSearchEnabled:
+    """Tests for the is_search_enabled() function."""
+
+    def test_true_for_full(self):
+        """Search is enabled in full mode."""
+        env = MockEnv(INSTANCE_MODE="full")
+        assert is_search_enabled(env) is True
+
+    def test_false_for_admin(self):
+        """Search is disabled in admin mode."""
+        env = MockEnv(INSTANCE_MODE="admin")
+        assert is_search_enabled(env) is False
+
+    def test_false_for_lite(self):
+        """Search is disabled in lite mode."""
+        env = MockEnv(INSTANCE_MODE="lite")
+        assert is_search_enabled(env) is False
 
 
 class TestGetEnv:

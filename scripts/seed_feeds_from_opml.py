@@ -179,17 +179,17 @@ def read_wrangler_config(config_path: str) -> tuple[str, str | None, str | None]
         print("Error: Could not find D1 database name in config", file=sys.stderr)
         sys.exit(1)
 
-    # Check if lite mode - use local OPML file from assets
+    # Check if lite/admin mode - use local OPML file from assets
     instance_mode = config.get("vars", {}).get("INSTANCE_MODE", "full")
-    if instance_mode == "lite":
-        # In lite mode, use local assets/feeds.opml
+    if instance_mode in ("lite", "admin"):
+        # In lite/admin mode, use local assets/feeds.opml
         config_dir = path.parent
         local_opml = config_dir / "assets" / "feeds.opml"
         if local_opml.exists():
-            print(f"Lite mode: using local OPML from {local_opml}")
+            print(f"{instance_mode.title()} mode: using local OPML from {local_opml}")
             return db_name, None, str(local_opml)
         else:
-            print(f"Warning: Lite mode but {local_opml} not found", file=sys.stderr)
+            print(f"Warning: {instance_mode.title()} mode but {local_opml} not found", file=sys.stderr)
             # Fall through to OPML_SOURCE_URL
 
     # Full mode or fallback: use OPML_SOURCE_URL
@@ -197,7 +197,7 @@ def read_wrangler_config(config_path: str) -> tuple[str, str | None, str | None]
     if not opml_url:
         print("Error: OPML_SOURCE_URL not found in config vars", file=sys.stderr)
         print(
-            "Set OPML_SOURCE_URL in vars, or use lite mode with assets/feeds.opml", file=sys.stderr
+            "Set OPML_SOURCE_URL in vars, or use lite/admin mode with assets/feeds.opml", file=sys.stderr
         )
         sys.exit(1)
 

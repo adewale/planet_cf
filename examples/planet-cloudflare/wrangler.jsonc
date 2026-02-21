@@ -2,20 +2,12 @@
 // Planet CF - Feed Aggregator for Cloudflare Python Workers
 //
 // =============================================================================
-// MODE CONFIGURATION
+// INSTANCE MODE
 // =============================================================================
-// This config runs in FULL mode with all features enabled.
-//
-// To ENABLE lite mode (disable search and admin):
-//   1. Add "INSTANCE_MODE": "lite" to vars section
-//   2. Remove the entire "vectorize" section
-//   3. Remove the entire "ai" section
-//   4. No OAuth secrets are required in lite mode
-//
-// Lite mode disables:
-//   - Semantic search functionality
-//   - Admin interface and OAuth login
-//   - Embedding generation
+// Instance modes: "lite", "admin", or "full" (default)
+// This instance runs in full mode (search + admin + OAuth).
+// To downgrade to admin mode (no search): set "INSTANCE_MODE": "admin" and remove vectorize/AI bindings.
+// To downgrade to lite mode (read-only): set "INSTANCE_MODE": "lite" and remove vectorize/AI/OAuth.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "planetcf",

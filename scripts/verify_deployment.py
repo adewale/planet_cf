@@ -104,7 +104,7 @@ def discover_endpoints(html: str) -> dict[str, str]:
     if 'href="/titles"' in html or 'href="/titles.html"' in html:
         endpoints["titles"] = "/titles"
 
-    # Discover search (present in non-lite mode)
+    # Discover search (present in full mode only)
     if 'action="/search"' in html or 'href="/search"' in html:
         endpoints["search"] = "/search"
 
@@ -228,7 +228,7 @@ def verify_site(base_url: str) -> tuple[bool, list[str]]:
         print("  Checking search endpoint...")
         search_status, _, _ = fetch_url(base_url + "/search?q=test")
         if search_status in (403, 404):
-            print("  Search disabled (lite mode)")
+            print("  Search disabled (lite or admin mode)")
         elif search_status != 200:
             errors.append(f"Search returned HTTP {search_status}")
 

@@ -113,13 +113,16 @@ fi
 
 echo -e "${GREEN}Found config: ${CONFIG_FILE}${NC}"
 
-# Detect lite mode from config file
-LITE_MODE=false
+# Detect instance mode from config file
+INSTANCE_MODE="full"
 if grep -q '"INSTANCE_MODE": "lite"' "$CONFIG_FILE" 2>/dev/null; then
-    LITE_MODE=true
+    INSTANCE_MODE="lite"
     echo -e "${YELLOW}Mode: LITE (no Vectorize, no auth)${NC}"
+elif grep -q '"INSTANCE_MODE": "admin"' "$CONFIG_FILE" 2>/dev/null; then
+    INSTANCE_MODE="admin"
+    echo -e "${YELLOW}Mode: ADMIN (auth enabled, no Vectorize)${NC}"
 else
-    echo -e "Mode: FULL"
+    echo -e "${GREEN}Mode: FULL (all features)${NC}"
 fi
 echo ""
 
@@ -177,8 +180,8 @@ echo ""
 
 # Step 2: Create Vectorize index (skip in lite mode)
 echo -e "${YELLOW}Step 2/7: Creating Vectorize index...${NC}"
-if [[ "$LITE_MODE" == "true" ]]; then
-    echo -e "  ${YELLOW}Skipping Vectorize index (lite mode)${NC}"
+if [[ "$INSTANCE_MODE" == "lite" || "$INSTANCE_MODE" == "admin" ]]; then
+    echo -e "  ${YELLOW}Skipping Vectorize index (not needed for $INSTANCE_MODE mode)${NC}"
 else
     INDEX_NAME="${INSTANCE_ID}-entries"
 
@@ -213,7 +216,7 @@ echo ""
 
 # Step 4: Set secrets (skip in lite mode)
 echo -e "${YELLOW}Step 4/7: Configuring secrets...${NC}"
-if [[ "$LITE_MODE" == "true" ]]; then
+if [[ "$INSTANCE_MODE" == "lite" ]]; then
     echo -e "  ${YELLOW}Skipping secrets (lite mode - no auth required)${NC}"
 elif [[ "$SKIP_SECRETS" == "true" ]]; then
     echo -e "  ${YELLOW}Skipping secrets (--skip-secrets flag set)${NC}"
@@ -400,12 +403,19 @@ echo -e "${GREEN}========================================${NC}"
 echo ""
 echo "Your Planet instance is now live."
 echo ""
-if [[ "$LITE_MODE" == "true" ]]; then
+if [[ "$INSTANCE_MODE" == "lite" ]]; then
     echo "Mode: LITE (read-only, no admin interface)"
     echo ""
     echo "Next steps:"
     echo "  1. Visit your worker URL to verify it's working"
     echo "  2. Add feeds directly to the D1 database"
+    echo "  3. Configure a custom domain if desired"
+elif [[ "$INSTANCE_MODE" == "admin" ]]; then
+    echo "Mode: ADMIN (auth enabled, no semantic search)"
+    echo ""
+    echo "Next steps:"
+    echo "  1. Visit your worker URL to verify it's working"
+    echo "  2. Add feeds via the admin interface (/admin)"
     echo "  3. Configure a custom domain if desired"
 else
     echo "Next steps:"

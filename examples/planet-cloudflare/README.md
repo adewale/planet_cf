@@ -86,4 +86,12 @@ Add custom static assets to the `static/` directory:
 - `apple-touch-icon.png` - iOS home screen icon
 - Custom images or scripts
 
+## Instance Modes
+
+This example runs in **full mode** with all features enabled. For a simpler deployment:
+- **Admin mode**: Remove Vectorize/AI bindings and set `"INSTANCE_MODE": "admin"` — keeps the admin dashboard and OAuth but disables search.
+- **Lite mode**: Set `"INSTANCE_MODE": "lite"` — read-only aggregator with no admin UI or search.
+
+See the [Instance Modes Guide](../../docs/INSTANCE_MODES.md) for details.
+
 See the [Multi-Instance Guide](../../docs/MULTI_INSTANCE.md) for more details.

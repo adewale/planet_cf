@@ -3,18 +3,25 @@
 // A faithful clone of https://planetpython.org/
 //
 // =============================================================================
-// LITE MODE
+// INSTANCE MODE
 // =============================================================================
-// This config runs in lite mode. Lite mode features:
-// - Simple, read-only feed aggregation
-// - No semantic search (no Vectorize binding)
-// - No admin interface (no OAuth required)
+// Instance modes:
+//   "lite"  - Read-only aggregator. No search, no auth, no admin dashboard.
+//   "admin" - Adds OAuth + admin dashboard. No semantic search (no Vectorize/AI).
+//   "full"  - All features: search, admin, OAuth. Requires Vectorize + AI bindings.
 //
-// To DISABLE lite mode (upgrade to full mode):
-//   1. Change "INSTANCE_MODE": "full" or remove the variable
+// This config runs in admin mode (feed management + OAuth, no search).
+//
+// To upgrade from lite to admin:
+//   1. Change "INSTANCE_MODE": "admin"
+//   2. Set OAuth secrets (GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SESSION_SECRET)
+//   3. Redeploy
+//
+// To upgrade from admin to full:
+//   1. Change "INSTANCE_MODE": "full"
 //   2. Add vectorize binding (see examples/planet-cloudflare/)
-//   3. Add ai binding (see examples/planet-cloudflare/)
-//   4. Set GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SESSION_SECRET secrets
+//   3. Add AI binding
+//   4. Redeploy
 //
 // =============================================================================
 // QUICK DEPLOY (Recommended)
@@ -62,7 +69,7 @@
     "cpu_ms": 60000
   },
   "vars": {
-    "INSTANCE_MODE": "lite",
+    "INSTANCE_MODE": "admin",
     "PLANET_NAME": "Planet Python",
     "PLANET_DESCRIPTION": "Python community feed aggregator",
     "PLANET_URL": "https://planetpython.org",
