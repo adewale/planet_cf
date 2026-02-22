@@ -19,8 +19,8 @@ Planet CF supports configurable multi-instance deployment through the `examples/
 |---------|------|-------------|
 | `examples/default/` | lite | Minimal starting point, no search/auth |
 | `examples/planet-cloudflare/` | full | Full-featured with search and admin |
-| `examples/planet-python/` | admin | 500+ Python community feeds, no search/auth |
-| `examples/planet-mozilla/` | admin | ~190 Mozilla community feeds, no search/auth |
+| `examples/planet-python/` | admin | 500+ Python community feeds, admin UI, no search |
+| `examples/planet-mozilla/` | admin | ~190 Mozilla community feeds, admin UI, no search |
 | `examples/test-planet/` | full | Test instance for CI/E2E testing |
 
 ## Quick Start
