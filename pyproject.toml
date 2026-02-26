@@ -82,6 +82,9 @@ unknown-argument = "ignore"
 # as T | None. In lite deployment mode these bindings don't exist, so attribute
 # access looks unsafe to ty -- but the code handles None at runtime via mode checks.
 possibly-missing-attribute = "ignore"
+# The `js` module (Pyodide FFI) can't be resolved locally — its attributes
+# (js.Object, js.JSON) trigger unresolved-attribute even with allowed-unresolved-imports.
+unresolved-attribute = "ignore"
 # js.fetch (aliased as js_fetch) comes from Pyodide's `js` module, which only
 # resolves inside the Cloudflare Workers runtime. ty sees it as None during static
 # analysis since the `js` module isn't available locally, but it is always callable

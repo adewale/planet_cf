@@ -14,6 +14,10 @@ jobs:
 
       - uses: astral-sh/setup-uv@v5
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Install dependencies
         run: uv sync --extra test
 
@@ -26,6 +30,18 @@ jobs:
       - name: Format check
         run: uvx ruff format --check src/ tests/
 
+      - name: Dead code detection
+        run: uvx vulture src/ vulture_whitelist.py
+
+      - name: Secrets scan
+        run: uvx detect-secrets scan --baseline .secrets.baseline
+
+      - name: Dependency audit
+        run: uvx pip-audit --strict --desc || true  # Advisory — don't block on upstream CVEs
+
+      - name: Duplicate code detection
+        run: npx jscpd src/ --min-lines 10 --min-tokens 50 --threshold 5
+
       - name: Validate migrations against SQLite
         run: uv run pytest tests/unit/test_migration_schema.py -v --tb=short
 
@@ -35,8 +51,8 @@ jobs:
       - name: Integration tests
         run: uv run pytest tests/integration -v --tb=short
 
-      - name: Coverage report
-        run: uv run pytest tests/unit tests/integration --cov=src --cov-report=xml --cov-fail-under=60
+      - name: "Coverage report (floor: 80%)"
+        run: uv run pytest tests/unit tests/integration --cov=src --cov-report=xml --cov-fail-under=80
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4

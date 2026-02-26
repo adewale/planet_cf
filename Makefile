@@ -1,7 +1,8 @@
 # Makefile for Planet CF development tasks
 # Usage: make <target>
 
-.PHONY: test test-cov test-coverage lint vulture check fmt help
+.PHONY: test test-cov test-coverage lint vulture check check-all fmt help
+.PHONY: audit-deps audit-secrets audit-duplicates
 
 # Default target
 help: ## Show this help message
@@ -14,8 +15,8 @@ help: ## Show this help message
 test: ## Run tests normally (unit + integration)
 	uv run pytest tests/unit tests/integration -x -q
 
-test-cov: ## Run tests with coverage report (shows untested lines)
-	uv run pytest tests/unit tests/integration -x -q --cov=src --cov-report=term-missing
+test-cov: ## Run tests with coverage report and floor enforcement
+	uv run pytest tests/unit tests/integration -x -q --cov=src --cov-report=term-missing --cov-fail-under=80
 
 test-unit: ## Run only unit tests
 	uv run pytest tests/unit -x -q
@@ -23,7 +24,7 @@ test-unit: ## Run only unit tests
 test-integration: ## Run only integration tests
 	uv run pytest tests/integration -x -q
 
-test-coverage: ## Run tests with coverage report (no floor set)
+test-coverage: ## Run tests with coverage report (no floor)
 	uv run pytest tests/unit tests/integration --cov=src --cov-report=term-missing
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -41,6 +42,19 @@ fmt: ## Auto-format code with ruff
 
 vulture: ## Run dead code detection with vulture
 	uvx vulture src/ vulture_whitelist.py
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Security & Quality Audits
+# ─────────────────────────────────────────────────────────────────────────────
+
+audit-deps: ## Audit dependencies for known vulnerabilities (pip-audit)
+	uvx pip-audit --strict --desc
+
+audit-secrets: ## Scan for secrets (detect-secrets)
+	uvx detect-secrets scan --baseline .secrets.baseline
+
+audit-duplicates: ## Detect duplicate code blocks (jscpd)
+	npx jscpd src/ --min-lines 10 --min-tokens 50 --threshold 5
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Setup & Dependencies
@@ -83,11 +97,14 @@ verify: ## Verify deployed sites are working (pass URLs as SITES="url1 url2")
 	uv run python scripts/verify_deployment.py $(SITES)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Combined Targets
+# Combined Targets (Guardrails)
 # ─────────────────────────────────────────────────────────────────────────────
+# check:     Fast check — runs in seconds. Lint, format, types, dead code, unit tests.
+# check-all: Full suite — runs before commit. Everything in check + coverage floor +
+#            secrets scan + dependency audit + duplicate detection.
 
-check: lint vulture test ## Run full CI check (lint + vulture + test)
+check: lint vulture test ## Fast check (lint + types + dead code + tests)
 
-check-all: lint vulture test-cov ## Run full CI check with coverage
+check-all: lint vulture test-cov audit-secrets audit-deps audit-duplicates ## Full suite (fast check + coverage + secrets + deps + duplicates)
 
-pre-deploy: check validate ## Full pre-deployment check (lint + test + validate)
+pre-deploy: check-all validate ## Full pre-deployment check (full suite + validate)

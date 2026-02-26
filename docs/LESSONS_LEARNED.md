@@ -502,10 +502,91 @@ async def test_semantic_search_returns_results(client):
 | Search misses exact matches | Rank exact title matches first (score 1.0) |
 | Mock tests pass, prod fails | Add E2E tests against real infrastructure |
 | Query longer than title | Use bidirectional matching (title in query) |
+| E2E tests flaky/slow | Use synchronous fetch-now endpoint, not `asyncio.sleep` |
 
 ---
 
-## 17. Visual Fidelity: Converting Planet/Venus Sites
+## 17. Pyodide FFI Type-Compatibility Matrix
+
+**Problem:** Python and JavaScript have different type systems. When Python values cross the Pyodide FFI boundary into JavaScript (e.g., D1 `.bind()` params, Queue `.send()`, Vectorize `.upsert()`), some types convert cleanly while others cause subtle, hard-to-debug failures.
+
+**The critical gotchas:**
+
+### Python → JavaScript (Outbound)
+
+| Python Type | Becomes in JS | D1 `.bind()` | Queue `.send()` | Notes |
+|-------------|---------------|:------------:|:---------------:|-------|
+| `str` | `string` | OK | OK | |
+| `int` | `number` | OK | OK | |
+| `float` | `number` | OK | OK | |
+| `bool` | `boolean` | OK | OK | |
+| `None` | `undefined` | **BREAKS** | OK (as `undefined`) | D1 rejects `undefined`; use `JS_NULL` |
+| `dict` | `Map` | N/A | **Fails silently** | Use `to_js(d, dict_converter=Object.fromEntries)` |
+| `list` | `Array` | N/A | OK | Via `to_js()` |
+| `bytes` | `PyProxy` | **BREAKS** | **BREAKS** | Must decode to `str` first |
+| `datetime` | `PyProxy` | **BREAKS** | **BREAKS** | Must convert to ISO string first |
+
+### JavaScript → Python (Inbound)
+
+| JS Type | Arrives as in Python | `dict["key"]` | `.to_py()` | Notes |
+|---------|---------------------|:-------------:|:----------:|-------|
+| `Object` | `JsProxy` | **TypeError** | `dict` | Not subscriptable — must call `.to_py()` |
+| `Array` | `JsProxy` | **TypeError** | `list` | Not iterable as Python list |
+| `null` | `JsNull` | N/A | N/A | **NOT** Python `None`; `type(x).__name__ == "JsNull"` |
+| `undefined` | `JsUndefined` | N/A | N/A | **NOT** Python `None`; has `.typeof == "undefined"` |
+| `string` | `str` | N/A | N/A | Passes through cleanly |
+| `number` | `int`/`float` | N/A | N/A | Passes through cleanly |
+| `boolean` | `bool` | N/A | N/A | Passes through cleanly |
+| `ArrayBuffer` | `JsProxy` | N/A | `bytes` | Via `.to_bytes()` |
+
+### The JsNull Trap
+
+This is the most insidious gotcha. JavaScript `null` does **not** become Python `None`:
+
+```python
+# In Pyodide:
+result = await db.prepare("SELECT nullable_col FROM t").first()
+value = result.nullable_col  # This is JsNull, NOT None
+
+value is None          # False!
+isinstance(value, type(None))  # False!
+bool(value)            # False (it IS falsy)
+type(value).__name__   # "JsNull"
+```
+
+**Solution:** The boundary layer's `_is_js_undefined()` checks `type(x).__name__` for both `"JsUndefined"` and `"JsNull"`, and `_to_py_safe()` converts both to Python `None`.
+
+### The None→undefined Trap
+
+Python `None` becomes JavaScript `undefined`, **not** `null`. D1 rejects `undefined`:
+
+```python
+# ❌ BREAKS: D1_TYPE_ERROR: Type 'undefined' not supported
+await db.prepare("INSERT INTO t (a) VALUES (?)").bind(None).run()
+
+# ✅ WORKS: SafeD1Statement.bind() auto-converts via _to_d1_value()
+JS_NULL = js.JSON.parse("null")  # Proper JS null
+await safe_db.prepare("INSERT INTO t (a) VALUES (?)").bind(None).run()
+```
+
+### How Planet CF Handles Each Case
+
+| Boundary | Direction | Conversion Point | Handler |
+|----------|-----------|-----------------|---------|
+| D1 reads | JS→Python | `SafeD1Statement.first()` / `.all()` | `_to_py_safe()` + row factories |
+| D1 writes | Python→JS | `SafeD1Statement.bind()` | `_to_d1_value()` (None→`JS_NULL`) |
+| Queue reads | JS→Python | `queue()` handler | `_to_py_safe(message.body)` |
+| Queue writes | Python→JS | `SafeQueue.send()` | Pass-through (simple dicts cross OK) |
+| AI results | JS→Python | `SafeAI.run()` | `_to_py_safe()` |
+| AI inputs | Python→JS | `SafeAI.run()` | `_to_js_value()` |
+| Vectorize results | JS→Python | `SafeVectorize.query()` | `_to_py_safe()` |
+| Vectorize inputs | Python→JS | `SafeVectorize.upsert()` | `_to_js_value()` |
+| HTTP headers | JS→Python | `SafeHeaders` | `_safe_str()` |
+| Form data | JS→Python | `SafeFormData` | `_extract_form_value()` |
+
+---
+
+## 18. Visual Fidelity: Converting Planet/Venus Sites
 
 When converting an existing Planet or Venus website to PlanetCF, achieving 100% visual fidelity requires systematic attention to detail.
 
@@ -565,3 +646,42 @@ python scripts/convert_planet.py https://planetpython.org/ --name planet-python
 | Template text differs | Extract exact text from original |
 | THEME_LOGOS KeyError | Must include `url` key in config |
 | HTTP 500 after deploy | Verify assets actually load, check error logs |
+
+---
+
+## 19. Deterministic E2E Tests: Synchronous Endpoints Beat Sleep
+
+**Problem:** E2E tests that trigger asynchronous work (queue processing, reindexing) must wait for that work to complete before asserting. The common pattern is `asyncio.sleep()`:
+
+```python
+# ❌ BAD: Flaky and slow
+await client.post("/admin/regenerate", cookies=session)  # Enqueues feeds
+await asyncio.sleep(5)  # Hope it's done? Maybe not under load.
+response = await client.get("/")
+assert "expected entry" in response.text
+```
+
+**Why this fails:**
+- **Flaky:** 5 seconds is enough on your machine, not enough on CI, too much on fast machines
+- **Slow:** 13+ seconds of dead wait across 5 E2E test methods
+- **Opaque:** When a test fails, you can't tell if the assertion is wrong or the sleep was too short
+
+**Solution:** Add a synchronous "process-now" endpoint that runs the pipeline inline and returns the result:
+
+```python
+# ✅ GOOD: Deterministic and fast
+response = await client.post(
+    f"/admin/feeds/{feed_id}/fetch-now",
+    cookies=session,
+)
+result = response.json()
+assert result["ok"] is True
+assert result["entries_added"] > 0
+# Now assert on homepage — no sleep needed
+```
+
+**Implementation:** `POST /admin/feeds/{id}/fetch-now` runs `_process_single_feed` synchronously in the request handler, bypassing the queue entirely. The response includes `entries_added`, `entries_found`, and `status` — errors surface immediately instead of silently retrying in the queue.
+
+**Key insight:** The endpoint doesn't replace the queue for production use. It exists alongside it, specifically for testing and admin debugging. The queue handles batching, retries, and timeouts at scale; fetch-now handles "I need to know the result right now."
+
+**Caveat:** fetch-now only eliminates sleeps for *feed processing*. Vectorize indexing propagation still requires waiting — that's an external system with no synchronous API. The 3 remaining `asyncio.sleep(2)` calls in the E2E suite wait for Vectorize, not feed fetching.

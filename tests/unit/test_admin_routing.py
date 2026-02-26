@@ -252,6 +252,90 @@ class TestHandleAdminRouting:
         assert response.status == 200
 
     @pytest.mark.asyncio
+    async def test_post_fetch_now_routes_correctly(self):
+        """POST /admin/feeds/{id}/fetch-now routes to _fetch_feed_now."""
+        feeds = [
+            {
+                "id": 1,
+                "url": "https://example.com/feed.xml",
+                "title": "Example",
+                "is_active": 1,
+                "consecutive_failures": 0,
+                "etag": None,
+                "last_modified": None,
+            }
+        ]
+        worker, env, cookie = _make_authenticated_worker(feeds=feeds)
+        request = MockRequest(
+            url="https://planetcf.com/admin/feeds/1/fetch-now",
+            method="POST",
+            cookies=cookie,
+        )
+
+        response = await worker._handle_admin(request, "/admin/feeds/1/fetch-now")
+
+        # Will fail the actual fetch (no real HTTP), but should route correctly
+        # and return a JSON error (502) rather than 404
+        assert response.status != 404
+
+    @pytest.mark.asyncio
+    async def test_fetch_now_rejects_invalid_feed_id(self):
+        """POST /admin/feeds/abc/fetch-now returns 400 for invalid ID."""
+        worker, env, cookie = _make_authenticated_worker()
+        request = MockRequest(
+            url="https://planetcf.com/admin/feeds/abc/fetch-now",
+            method="POST",
+            cookies=cookie,
+        )
+
+        response = await worker._handle_admin(request, "/admin/feeds/abc/fetch-now")
+
+        assert response.status == 400
+
+    @pytest.mark.asyncio
+    async def test_fetch_now_returns_404_for_missing_feed(self):
+        """POST /admin/feeds/999/fetch-now returns 404 for nonexistent feed."""
+        worker, env, cookie = _make_authenticated_worker(feeds=[])
+        request = MockRequest(
+            url="https://planetcf.com/admin/feeds/999/fetch-now",
+            method="POST",
+            cookies=cookie,
+        )
+
+        response = await worker._handle_admin(request, "/admin/feeds/999/fetch-now")
+
+        assert response.status == 404
+        body = json.loads(response.body)
+        assert "not found" in body["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_fetch_now_rejects_inactive_feed(self):
+        """POST /admin/feeds/{id}/fetch-now returns 400 for inactive feed."""
+        feeds = [
+            {
+                "id": 1,
+                "url": "https://example.com/feed.xml",
+                "title": "Inactive",
+                "is_active": 0,
+                "consecutive_failures": 5,
+                "etag": None,
+                "last_modified": None,
+            }
+        ]
+        worker, env, cookie = _make_authenticated_worker(feeds=feeds)
+        request = MockRequest(
+            url="https://planetcf.com/admin/feeds/1/fetch-now",
+            method="POST",
+            cookies=cookie,
+        )
+
+        response = await worker._handle_admin(request, "/admin/feeds/1/fetch-now")
+
+        assert response.status == 400
+        body = json.loads(response.body)
+        assert "not active" in body["error"].lower()
+
+    @pytest.mark.asyncio
     async def test_unknown_admin_path_returns_404(self):
         """Unknown admin path returns 404."""
         worker, env, cookie = _make_authenticated_worker()

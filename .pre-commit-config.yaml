@@ -36,6 +36,14 @@ repos:
         types_or: [python]
         pass_filenames: false
 
+  # Secrets scanning (replaces basic detect-private-key with full scanner)
+  # Baseline: .secrets.baseline (generated with: uvx detect-secrets scan > .secrets.baseline)
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+
   # Basic file hygiene
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
@@ -48,4 +56,3 @@ repos:
       - id: check-added-large-files
         args: ['--maxkb=500']
       - id: check-merge-conflict
-      - id: detect-private-key

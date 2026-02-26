@@ -16,9 +16,9 @@ import hashlib
 import hmac
 import json
 import os
-import socket
 import time
 
+import httpx
 import pytest
 
 # =============================================================================
@@ -37,40 +37,46 @@ E2E_SESSION_SECRET = os.environ.get(
 #: Test admin username - MUST be seeded in the test-planet database
 E2E_ADMIN_USERNAME = os.environ.get("E2E_ADMIN_USERNAME", "testadmin")
 
+#: Service identifier the /health endpoint must return to confirm this is Planet CF
+EXPECTED_SERVICE = "planetcf"
+
 
 # =============================================================================
 # Server Connectivity
 # =============================================================================
 
-
-def _parse_host_port(url: str) -> tuple[str, int]:
-    """Extract host and port from a URL."""
-    stripped = url.replace("http://", "").replace("https://", "")
-    if ":" in stripped:
-        host, port_str = stripped.split(":", 1)
-        return host, int(port_str.split("/")[0])
-    host = stripped.split("/")[0]
-    return host, 443 if url.startswith("https") else 80
+#: Health endpoint used to verify the correct app is responding
+E2E_HEALTH_URL = f"{E2E_BASE_URL}/health"
 
 
-def is_server_running() -> bool:
-    """Check if the E2E test server is reachable."""
-    host, port = _parse_host_port(E2E_BASE_URL)
+def is_planetcf_running(base_url: str = E2E_BASE_URL, timeout: float = 10) -> bool:
+    """Check if a Planet CF instance is running at the given URL.
+
+    Makes an HTTP GET to /health and verifies:
+    1. HTTP 200
+    2. Valid JSON
+    3. ``"service": "planetcf"`` — confirms identity, not just "something is listening"
+
+    This is the single source of truth for server detection.  All test
+    skip-guards must call this function rather than implementing their own
+    socket or HTTP checks.
+    """
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(2)
-        result = sock.connect_ex((host, port))
-        sock.close()
-        return result == 0
-    except OSError:
+        resp = httpx.get(f"{base_url}/health", timeout=timeout)
+        if resp.status_code != 200:
+            return False
+        data = resp.json()
+        return data.get("service") == EXPECTED_SERVICE
+    except (httpx.HTTPError, ValueError):
         return False
 
 
 #: Marker to skip tests when the server is not running
 requires_server = pytest.mark.skipif(
-    not is_server_running(),
+    not is_planetcf_running(),
     reason=(
-        f"E2E server not running at {E2E_BASE_URL}. "
+        f"Planet CF not responding at {E2E_HEALTH_URL} "
+        f"(expected JSON with service={EXPECTED_SERVICE!r}). "
         "Start with: npx wrangler dev --remote --config examples/test-planet/wrangler.jsonc"
     ),
 )

@@ -857,3 +857,184 @@ class TestFeedBindValues:
         result = feed_bind_values(None, None, None, None, None, None, 1)
         assert result[0] is None
         assert result[1] is None
+
+
+# =============================================================================
+# JsNullMock Tests
+# =============================================================================
+
+
+class TestJsNullMock:
+    """Tests for JsNullMock - simulates Pyodide's JsNull type."""
+
+    def test_type_name_is_jsnull(self):
+        """type(x).__name__ must be 'JsNull' to match Pyodide behavior."""
+        from tests.mocks.jsproxy import JsNullMock
+
+        js_null = JsNullMock()
+        assert type(js_null).__name__ == "JsNull"
+
+    def test_is_falsy(self):
+        """JsNull is falsy, like JavaScript null."""
+        from tests.mocks.jsproxy import JsNullMock
+
+        assert not JsNullMock()
+        assert bool(JsNullMock()) is False
+
+    def test_is_not_none(self):
+        """JsNull is NOT Python None - this is the key gotcha."""
+        from tests.mocks.jsproxy import JsNullMock
+
+        js_null = JsNullMock()
+        assert js_null is not None
+        # isinstance check that would miss it in production
+        assert not isinstance(js_null, type(None))
+
+    def test_wrap_as_jsproxy_converts_none_to_jsnull(self):
+        """wrap_as_jsproxy(None) returns JsNullMock, simulating the FFI boundary."""
+        from tests.mocks.jsproxy import JsNullMock, wrap_as_jsproxy
+
+        result = wrap_as_jsproxy(None)
+        assert isinstance(result, JsNullMock)
+        assert type(result).__name__ == "JsNull"
+
+    def test_feed_row_handles_jsnull_field(self, monkeypatch):
+        """Row factories handle JsNull values in fields gracefully."""
+        import src.wrappers as wrappers_mod
+        from tests.mocks.jsproxy import JsNullMock
+
+        monkeypatch.setattr(wrappers_mod, "HAS_PYODIDE", True)
+        row = {"id": 1, "url": "https://example.com/feed.xml", "title": JsNullMock()}
+        result = feed_row_from_js(row)
+        assert result["title"] is None
+
+
+# =============================================================================
+# Branch Coverage Tests for wrappers.py
+# =============================================================================
+
+
+class TestToPyListFallbackBranches:
+    """Tests for _to_py_list fallback paths (lines 217-220)."""
+
+    def test_to_py_list_fallback_iteration_with_items(self):
+        """_to_py_list falls back to iteration when input is not list and has no to_py()."""
+        from src.wrappers import _to_py_list
+
+        # Create an iterable that is NOT a list and has no to_py()
+        # FakeRow must be a proper mapping (keys() + __getitem__) for dict() to work
+        class FakeRow:
+            def __init__(self):
+                self._data = {"id": 1, "name": "test"}
+
+            def items(self):
+                return self._data.items()
+
+            def keys(self):
+                return self._data.keys()
+
+            def __getitem__(self, key):
+                return self._data[key]
+
+        class FakeArray:
+            def __iter__(self):
+                return iter([FakeRow()])
+
+        result = _to_py_list(FakeArray())
+        assert len(result) == 1
+        assert result[0] == {"id": 1, "name": "test"}
+
+    def test_to_py_list_exception_falls_back_to_list(self):
+        """_to_py_list returns list(js_array) when iteration raises in comprehension."""
+        from src.wrappers import _to_py_list
+
+        # Create an iterable where the comprehension body fails
+        # (no .items() and no .to_py()), but list() works
+        class SimpleItem:
+            pass
+
+        class FakeArray:
+            def __init__(self):
+                self._items = ["a", "b", "c"]
+
+            def __iter__(self):
+                return iter(self._items)
+
+        result = _to_py_list(FakeArray())
+        # The comprehension will fail because strings have no .items() or .to_py()
+        # Falls back to list(js_array)
+        assert result == ["a", "b", "c"]
+
+
+class TestExtractFormValueException:
+    """Tests for _extract_form_value exception branch (line 195-196)."""
+
+    def test_extract_form_value_exception_returns_none(self):
+        """_extract_form_value returns None when form.get() raises."""
+        from src.wrappers import _extract_form_value
+
+        class BrokenForm:
+            def get(self, key):
+                raise RuntimeError("broken form data")
+
+        result = _extract_form_value(BrokenForm(), "any_key")
+        assert result is None
+
+
+class TestToPySafeEdgeCases:
+    """Tests for _to_py_safe edge case branches."""
+
+    def test_numeric_string_object_converted_to_int(self):
+        """Object whose str() is all digits gets converted to int (line 153-154)."""
+        from src.wrappers import _to_py_safe
+
+        class NumericThing:
+            def __str__(self):
+                return "42"
+
+        result = _to_py_safe(NumericThing())
+        assert result == 42
+        assert isinstance(result, int)
+
+    def test_non_numeric_string_object_returned_as_str(self):
+        """Object whose str() is not all digits is returned as string (line 155)."""
+        from src.wrappers import _to_py_safe
+
+        class StringThing:
+            def __str__(self):
+                return "hello"
+
+        result = _to_py_safe(StringThing())
+        assert result == "hello"
+
+    def test_string_123_passes_through_as_string(self):
+        """Python string '123' passes through as string, not converted to int."""
+        from src.wrappers import _to_py_safe
+
+        # Strings hit the isinstance(value, str) branch early
+        result = _to_py_safe("123")
+        assert result == "123"
+        assert isinstance(result, str)
+
+    def test_js_undefined_converts_to_none(self, monkeypatch):
+        """JsUndefined-like object converts to None."""
+        import src.wrappers as wrappers_mod
+        from src.wrappers import _to_py_safe
+
+        monkeypatch.setattr(wrappers_mod, "HAS_PYODIDE", True)
+
+        class FakeJsUndefined:
+            pass
+
+        FakeJsUndefined.__name__ = "JsUndefined"
+        FakeJsUndefined.__qualname__ = "JsUndefined"
+
+        result = _to_py_safe(FakeJsUndefined())
+        assert result is None
+
+    def test_max_depth_returns_value_unchanged(self):
+        """Exceeding max conversion depth returns value as-is."""
+        from src.wrappers import _MAX_CONVERSION_DEPTH, _to_py_safe
+
+        result = _to_py_safe({"key": "val"}, _depth=_MAX_CONVERSION_DEPTH)
+        assert result == {"key": "val"}

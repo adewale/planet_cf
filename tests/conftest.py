@@ -48,7 +48,14 @@ class MockWorkerEntrypoint:
 
 
 class MockRequest:
-    """Mock Cloudflare Workers Request object."""
+    """Mock Cloudflare Workers Request object.
+
+    Supports two modes:
+    - Simple mode: headers as a plain dict (for tests using direct header access)
+    - Full mode: cookies/form_data/json_data with MagicMock headers (for admin/auth tests)
+
+    Full mode is activated automatically when cookies, form_data, or json_data are provided.
+    """
 
     def __init__(
         self,
@@ -56,15 +63,35 @@ class MockRequest:
         method: str = "GET",
         headers: dict | None = None,
         body: str | bytes | None = None,
+        cookies: str = "",
+        form_data: dict | None = None,
+        json_data: dict | None = None,
     ):
+        from unittest.mock import MagicMock
+
         self.url = url
         self.method = method
-        self._headers = headers or {}
         self._body = body
+        self._cookies = cookies
+        self._form_data = form_data or {}
+        self._json_data = json_data or {}
 
-    @property
-    def headers(self) -> dict:
-        return self._headers
+        # Use MagicMock headers with side_effect for cookie/header lookups
+        # (compatible with SafeHeaders which calls headers.get())
+        self.headers = MagicMock()
+        # Merge explicit headers with cookie header
+        self._raw_headers = headers or {}
+        self.headers.get = MagicMock(side_effect=self._get_header)
+
+    def _get_header(self, name, default=None):
+        # Check explicit headers first (case-insensitive)
+        for key, val in self._raw_headers.items():
+            if key.lower() == name.lower():
+                return val
+        # Then check cookie
+        if name.lower() == "cookie":
+            return self._cookies
+        return default
 
     async def text(self) -> str:
         if isinstance(self._body, bytes):
@@ -74,7 +101,19 @@ class MockRequest:
     async def json(self) -> Any:
         import json
 
-        return json.loads(await self.text())
+        return self._json_data or json.loads(await self.text())
+
+    async def form_data(self):
+        """Workers Python SDK uses snake_case form_data(), not formData()."""
+
+        class _FormData:
+            def __init__(self, data):
+                self._data = data
+
+            def get(self, key, default=None):
+                return self._data.get(key, default)
+
+        return _FormData(self._form_data)
 
 
 # Create mock workers module

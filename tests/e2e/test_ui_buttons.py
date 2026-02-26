@@ -19,6 +19,9 @@ from tests.e2e.conftest import E2E_BASE_URL as BASE_URL
 from tests.e2e.conftest import create_test_session
 from tests.integration.conftest import requires_wrangler
 
+# Pyodide cold starts can take 7-8s; default httpx 5s timeout is insufficient
+DEFAULT_TIMEOUT = 30.0
+
 
 @requires_wrangler
 class TestPublicUI:
@@ -31,7 +34,7 @@ class TestPublicUI:
         Note: In local dev, Vectorize is not supported so search may fail.
         In production, this endpoint uses Vectorize for semantic search.
         """
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             response = await client.get(f"{BASE_URL}/search?q=test")
             # Accept 200 (success) or 500 (Vectorize not available locally)
             assert response.status_code in [200, 500]
@@ -41,7 +44,7 @@ class TestPublicUI:
     @pytest.mark.asyncio
     async def test_search_form_submit_empty_query(self):
         """Search form: Empty query should return search page with guidance."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             response = await client.get(f"{BASE_URL}/search")
             # Returns 200 with search page showing "query required" message
             assert response.status_code == 200
@@ -50,7 +53,7 @@ class TestPublicUI:
     @pytest.mark.asyncio
     async def test_atom_feed_link(self):
         """Atom feed link: GET /feed.atom should return valid Atom XML."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             response = await client.get(f"{BASE_URL}/feed.atom")
             assert response.status_code == 200
             assert "application/atom+xml" in response.headers.get("content-type", "")
@@ -60,7 +63,7 @@ class TestPublicUI:
     @pytest.mark.asyncio
     async def test_rss_feed_link(self):
         """RSS feed link: GET /feed.rss should return valid RSS XML."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             response = await client.get(f"{BASE_URL}/feed.rss")
             assert response.status_code == 200
             assert "application/rss+xml" in response.headers.get("content-type", "")
@@ -69,7 +72,7 @@ class TestPublicUI:
     @pytest.mark.asyncio
     async def test_opml_export_link(self):
         """OPML link: GET /feeds.opml should return valid OPML XML."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             response = await client.get(f"{BASE_URL}/feeds.opml")
             assert response.status_code == 200
             # Accept either text/x-opml or application/xml (both are valid for OPML)
@@ -85,7 +88,7 @@ class TestAdminAuth:
     @pytest.mark.asyncio
     async def test_github_login_button_redirects(self):
         """GitHub Login: GET /auth/github should redirect to GitHub."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             response = await client.get(f"{BASE_URL}/auth/github", follow_redirects=False)
             assert response.status_code == 302
             location = response.headers.get("location", "")
@@ -94,7 +97,7 @@ class TestAdminAuth:
     @pytest.mark.asyncio
     async def test_admin_page_without_session_shows_login(self):
         """Admin page without session should show login page."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             response = await client.get(f"{BASE_URL}/admin")
             assert response.status_code == 200
             assert "Login" in response.text or "GitHub" in response.text
@@ -102,7 +105,7 @@ class TestAdminAuth:
     @pytest.mark.asyncio
     async def test_admin_page_with_valid_session_shows_dashboard(self):
         """Admin page with valid session should show dashboard."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             session = create_test_session()
             response = await client.get(
                 f"{BASE_URL}/admin", headers={"Cookie": f"session={session}"}
@@ -114,7 +117,7 @@ class TestAdminAuth:
     @pytest.mark.asyncio
     async def test_logout_button_clears_session(self):
         """Logout: POST /admin/logout should clear session and redirect."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             session = create_test_session()
             response = await client.post(
                 f"{BASE_URL}/admin/logout",
@@ -146,7 +149,7 @@ class TestFeedManagement:
         # Use Hacker News RSS which is stable and reliable
         test_url = "https://hnrss.org/frontpage"
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             response = await client.post(
                 f"{BASE_URL}/admin/feeds",
                 data={"url": test_url},
@@ -180,7 +183,7 @@ class TestFeedManagement:
     @pytest.mark.asyncio
     async def test_add_feed_with_invalid_url(self, session_cookie):
         """Add Feed: Should reject unsafe/invalid URLs."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             response = await client.post(
                 f"{BASE_URL}/admin/feeds",
                 data={"url": "http://169.254.169.254/metadata", "title": "Bad Feed"},
@@ -194,7 +197,7 @@ class TestFeedManagement:
     @pytest.mark.asyncio
     async def test_add_feed_without_url(self, session_cookie):
         """Add Feed: Should require URL."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             response = await client.post(
                 f"{BASE_URL}/admin/feeds",
                 data={"title": "No URL Feed"},
@@ -263,7 +266,7 @@ class TestFeedManagement:
     @pytest.mark.asyncio
     async def test_toggle_feed_button(self, session_cookie):
         """Toggle Feed: PUT /admin/feeds/{id} should enable/disable feed."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             # Get feeds list
             feeds_response = await client.get(
                 f"{BASE_URL}/admin/feeds",
@@ -314,7 +317,7 @@ class TestImportOPML:
     </body>
 </opml>"""
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             files = {"opml": ("feeds.opml", opml_content, "text/x-opml")}
             response = await client.post(
                 f"{BASE_URL}/admin/import-opml",
@@ -328,7 +331,7 @@ class TestImportOPML:
     @pytest.mark.asyncio
     async def test_import_opml_without_file(self, session_cookie):
         """Import OPML: Should require file upload."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             response = await client.post(
                 f"{BASE_URL}/admin/import-opml",
                 headers={"Cookie": f"session={session_cookie}"},
@@ -349,7 +352,7 @@ class TestRefreshFeeds:
     @pytest.mark.asyncio
     async def test_refresh_all_feeds_button(self, session_cookie):
         """Refresh All: POST /admin/regenerate should trigger feed refresh."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 f"{BASE_URL}/admin/regenerate",
                 headers={"Cookie": f"session={session_cookie}"},
@@ -370,7 +373,7 @@ class TestDLQ:
     @pytest.mark.asyncio
     async def test_dlq_list_loads(self, session_cookie):
         """DLQ Tab: GET /admin/dlq should return list of failed feeds."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             response = await client.get(
                 f"{BASE_URL}/admin/dlq",
                 headers={"Cookie": f"session={session_cookie}"},
@@ -383,7 +386,7 @@ class TestDLQ:
     @pytest.mark.asyncio
     async def test_retry_dlq_button_invalid_id(self, session_cookie):
         """Retry DLQ: POST /admin/dlq/{id}/retry with invalid ID should return error."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             response = await client.post(
                 f"{BASE_URL}/admin/dlq/99999/retry",
                 headers={"Cookie": f"session={session_cookie}"},
@@ -404,7 +407,7 @@ class TestAuditLog:
     @pytest.mark.asyncio
     async def test_audit_log_loads(self, session_cookie):
         """Audit Tab: GET /admin/audit should return audit log entries."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             response = await client.get(
                 f"{BASE_URL}/admin/audit",
                 headers={"Cookie": f"session={session_cookie}"},
@@ -426,7 +429,7 @@ class TestFeedList:
     @pytest.mark.asyncio
     async def test_feeds_list_api(self, session_cookie):
         """Feeds List: GET /admin/feeds should return JSON list of feeds."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             response = await client.get(
                 f"{BASE_URL}/admin/feeds",
                 headers={"Cookie": f"session={session_cookie}"},

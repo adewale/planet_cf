@@ -1,29 +1,21 @@
 # tests/integration/conftest.py
-"""Integration test configuration and fixtures."""
+"""Integration test configuration and fixtures.
 
-import socket
+Server detection delegates to the canonical ``is_planetcf_running()`` in
+``tests.e2e.conftest`` so there is exactly one implementation to maintain.
+"""
 
 import pytest
 
-# Configuration for e2e tests that require a running wrangler server
-WRANGLER_HOST = "localhost"
-WRANGLER_PORT = 8787
+from tests.e2e.conftest import E2E_BASE_URL, is_planetcf_running
 
-
-def is_wrangler_running() -> bool:
-    """Check if wrangler dev server is running on localhost:8787."""
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(1)
-        result = sock.connect_ex((WRANGLER_HOST, WRANGLER_PORT))
-        sock.close()
-        return result == 0
-    except OSError:
-        return False
-
+WRANGLER_BASE_URL = E2E_BASE_URL
 
 # Skip marker for tests requiring wrangler server
 requires_wrangler = pytest.mark.skipif(
-    not is_wrangler_running(),
-    reason=f"Wrangler dev server not running on {WRANGLER_HOST}:{WRANGLER_PORT}",
+    not is_planetcf_running(WRANGLER_BASE_URL),
+    reason=(
+        f"Planet CF not responding at {WRANGLER_BASE_URL}/health "
+        "(expected JSON with service='planetcf')"
+    ),
 )

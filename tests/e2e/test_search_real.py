@@ -27,27 +27,14 @@ import uuid
 import httpx
 import pytest
 
-from tests.e2e.conftest import E2E_BASE_URL, create_test_session
+from tests.e2e.conftest import E2E_BASE_URL, create_test_session, requires_server
 
+# Pyodide cold starts can take 7-8s; default httpx 5s timeout is insufficient
+DEFAULT_TIMEOUT = 30.0
 
-async def _is_server_running() -> bool:
-    """Check if wrangler dev server is running."""
-    try:
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            response = await client.get(f"{E2E_BASE_URL}/")
-            return response.status_code == 200
-    except (httpx.ConnectError, httpx.TimeoutException):
-        return False
-
-
-@pytest.fixture
-async def require_server():
-    """Skip test if wrangler dev is not running."""
-    if not await _is_server_running():
-        pytest.skip(
-            f"Wrangler dev server not running at {E2E_BASE_URL}. "
-            "Start with: npx wrangler dev --remote --config examples/test-planet/wrangler.jsonc"
-        )
+# Use the shared requires_server marker from conftest which checks /health
+# returns valid JSON (not just socket connectivity on the port).
+pytestmark = requires_server
 
 
 @pytest.fixture
@@ -67,7 +54,7 @@ class TestSearchWithRealInfrastructure:
     """
 
     @pytest.mark.asyncio
-    async def test_reindex_and_search(self, require_server, admin_session):
+    async def test_reindex_and_search(self, admin_session):
         """
         E2E test: Trigger reindex, then search for existing content.
 
@@ -128,7 +115,7 @@ class TestSearchWithRealInfrastructure:
             pytest.skip("No search results found for common terms - entries may not be indexed yet")
 
     @pytest.mark.asyncio
-    async def test_search_with_unique_word(self, require_server, admin_session):
+    async def test_search_with_unique_word(self, admin_session):
         """
         E2E test: Create entry with unique word, reindex, search for it.
 
@@ -197,7 +184,7 @@ class TestSearchWithRealInfrastructure:
             print("   Search endpoint is functional")
 
     @pytest.mark.asyncio
-    async def test_vectorize_embedding_pipeline(self, require_server, admin_session):
+    async def test_vectorize_embedding_pipeline(self, admin_session):
         """
         E2E test: Verify the embedding generation and Vectorize storage works.
 
@@ -259,7 +246,7 @@ class TestSearchWithDataCreation:
     """
 
     @pytest.mark.asyncio
-    async def test_full_e2e_add_feed_reindex_search_cleanup(self, require_server, admin_session):
+    async def test_full_e2e_add_feed_reindex_search_cleanup(self, admin_session):
         """
         Complete E2E test with cleanup:
         1. Add a test feed
@@ -304,17 +291,38 @@ class TestSearchWithDataCreation:
                         created_feed_id = int(match.group(1))
                         print(f"   Found feed ID: {created_feed_id}")
 
-                # Step 2: Trigger feed fetch
-                print("\n2. Triggering feed fetch...")
-                await client.post(
-                    f"{E2E_BASE_URL}/admin/regenerate",
-                    cookies=admin_session,
-                    follow_redirects=False,
-                )
-
-                # Wait for queue processing
-                print("   Waiting for queue processing...")
-                await asyncio.sleep(5)
+                # Step 2: Fetch feed synchronously (no queue, no sleep)
+                print("\n2. Fetching feed synchronously...")
+                if created_feed_id:
+                    fetch_response = await client.post(
+                        f"{E2E_BASE_URL}/admin/feeds/{created_feed_id}/fetch-now",
+                        cookies=admin_session,
+                    )
+                    if fetch_response.status_code == 200:
+                        fetch_result = fetch_response.json()
+                        print(
+                            f"   Fetched: {fetch_result.get('entries_added', 0)} entries added, "
+                            f"{fetch_result.get('entries_found', 0)} found"
+                        )
+                    else:
+                        print(
+                            f"   fetch-now returned {fetch_response.status_code}, "
+                            f"falling back to queue..."
+                        )
+                        await client.post(
+                            f"{E2E_BASE_URL}/admin/regenerate",
+                            cookies=admin_session,
+                            follow_redirects=False,
+                        )
+                        await asyncio.sleep(5)
+                else:
+                    # No feed ID found, fall back to queue-based fetch
+                    await client.post(
+                        f"{E2E_BASE_URL}/admin/regenerate",
+                        cookies=admin_session,
+                        follow_redirects=False,
+                    )
+                    await asyncio.sleep(5)
 
                 # Step 3: Reindex for search
                 print("\n3. Reindexing entries...")
@@ -385,9 +393,9 @@ class TestSearchEdgeCases:
     """Edge case tests that require real infrastructure."""
 
     @pytest.mark.asyncio
-    async def test_empty_query_handling(self, require_server):
+    async def test_empty_query_handling(self):
         """Test that empty/short queries are handled gracefully."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             # Empty query
             response = await client.get(f"{E2E_BASE_URL}/search", params={"q": ""})
             assert response.status_code in [200, 400]
@@ -401,9 +409,9 @@ class TestSearchEdgeCases:
                 assert "too short" in text_lower or "at least 2 characters" in text_lower
 
     @pytest.mark.asyncio
-    async def test_long_query_handling(self, require_server):
+    async def test_long_query_handling(self):
         """Test that very long queries are handled gracefully."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             # Very long query
             long_query = "test " * 500
             response = await client.get(
@@ -414,9 +422,9 @@ class TestSearchEdgeCases:
             assert response.status_code in [200, 400]
 
     @pytest.mark.asyncio
-    async def test_special_characters_in_query(self, require_server):
+    async def test_special_characters_in_query(self):
         """Test that special characters don't break search."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             special_queries = [
                 "test & query",
                 "test <script>alert(1)</script>",

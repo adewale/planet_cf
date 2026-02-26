@@ -1,51 +1,9 @@
 # tests/integration/test_http.py
 """Integration tests for HTTP endpoint handling."""
 
-from unittest.mock import MagicMock
-
 import pytest
 
-
-class MockFormData:
-    """Mock form data that behaves like a dict."""
-
-    def __init__(self, data: dict):
-        self._data = data
-
-    def get(self, key, default=None):
-        return self._data.get(key, default)
-
-
-class MockRequest:
-    """Mock HTTP request object matching Cloudflare Workers Python SDK."""
-
-    def __init__(
-        self,
-        url: str,
-        method: str = "GET",
-        cookies: str = "",
-        form_data: dict | None = None,
-        json_data: dict | None = None,
-    ):
-        self.url = url
-        self.method = method
-        self._cookies = cookies
-        self._form_data = form_data or {}
-        self._json_data = json_data or {}
-        self.headers = MagicMock()
-        self.headers.get = MagicMock(side_effect=self._get_header)
-
-    def _get_header(self, name, default=None):
-        if name.lower() == "cookie":
-            return self._cookies
-        return default
-
-    async def form_data(self):
-        """Workers Python SDK uses snake_case form_data(), not formData()."""
-        return MockFormData(self._form_data)
-
-    async def json(self):
-        return self._json_data
+from tests.conftest import MockRequest
 
 
 @pytest.mark.asyncio
@@ -532,3 +490,214 @@ async def test_homepage_shows_normal_author(mock_env):
     assert "Another Blog Post Title" in response.body, "Entry should be displayed"
     # Normal author name should appear
     assert "John Doe" in response.body, "Normal author name should be shown"
+
+
+# =============================================================================
+# Phase 2: Missing Route Coverage
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_get_titles_returns_html(mock_env_with_entries):
+    """GET /titles returns 200 with HTML content."""
+    from src.main import PlanetCF
+
+    worker = PlanetCF()
+    worker.env = mock_env_with_entries
+
+    request = MockRequest("https://planetcf.com/titles")
+    response = await worker.fetch(request)
+
+    assert response.status == 200
+    assert "text/html" in response.headers.get("Content-Type", "")
+
+
+@pytest.mark.asyncio
+async def test_get_foafroll_returns_xml(mock_env_with_feeds):
+    """GET /foafroll.xml returns 200 with RDF/XML content."""
+    from src.main import PlanetCF
+
+    worker = PlanetCF()
+    worker.env = mock_env_with_feeds
+
+    request = MockRequest("https://planetcf.com/foafroll.xml")
+    response = await worker.fetch(request)
+
+    assert response.status == 200
+    assert "application/rdf+xml" in response.headers.get("Content-Type", "")
+
+
+@pytest.mark.asyncio
+async def test_get_health_returns_json(mock_env_with_feeds):
+    """GET /health returns 200 with JSON health status."""
+    from src.main import PlanetCF
+
+    worker = PlanetCF()
+    worker.env = mock_env_with_feeds
+
+    request = MockRequest("https://planetcf.com/health")
+    response = await worker.fetch(request)
+
+    assert response.status == 200
+    assert "application/json" in response.headers.get("Content-Type", "")
+    import json
+
+    data = json.loads(response.body)
+    assert data["service"] == "planetcf"
+    assert data["status"] in ("healthy", "degraded", "unhealthy")
+
+
+@pytest.mark.asyncio
+async def test_get_auth_github_redirects(mock_env):
+    """GET /auth/github returns 302 redirect to GitHub OAuth."""
+    from src.main import PlanetCF
+
+    worker = PlanetCF()
+    worker.env = mock_env
+
+    request = MockRequest("https://planetcf.com/auth/github")
+    response = await worker.fetch(request)
+
+    assert response.status == 302
+    location = response.headers.get("Location", "")
+    assert "github.com/login/oauth/authorize" in location
+    assert "client_id=" in location
+
+
+@pytest.mark.asyncio
+async def test_get_auth_github_callback_without_code(mock_env_with_admins):
+    """GET /auth/github/callback without code param returns error."""
+    from src.main import PlanetCF
+
+    worker = PlanetCF()
+    worker.env = mock_env_with_admins
+
+    request = MockRequest("https://planetcf.com/auth/github/callback")
+    response = await worker.fetch(request)
+
+    # Should return an error (400 or 200 with error content), not 302 redirect to admin
+    assert response.status != 302
+
+
+@pytest.mark.asyncio
+async def test_get_auth_github_callback_with_invalid_state(mock_env_with_admins):
+    """GET /auth/github/callback with invalid state returns error."""
+    from src.main import PlanetCF
+
+    worker = PlanetCF()
+    worker.env = mock_env_with_admins
+
+    request = MockRequest(
+        "https://planetcf.com/auth/github/callback?code=fake&state=invalid",
+        cookies="oauth_state=different_state",
+    )
+    response = await worker.fetch(request)
+
+    # Should fail state validation — not redirect to admin
+    assert response.status != 302 or "/admin" not in response.headers.get("Location", "")
+
+
+# =============================================================================
+# Phase 3: Security Boundary Tests
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_unauthenticated_post_admin_feeds_rejected(mock_env_with_admins):
+    """POST /admin/feeds without session shows login page, not mutation."""
+    from src.main import PlanetCF
+
+    worker = PlanetCF()
+    worker.env = mock_env_with_admins
+
+    request = MockRequest(
+        url="https://planetcf.com/admin/feeds",
+        method="POST",
+        form_data={"url": "https://evil.com/feed.xml"},
+    )
+    response = await worker.fetch(request)
+
+    # Should show login page or reject — NOT perform the mutation
+    assert response.status in (200, 401, 403)
+    if response.status == 200:
+        assert "Sign in" in response.body or "login" in response.body.lower()
+
+
+@pytest.mark.asyncio
+async def test_unauthenticated_delete_admin_feed_rejected(mock_env_with_admins):
+    """DELETE /admin/feeds/1 without session shows login page, not mutation."""
+    from src.main import PlanetCF
+
+    worker = PlanetCF()
+    worker.env = mock_env_with_admins
+
+    request = MockRequest(
+        url="https://planetcf.com/admin/feeds/1",
+        method="DELETE",
+    )
+    response = await worker.fetch(request)
+
+    # Should show login page or reject — NOT delete the feed
+    assert response.status in (200, 401, 403)
+    if response.status == 200:
+        assert "Sign in" in response.body or "login" in response.body.lower()
+
+
+@pytest.mark.asyncio
+async def test_expired_session_shows_login(mock_env_with_admins):
+    """Expired session cookie shows login page instead of admin dashboard."""
+    import base64
+    import hashlib
+    import hmac
+    import json
+    import time
+
+    from src.main import PlanetCF
+
+    worker = PlanetCF()
+    worker.env = mock_env_with_admins
+
+    # Create expired session (1 hour ago, well past grace period)
+    payload = {
+        "github_username": "testadmin",
+        "github_id": 12345,
+        "avatar_url": None,
+        "exp": int(time.time()) - 3600,
+    }
+    payload_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
+    sig = hmac.new(
+        mock_env_with_admins.SESSION_SECRET.encode(), payload_b64.encode(), hashlib.sha256
+    ).hexdigest()
+    expired_cookie = f"session={payload_b64}.{sig}"
+
+    request = MockRequest(
+        url="https://planetcf.com/admin",
+        cookies=expired_cookie,
+    )
+    response = await worker.fetch(request)
+
+    assert response.status == 200
+    assert "Sign in" in response.body or "login" in response.body.lower()
+
+
+@pytest.mark.asyncio
+async def test_tampered_session_signature_shows_login(mock_env_with_admins):
+    """Session with tampered signature shows login page."""
+    from src.main import PlanetCF
+
+    worker = PlanetCF()
+    worker.env = mock_env_with_admins
+
+    # Create valid session then tamper with signature
+    valid_cookie = _create_signed_session(mock_env_with_admins)
+    # Corrupt the signature (last 10 chars)
+    tampered = valid_cookie[:-10] + "x" * 10
+
+    request = MockRequest(
+        url="https://planetcf.com/admin",
+        cookies=tampered,
+    )
+    response = await worker.fetch(request)
+
+    assert response.status == 200
+    assert "Sign in" in response.body or "login" in response.body.lower()

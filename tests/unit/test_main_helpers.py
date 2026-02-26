@@ -59,6 +59,28 @@ class TestIsJsUndefined:
         """Empty string is not undefined."""
         assert _is_js_undefined("") is False
 
+    def test_detects_jsnull_mock_in_pyodide_mode(self, monkeypatch):
+        """JsNull objects are detected as undefined/null when HAS_PYODIDE is True.
+
+        In real Pyodide, JsNull is NOT a JsProxy subclass - isinstance misses it.
+        The only way to detect it is by checking type(x).__name__ == "JsNull".
+        """
+        import src.wrappers as wrappers_mod
+        from tests.mocks.jsproxy import JsNullMock
+
+        monkeypatch.setattr(wrappers_mod, "HAS_PYODIDE", True)
+        js_null = JsNullMock()
+        assert type(js_null).__name__ == "JsNull"
+        assert _is_js_undefined(js_null) is True
+
+    def test_to_py_safe_converts_jsnull_to_none(self, monkeypatch):
+        """_to_py_safe should convert JsNull to Python None."""
+        import src.wrappers as wrappers_mod
+        from tests.mocks.jsproxy import JsNullMock
+
+        monkeypatch.setattr(wrappers_mod, "HAS_PYODIDE", True)
+        assert _to_py_safe(JsNullMock()) is None
+
 
 class TestSafeStr:
     """Tests for _safe_str function."""

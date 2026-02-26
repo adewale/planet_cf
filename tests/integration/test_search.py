@@ -472,3 +472,286 @@ async def test_e2e_full_upsert_to_search(mock_env):
 
     # The unique word should appear in results
     assert unique_id in body, f"Expected '{unique_id}' in search results"
+
+
+# =========================================================================
+# Resilience, ranking, and edge-case tests
+# =========================================================================
+
+
+@pytest.mark.asyncio
+async def test_search_ai_returns_none_still_works(mock_env_with_entries):
+    """When AI.run returns None (no embedding), search should fall back to keyword and return 200."""
+    from src.main import PlanetCF
+
+    mock_env_with_entries.AI.run = AsyncMock(return_value=None)
+
+    worker = PlanetCF()
+    worker.env = mock_env_with_entries
+
+    request = MockRequest("https://planetcf.com/search?q=test")
+    response = await worker.fetch(request)
+
+    assert response.status == 200
+    body = response.body if hasattr(response, "body") else str(response)
+    # Keyword fallback should still find entries whose titles contain "test"
+    assert "Test Entry" in body
+
+
+@pytest.mark.asyncio
+async def test_search_ai_throws_exception_still_works(mock_env_with_entries):
+    """When AI.run raises an exception, search should catch it and return 200 via keyword fallback."""
+    from src.main import PlanetCF
+
+    mock_env_with_entries.AI.run = AsyncMock(side_effect=Exception("AI unavailable"))
+
+    worker = PlanetCF()
+    worker.env = mock_env_with_entries
+
+    request = MockRequest("https://planetcf.com/search?q=test")
+    response = await worker.fetch(request)
+
+    assert response.status == 200
+    body = response.body if hasattr(response, "body") else str(response)
+    # Keyword fallback should still find entries
+    assert "Test Entry" in body
+
+
+@pytest.mark.asyncio
+async def test_search_vectorize_throws_exception_still_works(mock_env_with_entries):
+    """When SEARCH_INDEX.query raises an exception, search should return 200 via keyword fallback."""
+    from src.main import PlanetCF
+
+    mock_env_with_entries.SEARCH_INDEX.query = AsyncMock(side_effect=Exception("Vectorize down"))
+
+    worker = PlanetCF()
+    worker.env = mock_env_with_entries
+
+    request = MockRequest("https://planetcf.com/search?q=test")
+    response = await worker.fetch(request)
+
+    assert response.status == 200
+    body = response.body if hasattr(response, "body") else str(response)
+    # Keyword fallback should still find entries
+    assert "Test Entry" in body
+
+
+@pytest.mark.asyncio
+async def test_search_keyword_entries_rank_before_semantic(mock_env):
+    """Keyword matches should appear before semantic-only matches in results."""
+    from src.main import PlanetCF
+    from tests.conftest import MockD1
+
+    # Set up D1 with two entries:
+    # - Entry 1 has "cloudflare" in the title (keyword match for query "cloudflare")
+    # - Entry 3 does NOT have "cloudflare" in title/content (semantic-only match)
+    mock_env.DB = MockD1(
+        {
+            "feeds": [
+                {
+                    "id": 1,
+                    "url": "https://example.com/feed.xml",
+                    "title": "Example",
+                    "is_active": 1,
+                    "site_url": "https://example.com",
+                    "consecutive_failures": 0,
+                    "last_success_at": "2026-01-01T00:00:00Z",
+                },
+            ],
+            "entries": [
+                {
+                    "id": 1,
+                    "feed_id": 1,
+                    "guid": "entry-1",
+                    "url": "https://example.com/post/1",
+                    "title": "Cloudflare Workers Guide",
+                    "content": "<p>A guide about cloudflare workers.</p>",
+                    "published_at": "2026-01-01T12:00:00Z",
+                    "feed_title": "Example",
+                    "feed_site_url": "https://example.com",
+                },
+                {
+                    "id": 3,
+                    "feed_id": 1,
+                    "guid": "entry-3",
+                    "url": "https://example.com/post/3",
+                    "title": "Edge Computing Overview",
+                    "content": "<p>Overview of edge computing platforms.</p>",
+                    "published_at": "2026-01-01T14:00:00Z",
+                    "feed_title": "Example",
+                    "feed_site_url": "https://example.com",
+                },
+            ],
+        }
+    )
+
+    # Add only entry 3 to Vectorize (semantic match, but NOT a keyword match for "cloudflare")
+    await mock_env.SEARCH_INDEX.upsert(
+        [{"id": "3", "values": [0.1] * 768, "metadata": {"title": "Edge Computing Overview"}}]
+    )
+
+    worker = PlanetCF()
+    worker.env = mock_env
+
+    request = MockRequest("https://planetcf.com/search?q=cloudflare")
+    response = await worker.fetch(request)
+
+    assert response.status == 200
+    body = response.body if hasattr(response, "body") else str(response)
+
+    # Entry 1 (keyword match for "cloudflare") should appear before Entry 3 (semantic only)
+    keyword_pos = body.find("Cloudflare Workers Guide")
+    semantic_pos = body.find("Edge Computing Overview")
+    assert keyword_pos != -1, "Keyword entry should appear in results"
+    assert semantic_pos != -1, "Semantic entry should appear in results"
+    assert keyword_pos < semantic_pos, "Keyword match should appear before semantic match"
+
+
+@pytest.mark.asyncio
+async def test_search_deduplication_entry_appears_once(mock_env):
+    """An entry matching both keyword AND semantic search should appear only once."""
+    from src.main import PlanetCF
+    from tests.conftest import MockD1
+
+    mock_env.DB = MockD1(
+        {
+            "feeds": [
+                {
+                    "id": 1,
+                    "url": "https://example.com/feed.xml",
+                    "title": "Example",
+                    "is_active": 1,
+                    "site_url": "https://example.com",
+                    "consecutive_failures": 0,
+                    "last_success_at": "2026-01-01T00:00:00Z",
+                },
+            ],
+            "entries": [
+                {
+                    "id": 1,
+                    "feed_id": 1,
+                    "guid": "entry-1",
+                    "url": "https://example.com/post/1",
+                    "title": "Test Entry 1",
+                    "content": "<p>Content about testing.</p>",
+                    "published_at": "2026-01-01T12:00:00Z",
+                    "feed_title": "Example",
+                    "feed_site_url": "https://example.com",
+                },
+            ],
+        }
+    )
+
+    # Also add entry 1 to Vectorize so it matches semantically too
+    await mock_env.SEARCH_INDEX.upsert(
+        [{"id": "1", "values": [0.1] * 768, "metadata": {"title": "Test Entry 1"}}]
+    )
+
+    worker = PlanetCF()
+    worker.env = mock_env
+
+    request = MockRequest("https://planetcf.com/search?q=test")
+    response = await worker.fetch(request)
+
+    assert response.status == 200
+    body = response.body if hasattr(response, "body") else str(response)
+
+    # "Test Entry 1" should appear in results
+    assert "Test Entry 1" in body
+
+    # Count occurrences of the entry title — it should appear exactly once
+    # (We count the entry link/title, not stray text. The title appears in the
+    # result card heading, so counting occurrences of the full title string
+    # is a reliable deduplication check.)
+    occurrences = body.count("Test Entry 1")
+    assert occurrences == 1, (
+        f"Expected 'Test Entry 1' exactly once in results, found {occurrences} times"
+    )
+
+
+@pytest.mark.asyncio
+async def test_search_empty_results_returns_200(mock_env_with_entries):
+    """A search term matching nothing should return 200 with HTML, not an error."""
+    from src.main import PlanetCF
+
+    worker = PlanetCF()
+    worker.env = mock_env_with_entries
+
+    # Use a nonsense word that will not match any entry title or content
+    request = MockRequest("https://planetcf.com/search?q=xyzzyflurbnope")
+    response = await worker.fetch(request)
+
+    assert response.status == 200
+    body = response.body if hasattr(response, "body") else str(response)
+    # Should be a valid HTML page (contains doctype or html tag)
+    assert "<html" in body.lower() or "<!doctype" in body.lower() or "search" in body.lower()
+
+
+@pytest.mark.asyncio
+async def test_search_event_metrics_populated(mock_env_with_entries):
+    """Search should populate event.search_query and event.search_query_length."""
+    from src.main import PlanetCF
+
+    worker = PlanetCF()
+    worker.env = mock_env_with_entries
+
+    event = MagicMock()
+    request = MockRequest("https://planetcf.com/search?q=test")
+
+    # Call _search_entries directly so we can pass our event
+    response = await worker._search_entries(request, event=event)
+
+    assert response.status == 200
+
+    # Verify search metrics were populated on the event
+    assert event.search_query == "test"
+    assert event.search_query_length == 4
+
+
+@pytest.mark.asyncio
+async def test_search_long_query_returns_error(mock_env):
+    """A query longer than 1000 characters should return an error about being too long."""
+    from src.main import PlanetCF
+
+    worker = PlanetCF()
+    worker.env = mock_env
+
+    long_query = "a" * 1001
+    request = MockRequest(f"https://planetcf.com/search?q={long_query}")
+    response = await worker.fetch(request)
+
+    body = response.body if hasattr(response, "body") else str(response)
+    assert "too long" in body.lower()
+
+
+@pytest.mark.asyncio
+async def test_search_with_url_encoded_chars(mock_env_with_entries):
+    """URL-encoded characters in query should be decoded and search should return 200."""
+    from src.main import PlanetCF
+
+    worker = PlanetCF()
+    worker.env = mock_env_with_entries
+
+    # "test%20entry" should be decoded to "test entry"
+    request = MockRequest("https://planetcf.com/search?q=test%20entry")
+    response = await worker.fetch(request)
+
+    assert response.status == 200
+
+
+@pytest.mark.asyncio
+async def test_search_phrase_search_in_handler(mock_env_with_entries):
+    """Phrase search (quoted query) should be handled without error and return 200."""
+    from src.main import PlanetCF
+
+    worker = PlanetCF()
+    worker.env = mock_env_with_entries
+
+    # URL-encode the quotes: %22 = "
+    request = MockRequest("https://planetcf.com/search?q=%22exact+phrase%22")
+    response = await worker.fetch(request)
+
+    assert response.status == 200
+    body = response.body if hasattr(response, "body") else str(response)
+    # Should be valid HTML, not a crash
+    assert "<html" in body.lower() or "<!doctype" in body.lower() or "search" in body.lower()

@@ -2253,6 +2253,7 @@ class Default(WorkerEntrypoint):
 
         return _json_response(
             {
+                "service": "planetcf",
                 "status": status,
                 "feeds": {
                     "total": total,
@@ -2617,6 +2618,16 @@ class Default(WorkerEntrypoint):
                 if feed_id is None:
                     return _json_error("Invalid feed ID", status=400)
                 return await self._update_feed(request, feed_id, admin)
+            return _json_error("Invalid path", status=400)
+
+        if path.startswith("/admin/feeds/") and path.endswith("/fetch-now") and method == "POST":
+            # Synchronous feed fetch (no queue) - for deterministic E2E testing
+            parts = path.split("/")
+            if len(parts) >= 4:
+                feed_id = _validate_feed_id(parts[3])
+                if feed_id is None:
+                    return _json_error("Invalid feed ID", status=400)
+                return await self._fetch_feed_now(feed_id, admin)
             return _json_error("Invalid path", status=400)
 
         if path.startswith("/admin/feeds/") and method == "POST":
@@ -3212,6 +3223,58 @@ class Default(WorkerEntrypoint):
                     title="Retry Error",
                     status=500,
                 )
+
+    async def _fetch_feed_now(self, feed_id: int, admin: dict[str, Any]) -> Response:
+        """Fetch a single feed synchronously (bypasses queue).
+
+        Runs _process_single_feed inline and returns the result as JSON.
+        This enables deterministic E2E testing without asyncio.sleep polling.
+        """
+        # Look up the feed
+        feed_result = (
+            await self.env.DB.prepare("SELECT * FROM feeds WHERE id = ?").bind(feed_id).first()
+        )
+        feed = feed_row_from_js(feed_result)
+        if not feed:
+            return _json_error("Feed not found", status=404)
+
+        if not feed.get("is_active"):
+            return _json_error("Feed is not active", status=400)
+
+        # Build the job dict (same shape as queue messages)
+        job = {
+            "feed_id": feed_id,
+            "url": feed.get("url", ""),
+            "etag": feed.get("etag"),
+            "last_modified": feed.get("last_modified"),
+        }
+
+        feed_timeout = self._get_feed_timeout()
+        try:
+            result = await asyncio.wait_for(self._process_single_feed(job), timeout=feed_timeout)
+
+            await self._log_admin_action(
+                admin["id"], "fetch_now", "feed", feed_id, {"result": result}
+            )
+
+            return _json_response(
+                {
+                    "ok": True,
+                    "feed_id": feed_id,
+                    "entries_added": result.get("entries_added", 0),
+                    "entries_found": result.get("entries_found", 0),
+                    "status": result.get("status", "ok"),
+                }
+            )
+
+        except TimeoutError:
+            await self._record_feed_error(feed_id, "Timeout (fetch-now)")
+            return _json_error(f"Feed fetch timed out after {feed_timeout}s", status=504)
+
+        except Exception as e:
+            await self._record_feed_error(feed_id, str(e))
+            _log_op("fetch_now_error", feed_id=feed_id, error=str(e))
+            return _json_error(f"Feed fetch failed: {_truncate_error(e)}", status=502)
 
     async def _view_audit_log(self, offset: int = 0, limit: int = 100) -> Response:
         """View audit log with pagination support.

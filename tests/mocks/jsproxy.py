@@ -65,6 +65,36 @@ class JsProxyDict(JsProxyMock):
     pass
 
 
+class JsNullMock:
+    """
+    Mock for Pyodide's JsNull type.
+
+    In Pyodide, JavaScript null is wrapped as a special JsNull object that:
+    - Is NOT a JsProxy subclass (isinstance(x, JsProxy) misses it)
+    - Has type(x).__name__ == "JsNull"
+    - Is falsy
+    - Has no .to_py() method
+
+    This is distinct from JsUndefined and from Python None.
+    Without explicit handling, JsNull values leak through conversion
+    functions that only check for None or JsProxy.
+    """
+
+    def __bool__(self):
+        return False
+
+    def __repr__(self):
+        return "JsNull()"
+
+    def __str__(self):
+        return "null"
+
+
+# Ensure type(JsNullMock()).__name__ == "JsNull" to match Pyodide behavior
+JsNullMock.__name__ = "JsNull"
+JsNullMock.__qualname__ = "JsNull"
+
+
 class JsProxyArray:
     """
     JsProxy wrapper for arrays (JavaScript Array).
@@ -113,7 +143,12 @@ def wrap_as_jsproxy(value: Any) -> Any:
             {"id": 1, "url": "https://example.com/feed.xml"},
             {"id": 2, "url": "https://other.com/rss.xml"},
         ]))
+
+    None values are wrapped as JsNullMock to simulate Pyodide's
+    behavior where JavaScript null becomes JsNull (not Python None).
     """
+    if value is None:
+        return JsNullMock()
     if isinstance(value, dict):
         return JsProxyDict(value)
     elif isinstance(value, list):
