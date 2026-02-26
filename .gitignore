@@ -43,6 +43,7 @@ coverage.xml
 *.bak
 compatibility-tests/*/node_modules/
 python_modules/
+**/python_modules
 .venv-workers/
 
 # Wrangler local state
