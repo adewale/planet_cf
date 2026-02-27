@@ -6,53 +6,7 @@ import json
 import pytest
 
 from src.main import Default
-from tests.conftest import MockD1Statement
-
-# =============================================================================
-# Mock Infrastructure
-# =============================================================================
-
-
-class TrackingD1Statement(MockD1Statement):
-    """Extends MockD1Statement with SQL and bound_args tracking."""
-
-    def __init__(self, results: list[dict] | None = None, sql: str = ""):
-        super().__init__(results or [], sql)
-        self.bound_args: list = []
-
-    def bind(self, *args) -> "TrackingD1Statement":
-        self.bound_args = list(args)
-        self._bound_args = args
-        return self
-
-
-class TrackingD1:
-    """Mock D1 database that tracks all prepared statements."""
-
-    def __init__(self, default_results: list[dict] | None = None):
-        self._default_results = default_results or []
-        self.statements: list[TrackingD1Statement] = []
-
-    def prepare(self, sql: str) -> TrackingD1Statement:
-        stmt = TrackingD1Statement(self._default_results, sql)
-        stmt.sql = sql
-        self.statements.append(stmt)
-        return stmt
-
-
-class MockEnv:
-    """Mock Cloudflare Workers environment for feed error tests."""
-
-    def __init__(self, db: TrackingD1 | None = None):
-        self.DB = db or TrackingD1()
-        self.AI = None
-        self.SEARCH_INDEX = None
-        self.FEED_QUEUE = None
-        self.DEAD_LETTER_QUEUE = None
-        self.PLANET_NAME = "Test Planet"
-        self.SESSION_SECRET = "test-secret-key-for-testing-only-32chars"
-        self.GITHUB_CLIENT_ID = "test-client-id"
-        self.GITHUB_CLIENT_SECRET = "test-client-secret"
+from tests.conftest import MockEnv, TrackingD1
 
 
 def _make_worker(
@@ -73,7 +27,7 @@ def _make_worker(
     new_is_active = 0 if new_failures >= deactivate_threshold else is_active
 
     db = TrackingD1([{"consecutive_failures": new_failures, "is_active": new_is_active}])
-    env = MockEnv(db=db)
+    env = MockEnv(DB=db, FEED_QUEUE=None, DEAD_LETTER_QUEUE=None, SEARCH_INDEX=None, AI=None)
     if threshold is not None:
         env.FEED_AUTO_DEACTIVATE_THRESHOLD = threshold
 
@@ -195,7 +149,7 @@ class TestUpdateFeedUrl:
     async def test_url_updated_on_permanent_redirect(self):
         """Feed URL is updated in database on permanent redirect."""
         db = TrackingD1([{"url": "https://old.example.com/feed.xml"}])
-        env = MockEnv(db=db)
+        env = MockEnv(DB=db, FEED_QUEUE=None, DEAD_LETTER_QUEUE=None, SEARCH_INDEX=None, AI=None)
         worker = Default()
         worker.env = env
 
@@ -215,7 +169,7 @@ class TestUpdateFeedUrl:
     async def test_audit_log_entry_created(self):
         """An audit log entry is created when URL is updated."""
         db = TrackingD1([{"url": "https://old.example.com/feed.xml"}])
-        env = MockEnv(db=db)
+        env = MockEnv(DB=db, FEED_QUEUE=None, DEAD_LETTER_QUEUE=None, SEARCH_INDEX=None, AI=None)
         worker = Default()
         worker.env = env
 
@@ -240,7 +194,7 @@ class TestUpdateFeedUrl:
     async def test_old_url_preserved_in_audit_log(self):
         """The old URL is preserved in the audit log details."""
         db = TrackingD1([{"url": "https://old.example.com/feed.xml"}])
-        env = MockEnv(db=db)
+        env = MockEnv(DB=db, FEED_QUEUE=None, DEAD_LETTER_QUEUE=None, SEARCH_INDEX=None, AI=None)
         worker = Default()
         worker.env = env
 
@@ -264,7 +218,7 @@ class TestUpdateFeedUrl:
     async def test_old_url_fetched_when_not_provided(self):
         """When old_url is not provided, it's fetched from the database."""
         db = TrackingD1([{"url": "https://old.example.com/feed.xml"}])
-        env = MockEnv(db=db)
+        env = MockEnv(DB=db, FEED_QUEUE=None, DEAD_LETTER_QUEUE=None, SEARCH_INDEX=None, AI=None)
         worker = Default()
         worker.env = env
 
@@ -278,7 +232,7 @@ class TestUpdateFeedUrl:
     async def test_uses_system_admin_id_for_auto_updates(self):
         """Auto URL updates (not triggered by admin) use admin_id=0."""
         db = TrackingD1([])
-        env = MockEnv(db=db)
+        env = MockEnv(DB=db, FEED_QUEUE=None, DEAD_LETTER_QUEUE=None, SEARCH_INDEX=None, AI=None)
         worker = Default()
         worker.env = env
 

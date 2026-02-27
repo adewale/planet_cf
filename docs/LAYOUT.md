@@ -179,7 +179,7 @@ Entries are grouped and sorted as follows:
 
 4. Limits Applied:
    - Max 5 entries per feed per day (prevents firehose)
-   - Max 50 entries total per feed (configurable via MAX_ENTRIES_PER_FEED)
+   - Max 100 entries total per feed (configurable via MAX_ENTRIES_PER_FEED)
    - Retention: 90 days (configurable via RETENTION_DAYS env var)
 ```
 

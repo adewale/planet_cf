@@ -1,13 +1,24 @@
 # tests/conftest.py
 """Shared fixtures for Planet CF tests."""
 
+import base64
+import hashlib
+import hmac
+import json
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
 import pytest
+
+# =============================================================================
+# Shared Test Constants
+# =============================================================================
+
+TEST_SESSION_SECRET = "test-secret-key-for-testing-only-32chars"  # pragma: allowlist secret
 
 # Add src directory to path so imports work like in Workers environment
 _src_path = str(Path(__file__).parent.parent / "src")
@@ -290,6 +301,42 @@ class MockD1:
                             )
 
 
+class TrackingD1Statement(MockD1Statement):
+    """Extends MockD1Statement with SQL and bound_args tracking.
+
+    Used in tests that need to assert on the SQL queries and parameters
+    that were passed to D1 (e.g., verifying INSERT/UPDATE statements).
+    """
+
+    def __init__(self, results: list[dict] | None = None, sql: str = ""):
+        super().__init__(results or [], sql)
+        self.bound_args: list = []
+
+    def bind(self, *args) -> "TrackingD1Statement":
+        self.bound_args = list(args)
+        self._bound_args = args
+        return self
+
+
+class TrackingD1:
+    """Mock D1 database that tracks all prepared statements.
+
+    Uses TrackingD1Statement so tests can assert on SQL and bound parameters.
+    """
+
+    def __init__(self, statement_results: list[dict] | None = None):
+        self._statement_results = statement_results or []
+        self.last_statement: TrackingD1Statement | None = None
+        self.statements: list[TrackingD1Statement] = []
+
+    def prepare(self, sql: str) -> TrackingD1Statement:
+        stmt = TrackingD1Statement(self._statement_results, sql)
+        stmt.sql = sql
+        self.last_statement = stmt
+        self.statements.append(stmt)
+        return stmt
+
+
 class MockQueue:
     """Mock Cloudflare Queue."""
 
@@ -394,6 +441,76 @@ class MockEnv:
         """Initialize ASSETS if not provided."""
         if self.ASSETS is None:
             self.ASSETS = MockAssets()
+
+
+# =============================================================================
+# Shared Test Helper Functions
+# =============================================================================
+
+
+def create_signed_session(
+    secret: str = TEST_SESSION_SECRET,
+    username: str = "testadmin",
+    github_id: int = 12345,
+) -> str:
+    """Create a valid HMAC-signed session cookie for testing."""
+    payload = {
+        "github_username": username,
+        "github_id": github_id,
+        "avatar_url": None,
+        "exp": int(time.time()) + 3600,
+    }
+    payload_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
+    signature = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).hexdigest()
+    return f"session={payload_b64}.{signature}"
+
+
+def admin_row() -> dict:
+    """Return a standard admin DB row dict for testing."""
+    return {
+        "id": 1,
+        "github_username": "testadmin",
+        "github_id": 12345,
+        "display_name": "Test Admin",
+        "is_active": 1,
+        "last_login_at": None,
+        "created_at": "2026-01-01T00:00:00Z",
+    }
+
+
+def make_authenticated_worker(feeds=None, admins=None, env_class=None):
+    """Build a Default worker with auth, returning (worker, env, session_cookie).
+
+    Args:
+        feeds: List of feed dicts for the mock DB.
+        admins: List of admin dicts. Defaults to [admin_row()].
+        env_class: Custom MockEnv class. Defaults to conftest MockEnv.
+    """
+    from src.main import Default
+
+    admin_list = admins or [admin_row()]
+    feed_list = feeds or []
+
+    if env_class is not None:
+        env = env_class(admins=admin_list, feeds=feed_list)
+    else:
+        data = {}
+        if admin_list is not None:
+            data["admins"] = admin_list
+        if feed_list is not None:
+            data["feeds"] = feed_list
+        env = MockEnv(
+            DB=MockD1(data),
+            FEED_QUEUE=MockQueue(),
+            DEAD_LETTER_QUEUE=MockQueue(),
+            SEARCH_INDEX=MockVectorize(),
+            AI=MockAI(),
+        )
+
+    session_cookie = create_signed_session(env.SESSION_SECRET)
+    worker = Default()
+    worker.env = env
+    return worker, env, session_cookie
 
 
 # =============================================================================

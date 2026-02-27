@@ -6,44 +6,12 @@ import json
 import pytest
 
 from src.main import Default
-from tests.conftest import MockD1Statement
+from tests.conftest import MockEnv, MockQueue, TrackingD1
 
 # =============================================================================
-# Mock Classes for Testing
+# Mock Classes for Testing (MockRequest/MockFormData are specialized for this
+# file: json_body param, plain-dict headers. _make_env wraps conftest MockEnv.)
 # =============================================================================
-
-
-class TrackingD1Statement(MockD1Statement):
-    """Extends conftest MockD1Statement with SQL and bound_args tracking."""
-
-    def __init__(self, results: list[dict] | None = None, sql: str = ""):
-        super().__init__(results or [], sql)
-        self.bound_args: list = []
-
-    def bind(self, *args) -> "TrackingD1Statement":
-        self.bound_args = list(args)
-        self._bound_args = args
-        return self
-
-
-class TrackingD1:
-    """Mock D1 database that tracks all prepared statements.
-
-    Uses conftest MockD1Result and MockD1Statement as building blocks,
-    but adds statement tracking for test assertions on SQL and params.
-    """
-
-    def __init__(self, statement_results: list[dict] | None = None):
-        self._statement_results = statement_results or []
-        self.last_statement: TrackingD1Statement | None = None
-        self.statements: list[TrackingD1Statement] = []
-
-    def prepare(self, sql: str) -> TrackingD1Statement:
-        stmt = TrackingD1Statement(self._statement_results, sql)
-        stmt.sql = sql
-        self.last_statement = stmt
-        self.statements.append(stmt)
-        return stmt
 
 
 class MockRequest:
@@ -80,30 +48,15 @@ class MockFormData:
         return self._data.get(key)
 
 
-class MockEnv:
-    """Mock Cloudflare Workers environment."""
-
-    def __init__(self, db: TrackingD1 | None = None):
-        self.DB = db or TrackingD1()
-        self.AI = None
-        self.SEARCH_INDEX = None
-        self.FEED_QUEUE = MockQueue()
-        self.DEAD_LETTER_QUEUE = MockQueue()
-        self.PLANET_NAME = "Test Planet"
-        self.SESSION_SECRET = "test-secret-key-for-testing-only"
-        self.GITHUB_CLIENT_ID = "test-client-id"
-        self.GITHUB_CLIENT_SECRET = "test-client-secret"
-
-
-class MockQueue:
-    """Mock Cloudflare Queue."""
-
-    def __init__(self):
-        self.messages = []
-
-    async def send(self, message):
-        self.messages.append(message)
-        return {"success": True}
+def _make_env(db=None):
+    """Create a MockEnv for admin operations tests."""
+    return MockEnv(
+        DB=db or TrackingD1(),
+        FEED_QUEUE=MockQueue(),
+        DEAD_LETTER_QUEUE=MockQueue(),
+        SEARCH_INDEX=None,
+        AI=None,
+    )
 
 
 # =============================================================================
@@ -147,7 +100,7 @@ class TestUpdateFeed:
     async def test_update_feed_title(self, mock_admin, mock_feed):
         """Updates feed title when title is provided."""
         db = TrackingD1([mock_feed])
-        env = MockEnv(db=db)
+        env = _make_env(db=db)
 
         worker = Default()
         worker.env = env
@@ -174,7 +127,7 @@ class TestUpdateFeed:
     async def test_update_feed_is_active(self, mock_admin, mock_feed):
         """Updates feed is_active when is_active is provided."""
         db = TrackingD1([mock_feed])
-        env = MockEnv(db=db)
+        env = _make_env(db=db)
 
         worker = Default()
         worker.env = env
@@ -197,7 +150,7 @@ class TestUpdateFeed:
     async def test_update_feed_both_fields(self, mock_admin, mock_feed):
         """Updates both title and is_active when both provided."""
         db = TrackingD1([mock_feed])
-        env = MockEnv(db=db)
+        env = _make_env(db=db)
 
         worker = Default()
         worker.env = env
@@ -220,7 +173,7 @@ class TestUpdateFeed:
     async def test_update_feed_no_fields_returns_error(self, mock_admin, mock_feed):
         """Returns 400 error when no valid fields provided."""
         db = TrackingD1([mock_feed])
-        env = MockEnv(db=db)
+        env = _make_env(db=db)
 
         worker = Default()
         worker.env = env
@@ -241,7 +194,7 @@ class TestUpdateFeed:
     async def test_update_feed_empty_title(self, mock_admin, mock_feed):
         """Handles empty string title (converts to None via _safe_str)."""
         db = TrackingD1([mock_feed])
-        env = MockEnv(db=db)
+        env = _make_env(db=db)
 
         worker = Default()
         worker.env = env
@@ -263,7 +216,7 @@ class TestUpdateFeed:
     async def test_update_feed_invalid_id_returns_error(self, mock_admin):
         """Returns 500 error for invalid feed ID."""
         db = TrackingD1([])
-        env = MockEnv(db=db)
+        env = _make_env(db=db)
 
         worker = Default()
         worker.env = env
@@ -281,7 +234,7 @@ class TestUpdateFeed:
     async def test_update_feed_logs_audit(self, mock_admin, mock_feed):
         """Creates audit log entry when feed is updated."""
         db = TrackingD1([mock_feed])
-        env = MockEnv(db=db)
+        env = _make_env(db=db)
 
         worker = Default()
         worker.env = env
@@ -305,7 +258,7 @@ class TestUpdateFeedTitleSanitization:
     async def test_title_is_sanitized(self, mock_admin, mock_feed):
         """Title is passed through _safe_str for sanitization."""
         db = TrackingD1([mock_feed])
-        env = MockEnv(db=db)
+        env = _make_env(db=db)
 
         worker = Default()
         worker.env = env

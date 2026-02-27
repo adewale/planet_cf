@@ -99,10 +99,10 @@ class MockQueue:
     """Mock Cloudflare Queue."""
 
     def __init__(self):
-        self._messages = []
+        self.messages = []
 
     async def send(self, message):
-        self._messages.append(message)
+        self.messages.append(message)
         return {"success": True}
 
 
@@ -243,8 +243,8 @@ class TestSafeQueue:
         mock_queue = MockQueue()
         queue = SafeQueue(mock_queue)
         await queue.send({"feed_id": 1, "url": "https://example.com"})
-        assert len(mock_queue._messages) == 1
-        assert mock_queue._messages[0]["feed_id"] == 1
+        assert len(mock_queue.messages) == 1
+        assert mock_queue.messages[0]["feed_id"] == 1
 
 
 # =============================================================================

@@ -7,7 +7,7 @@ import pytest
 
 from src.main import Default
 from src.wrappers import HttpResponse
-from tests.conftest import MockD1Statement
+from tests.conftest import MockEnv, MockQueue, TrackingD1
 
 # =============================================================================
 # Mock Infrastructure
@@ -53,46 +53,6 @@ NOT_A_FEED = """<html>
 </html>"""
 
 
-class TrackingD1Statement(MockD1Statement):
-    """Extends MockD1Statement with SQL and bound_args tracking."""
-
-    def __init__(self, results: list[dict] | None = None, sql: str = ""):
-        super().__init__(results or [], sql)
-        self.bound_args: list = []
-
-    def bind(self, *args) -> "TrackingD1Statement":
-        self.bound_args = list(args)
-        self._bound_args = args
-        return self
-
-
-class TrackingD1:
-    """Mock D1 database that tracks all prepared statements."""
-
-    def __init__(self, statement_results: list[dict] | None = None):
-        self._statement_results = statement_results or []
-        self.last_statement: TrackingD1Statement | None = None
-        self.statements: list[TrackingD1Statement] = []
-
-    def prepare(self, sql: str) -> TrackingD1Statement:
-        stmt = TrackingD1Statement(self._statement_results, sql)
-        stmt.sql = sql
-        self.last_statement = stmt
-        self.statements.append(stmt)
-        return stmt
-
-
-class MockQueue:
-    """Mock Cloudflare Queue."""
-
-    def __init__(self):
-        self.messages = []
-
-    async def send(self, message):
-        self.messages.append(message)
-        return {"success": True}
-
-
 class MockFormData:
     """Mock form data object."""
 
@@ -116,25 +76,21 @@ class MockRequest:
         return MockFormData(self._form_data)
 
 
-class MockEnv:
-    """Mock Cloudflare Workers environment."""
-
-    def __init__(self, db: TrackingD1 | None = None):
-        self.DB = db or TrackingD1()
-        self.AI = None
-        self.SEARCH_INDEX = None
-        self.FEED_QUEUE = MockQueue()
-        self.DEAD_LETTER_QUEUE = MockQueue()
-        self.PLANET_NAME = "Test Planet"
-        self.SESSION_SECRET = "test-secret-key-for-testing-only-32chars"
-        self.GITHUB_CLIENT_ID = "test-client-id"
-        self.GITHUB_CLIENT_SECRET = "test-client-secret"
+def _make_env(db=None):
+    """Create a MockEnv with a TrackingD1 for validate/add-feed tests."""
+    return MockEnv(
+        DB=db or TrackingD1(),
+        FEED_QUEUE=MockQueue(),
+        DEAD_LETTER_QUEUE=MockQueue(),
+        SEARCH_INDEX=None,
+        AI=None,
+    )
 
 
-def _make_worker(env: MockEnv | None = None) -> Default:
+def _make_worker(env=None) -> Default:
     """Create a Default worker with mock env."""
     worker = Default()
-    worker.env = env or MockEnv()
+    worker.env = env or _make_env()
     return worker
 
 
@@ -303,7 +259,7 @@ class TestAddFeed:
     async def test_successful_feed_addition(self):
         """Valid feed URL is inserted into DB and queued for processing."""
         db = TrackingD1([{"id": 42}])
-        env = MockEnv(db=db)
+        env = _make_env(db=db)
         worker = _make_worker(env)
         admin = _mock_admin()
 
@@ -329,7 +285,7 @@ class TestAddFeed:
     async def test_duplicate_feed_url_returns_error(self):
         """Duplicate feed URL returns an error (DB insert raises)."""
         db = TrackingD1([])  # No result from INSERT RETURNING (simulates failure)
-        env = MockEnv(db=db)
+        env = _make_env(db=db)
         worker = _make_worker(env)
         admin = _mock_admin()
 
@@ -399,7 +355,7 @@ class TestAddFeed:
     async def test_uses_extracted_title_when_not_provided(self):
         """When no title is provided, uses title extracted from feed."""
         db = TrackingD1([{"id": 1}])
-        env = MockEnv(db=db)
+        env = _make_env(db=db)
         worker = _make_worker(env)
         admin = _mock_admin()
 

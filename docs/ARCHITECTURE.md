@@ -62,7 +62,7 @@ Browser Request
       │ (cache miss)
       ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  1. Query D1 for entries (last 90 days, max 50/feed)            │
+│  1. Query D1 for entries (last 90 days, max 100/feed)           │
 │  2. Query D1 for active feeds                                    │
 │  3. Render Jinja2 template                                       │
 │  4. Return HTML/XML with cache headers                           │
@@ -826,11 +826,11 @@ src/
 
 ```
 planet_cf/
-├── src/                    # Worker source code (16 modules + __init__.py)
+├── src/                    # Worker source code (see src/*.py for current modules)
 ├── tests/                  # Unit, integration, and E2E tests
-│   ├── unit/               # ~855 tests with mock bindings
-│   ├── integration/        # ~86 end-to-end flow tests
-│   └── e2e/                # 34 tests against real Cloudflare infrastructure
+│   ├── unit/               # Unit tests with mock bindings (run `uv run pytest tests/unit --co -q` for count)
+│   ├── integration/        # Integration flow tests
+│   └── e2e/                # E2E tests against real Cloudflare infrastructure
 ├── templates/              # Jinja2 HTML/XML templates + canonical CSS/JS sources
 ├── examples/               # Deployable instance configurations
 │   ├── default/            # Default theme instance

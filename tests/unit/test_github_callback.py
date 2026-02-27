@@ -8,6 +8,7 @@ import pytest
 
 from src.main import Default
 from src.oauth_handler import OAuthError, TokenExchangeResult, UserInfoResult
+from tests.conftest import MockRequest
 
 # =============================================================================
 # Mock infrastructure for OAuth callback tests
@@ -78,15 +79,6 @@ class MockOAuthEnv:
         self.SESSION_SECRET = "test-secret-key-for-testing-only-32chars"
         self.GITHUB_CLIENT_ID = "test-client-id"
         self.GITHUB_CLIENT_SECRET = "test-client-secret"
-
-
-class MockRequest:
-    """Mock HTTP request for callback tests."""
-
-    def __init__(self, url: str = "https://example.com/auth/callback", cookies: str = ""):
-        self.url = url
-        self.method = "GET"
-        self.headers = {"Cookie": cookies}
 
 
 # =============================================================================

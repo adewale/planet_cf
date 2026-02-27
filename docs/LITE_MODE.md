@@ -134,7 +134,7 @@ Set the `THEME` variable in `wrangler.jsonc`:
 }
 ```
 
-Available built-in themes: `default`, `classic`, `dark`, `minimal`. You can also create a custom theme in `examples/my-planet/theme/style.css`.
+Available built-in themes: `default`, `planet-python`, `planet-mozilla`. You can also create a custom theme in `examples/my-planet/theme/style.css`.
 
 ### Checking Feed Health
 

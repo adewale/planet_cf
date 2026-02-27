@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from src.main import Default
-from tests.conftest import MockD1Statement
+from tests.conftest import MockEnv, MockQueue, TrackingD1, admin_row
 
 # =============================================================================
 # Compatibility: ET.XMLParser(forbid_dtd=True) was added in Python 3.13.1.
@@ -25,7 +25,7 @@ def _patched_xml_parser(**kwargs):
 
 
 # =============================================================================
-# Mock Infrastructure
+# Test Data
 # =============================================================================
 
 VALID_OPML = """<?xml version="1.0" encoding="UTF-8"?>
@@ -50,40 +50,9 @@ EMPTY_OPML = """<?xml version="1.0" encoding="UTF-8"?>
 </opml>"""
 
 
-class TrackingD1Statement(MockD1Statement):
-    """Extends MockD1Statement with SQL and bound_args tracking."""
-
-    def __init__(self, results: list[dict] | None = None, sql: str = ""):
-        super().__init__(results or [], sql)
-        self.bound_args: list = []
-
-    def bind(self, *args) -> "TrackingD1Statement":
-        self.bound_args = list(args)
-        self._bound_args = args
-        return self
-
-
-class TrackingD1:
-    """Mock D1 database that tracks all prepared statements."""
-
-    def __init__(self):
-        self.statements: list[TrackingD1Statement] = []
-
-    def prepare(self, sql: str) -> TrackingD1Statement:
-        stmt = TrackingD1Statement([], sql)
-        stmt.sql = sql
-        self.statements.append(stmt)
-        return stmt
-
-
-class MockQueue:
-    """Mock Cloudflare Queue."""
-
-    def __init__(self):
-        self.messages = []
-
-    async def send(self, message):
-        self.messages.append(message)
+# =============================================================================
+# OPML-specific mock helpers (form data with file upload)
+# =============================================================================
 
 
 class MockFormData:
@@ -106,7 +75,7 @@ class MockFile:
         return self._content
 
 
-class MockRequest:
+class OpmlRequest:
     """Mock HTTP request for OPML import tests."""
 
     def __init__(self, opml_content: str | None = None, form_data: dict | None = None):
@@ -121,29 +90,15 @@ class MockRequest:
         return MockFormData(self._form_data)
 
 
-class MockEnv:
-    """Mock Cloudflare Workers environment for OPML import tests."""
-
-    def __init__(self, db: TrackingD1 | None = None):
-        self.DB = db or TrackingD1()
-        self.AI = None
-        self.SEARCH_INDEX = None
-        self.FEED_QUEUE = MockQueue()
-        self.DEAD_LETTER_QUEUE = MockQueue()
-        self.PLANET_NAME = "Test Planet"
-        self.SESSION_SECRET = "test-secret-key-for-testing-only-32chars"
-        self.GITHUB_CLIENT_ID = "test-client-id"
-        self.GITHUB_CLIENT_SECRET = "test-client-secret"
-
-
-def _mock_admin() -> dict:
-    """Return a mock admin user dict."""
-    return {
-        "id": 1,
-        "github_username": "testadmin",
-        "display_name": "Test Admin",
-        "is_active": 1,
-    }
+def _make_env(db=None):
+    """Create a MockEnv with a TrackingD1 for OPML import tests."""
+    return MockEnv(
+        DB=db or TrackingD1(),
+        FEED_QUEUE=MockQueue(),
+        DEAD_LETTER_QUEUE=MockQueue(),
+        SEARCH_INDEX=None,
+        AI=None,
+    )
 
 
 # =============================================================================
@@ -158,12 +113,12 @@ class TestImportOpml:
     async def test_successful_import_with_valid_opml(self):
         """Valid OPML file imports feeds and redirects."""
         db = TrackingD1()
-        env = MockEnv(db=db)
+        env = _make_env(db=db)
         worker = Default()
         worker.env = env
-        admin = _mock_admin()
+        admin = admin_row()
 
-        request = MockRequest(opml_content=VALID_OPML)
+        request = OpmlRequest(opml_content=VALID_OPML)
 
         with patch("src.main.ET.XMLParser", _patched_xml_parser):
             response = await worker._import_opml(request, admin)
@@ -184,12 +139,12 @@ class TestImportOpml:
     @pytest.mark.asyncio
     async def test_import_with_no_file_returns_error(self):
         """Import with no file uploaded returns error."""
-        env = MockEnv()
+        env = _make_env()
         worker = Default()
         worker.env = env
-        admin = _mock_admin()
+        admin = admin_row()
 
-        request = MockRequest(form_data={})  # No opml file
+        request = OpmlRequest(form_data={})  # No opml file
 
         response = await worker._import_opml(request, admin)
 
@@ -200,12 +155,12 @@ class TestImportOpml:
     async def test_import_with_empty_opml(self):
         """Empty OPML (no feeds) completes without inserting feeds."""
         db = TrackingD1()
-        env = MockEnv(db=db)
+        env = _make_env(db=db)
         worker = Default()
         worker.env = env
-        admin = _mock_admin()
+        admin = admin_row()
 
-        request = MockRequest(opml_content=EMPTY_OPML)
+        request = OpmlRequest(opml_content=EMPTY_OPML)
 
         with patch("src.main.ET.XMLParser", _patched_xml_parser):
             response = await worker._import_opml(request, admin)
@@ -233,12 +188,12 @@ class TestImportOpml:
         </opml>"""
 
         db = TrackingD1()
-        env = MockEnv(db=db)
+        env = _make_env(db=db)
         worker = Default()
         worker.env = env
-        admin = _mock_admin()
+        admin = admin_row()
 
-        request = MockRequest(opml_content=opml_with_unsafe)
+        request = OpmlRequest(opml_content=opml_with_unsafe)
 
         with patch("src.main.ET.XMLParser", _patched_xml_parser):
             response = await worker._import_opml(request, admin)
@@ -253,12 +208,12 @@ class TestImportOpml:
     @pytest.mark.asyncio
     async def test_import_invalid_xml_returns_error(self):
         """Invalid XML content returns parse error."""
-        env = MockEnv()
+        env = _make_env()
         worker = Default()
         worker.env = env
-        admin = _mock_admin()
+        admin = admin_row()
 
-        request = MockRequest(opml_content="<not valid xml")
+        request = OpmlRequest(opml_content="<not valid xml")
 
         with patch("src.main.ET.XMLParser", _patched_xml_parser):
             response = await worker._import_opml(request, admin)
@@ -270,12 +225,12 @@ class TestImportOpml:
     async def test_import_creates_audit_log(self):
         """Audit log entry is created for OPML import."""
         db = TrackingD1()
-        env = MockEnv(db=db)
+        env = _make_env(db=db)
         worker = Default()
         worker.env = env
-        admin = _mock_admin()
+        admin = admin_row()
 
-        request = MockRequest(opml_content=VALID_OPML)
+        request = OpmlRequest(opml_content=VALID_OPML)
 
         with patch("src.main.ET.XMLParser", _patched_xml_parser):
             await worker._import_opml(request, admin)

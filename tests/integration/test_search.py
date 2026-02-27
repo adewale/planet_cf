@@ -14,41 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-
-class MockFormData:
-    """Mock form data that behaves like a dict."""
-
-    def __init__(self, data: dict):
-        self._data = data
-
-    def get(self, key, default=None):
-        return self._data.get(key, default)
-
-
-class MockRequest:
-    """Mock HTTP request object matching Cloudflare Workers Python SDK."""
-
-    def __init__(
-        self,
-        url: str,
-        method: str = "GET",
-        cookies: str = "",
-        form_data: dict | None = None,
-    ):
-        self.url = url
-        self.method = method
-        self._cookies = cookies
-        self._form_data = form_data or {}
-        self.headers = MagicMock()
-        self.headers.get = MagicMock(side_effect=self._get_header)
-
-    def _get_header(self, name, default=None):
-        if name.lower() == "cookie":
-            return self._cookies
-        return default
-
-    async def form_data(self):
-        return MockFormData(self._form_data)
+from tests.conftest import MockRequest
 
 
 @pytest.mark.asyncio

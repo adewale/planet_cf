@@ -8,6 +8,8 @@ replicates that behavior so tests catch JsProxy-related bugs.
 
 from typing import Any
 
+from tests.conftest import TEST_SESSION_SECRET
+
 from .jsproxy import JsProxyArray, JsProxyDict
 
 
@@ -183,7 +185,7 @@ def create_mock_env(
     env.PLANET_NAME = "Planet CF"
     env.PLANET_DESCRIPTION = "Test Planet"
     env.PLANET_URL = "https://planetcf.com"
-    env.SESSION_SECRET = "test-secret"
+    env.SESSION_SECRET = TEST_SESSION_SECRET
     env.GITHUB_CLIENT_ID = "test-client-id"
     env.GITHUB_CLIENT_SECRET = "test-client-secret"
 
