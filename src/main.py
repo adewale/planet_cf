@@ -68,7 +68,7 @@ from observability import (
     emit_event,
 )
 from route_dispatcher import Route, RouteDispatcher, RouteMatch
-from search_query import SearchQueryBuilder
+from search_query import FTS5SearchQueryBuilder
 from templates import (
     _EMBEDDED_TEMPLATES,
     TEMPLATE_ADMIN_DASHBOARD,
@@ -2379,8 +2379,8 @@ class Default(WorkerEntrypoint):
         try:
             search_limit = self._get_search_top_k()
             with Timer() as d1_timer:
-                # Build search query using SearchQueryBuilder
-                builder = SearchQueryBuilder(
+                # Build search query using FTS5SearchQueryBuilder
+                builder = FTS5SearchQueryBuilder(
                     query=query,
                     is_phrase_search=is_phrase_search,
                     max_words=MAX_SEARCH_WORDS,
@@ -3406,6 +3406,14 @@ class Default(WorkerEntrypoint):
                                 f"Reindex rate limited. Please wait {remaining} seconds.",
                                 status=429,
                             )
+
+                # Rebuild FTS5 index from entries table
+                try:
+                    await self.env.DB.prepare(
+                        "INSERT INTO entries_fts(entries_fts) VALUES('rebuild')"
+                    ).run()
+                except Exception as e:
+                    _log_op("fts5_rebuild_failed", error=_truncate_error(e))
 
                 # Get all entries with their content (include feed_id for observability)
                 result = await self.env.DB.prepare("""

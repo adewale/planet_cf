@@ -96,8 +96,37 @@ class MockD1Statement:
         """Return results based on the query type."""
         results = []
 
-        if "FROM entries" in self.query and "LIKE" in self.query:
-            # Keyword search query
+        if "FROM entries" in self.query and "MATCH" in self.query:
+            # FTS5 keyword search query — simulate tokenized matching
+            if self._bindings:
+                match_expr = self._bindings[0]
+                # Extract words from FTS5 match expression (strip quotes)
+                import re
+
+                words = [
+                    w.replace('""', '"')
+                    for w in re.findall(r'"((?:[^"]|"")*)"', match_expr)
+                ]
+                if not words:
+                    words = [match_expr.lower()]
+
+                for entry in self.db.entries.values():
+                    title = (entry.get("title") or "").lower()
+                    content = (entry.get("content") or "").lower()
+                    author = (entry.get("author") or "").lower()
+                    text = f"{title} {content} {author}"
+                    if all(w.lower() in text for w in words):
+                        feed = self.db.feeds.get(entry["feed_id"], {})
+                        results.append(
+                            {
+                                **entry,
+                                "feed_title": feed.get("title", "Unknown"),
+                                "feed_site_url": feed.get("site_url", ""),
+                            }
+                        )
+
+        elif "FROM entries" in self.query and "LIKE" in self.query:
+            # Legacy LIKE keyword search query (kept for backward compat)
             if self._bindings:
                 pattern = self._bindings[0].strip("%").lower()
                 for entry in self.db.entries.values():
@@ -105,7 +134,6 @@ class MockD1Statement:
                     content = (entry.get("content") or "").lower()
                     author = (entry.get("author") or "").lower()
                     if pattern in title or pattern in content or pattern in author:
-                        # Add feed info
                         feed = self.db.feeds.get(entry["feed_id"], {})
                         results.append(
                             {

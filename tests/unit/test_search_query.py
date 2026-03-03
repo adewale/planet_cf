@@ -3,7 +3,7 @@
 
 import pytest
 
-from src.search_query import SearchQueryBuilder, SearchQueryResult
+from src.search_query import FTS5SearchQueryBuilder, SearchQueryBuilder, SearchQueryResult
 
 
 class TestSearchQueryBuilderEscaping:
@@ -524,3 +524,534 @@ class TestSearchQueryMutations:
         # "test_func" is a single word with escaped underscore
         # "test func" is two separate words
         assert result_underscore.params != result_space.params
+
+
+# =============================================================================
+# FTS5SearchQueryBuilder Tests
+# =============================================================================
+
+
+class TestFTS5Escaping:
+    """Tests for FTS5 token escaping."""
+
+    def test_simple_word(self):
+        """Simple word is wrapped in double quotes."""
+        result = FTS5SearchQueryBuilder.escape_fts5_token("python")
+        assert result == '"python"'
+
+    def test_double_quotes_are_doubled(self):
+        """Internal double quotes are doubled."""
+        result = FTS5SearchQueryBuilder.escape_fts5_token('test "quoted" word')
+        assert result == '"test ""quoted"" word"'
+
+    def test_single_quotes_pass_through(self):
+        """Single quotes are not special in FTS5."""
+        result = FTS5SearchQueryBuilder.escape_fts5_token("it's working")
+        assert result == "\"it's working\""
+
+    def test_fts5_operators_are_quoted(self):
+        """FTS5 operators (OR, AND, NOT, NEAR) are neutralized by quoting."""
+        for op in ["OR", "AND", "NOT", "NEAR"]:
+            result = FTS5SearchQueryBuilder.escape_fts5_token(op)
+            assert result == f'"{op}"'
+
+    def test_asterisk_is_quoted(self):
+        """Asterisk (prefix operator) is neutralized by quoting."""
+        result = FTS5SearchQueryBuilder.escape_fts5_token("test*")
+        assert result == '"test*"'
+
+    def test_parentheses_are_quoted(self):
+        """Parentheses are neutralized by quoting."""
+        result = FTS5SearchQueryBuilder.escape_fts5_token("(test)")
+        assert result == '"(test)"'
+
+    def test_plus_caret_are_quoted(self):
+        """Plus and caret are neutralized by quoting."""
+        result = FTS5SearchQueryBuilder.escape_fts5_token("^test+")
+        assert result == '"^test+"'
+
+    def test_empty_string(self):
+        """Empty string produces empty quoted string."""
+        result = FTS5SearchQueryBuilder.escape_fts5_token("")
+        assert result == '""'
+
+    def test_only_double_quotes(self):
+        """String of only double quotes is properly escaped."""
+        result = FTS5SearchQueryBuilder.escape_fts5_token('""')
+        # Input: "" (2 chars) → each " doubled → """" (4 chars) → wrapped → """""" (6 chars)
+        assert result == '""""""'
+
+
+class TestFTS5PhraseSearch:
+    """Tests for FTS5 phrase search query building."""
+
+    def test_phrase_search_query(self):
+        """Phrase search builds correct FTS5 MATCH SQL."""
+        builder = FTS5SearchQueryBuilder(query="error handling", is_phrase_search=True)
+        result = builder.build(limit=50)
+
+        assert "entries_fts MATCH ?" in result.sql
+        assert "JOIN entries_fts fts ON e.id = fts.rowid" in result.sql
+        assert "LIMIT ?" in result.sql
+        assert result.params[0] == '"error handling"'
+        assert result.params[1] == 50
+        assert result.words_truncated is False
+
+    def test_phrase_search_escapes_double_quotes(self):
+        """Phrase search escapes double quotes in phrase."""
+        builder = FTS5SearchQueryBuilder(query='say "hello"', is_phrase_search=True)
+        result = builder.build(limit=10)
+
+        assert result.params[0] == '"say ""hello"""'
+
+    def test_phrase_has_exactly_two_placeholders(self):
+        """Phrase search always has exactly 2 params (match + limit)."""
+        builder = FTS5SearchQueryBuilder(query="error handling", is_phrase_search=True)
+        result = builder.build(limit=50)
+
+        assert result.sql.count("?") == 2
+        assert len(result.params) == 2
+
+
+class TestFTS5SingleWord:
+    """Tests for FTS5 single-word search query building."""
+
+    def test_single_word_query(self):
+        """Single word search builds correct MATCH SQL."""
+        builder = FTS5SearchQueryBuilder(query="python", is_phrase_search=False)
+        result = builder.build(limit=50)
+
+        assert "entries_fts MATCH ?" in result.sql
+        assert result.params[0] == '"python"'
+        assert result.params[1] == 50
+
+    def test_single_word_with_special_chars(self):
+        """Single word with special chars is quoted."""
+        builder = FTS5SearchQueryBuilder(query="test*func", is_phrase_search=False)
+        result = builder.build(limit=50)
+
+        assert result.params[0] == '"test*func"'
+
+
+class TestFTS5MultiWord:
+    """Tests for FTS5 multi-word search query building."""
+
+    def test_multi_word_query(self):
+        """Multi-word search builds MATCH with space-separated quoted tokens."""
+        builder = FTS5SearchQueryBuilder(
+            query="python error handling", is_phrase_search=False
+        )
+        result = builder.build(limit=50)
+
+        assert "entries_fts MATCH ?" in result.sql
+        # Each word is individually quoted (implicit AND)
+        assert result.params[0] == '"python" "error" "handling"'
+        assert result.params[1] == 50
+        # Always 2 params for FTS5: match expression + limit
+        assert len(result.params) == 2
+
+    def test_multi_word_truncation(self):
+        """Words beyond max limit are truncated."""
+        long_query = " ".join(f"word{i}" for i in range(15))
+        builder = FTS5SearchQueryBuilder(
+            query=long_query, is_phrase_search=False, max_words=10
+        )
+        result = builder.build(limit=50)
+
+        assert result.words_truncated is True
+        # Still only 2 params for FTS5
+        assert len(result.params) == 2
+        # Should have exactly 10 quoted tokens
+        assert result.params[0].count('"') == 20  # 10 words x 2 quotes each
+
+    def test_multi_word_respects_custom_max(self):
+        """Custom max_words limit is respected."""
+        builder = FTS5SearchQueryBuilder(
+            query="one two three four five", is_phrase_search=False, max_words=3
+        )
+        result = builder.build(limit=50)
+
+        assert result.words_truncated is True
+        assert result.params[0] == '"one" "two" "three"'
+
+    def test_multi_word_escapes_special_chars(self):
+        """Special chars in individual words are quoted."""
+        builder = FTS5SearchQueryBuilder(
+            query="test*func OR value", is_phrase_search=False
+        )
+        result = builder.build(limit=50)
+
+        assert result.params[0] == '"test*func" "OR" "value"'
+
+
+class TestFTS5FromRawQuery:
+    """Tests for creating FTS5 builder from raw query."""
+
+    def test_detects_double_quoted_phrase(self):
+        """Double-quoted query creates phrase search."""
+        builder = FTS5SearchQueryBuilder.from_raw_query('"exact phrase"')
+
+        assert builder.is_phrase_search is True
+        assert builder.query == "exact phrase"
+
+    def test_detects_single_quoted_phrase(self):
+        """Single-quoted query creates phrase search."""
+        builder = FTS5SearchQueryBuilder.from_raw_query("'exact phrase'")
+
+        assert builder.is_phrase_search is True
+        assert builder.query == "exact phrase"
+
+    def test_unquoted_is_word_search(self):
+        """Unquoted query creates word search."""
+        builder = FTS5SearchQueryBuilder.from_raw_query("multiple words here")
+
+        assert builder.is_phrase_search is False
+        assert builder.query == "multiple words here"
+
+    def test_strips_whitespace(self):
+        """Leading/trailing whitespace is stripped."""
+        builder = FTS5SearchQueryBuilder.from_raw_query("  test query  ")
+
+        assert builder.query == "test query"
+
+    def test_passes_max_words(self):
+        """Custom max_words is passed through."""
+        builder = FTS5SearchQueryBuilder.from_raw_query(
+            "one two three four", max_words=2
+        )
+
+        assert builder.max_words == 2
+
+
+class TestFTS5Validation:
+    """Tests for FTS5 query validation."""
+
+    def test_empty_query_raises_error(self):
+        """Empty query raises ValueError."""
+        builder = FTS5SearchQueryBuilder(query="")
+
+        with pytest.raises(ValueError, match="cannot be empty"):
+            builder.build()
+
+    def test_whitespace_only_raises_error(self):
+        """Whitespace-only query raises ValueError."""
+        builder = FTS5SearchQueryBuilder(query="   ")
+
+        with pytest.raises(ValueError, match="cannot be empty"):
+            builder.build()
+
+
+class TestFTS5SecurityDeep:
+    """Tests for FTS5 injection prevention."""
+
+    def test_fts5_operators_in_query(self):
+        """FTS5 operators (OR, AND, NOT) are quoted, not interpreted."""
+        builder = FTS5SearchQueryBuilder(
+            query="python OR javascript", is_phrase_search=False
+        )
+        result = builder.build(limit=50)
+
+        # OR should be a quoted token, not an FTS5 operator
+        assert result.params[0] == '"python" "OR" "javascript"'
+        assert "?" in result.sql
+
+    def test_near_operator_in_query(self):
+        """NEAR operator is quoted."""
+        builder = FTS5SearchQueryBuilder(
+            query="test NEAR/3 value", is_phrase_search=False
+        )
+        result = builder.build(limit=50)
+
+        assert '"NEAR/3"' in result.params[0]
+
+    def test_column_filter_syntax(self):
+        """Column filter syntax (title:test) is quoted."""
+        builder = FTS5SearchQueryBuilder(
+            query="title:injected", is_phrase_search=False
+        )
+        result = builder.build(limit=50)
+
+        assert result.params[0] == '"title:injected"'
+
+    def test_sql_injection_via_match(self):
+        """SQL keywords in query are safely parameterized."""
+        builder = FTS5SearchQueryBuilder(
+            query="DROP TABLE users", is_phrase_search=False
+        )
+        result = builder.build(limit=50)
+
+        assert "DROP" not in result.sql
+        assert '"DROP"' in result.params[0]
+
+    def test_null_byte_handled(self):
+        """Null byte in query doesn't crash."""
+        builder = FTS5SearchQueryBuilder(
+            query="test\x00value", is_phrase_search=False
+        )
+        result = builder.build(limit=50)
+
+        assert result.sql
+        assert result.params
+
+    def test_newline_in_query_handled(self):
+        """Newline in query handled."""
+        builder = FTS5SearchQueryBuilder(
+            query="test\nvalue", is_phrase_search=False
+        )
+        result = builder.build(limit=50)
+
+        assert result.sql
+        assert result.params
+
+
+class TestFTS5Unicode:
+    """Tests for Unicode handling in FTS5 search queries."""
+
+    def test_emoji_in_query(self):
+        """Emoji in query builds successfully."""
+        builder = FTS5SearchQueryBuilder(
+            query="\U0001f50d search", is_phrase_search=False
+        )
+        result = builder.build(limit=50)
+
+        assert result.sql
+        assert '"\U0001f50d"' in result.params[0]
+        assert '"search"' in result.params[0]
+
+    def test_cjk_characters(self):
+        """CJK characters build successfully."""
+        builder = FTS5SearchQueryBuilder(
+            query="\u65e5\u672c\u8a9e\u30c6\u30b9\u30c8", is_phrase_search=False
+        )
+        result = builder.build(limit=50)
+
+        assert result.sql
+        assert '"\u65e5\u672c\u8a9e\u30c6\u30b9\u30c8"' in result.params[0]
+
+    def test_arabic_text(self):
+        """Arabic text builds successfully."""
+        builder = FTS5SearchQueryBuilder(
+            query="\u0628\u062d\u062b", is_phrase_search=False
+        )
+        result = builder.build(limit=50)
+
+        assert result.sql
+        assert '"\u0628\u062d\u062b"' in result.params[0]
+
+    def test_mixed_scripts(self):
+        """Mixed scripts split into 3 quoted words."""
+        builder = FTS5SearchQueryBuilder(
+            query="test \u0442\u0435\u0441\u0442 \u6d4b\u8bd5",
+            is_phrase_search=False,
+        )
+        result = builder.build(limit=50)
+
+        # Always 2 params for FTS5
+        assert len(result.params) == 2
+        assert '"test"' in result.params[0]
+        assert '"\u0442\u0435\u0441\u0442"' in result.params[0]
+        assert '"\u6d4b\u8bd5"' in result.params[0]
+
+
+class TestFTS5Determinism:
+    """Tests that FTS5 search query building is deterministic."""
+
+    def test_same_input_same_output(self):
+        """Same query+params produce identical SQL+params."""
+        builder1 = FTS5SearchQueryBuilder(query="test query", is_phrase_search=False)
+        builder2 = FTS5SearchQueryBuilder(query="test query", is_phrase_search=False)
+
+        result1 = builder1.build(limit=50)
+        result2 = builder2.build(limit=50)
+
+        assert result1.sql == result2.sql
+        assert result1.params == result2.params
+
+    def test_build_called_twice_same_result(self):
+        """Calling build() twice returns same result."""
+        builder = FTS5SearchQueryBuilder(query="test query", is_phrase_search=False)
+
+        result1 = builder.build(limit=50)
+        result2 = builder.build(limit=50)
+
+        assert result1.sql == result2.sql
+        assert result1.params == result2.params
+
+    def test_params_are_tuple(self):
+        """Params is always a tuple (immutable)."""
+        builder = FTS5SearchQueryBuilder(query="test", is_phrase_search=False)
+        result = builder.build(limit=50)
+
+        assert isinstance(result.params, tuple)
+
+    def test_placeholder_count_matches_params(self):
+        """Count of '?' in SQL == len(params) for all query types."""
+        for query, phrase in [
+            ("test", False),
+            ("one two three", False),
+            ("exact phrase", True),
+        ]:
+            builder = FTS5SearchQueryBuilder(query=query, is_phrase_search=phrase)
+            result = builder.build(limit=50)
+            assert result.sql.count("?") == len(result.params)
+
+
+class TestFTS5SQLStructure:
+    """Tests for FTS5 SQL structure invariants."""
+
+    def test_all_modes_use_match(self):
+        """All search modes produce SQL with MATCH."""
+        for query, phrase in [
+            ("test", False),
+            ("one two three", False),
+            ("exact phrase", True),
+        ]:
+            builder = FTS5SearchQueryBuilder(query=query, is_phrase_search=phrase)
+            result = builder.build(limit=50)
+            assert "MATCH" in result.sql
+
+    def test_all_modes_join_fts(self):
+        """All search modes JOIN entries_fts."""
+        for query, phrase in [
+            ("test", False),
+            ("one two three", False),
+            ("exact phrase", True),
+        ]:
+            builder = FTS5SearchQueryBuilder(query=query, is_phrase_search=phrase)
+            result = builder.build(limit=50)
+            assert "entries_fts" in result.sql
+            assert "JOIN entries_fts fts ON e.id = fts.rowid" in result.sql
+
+    def test_no_like_in_sql(self):
+        """FTS5 SQL does NOT contain LIKE."""
+        for query, phrase in [
+            ("test", False),
+            ("one two three", False),
+            ("exact phrase", True),
+        ]:
+            builder = FTS5SearchQueryBuilder(query=query, is_phrase_search=phrase)
+            result = builder.build(limit=50)
+            assert "LIKE" not in result.sql
+
+    def test_exactly_two_placeholders(self):
+        """FTS5 SQL always has exactly 2 placeholders (MATCH + LIMIT)."""
+        for query, phrase in [
+            ("test", False),
+            ("one two three", False),
+            ("exact phrase", True),
+            (" ".join(f"w{i}" for i in range(15)), False),
+        ]:
+            builder = FTS5SearchQueryBuilder(query=query, is_phrase_search=phrase)
+            result = builder.build(limit=50)
+            assert result.sql.count("?") == 2
+
+
+class TestFTS5Mutations:
+    """Tests that different FTS5 inputs produce meaningfully different outputs."""
+
+    def test_phrase_vs_word_different_params(self):
+        """Phrase vs word search produce different MATCH expressions."""
+        phrase = FTS5SearchQueryBuilder(
+            query="test word", is_phrase_search=True
+        ).build(limit=50)
+        word = FTS5SearchQueryBuilder(
+            query="test word", is_phrase_search=False
+        ).build(limit=50)
+
+        # Phrase: '"test word"' (one quoted string)
+        # Non-phrase: '"test" "word"' (two quoted strings)
+        assert phrase.params[0] != word.params[0]
+        assert phrase.params[0] == '"test word"'
+        assert word.params[0] == '"test" "word"'
+
+    def test_different_limit_changes_last_param(self):
+        """limit=10 vs limit=50 changes last param."""
+        builder = FTS5SearchQueryBuilder(query="test", is_phrase_search=False)
+
+        result10 = builder.build(limit=10)
+        result50 = builder.build(limit=50)
+
+        assert result10.params[-1] == 10
+        assert result50.params[-1] == 50
+
+
+class TestFTS5Boundaries:
+    """Tests for FTS5 boundary conditions."""
+
+    def test_query_single_char_builds(self):
+        """1-char query builds (handler rejects, not builder)."""
+        builder = FTS5SearchQueryBuilder(query="a", is_phrase_search=False)
+        result = builder.build(limit=50)
+
+        assert result.sql
+        assert result.params[0] == '"a"'
+
+    def test_query_1000_chars_builds(self):
+        """Very long query builds successfully."""
+        long_query = "x" * 1000
+        builder = FTS5SearchQueryBuilder(query=long_query, is_phrase_search=True)
+        result = builder.build(limit=50)
+
+        assert result.sql
+        assert result.params[0] == f'"{long_query}"'
+
+    def test_exactly_max_words_no_truncation(self):
+        """10 words -> words_truncated=False."""
+        query = " ".join(f"word{i}" for i in range(10))
+        builder = FTS5SearchQueryBuilder(
+            query=query, is_phrase_search=False, max_words=10
+        )
+        result = builder.build(limit=50)
+
+        assert result.words_truncated is False
+
+    def test_exactly_max_plus_one_truncation(self):
+        """11 words -> words_truncated=True."""
+        query = " ".join(f"word{i}" for i in range(11))
+        builder = FTS5SearchQueryBuilder(
+            query=query, is_phrase_search=False, max_words=10
+        )
+        result = builder.build(limit=50)
+
+        assert result.words_truncated is True
+
+    def test_consecutive_spaces_handled(self):
+        """'word  word' doesn't produce empty words."""
+        builder = FTS5SearchQueryBuilder(query="word  word", is_phrase_search=False)
+        result = builder.build(limit=50)
+
+        assert result.params[0] == '"word" "word"'
+
+    def test_tabs_and_newlines_as_whitespace(self):
+        """Tabs and newlines split correctly."""
+        builder = FTS5SearchQueryBuilder(
+            query="\tword1\nword2", is_phrase_search=False
+        )
+        result = builder.build(limit=50)
+
+        assert '"word1"' in result.params[0]
+        assert '"word2"' in result.params[0]
+
+
+class TestSearchQueryBuilderBackwardCompat:
+    """Tests that old SearchQueryBuilder still works."""
+
+    def test_old_class_still_importable(self):
+        """SearchQueryBuilder is still importable."""
+        assert SearchQueryBuilder is not None
+
+    def test_old_class_produces_like_queries(self):
+        """Old class still produces LIKE queries."""
+        builder = SearchQueryBuilder(query="test", is_phrase_search=False)
+        result = builder.build(limit=50)
+
+        assert "LIKE" in result.sql
+        assert "MATCH" not in result.sql
+
+    def test_old_class_not_broken(self):
+        """Old class basic functionality unchanged."""
+        builder = SearchQueryBuilder(query="test query", is_phrase_search=False)
+        result = builder.build(limit=50)
+
+        assert result.sql.count("?") == len(result.params)
+        assert isinstance(result.params, tuple)
