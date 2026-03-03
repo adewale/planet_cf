@@ -121,6 +121,139 @@ END;
 - Zero application code changes needed for entry insert/update/delete paths.
 - The triggers run within the same D1 transaction as the DML statement.
 
+#### Trigger Interaction with UPSERT (`ON CONFLICT DO UPDATE`)
+
+The `_upsert_entry()` method (`main.py:1030`) uses:
+
+```sql
+INSERT INTO entries (...) VALUES (...)
+ON CONFLICT(feed_id, guid) DO UPDATE SET
+    title = excluded.title,
+    content = excluded.content,
+    updated_at = CURRENT_TIMESTAMP
+RETURNING id
+```
+
+SQLite's trigger behavior for UPSERT depends on whether a conflict occurs:
+
+| Scenario | Triggers Fired on `entries` |
+|---|---|
+| **New entry** (no conflict) | BEFORE INSERT → AFTER INSERT |
+| **Existing entry** (conflict, DO UPDATE) | BEFORE INSERT → BEFORE UPDATE → AFTER UPDATE |
+
+This means:
+- **New entries:** The `entries_fts_insert` AFTER INSERT trigger fires → FTS entry added.
+- **Updated entries:** The `entries_fts_update` AFTER UPDATE trigger fires → FTS entry
+  deleted with old values, re-added with new values. The AFTER INSERT trigger does
+  **not** fire on the conflict path (the insert is omitted), so no double-insert.
+
+The `AFTER UPDATE OF title, content` clause matches because the `DO UPDATE SET` always
+includes `title` and `content` in its SET clause, even if values haven't changed.
+SQLite fires `AFTER UPDATE OF col` based on columns mentioned in SET, not whether
+values actually differ.
+
+**Test requirement:** Add a migration test that verifies UPSERT fires the correct
+trigger (see Section E.8).
+
+#### Cascade DELETE and FTS Trigger Behavior
+
+When a feed is deleted (`DELETE FROM feeds WHERE id = ?`), entries cascade via the
+foreign key constraint (`ON DELETE CASCADE`). **SQLite does not fire triggers on child
+tables for cascade deletes** unless `PRAGMA recursive_triggers = ON` is set (off by
+default, and not controllable in D1).
+
+This means: cascade-deleting a feed's entries does **not** fire `entries_fts_delete`,
+leaving stale tokens in the FTS index.
+
+**Impact: Low.** The search query uses a JOIN:
+```sql
+FROM entries e
+JOIN feeds f ON e.feed_id = f.id
+JOIN entries_fts fts ON e.id = fts.rowid
+WHERE entries_fts MATCH ?
+```
+Stale FTS rowids pointing to deleted entries produce no JOIN match, so they never
+appear in results. The stale tokens only waste FTS index storage.
+
+**Mitigation:** The FTS5 `rebuild` command (see Section 2b) periodically reconciles
+the FTS index with the entries table. Feed deletion is rare (admin action), so the
+stale data accumulates slowly.
+
+**Alternative considered:** Add a BEFORE DELETE trigger on `feeds` that explicitly
+`DELETE FROM entries WHERE feed_id = old.id` before the cascade. This would fire
+`entries_fts_delete` for each entry. However, this adds complexity for marginal
+benefit since the JOIN already filters stale results. Not recommended for v1.
+
+#### Retention Policy Deletes
+
+The `_apply_retention_policy()` method (`main.py:1958`) uses:
+```sql
+DELETE FROM entries WHERE id IN (?, ?, ...)
+```
+These are direct DELETEs on `entries`, **not** cascade deletes. The `entries_fts_delete`
+AFTER DELETE trigger fires normally for each deleted row. No gap here.
+
+### 2b. FTS Index Rebuild and Integrity
+
+FTS5 external content tables can drift out of sync if:
+- Cascade deletes skip the trigger (see above)
+- Triggers are accidentally dropped
+- The entries table is modified directly (e.g., D1 console)
+- A trigger fails mid-execution
+
+FTS5 provides two maintenance commands:
+
+```sql
+-- Check FTS index integrity against the content table
+INSERT INTO entries_fts(entries_fts) VALUES('integrity-check');
+
+-- Rebuild FTS index from scratch using the content table
+INSERT INTO entries_fts(entries_fts) VALUES('rebuild');
+```
+
+**Integration with existing reindex endpoint:** The current `_reindex_all_entries()`
+(`main.py:3375`) only re-indexes Vectorize embeddings. Extend it to also rebuild
+the FTS5 index:
+
+```python
+# In _reindex_all_entries(), add before the Vectorize loop:
+await self.env.DB.prepare(
+    "INSERT INTO entries_fts(entries_fts) VALUES('rebuild')"
+).run()
+```
+
+This is a single SQL statement that rebuilds the entire FTS index from the `entries`
+table. It replaces all FTS content, so it's both the fix for stale data and a full
+re-index. It does not require iterating over entries individually.
+
+**Test requirement:** Add tests for rebuild and integrity-check (see Section E.9).
+
+### 2c. NULL Handling in FTS Triggers
+
+The `entries.title` and `entries.content` columns are nullable (`TEXT` without
+`NOT NULL`). When a NULL value is inserted into an FTS5 column, FTS5 treats it as
+an empty string — it won't match any search terms, which is correct behavior.
+
+The DELETE trigger uses `old.title` and `old.content`. The FTS5 `'delete'` command
+requires the exact values that were originally indexed. Since NULL was indexed as
+empty string, passing NULL to the delete command is consistent. SQLite handles this
+transparently.
+
+**Test requirement:** Add migration tests for NULL title/content (see Section E.10).
+
+### 2d. Indexed Columns: title and content Only
+
+The FTS5 index covers `title` and `content` only. This matches the current LIKE
+search behavior, which uses `WHERE e.title LIKE ? OR e.content LIKE ?`.
+
+Fields **not** indexed:
+- `author` — Not searched by the current LIKE SQL (despite the `MockD1WithFixtures`
+  mock in `test_search_accuracy.py` checking `pattern in author` on line 107). The
+  mock diverges from production behavior here. This is a pre-existing gap unrelated
+  to FTS5.
+- `summary` — Typically a subset of `content`, so indexing it separately would add
+  FTS storage without meaningful search improvement.
+
 ### 3. New Query Builder: `FTS5SearchQueryBuilder`
 
 Replace `SearchQueryBuilder` in `src/search_query.py`. The new builder generates
@@ -260,7 +393,9 @@ changes, but the old class stays in `search_query.py`.
 
 ## Behavioral Differences
 
-FTS5 tokenized matching differs from LIKE substring matching in a few edge cases:
+FTS5 tokenized matching differs from LIKE substring matching in several areas:
+
+### General Token vs Substring Differences
 
 | Scenario | LIKE (current) | FTS5 (new) | Impact |
 |---|---|---|---|
@@ -270,8 +405,37 @@ FTS5 tokenized matching differs from LIKE substring matching in a few edge cases
 | **Relevance ranking** | None (ORDER BY published_at) | BM25 available (not used in v1) | Future improvement possible. |
 | **Case sensitivity** | D1 LIKE is case-insensitive | FTS5 unicode61 is case-insensitive | No change. |
 
+### Phrase Search Tokenization Details
+
+Phrase search is the mode most affected by FTS5 tokenization. The current LIKE
+phrase search (`LIKE '%error handling%'`) matches the **exact byte sequence** in the
+text. FTS5 phrase search (`MATCH '"error handling"'`) matches **adjacent tokens** in
+order, which is subtly different.
+
+| Phrase Query | LIKE (current) | FTS5 (new) | Notes |
+|---|---|---|---|
+| `"error handling"` | Matches exact substring | Matches adjacent tokens `error` + `handling` | Equivalent for normal text. |
+| `"day-to-day"` | Matches exact substring `day-to-day` | `unicode61` tokenizes on hyphens → tokens `day`, `to`, `day`. Phrase match looks for 3 adjacent tokens. | **Both match**, but FTS5 treats hyphens as token separators. A phrase `"day-to-day"` in FTS5 is equivalent to `"day to day"`. |
+| `"error.handling"` | Matches exact substring `error.handling` | Tokens `error` + `handling` (period is separator). Matches `error handling` or `error. handling`. | FTS5 is more permissive — matches regardless of punctuation. |
+| `"what the day-to-day looks like"` | Matches exact substring | Tokenizes to `what the day to day looks like` (7 tokens). Title tokenizes identically. | **Matches.** Verified against fixture test data. |
+
+**Validation against fixture test queries:**
+
+The `blog_posts.json` fixtures include two phrase searches:
+1. `"what the day-to-day looks like"` → expects entry 1 ("What the day-to-day looks like").
+   FTS5 tokenizes both query and title identically (including hyphen splitting), so
+   the phrase match succeeds.
+2. `'context is the work'` → expects entry 2 ("Context is the work"). Straightforward
+   token sequence match, no special characters.
+
+Both pass with FTS5.
+
+### Impact Assessment
+
 These differences are acceptable. The semantic search layer (Vectorize) covers
 fuzzy/conceptual matching. FTS5 keyword search provides fast, precise token matching.
+The primary risk (substring-within-word matching loss) can be addressed later with
+prefix search (`*` operator) if user feedback warrants it.
 
 ## Testing Strategy
 
@@ -478,23 +642,230 @@ uses SQLite under the hood.
 
 #### E. Migration Test: `tests/unit/test_fts5_migration.py`
 
-**New file.** Verifies the migration SQL executes correctly against a real SQLite database.
+**New file.** Verifies the migration SQL executes correctly against a real SQLite
+database (Python's built-in `sqlite3` module).
 
 Tests:
+
+**Basic Migration:**
+
 1. **Migration creates FTS5 table:** Run migration SQL, verify `entries_fts` exists
    via `PRAGMA table_list`.
 2. **Backfill populates FTS5:** Insert entries before migration, run migration,
    verify FTS5 contains all entries via `SELECT count(*) FROM entries_fts`.
-3. **Insert trigger:** Insert a new entry into `entries`, verify it appears in
-   `entries_fts` via MATCH query.
-4. **Delete trigger:** Delete an entry from `entries`, verify it's removed from
-   `entries_fts`.
-5. **Update trigger:** Update an entry's title, verify the old title no longer
-   matches and the new title does match in FTS5.
-6. **Migration is idempotent:** Running migration twice doesn't error (due to
+3. **Migration is idempotent:** Running migration twice doesn't error (due to
    `IF NOT EXISTS`).
-7. **FTS5 MATCH works end-to-end:** Insert entries with known content, run
+4. **FTS5 MATCH works end-to-end:** Insert entries with known content, run
    MATCH queries, verify correct results returned.
+
+**Trigger Tests:**
+
+5. **Insert trigger:** Insert a new entry into `entries`, verify it appears in
+   `entries_fts` via MATCH query.
+6. **Delete trigger:** Delete an entry from `entries`, verify it's removed from
+   `entries_fts` (MATCH no longer returns it).
+7. **Update trigger — title change:** Update an entry's title, verify the old title
+   no longer matches and the new title does match in FTS5.
+8. **UPSERT trigger interaction:** Execute `INSERT ... ON CONFLICT DO UPDATE` against
+   an existing entry with a new title. Verify:
+   - The old title no longer matches in FTS5
+   - The new title matches in FTS5
+   - The FTS index has exactly one entry for this rowid (not duplicated)
+9. **Batch delete trigger:** Delete multiple entries in one statement
+   (`DELETE FROM entries WHERE id IN (?, ?)`), verify all are removed from FTS.
+
+**Rebuild and Integrity:**
+
+10. **Rebuild command:** Delete entries directly from `entries` without triggers
+    (using a raw DELETE that bypasses triggers, e.g., by disabling triggers
+    temporarily), then run `INSERT INTO entries_fts(entries_fts) VALUES('rebuild')`.
+    Verify FTS index matches the entries table.
+11. **Integrity-check command:** After normal operations, verify
+    `INSERT INTO entries_fts(entries_fts) VALUES('integrity-check')` does not raise.
+
+**NULL Handling:**
+
+12. **NULL title:** Insert entry with `title = NULL, content = 'some text'`. Verify
+    MATCH on 'some text' returns the entry. Verify MATCH on random word does not
+    return the entry.
+13. **NULL content:** Insert entry with `title = 'some title', content = NULL`.
+    Verify MATCH on 'some title' returns the entry.
+14. **Update NULL to non-NULL:** Insert entry with NULL title, then UPDATE to a real
+    title. Verify the new title matches in FTS5.
+
+**Cascade DELETE (documenting known behavior):**
+
+15. **Cascade delete does not clean FTS:** Set up feeds + entries with triggers.
+    Delete a feed (CASCADE). Verify entries are gone from `entries` table. Verify
+    stale tokens remain in `entries_fts`. Verify a MATCH query with JOIN to `entries`
+    does NOT return the stale entries (JOIN filters them out). Then run `rebuild` and
+    verify FTS is clean.
+
+**Phrase Search:**
+
+16. **Hyphenated phrase:** Insert entry with title `"day-to-day"`. Verify phrase
+    MATCH `'"day-to-day"'` finds it (tokenizes to `day to day`).
+17. **Punctuated phrase:** Insert entry with content `"error.handling patterns"`.
+    Verify phrase MATCH `'"error handling"'` finds it (period is token separator).
+
+#### F. Property-Based Tests: `tests/unit/test_search_query_properties.py`
+
+**New file.** Uses [Hypothesis](https://hypothesis.readthedocs.io/) to verify
+invariants that must hold for **any** input, not just hand-picked examples.
+
+Property-based testing is especially valuable here because:
+- The escaping logic must be correct for arbitrary user input (including adversarial)
+- The SQL structure must be valid for any query shape
+- FTS5 MATCH expressions must parse without syntax errors for any input
+
+**Properties to test:**
+
+1. **Placeholder-param count invariant:** For any non-empty query string `q` and any
+   `is_phrase_search` value, `result.sql.count('?') == len(result.params)`.
+
+   ```python
+   @given(q=text(min_size=1, max_size=200), phrase=booleans())
+   def test_placeholder_count_matches_params(q, phrase):
+       q = q.strip()
+       assume(len(q) >= 1)
+       builder = FTS5SearchQueryBuilder(query=q, is_phrase_search=phrase)
+       result = builder.build(limit=50)
+       assert result.sql.count("?") == len(result.params)
+   ```
+
+2. **Params are always tuple:** For any input, `isinstance(result.params, tuple)`.
+
+3. **Idempotency:** For any input, calling `build()` twice returns identical
+   `(sql, params)`.
+
+4. **No raw user input in SQL:** For any query string `q` containing at least one
+   alphanumeric character, `q` must NOT appear literally in `result.sql` — it must
+   only appear inside `result.params` (i.e., behind bind placeholders).
+
+   ```python
+   @given(q=from_regex(r'[a-zA-Z]{2,20}', fullmatch=True))
+   def test_user_input_never_in_sql(q):
+       builder = FTS5SearchQueryBuilder(query=q, is_phrase_search=False)
+       result = builder.build(limit=50)
+       assert q not in result.sql
+   ```
+
+5. **FTS5 MATCH expression is valid SQLite:** For any query string, the generated
+   MATCH expression (first element of `result.params`) must be parseable by SQLite's
+   FTS5 engine. Verify by executing against a real SQLite FTS5 table in the test.
+
+   ```python
+   @given(q=text(min_size=1, max_size=100))
+   def test_fts5_expression_is_valid_sqlite(q, fts5_db):
+       q = q.strip()
+       assume(len(q) >= 1)
+       builder = FTS5SearchQueryBuilder(query=q, is_phrase_search=False)
+       result = builder.build(limit=50)
+       match_expr = result.params[0]
+       # Must not raise "fts5: syntax error"
+       fts5_db.execute(
+           "SELECT rowid FROM test_fts WHERE test_fts MATCH ?", (match_expr,)
+       )
+   ```
+
+   This is the most important property test. It catches escaping bugs that
+   hand-written tests miss — e.g., a query like `"` (just a double quote), `""`,
+   `"" ""`, `*`, `NEAR`, etc.
+
+6. **Escaping round-trip preserves token content:** For any string `s`,
+   `escape_fts5_token(s)` must produce output that starts and ends with `"` and
+   contains the original text (with internal `"` doubled).
+
+   ```python
+   @given(s=text(min_size=1, max_size=50))
+   def test_escape_roundtrip(s):
+       escaped = FTS5SearchQueryBuilder.escape_fts5_token(s)
+       assert escaped.startswith('"')
+       assert escaped.endswith('"')
+       inner = escaped[1:-1]
+       assert inner.replace('""', '"') == s
+   ```
+
+7. **Multi-word commutativity:** For any two non-empty words `a` and `b`, searching
+   for `"a b"` and `"b a"` (non-phrase) should produce MATCH expressions with the
+   same tokens (FTS5 implicit AND is unordered). Both should have exactly 2 quoted
+   tokens in the MATCH expression.
+
+8. **Phrase vs non-phrase are distinct:** For any query with 2+ words, the phrase
+   MATCH expression should differ from the non-phrase MATCH expression (phrase wraps
+   the entire sequence in one quoted string; non-phrase wraps each word separately).
+
+   ```python
+   @given(w1=from_regex(r'[a-z]{3,10}', fullmatch=True),
+          w2=from_regex(r'[a-z]{3,10}', fullmatch=True))
+   def test_phrase_vs_nonphrase_differ(w1, w2):
+       assume(w1 != w2)
+       q = f"{w1} {w2}"
+       phrase = FTS5SearchQueryBuilder(query=q, is_phrase_search=True).build()
+       nonphrase = FTS5SearchQueryBuilder(query=q, is_phrase_search=False).build()
+       assert phrase.params[0] != nonphrase.params[0]
+   ```
+
+9. **SQL structure invariant:** For any non-empty query, the SQL must contain
+   `entries_fts MATCH`, `JOIN entries_fts`, and must NOT contain `LIKE`.
+
+10. **words_truncated consistency:** For any query with `N` whitespace-separated
+    tokens and `max_words = M`, `words_truncated == (N > M)`.
+
+**Fixture: `fts5_db`**
+
+Property tests 5 requires a real SQLite database with an FTS5 table. Create a
+session-scoped pytest fixture:
+
+```python
+@pytest.fixture(scope="session")
+def fts5_db():
+    """Real SQLite DB with an FTS5 table for validating MATCH expressions."""
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE VIRTUAL TABLE test_fts USING fts5(title, content)")
+    conn.execute("INSERT INTO test_fts(title, content) VALUES ('test', 'test content')")
+    yield conn
+    conn.close()
+```
+
+#### G. Property-Based Tests for Trigger Consistency: `tests/unit/test_fts5_trigger_properties.py`
+
+**New file.** Uses Hypothesis to verify the FTS index stays consistent with the
+entries table across arbitrary sequences of mutations.
+
+1. **Insert/delete consistency:** For any sequence of N inserts followed by M deletes
+   (M <= N), the FTS index row count equals the entries table row count.
+
+   ```python
+   @given(
+       titles=lists(text(min_size=1, max_size=50), min_size=1, max_size=20),
+       delete_indices=lists(integers(min_value=0), max_size=10),
+   )
+   def test_fts_count_matches_entries_count(fts5_full_db, titles, delete_indices):
+       # Insert entries
+       for i, title in enumerate(titles):
+           fts5_full_db.execute(
+               "INSERT INTO entries(feed_id, guid, title, content) VALUES (1, ?, ?, '')",
+               (f"guid-{i}", title),
+           )
+       # Delete some
+       ids = [row[0] for row in fts5_full_db.execute("SELECT id FROM entries").fetchall()]
+       for idx in delete_indices:
+           if ids:
+               target = ids.pop(idx % len(ids))
+               fts5_full_db.execute("DELETE FROM entries WHERE id = ?", (target,))
+       # Verify counts match
+       entry_count = fts5_full_db.execute("SELECT count(*) FROM entries").fetchone()[0]
+       fts_count = fts5_full_db.execute("SELECT count(*) FROM entries_fts").fetchone()[0]
+       assert entry_count == fts_count
+   ```
+
+2. **Update consistency:** For any entry, after updating its title, the old title
+   should not match and the new title should match.
+
+3. **Rebuild idempotency:** After any sequence of mutations, running `rebuild`
+   should not change the set of matchable tokens (the index is already consistent
+   via triggers, so rebuild is a no-op).
 
 ### Test Execution
 
@@ -527,28 +898,40 @@ pytest tests/unit/test_fts5_migration.py -v
 - Change import from `SearchQueryBuilder` to `FTS5SearchQueryBuilder` in `_search_entries()`
 - Single-line change: swap the class name in the constructor call
 
-### Step 4: Update Test Mocks
+### Step 4: Extend Reindex Endpoint
+- Add FTS5 `rebuild` command to `_reindex_all_entries()` in `main.py`
+- Run `INSERT INTO entries_fts(entries_fts) VALUES('rebuild')` before the
+  Vectorize re-indexing loop
+
+### Step 5: Update Test Mocks
 - Update `MockD1Statement._filter_results()` in `conftest.py` to handle FTS5 SQL
 - Update `MockD1WithFixtures` in `test_search_accuracy.py` to detect MATCH queries
 - Ensure mock FTS5 matching simulates tokenized (word-boundary) matching
 
-### Step 5: Update Unit Tests
+### Step 6: Update Unit Tests
 - Add `TestFTS5*` test classes
 - Update existing tests that assert on LIKE SQL to assert on MATCH SQL
 - Keep old LIKE tests in a separate `TestSearchQueryBuilderLegacy` class
 
-### Step 6: Add Performance Benchmark
+### Step 7: Add Migration Tests (Section E)
+- Create `tests/unit/test_fts5_migration.py`
+- Verify migration, triggers, UPSERT interaction, rebuild, NULL handling,
+  cascade DELETE behavior, and phrase search tokenization
+
+### Step 8: Add Property-Based Tests (Section F, G)
+- Add `hypothesis` to dev dependencies
+- Create `tests/unit/test_search_query_properties.py` (query builder properties)
+- Create `tests/unit/test_fts5_trigger_properties.py` (trigger consistency)
+
+### Step 9: Add Performance Benchmark (Section D)
 - Create `tests/benchmark/test_search_performance.py`
 - Verify FTS5 is at least as fast as LIKE across all dataset sizes
 
-### Step 7: Add Migration Tests
-- Create `tests/unit/test_fts5_migration.py`
-- Verify migration correctness with real SQLite
-
-### Step 8: Verify All Tests Pass
+### Step 10: Verify All Tests Pass
 - Run full test suite
 - Verify no regressions in search accuracy tests
 - Verify performance benchmark assertions pass
+- Verify property-based tests pass with default Hypothesis settings
 
 ## Risks and Mitigations
 
@@ -557,8 +940,13 @@ pytest tests/unit/test_fts5_migration.py -v
 | D1 FTS5 case sensitivity (`fts5` must be lowercase) | Use lowercase in migration SQL. Add a test that verifies the migration runs. |
 | FTS5 export limitation (can't export DB with virtual tables) | Document in ARCHITECTURE.md. Workaround: drop FTS5 table before export, recreate after. |
 | Token boundary matching differs from LIKE substring matching | Semantic search (Vectorize) covers fuzzy matching. Monitor search quality post-deploy. |
-| External content mode requires manual sync | Triggers handle sync automatically. Test trigger correctness. |
+| External content mode requires manual sync | Triggers handle sync automatically. Test trigger correctness with property-based tests (Section G). |
 | Migration backfill on large tables | Backfill runs once. D1 handles this within migration execution. |
+| Cascade DELETE leaves stale FTS tokens | JOIN in search query filters stale rowids. Periodic `rebuild` via admin endpoint cleans up. Stale data is storage-only, not correctness. (See Section 2, "Cascade DELETE".) |
+| UPSERT fires UPDATE trigger, not INSERT | Verified behavior is correct: AFTER UPDATE trigger handles the delete-old + insert-new cycle. Tested explicitly (Section E.8). |
+| FTS index corruption (dropped triggers, direct SQL) | `rebuild` command available via admin reindex endpoint. `integrity-check` available for diagnostics. (See Section 2b.) |
+| NULL title/content in entries | FTS5 treats NULL as empty string. Triggers pass NULL transparently. Tested explicitly (Section E.12-14). |
+| Hypothesis dependency for property-based tests | `hypothesis` is a dev-only test dependency. No production impact. |
 
 ## Files Changed
 
@@ -566,10 +954,12 @@ pytest tests/unit/test_fts5_migration.py -v
 |---|---|
 | `migrations/006_create_fts5_index.sql` | **New.** FTS5 table, triggers, backfill. |
 | `src/search_query.py` | **Modified.** Add `FTS5SearchQueryBuilder` class. Keep `SearchQueryBuilder`. |
-| `src/main.py` | **Modified.** Swap `SearchQueryBuilder` → `FTS5SearchQueryBuilder` (1 line). |
+| `src/main.py` | **Modified.** Swap builder class (1 line). Add FTS5 rebuild to `_reindex_all_entries()`. |
 | `tests/conftest.py` | **Modified.** Update mock to handle MATCH SQL. |
 | `tests/unit/test_search_query.py` | **Modified.** Add FTS5 test classes, keep LIKE tests. |
+| `tests/unit/test_search_query_properties.py` | **New.** Hypothesis property-based tests for query builder. |
+| `tests/unit/test_fts5_migration.py` | **New.** Migration, trigger, rebuild, NULL, cascade, phrase tests. |
+| `tests/unit/test_fts5_trigger_properties.py` | **New.** Hypothesis property-based tests for trigger consistency. |
 | `tests/integration/test_search_accuracy.py` | **Modified.** Update mock to handle MATCH SQL. |
 | `tests/benchmark/test_search_performance.py` | **New.** Performance comparison. |
-| `tests/unit/test_fts5_migration.py` | **New.** Migration correctness tests. |
 | `docs/ARCHITECTURE.md` | **Modified.** Document FTS5 usage and export limitation. |
