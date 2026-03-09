@@ -82,7 +82,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: |
           if [ -n "$CLOUDFLARE_API_TOKEN" ]; then
-            npx wrangler deploy
+            npx wrangler deploy -c wrangler.production.jsonc
           else
             echo "Skipping deploy: CLOUDFLARE_API_TOKEN not set"
           fi

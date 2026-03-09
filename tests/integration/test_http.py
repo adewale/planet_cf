@@ -14,7 +14,7 @@ async def test_http_serves_html_for_root(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/")
+    request = MockRequest("https://www.planetcloudflare.dev/")
 
     response = await worker.fetch(request)
 
@@ -31,7 +31,7 @@ async def test_http_serves_atom_feed(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/feed.atom")
+    request = MockRequest("https://www.planetcloudflare.dev/feed.atom")
 
     response = await worker.fetch(request)
 
@@ -47,7 +47,7 @@ async def test_http_serves_rss_feed(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/feed.rss")
+    request = MockRequest("https://www.planetcloudflare.dev/feed.rss")
 
     response = await worker.fetch(request)
 
@@ -63,7 +63,7 @@ async def test_http_serves_rss10_feed(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/feed.rss10")
+    request = MockRequest("https://www.planetcloudflare.dev/feed.rss10")
 
     response = await worker.fetch(request)
 
@@ -79,7 +79,7 @@ async def test_http_serves_opml_export(mock_env_with_feeds):
     worker = PlanetCF()
     worker.env = mock_env_with_feeds
 
-    request = MockRequest("https://planetcf.com/feeds.opml")
+    request = MockRequest("https://www.planetcloudflare.dev/feeds.opml")
 
     response = await worker.fetch(request)
 
@@ -96,7 +96,7 @@ async def test_http_returns_404_for_unknown_routes(mock_env):
     worker = PlanetCF()
     worker.env = mock_env
 
-    request = MockRequest("https://planetcf.com/unknown/path")
+    request = MockRequest("https://www.planetcloudflare.dev/unknown/path")
 
     response = await worker.fetch(request)
 
@@ -114,7 +114,7 @@ async def test_http_cache_control_headers(mock_env_with_entries):
     routes = ["/", "/feed.atom", "/feed.rss", "/feed.rss10"]
 
     for route in routes:
-        request = MockRequest(f"https://planetcf.com{route}")
+        request = MockRequest(f"https://www.planetcloudflare.dev{route}")
         response = await worker.fetch(request)
 
         cache_control = response.headers.get("Cache-Control", "")
@@ -130,19 +130,19 @@ async def test_http_search_requires_query(mock_env):
     worker.env = mock_env
 
     # No query parameter - shows error page
-    request = MockRequest("https://planetcf.com/search")
+    request = MockRequest("https://www.planetcloudflare.dev/search")
     response = await worker.fetch(request)
     assert response.status == 200
     assert "at least 2 characters" in response.body.lower()
 
     # Empty query - shows error page
-    request = MockRequest("https://planetcf.com/search?q=")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=")
     response = await worker.fetch(request)
     assert response.status == 200
     assert "at least 2 characters" in response.body.lower()
 
     # Query too short - shows error page
-    request = MockRequest("https://planetcf.com/search?q=a")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=a")
     response = await worker.fetch(request)
     assert response.status == 200
     assert "at least 2 characters" in response.body.lower()
@@ -156,7 +156,7 @@ async def test_admin_requires_authentication(mock_env):
     worker = PlanetCF()
     worker.env = mock_env
 
-    request = MockRequest("https://planetcf.com/admin")
+    request = MockRequest("https://www.planetcloudflare.dev/admin")
 
     response = await worker.fetch(request)
 
@@ -170,7 +170,7 @@ async def test_admin_requires_authentication(mock_env):
 @pytest.mark.asyncio
 async def test_static_css_served_by_assets(mock_env):
     """Static CSS is served by Workers Static Assets binding, not the Worker."""
-    request = MockRequest("https://planetcf.com/static/style.css")
+    request = MockRequest("https://www.planetcloudflare.dev/static/style.css")
 
     # In production, Static Assets intercepts /static/ before the Worker runs.
     # Test that the ASSETS binding serves the file correctly.
@@ -188,7 +188,7 @@ async def test_html_contains_planet_name(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/")
+    request = MockRequest("https://www.planetcloudflare.dev/")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -203,12 +203,12 @@ async def test_feed_contains_entries(mock_env_with_entries):
     worker.env = mock_env_with_entries
 
     # Test Atom feed
-    request = MockRequest("https://planetcf.com/feed.atom")
+    request = MockRequest("https://www.planetcloudflare.dev/feed.atom")
     response = await worker.fetch(request)
     assert response.status == 200
 
     # Test RSS feed
-    request = MockRequest("https://planetcf.com/feed.rss")
+    request = MockRequest("https://www.planetcloudflare.dev/feed.rss")
     response = await worker.fetch(request)
     assert response.status == 200
 
@@ -277,7 +277,7 @@ async def test_admin_add_feed_via_post(mock_env_with_admins):
 
         # POST to add a feed
         request = MockRequest(
-            url="https://planetcf.com/admin/feeds",
+            url="https://www.planetcloudflare.dev/admin/feeds",
             method="POST",
             cookies=session_cookie,
             form_data={"url": "https://boristane.com/rss.xml", "title": "Boris Tane"},
@@ -305,7 +305,7 @@ async def test_admin_add_feed_rejects_unsafe_url(mock_env_with_admins):
 
     # Try to add a localhost URL (should be blocked)
     request = MockRequest(
-        url="https://planetcf.com/admin/feeds",
+        url="https://www.planetcloudflare.dev/admin/feeds",
         method="POST",
         cookies=session_cookie,
         form_data={"url": "http://localhost/feed.xml"},
@@ -330,7 +330,7 @@ async def test_admin_add_feed_requires_url(mock_env_with_admins):
 
     # POST without URL
     request = MockRequest(
-        url="https://planetcf.com/admin/feeds",
+        url="https://www.planetcloudflare.dev/admin/feeds",
         method="POST",
         cookies=session_cookie,
         form_data={},
@@ -357,7 +357,7 @@ async def test_search_returns_empty_results(mock_env):
     worker.env = mock_env
 
     # Search for something that doesn't exist
-    request = MockRequest("https://planetcf.com/search?q=xyznonexistent123")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=xyznonexistent123")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -372,7 +372,7 @@ async def test_search_with_valid_query(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/search?q=test")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=test")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -430,7 +430,7 @@ async def test_homepage_hides_email_author(mock_env):
     worker = PlanetCF()
     worker.env = mock_env
 
-    request = MockRequest("https://planetcf.com/")
+    request = MockRequest("https://www.planetcloudflare.dev/")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -482,7 +482,7 @@ async def test_homepage_shows_normal_author(mock_env):
     worker = PlanetCF()
     worker.env = mock_env
 
-    request = MockRequest("https://planetcf.com/")
+    request = MockRequest("https://www.planetcloudflare.dev/")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -505,7 +505,7 @@ async def test_get_titles_returns_html(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/titles")
+    request = MockRequest("https://www.planetcloudflare.dev/titles")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -520,7 +520,7 @@ async def test_get_foafroll_returns_xml(mock_env_with_feeds):
     worker = PlanetCF()
     worker.env = mock_env_with_feeds
 
-    request = MockRequest("https://planetcf.com/foafroll.xml")
+    request = MockRequest("https://www.planetcloudflare.dev/foafroll.xml")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -535,7 +535,7 @@ async def test_get_health_returns_json(mock_env_with_feeds):
     worker = PlanetCF()
     worker.env = mock_env_with_feeds
 
-    request = MockRequest("https://planetcf.com/health")
+    request = MockRequest("https://www.planetcloudflare.dev/health")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -555,7 +555,7 @@ async def test_get_auth_github_redirects(mock_env):
     worker = PlanetCF()
     worker.env = mock_env
 
-    request = MockRequest("https://planetcf.com/auth/github")
+    request = MockRequest("https://www.planetcloudflare.dev/auth/github")
     response = await worker.fetch(request)
 
     assert response.status == 302
@@ -572,7 +572,7 @@ async def test_get_auth_github_callback_without_code(mock_env_with_admins):
     worker = PlanetCF()
     worker.env = mock_env_with_admins
 
-    request = MockRequest("https://planetcf.com/auth/github/callback")
+    request = MockRequest("https://www.planetcloudflare.dev/auth/github/callback")
     response = await worker.fetch(request)
 
     # Should return an error (400 or 200 with error content), not 302 redirect to admin
@@ -588,7 +588,7 @@ async def test_get_auth_github_callback_with_invalid_state(mock_env_with_admins)
     worker.env = mock_env_with_admins
 
     request = MockRequest(
-        "https://planetcf.com/auth/github/callback?code=fake&state=invalid",
+        "https://www.planetcloudflare.dev/auth/github/callback?code=fake&state=invalid",
         cookies="oauth_state=different_state",
     )
     response = await worker.fetch(request)
@@ -611,7 +611,7 @@ async def test_unauthenticated_post_admin_feeds_rejected(mock_env_with_admins):
     worker.env = mock_env_with_admins
 
     request = MockRequest(
-        url="https://planetcf.com/admin/feeds",
+        url="https://www.planetcloudflare.dev/admin/feeds",
         method="POST",
         form_data={"url": "https://evil.com/feed.xml"},
     )
@@ -632,7 +632,7 @@ async def test_unauthenticated_delete_admin_feed_rejected(mock_env_with_admins):
     worker.env = mock_env_with_admins
 
     request = MockRequest(
-        url="https://planetcf.com/admin/feeds/1",
+        url="https://www.planetcloudflare.dev/admin/feeds/1",
         method="DELETE",
     )
     response = await worker.fetch(request)
@@ -671,7 +671,7 @@ async def test_expired_session_shows_login(mock_env_with_admins):
     expired_cookie = f"session={payload_b64}.{sig}"
 
     request = MockRequest(
-        url="https://planetcf.com/admin",
+        url="https://www.planetcloudflare.dev/admin",
         cookies=expired_cookie,
     )
     response = await worker.fetch(request)
@@ -694,7 +694,7 @@ async def test_tampered_session_signature_shows_login(mock_env_with_admins):
     tampered = valid_cookie[:-10] + "x" * 10
 
     request = MockRequest(
-        url="https://planetcf.com/admin",
+        url="https://www.planetcloudflare.dev/admin",
         cookies=tampered,
     )
     response = await worker.fetch(request)

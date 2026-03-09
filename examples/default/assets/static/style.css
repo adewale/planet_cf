@@ -60,41 +60,40 @@ h1, h2, h3, h4, h5, h6 {
 header {
     background: var(--bg-primary);
     border-bottom: 1px solid var(--border-light);
-    padding: 0.5rem 1.5rem;
+    padding: 0.75rem 1.5rem;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    align-items: baseline;
     gap: 0.5rem;
     flex-wrap: wrap;
 }
 
+.header-text {
+    text-align: left;
+}
+
 header h1 {
     margin: 0;
-    font-weight: 600;
-    font-size: 1.125rem;
+    font-weight: 700;
+    font-size: 1.35rem;
     letter-spacing: -0.01em;
-    color: var(--text-primary);
+    color: var(--accent);
+    line-height: 1.2;
 }
 
 header p {
     color: var(--text-muted);
     font-size: 0.8rem;
-    margin: 0;
-}
-
-header p::before {
-    content: '·';
-    margin-right: 0.5rem;
-    color: var(--border-medium);
+    margin: -0.125rem 0 0;
+    line-height: 1.3;
 }
 
 header a {
-    color: var(--text-primary);
+    color: var(--accent);
     text-decoration: none;
 }
 
 header a:hover {
-    color: var(--accent);
+    color: var(--accent-dark);
 }
 
 .search-form {
@@ -224,7 +223,7 @@ article header {
 
 .meta .date-sep {
     color: var(--text-muted);
-    margin: 0 0.25rem;
+    margin: 0 0.4rem;
 }
 
 .meta time {
@@ -358,6 +357,7 @@ article header {
 }
 
 .sidebar h2 {
+    margin-top: 1.25rem;
     margin-bottom: 1rem;
     font-size: 0.8rem;
     font-weight: 600;
@@ -366,12 +366,18 @@ article header {
     color: var(--text-muted);
 }
 
+.sidebar h2:first-child,
+.search-form + h2 {
+    margin-top: 0;
+}
+
 .feeds { list-style: none; }
 
 .feeds li {
     display: flex;
     align-items: center;
     padding: 0.625rem 0;
+    padding-left: 1rem;
     border-bottom: 1px solid var(--border-light);
     font-size: 0.925rem;
 }
@@ -399,7 +405,8 @@ article header {
     height: 6px;
     background: var(--accent);
     border-radius: 50%;
-    margin-right: 0.5rem;
+    margin-left: -1rem;
+    margin-right: calc(1rem - 6px);
 }
 
 .feeds li.unhealthy a:not(.feed-icon) {
@@ -413,7 +420,8 @@ article header {
     height: 6px;
     background: var(--error);
     border-radius: 50%;
-    margin-right: 0.5rem;
+    margin-left: -1rem;
+    margin-right: calc(1rem - 6px);
 }
 
 .feeds li.feed-inactive {
@@ -431,7 +439,11 @@ footer {
 footer p {
     color: var(--text-muted);
     font-size: 0.9rem;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.25rem;
+}
+
+footer p:first-child {
+    margin-bottom: 1rem;
 }
 
 footer a {
@@ -715,13 +727,10 @@ article.selected {
 /* Responsive */
 @media (max-width: 768px) {
     header {
-        padding: 0.5rem 1rem;
-        flex-direction: column;
-        gap: 0.125rem;
+        padding: 0.75rem 1rem;
     }
-    header h1 { font-size: 1rem; }
+    header h1 { font-size: 1.125rem; }
     header p { font-size: 0.75rem; }
-    header p::before { display: none; }
     .container {
         grid-template-columns: 1fr;
         gap: 1.5rem;

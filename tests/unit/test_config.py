@@ -147,7 +147,7 @@ class TestGetPlanetConfig:
         config = get_planet_config(env)
         assert config["name"] == "Planet CF"
         assert "Aggregated" in config["description"]
-        assert config["link"] == "https://planetcf.com"
+        assert config["link"] == "https://www.planetcloudflare.dev"
 
     def test_returns_env_values_when_set(self):
         env = MockEnv(

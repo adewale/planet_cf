@@ -184,7 +184,7 @@ def create_mock_env(
     env.DB = db
     env.PLANET_NAME = "Planet CF"
     env.PLANET_DESCRIPTION = "Test Planet"
-    env.PLANET_URL = "https://planetcf.com"
+    env.PLANET_URL = "https://www.planetcloudflare.dev"
     env.SESSION_SECRET = TEST_SESSION_SECRET
     env.GITHUB_CLIENT_ID = "test-client-id"
     env.GITHUB_CLIENT_SECRET = "test-client-secret"

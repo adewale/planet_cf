@@ -2,7 +2,7 @@
 
 **Version:** 1.0 Draft
 **Status:** Proposal
-**Domain:** https://planetcf.com
+**Domain:** https://www.planetcloudflare.dev
 
 ## 1. Overview
 
@@ -13,7 +13,7 @@ Planet CF is a feed aggregator that collects blog posts from Cloudflare employee
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────────┐
 │                                    CLOUDFLARE EDGE                                       │
-│                                   https://planetcf.com                                   │
+│                                   https://www.planetcloudflare.dev                                   │
 ├─────────────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                          │
 │   INGESTION PIPELINE                              STORAGE                                │
@@ -91,7 +91,7 @@ Inspired by [rogue_planet](https://github.com/adewale/rogue_planet):
 
 | Requirement | Value |
 |-------------|-------|
-| Domain | https://planetcf.com |
+| Domain | https://www.planetcloudflare.dev |
 | Update frequency | Hourly |
 | Retention policy | Last 90 days OR last 100 posts per feed (configurable via env vars) |
 | Content storage | Full post content |
@@ -943,7 +943,7 @@ from urllib.parse import urlparse
 # Configuration
 FEED_TIMEOUT_SECONDS = 60      # Max wall time per feed
 HTTP_TIMEOUT_SECONDS = 30      # HTTP request timeout
-USER_AGENT = "PlanetCF/1.0 (+https://planetcf.com)"
+USER_AGENT = "PlanetCF/1.0 (+https://www.planetcloudflare.dev)"
 
 # HTML sanitization settings (XSS prevention - CVE-2009-2937)
 ALLOWED_TAGS = [
@@ -1439,7 +1439,7 @@ class PlanetCF(WorkerEntrypoint):
         planet = {
             "name": self.env.PLANET_NAME or "Planet CF",
             "description": self.env.PLANET_DESCRIPTION or "Aggregated posts from Cloudflare employees and community",
-            "link": self.env.PLANET_URL or "https://planetcf.com"
+            "link": self.env.PLANET_URL or "https://www.planetcloudflare.dev"
         }
 
         # Apply retention policy first (delete old entries and their vectors)
@@ -1752,7 +1752,7 @@ class PlanetCF(WorkerEntrypoint):
         return {
             "name": getattr(self.env, 'PLANET_NAME', None) or "Planet CF",
             "description": getattr(self.env, 'PLANET_DESCRIPTION', None) or "Aggregated posts",
-            "link": getattr(self.env, 'PLANET_URL', None) or "https://planetcf.com"
+            "link": getattr(self.env, 'PLANET_URL', None) or "https://www.planetcloudflare.dev"
         }
 
     async def _search_entries(self, request):
@@ -2303,7 +2303,7 @@ if response.history:
 Always identify with a descriptive User-Agent including contact information:
 
 ```python
-USER_AGENT = "PlanetCF/1.0 (+https://planetcf.com; planet@cloudflare.com)"
+USER_AGENT = "PlanetCF/1.0 (+https://www.planetcloudflare.dev; contact@planetcloudflare.dev)"
 ```
 
 #### 7.3.6 Request Staggering
@@ -2335,9 +2335,9 @@ As of Wrangler v3.91.0 (late 2024), Cloudflare recommends **JSONC** (`wrangler.j
   "vars": {
     "PLANET_NAME": "Planet CF",
     "PLANET_DESCRIPTION": "Aggregated posts from Cloudflare employees and community",
-    "PLANET_URL": "https://planetcf.com",
+    "PLANET_URL": "https://www.planetcloudflare.dev",
     "PLANET_OWNER_NAME": "Cloudflare",
-    "PLANET_OWNER_EMAIL": "planet@planetcf.com",
+    "PLANET_OWNER_EMAIL": "planet@www.planetcloudflare.dev",
     "RETENTION_DAYS": "90",
     "RETENTION_MAX_ENTRIES_PER_FEED": "100",
     "FEED_TIMEOUT_SECONDS": "60",
@@ -3336,7 +3336,7 @@ async def test_http_serves_html(mock_env):
 
     # Mock request
     request = MagicMock()
-    request.url = "https://planetcf.com/"
+    request.url = "https://www.planetcloudflare.dev/"
     request.method = "GET"
     request.headers = MagicMock()
     request.headers.get = MagicMock(return_value=None)
@@ -3357,7 +3357,7 @@ async def test_http_serves_atom(mock_env):
     worker.env = mock_env
 
     request = MagicMock()
-    request.url = "https://planetcf.com/feed.atom"
+    request.url = "https://www.planetcloudflare.dev/feed.atom"
     request.method = "GET"
     request.headers = MagicMock()
     request.headers.get = MagicMock(return_value=None)
@@ -3601,7 +3601,7 @@ wrangler deploy
 
 ### 10.2 Adding Initial Feeds
 
-Via admin interface at `https://planetcf.com/admin` or D1 directly:
+Via admin interface at `https://www.planetcloudflare.dev/admin` or D1 directly:
 
 ```sql
 INSERT INTO feeds (url, title, is_active) VALUES

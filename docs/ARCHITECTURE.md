@@ -834,7 +834,7 @@ planet_cf/
 ├── templates/              # Jinja2 HTML/XML templates + canonical CSS/JS sources
 ├── examples/               # Deployable instance configurations
 │   ├── default/            # Default theme instance
-│   ├── planet-cloudflare/  # planetcf.com (uses default theme)
+│   ├── planet-cloudflare/  # www.planetcloudflare.dev (uses default theme)
 │   ├── planet-python/      # Planet Python clone
 │   ├── planet-mozilla/     # Planet Mozilla clone
 │   └── test-planet/        # E2E test instance
@@ -850,7 +850,10 @@ planet_cf/
 ## Deployment
 
 ```bash
-# Deploy to production
+# Deploy to production (www.planetcloudflare.dev)
+npx wrangler deploy -c wrangler.production.jsonc
+
+# Deploy to test (safe default)
 npx wrangler deploy
 
 # Run local dev server

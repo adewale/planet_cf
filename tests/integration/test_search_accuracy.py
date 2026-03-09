@@ -192,7 +192,7 @@ def mock_env_with_fixtures(fixtures):
     env.AI = MockAI()
     env.PLANET_NAME = "Planet CF"
     env.PLANET_DESCRIPTION = "Test blog aggregator"
-    env.PLANET_URL = "https://planetcf.com"
+    env.PLANET_URL = "https://www.planetcloudflare.dev"
     env.PLANET_OWNER_NAME = "Test"
     env.PLANET_OWNER_EMAIL = "test@example.com"
     env.SEARCH_SCORE_THRESHOLD = None
@@ -238,7 +238,7 @@ class TestTitleMatching:
             tc for tc in fixtures["test_queries"] if tc["query"] == "context is the work"
         )
 
-        request = MockRequest(f"https://planetcf.com/search?q={test_case['query']}")
+        request = MockRequest(f"https://www.planetcloudflare.dev/search?q={test_case['query']}")
         response = await worker.fetch(request)
 
         assert response.status == 200
@@ -265,7 +265,7 @@ class TestTitleMatching:
             if tc["query"] == "what the day-to-day looks like now"
         )
 
-        request = MockRequest(f"https://planetcf.com/search?q={test_case['query']}")
+        request = MockRequest(f"https://www.planetcloudflare.dev/search?q={test_case['query']}")
         response = await worker.fetch(request)
 
         assert response.status == 200
@@ -286,7 +286,7 @@ class TestTitleMatching:
 
         test_case = next(tc for tc in fixtures["test_queries"] if tc["query"] == "python workers")
 
-        request = MockRequest(f"https://planetcf.com/search?q={test_case['query']}")
+        request = MockRequest(f"https://www.planetcloudflare.dev/search?q={test_case['query']}")
         response = await worker.fetch(request)
 
         assert response.status == 200
@@ -312,7 +312,7 @@ class TestKeywordMatching:
             tc for tc in fixtures["test_queries"] if tc["query"] == "RSS feed aggregator"
         )
 
-        request = MockRequest(f"https://planetcf.com/search?q={test_case['query']}")
+        request = MockRequest(f"https://www.planetcloudflare.dev/search?q={test_case['query']}")
         response = await worker.fetch(request)
 
         assert response.status == 200
@@ -332,7 +332,7 @@ class TestKeywordMatching:
         # Search for "Rita Kozlov" - should find posts by that author
         test_case = next(tc for tc in fixtures["test_queries"] if tc["query"] == "Rita Kozlov")
 
-        request = MockRequest(f"https://planetcf.com/search?q={test_case['query']}")
+        request = MockRequest(f"https://www.planetcloudflare.dev/search?q={test_case['query']}")
         response = await worker.fetch(request)
 
         assert response.status == 200
@@ -355,7 +355,7 @@ class TestSearchRanking:
 
         # "context is the work" should rank the exact-title post first,
         # not posts that merely mention "context"
-        request = MockRequest("https://planetcf.com/search?q=context%20is%20the%20work")
+        request = MockRequest("https://www.planetcloudflare.dev/search?q=context%20is%20the%20work")
         response = await worker.fetch(request)
 
         assert response.status == 200
@@ -381,7 +381,7 @@ class TestSearchRanking:
         worker.env = indexed_env
 
         # Search for "semantic search" - should find the semantic search post
-        request = MockRequest("https://planetcf.com/search?q=semantic%20search")
+        request = MockRequest("https://www.planetcloudflare.dev/search?q=semantic%20search")
         response = await worker.fetch(request)
 
         assert response.status == 200
@@ -406,7 +406,7 @@ class TestEdgeCases:
         queries = ["CONTEXT IS THE WORK", "Context Is The Work", "context is the work"]
 
         for query in queries:
-            request = MockRequest(f"https://planetcf.com/search?q={query}")
+            request = MockRequest(f"https://www.planetcloudflare.dev/search?q={query}")
             response = await worker.fetch(request)
             body = response.body if hasattr(response, "body") else str(response)
             assert "Context is the work" in body, f"Failed for query: {query}"
@@ -420,7 +420,7 @@ class TestEdgeCases:
         worker.env = indexed_env
 
         # "Cloudflare" partial match
-        request = MockRequest("https://planetcf.com/search?q=Cloudflare")
+        request = MockRequest("https://www.planetcloudflare.dev/search?q=Cloudflare")
         response = await worker.fetch(request)
 
         assert response.status == 200
@@ -437,7 +437,9 @@ class TestEdgeCases:
         worker.env = indexed_env
 
         # "queues background processing" - multiple words in title
-        request = MockRequest("https://planetcf.com/search?q=queues%20background%20processing")
+        request = MockRequest(
+            "https://www.planetcloudflare.dev/search?q=queues%20background%20processing"
+        )
         response = await worker.fetch(request)
 
         assert response.status == 200
@@ -453,13 +455,15 @@ class TestEdgeCases:
         worker.env = indexed_env
 
         # Test double quotes
-        request = MockRequest('https://planetcf.com/search?q="context%20is%20the%20work"')
+        request = MockRequest(
+            'https://www.planetcloudflare.dev/search?q="context%20is%20the%20work"'
+        )
         response = await worker.fetch(request)
         body = response.body if hasattr(response, "body") else str(response)
         assert "Context is the work" in body, "Double-quoted query should match"
 
         # Test single quotes
-        request = MockRequest("https://planetcf.com/search?q='python%20workers'")
+        request = MockRequest("https://www.planetcloudflare.dev/search?q='python%20workers'")
         response = await worker.fetch(request)
         body = response.body if hasattr(response, "body") else str(response)
         assert "Announcing Python Workers" in body, "Single-quoted query should match"
@@ -478,7 +482,7 @@ class TestEdgeCases:
 
         # A query that shouldn't match anything in the DB (keyword search)
         # and Vectorize is empty (no semantic results)
-        request = MockRequest("https://planetcf.com/search?q=xyznonexistentqueryxyz123")
+        request = MockRequest("https://www.planetcloudflare.dev/search?q=xyznonexistentqueryxyz123")
         response = await worker.fetch(request)
 
         assert response.status == 200
@@ -503,7 +507,7 @@ class TestAllFixtureQueries:
             query = test_case["query"]
             description = test_case.get("description", "")
 
-            request = MockRequest(f"https://planetcf.com/search?q={query}")
+            request = MockRequest(f"https://www.planetcloudflare.dev/search?q={query}")
             response = await worker.fetch(request)
             body = response.body if hasattr(response, "body") else str(response)
 

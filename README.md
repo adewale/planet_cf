@@ -177,6 +177,10 @@ npx wrangler d1 execute planetcf --remote --command \
 ### 8. Deploy
 
 ```bash
+# Deploy to production (www.planetcloudflare.dev)
+npx wrangler deploy -c wrangler.production.jsonc
+
+# Deploy to test (safe default — used by `npx wrangler deploy` with no flags)
 npx wrangler deploy
 ```
 

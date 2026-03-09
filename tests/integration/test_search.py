@@ -38,7 +38,7 @@ async def test_search_returns_results_for_indexed_entries(mock_env_with_entries)
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/search?q=test")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=test")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -61,7 +61,7 @@ async def test_hybrid_search_finds_entries_via_keyword_when_vectorize_empty(mock
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/search?q=test")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=test")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -202,13 +202,13 @@ async def test_search_query_validation(mock_env):
     worker.env = mock_env
 
     # Too short query
-    request = MockRequest("https://planetcf.com/search?q=a")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=a")
     response = await worker.fetch(request)
     body = response.body if hasattr(response, "body") else str(response)
     assert "at least 2 characters" in body.lower() or response.status != 200
 
     # Empty query should redirect or show error
-    request = MockRequest("https://planetcf.com/search?q=")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=")
     response = await worker.fetch(request)
     # Should handle gracefully
 
@@ -270,7 +270,7 @@ async def test_search_with_special_characters(mock_env_with_entries):
     worker.env = mock_env_with_entries
 
     # Query with special characters
-    request = MockRequest("https://planetcf.com/search?q=test%20%26%20entry")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=test%20%26%20entry")
     response = await worker.fetch(request)
 
     # Should not crash
@@ -344,7 +344,7 @@ async def test_e2e_entry_to_search_result(mock_env):
     assert "42" in mock_env.SEARCH_INDEX.vectors
 
     # Step 4: Search for the unique word
-    request = MockRequest(f"https://planetcf.com/search?q={unique_word}")
+    request = MockRequest(f"https://www.planetcloudflare.dev/search?q={unique_word}")
     response = await worker.fetch(request)
 
     # Step 5: Verify search succeeds
@@ -430,7 +430,7 @@ async def test_e2e_full_upsert_to_search(mock_env):
     assert len(mock_env.SEARCH_INDEX.vectors) >= 1
 
     # Search for the unique identifier
-    request = MockRequest(f"https://planetcf.com/search?q={unique_id}")
+    request = MockRequest(f"https://www.planetcloudflare.dev/search?q={unique_id}")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -455,7 +455,7 @@ async def test_search_ai_returns_none_still_works(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/search?q=test")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=test")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -474,7 +474,7 @@ async def test_search_ai_throws_exception_still_works(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/search?q=test")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=test")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -493,7 +493,7 @@ async def test_search_vectorize_throws_exception_still_works(mock_env_with_entri
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/search?q=test")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=test")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -559,7 +559,7 @@ async def test_search_keyword_entries_rank_before_semantic(mock_env):
     worker = PlanetCF()
     worker.env = mock_env
 
-    request = MockRequest("https://planetcf.com/search?q=cloudflare")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=cloudflare")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -616,7 +616,7 @@ async def test_search_deduplication_entry_appears_once(mock_env):
     worker = PlanetCF()
     worker.env = mock_env
 
-    request = MockRequest("https://planetcf.com/search?q=test")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=test")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -644,7 +644,7 @@ async def test_search_empty_results_returns_200(mock_env_with_entries):
     worker.env = mock_env_with_entries
 
     # Use a nonsense word that will not match any entry title or content
-    request = MockRequest("https://planetcf.com/search?q=xyzzyflurbnope")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=xyzzyflurbnope")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -662,7 +662,7 @@ async def test_search_event_metrics_populated(mock_env_with_entries):
     worker.env = mock_env_with_entries
 
     event = MagicMock()
-    request = MockRequest("https://planetcf.com/search?q=test")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=test")
 
     # Call _search_entries directly so we can pass our event
     response = await worker._search_entries(request, event=event)
@@ -683,7 +683,7 @@ async def test_search_long_query_returns_error(mock_env):
     worker.env = mock_env
 
     long_query = "a" * 1001
-    request = MockRequest(f"https://planetcf.com/search?q={long_query}")
+    request = MockRequest(f"https://www.planetcloudflare.dev/search?q={long_query}")
     response = await worker.fetch(request)
 
     body = response.body if hasattr(response, "body") else str(response)
@@ -699,7 +699,7 @@ async def test_search_with_url_encoded_chars(mock_env_with_entries):
     worker.env = mock_env_with_entries
 
     # "test%20entry" should be decoded to "test entry"
-    request = MockRequest("https://planetcf.com/search?q=test%20entry")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=test%20entry")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -714,7 +714,7 @@ async def test_search_phrase_search_in_handler(mock_env_with_entries):
     worker.env = mock_env_with_entries
 
     # URL-encode the quotes: %22 = "
-    request = MockRequest("https://planetcf.com/search?q=%22exact+phrase%22")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=%22exact+phrase%22")
     response = await worker.fetch(request)
 
     assert response.status == 200

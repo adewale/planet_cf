@@ -1127,7 +1127,7 @@ class Default(WorkerEntrypoint):
         parent event (FeedFetchEvent or AdminActionEvent), not emitted separately.
 
         """
-        stats = {
+        stats: dict[str, object] = {
             "success": False,
             "embedding_ms": 0,
             "upsert_ms": 0,
@@ -1891,7 +1891,7 @@ class Default(WorkerEntrypoint):
         retention_days = self._get_retention_days()
         max_per_feed = self._get_max_entries_per_feed()
 
-        stats = {
+        stats: dict[str, object] = {
             "retention_days": retention_days,
             "max_per_feed": max_per_feed,
             "entries_scanned": 0,

@@ -29,7 +29,7 @@ async def test_health_returns_200_json(mock_env_with_feeds):
     worker = PlanetCF()
     worker.env = mock_env_with_feeds
 
-    request = MockRequest("https://planetcf.com/health")
+    request = MockRequest("https://www.planetcloudflare.dev/health")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -44,7 +44,7 @@ async def test_health_json_has_service_identity(mock_env_with_feeds):
     worker = PlanetCF()
     worker.env = mock_env_with_feeds
 
-    request = MockRequest("https://planetcf.com/health")
+    request = MockRequest("https://www.planetcloudflare.dev/health")
     response = await worker.fetch(request)
 
     data = json.loads(response.body)
@@ -63,7 +63,7 @@ async def test_health_json_has_feeds_object(mock_env_with_feeds):
     worker = PlanetCF()
     worker.env = mock_env_with_feeds
 
-    request = MockRequest("https://planetcf.com/health")
+    request = MockRequest("https://www.planetcloudflare.dev/health")
     response = await worker.fetch(request)
 
     data = json.loads(response.body)
@@ -87,7 +87,7 @@ async def test_health_json_no_cache(mock_env_with_feeds):
     worker = PlanetCF()
     worker.env = mock_env_with_feeds
 
-    request = MockRequest("https://planetcf.com/health")
+    request = MockRequest("https://www.planetcloudflare.dev/health")
     response = await worker.fetch(request)
 
     cache_control = response.headers.get("Cache-Control", "")
@@ -108,7 +108,7 @@ async def test_atom_returns_200_with_correct_content_type(mock_env_with_entries)
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/feed.atom")
+    request = MockRequest("https://www.planetcloudflare.dev/feed.atom")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -123,7 +123,7 @@ async def test_atom_is_well_formed_xml(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/feed.atom")
+    request = MockRequest("https://www.planetcloudflare.dev/feed.atom")
     response = await worker.fetch(request)
 
     try:
@@ -144,7 +144,7 @@ async def test_atom_contains_required_elements(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/feed.atom")
+    request = MockRequest("https://www.planetcloudflare.dev/feed.atom")
     response = await worker.fetch(request)
 
     ns = "http://www.w3.org/2005/Atom"
@@ -163,7 +163,7 @@ async def test_atom_entries_have_required_fields(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/feed.atom")
+    request = MockRequest("https://www.planetcloudflare.dev/feed.atom")
     response = await worker.fetch(request)
 
     ns = "http://www.w3.org/2005/Atom"
@@ -186,7 +186,7 @@ async def test_atom_has_cache_control(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/feed.atom")
+    request = MockRequest("https://www.planetcloudflare.dev/feed.atom")
     response = await worker.fetch(request)
 
     assert "Cache-Control" in response.headers
@@ -205,7 +205,7 @@ async def test_rss_returns_200_with_correct_content_type(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/feed.rss")
+    request = MockRequest("https://www.planetcloudflare.dev/feed.rss")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -220,7 +220,7 @@ async def test_rss_is_well_formed_xml(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/feed.rss")
+    request = MockRequest("https://www.planetcloudflare.dev/feed.rss")
     response = await worker.fetch(request)
 
     try:
@@ -239,7 +239,7 @@ async def test_rss_contains_channel_with_required_elements(mock_env_with_entries
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/feed.rss")
+    request = MockRequest("https://www.planetcloudflare.dev/feed.rss")
     response = await worker.fetch(request)
 
     root = ET.fromstring(response.body)  # noqa: S314
@@ -259,7 +259,7 @@ async def test_rss_items_have_required_fields(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/feed.rss")
+    request = MockRequest("https://www.planetcloudflare.dev/feed.rss")
     response = await worker.fetch(request)
 
     root = ET.fromstring(response.body)  # noqa: S314
@@ -281,7 +281,7 @@ async def test_rss_has_cache_control(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/feed.rss")
+    request = MockRequest("https://www.planetcloudflare.dev/feed.rss")
     response = await worker.fetch(request)
 
     assert "Cache-Control" in response.headers
@@ -300,7 +300,7 @@ async def test_foafroll_returns_200_with_correct_content_type(mock_env_with_feed
     worker = PlanetCF()
     worker.env = mock_env_with_feeds
 
-    request = MockRequest("https://planetcf.com/foafroll.xml")
+    request = MockRequest("https://www.planetcloudflare.dev/foafroll.xml")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -315,7 +315,7 @@ async def test_foafroll_is_well_formed_xml(mock_env_with_feeds):
     worker = PlanetCF()
     worker.env = mock_env_with_feeds
 
-    request = MockRequest("https://planetcf.com/foafroll.xml")
+    request = MockRequest("https://www.planetcloudflare.dev/foafroll.xml")
     response = await worker.fetch(request)
 
     try:
@@ -332,7 +332,7 @@ async def test_foafroll_has_rdf_root(mock_env_with_feeds):
     worker = PlanetCF()
     worker.env = mock_env_with_feeds
 
-    request = MockRequest("https://planetcf.com/foafroll.xml")
+    request = MockRequest("https://www.planetcloudflare.dev/foafroll.xml")
     response = await worker.fetch(request)
 
     root = ET.fromstring(response.body)  # noqa: S314
@@ -349,7 +349,7 @@ async def test_foafroll_has_cache_control(mock_env_with_feeds):
     worker = PlanetCF()
     worker.env = mock_env_with_feeds
 
-    request = MockRequest("https://planetcf.com/foafroll.xml")
+    request = MockRequest("https://www.planetcloudflare.dev/foafroll.xml")
     response = await worker.fetch(request)
 
     assert "Cache-Control" in response.headers
@@ -368,7 +368,7 @@ async def test_titles_returns_200_with_html_content_type(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/titles")
+    request = MockRequest("https://www.planetcloudflare.dev/titles")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -383,7 +383,7 @@ async def test_titles_contains_html_structure(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/titles")
+    request = MockRequest("https://www.planetcloudflare.dev/titles")
     response = await worker.fetch(request)
 
     body = response.body
@@ -401,7 +401,7 @@ async def test_titles_contains_entry_titles(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/titles")
+    request = MockRequest("https://www.planetcloudflare.dev/titles")
     response = await worker.fetch(request)
 
     # mock_env_with_entries has entries titled "Test Entry 1" and "Test Entry 2"
@@ -417,7 +417,7 @@ async def test_titles_has_cache_control(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/titles")
+    request = MockRequest("https://www.planetcloudflare.dev/titles")
     response = await worker.fetch(request)
 
     assert "Cache-Control" in response.headers
@@ -437,7 +437,7 @@ async def test_html_endpoints_specify_charset(mock_env_with_entries):
     worker.env = mock_env_with_entries
 
     for path in ("/", "/titles"):
-        request = MockRequest(f"https://planetcf.com{path}")
+        request = MockRequest(f"https://www.planetcloudflare.dev{path}")
         response = await worker.fetch(request)
 
         content_type = response.headers.get("Content-Type", "")
@@ -460,7 +460,7 @@ async def test_feed_endpoints_specify_charset(mock_env_with_entries):
     ]
 
     for path, expected_type in feed_paths:
-        request = MockRequest(f"https://planetcf.com{path}")
+        request = MockRequest(f"https://www.planetcloudflare.dev{path}")
         response = await worker.fetch(request)
 
         content_type = response.headers.get("Content-Type", "")
@@ -485,7 +485,7 @@ async def test_search_returns_200_with_html_content_type(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/search?q=test")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=test")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -500,7 +500,7 @@ async def test_search_html_has_basic_structure(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/search?q=test")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=test")
     response = await worker.fetch(request)
 
     body = response.body
@@ -518,7 +518,7 @@ async def test_search_no_cache(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/search?q=test")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=test")
     response = await worker.fetch(request)
 
     cache_control = response.headers.get("Cache-Control", "")
@@ -535,7 +535,7 @@ async def test_search_short_query_returns_200_with_error(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/search?q=a")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=a")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -553,7 +553,7 @@ async def test_search_short_query_error_contains_message(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/search?q=a")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=a")
     response = await worker.fetch(request)
 
     assert "at least 2 characters" in response.body, (
@@ -569,7 +569,7 @@ async def test_search_missing_q_param_returns_200(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/search")
+    request = MockRequest("https://www.planetcloudflare.dev/search")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -583,7 +583,7 @@ async def test_search_empty_q_returns_200(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/search?q=")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -597,7 +597,7 @@ async def test_search_specifies_charset(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/search?q=test")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=test")
     response = await worker.fetch(request)
 
     content_type = response.headers.get("Content-Type", "")
@@ -614,7 +614,7 @@ async def test_search_xss_in_query_not_reflected_raw(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/search?q=<script>alert(1)</script>")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=<script>alert(1)</script>")
     response = await worker.fetch(request)
 
     assert response.status == 200
@@ -634,7 +634,7 @@ async def test_search_results_contain_entry_data(mock_env_with_entries):
     worker = PlanetCF()
     worker.env = mock_env_with_entries
 
-    request = MockRequest("https://planetcf.com/search?q=test")
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=test")
     response = await worker.fetch(request)
 
     assert response.status == 200

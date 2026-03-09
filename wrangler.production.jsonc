@@ -1,25 +1,18 @@
-// wrangler.jsonc (Wrangler v4.58.0+, January 2026)
-// Planet CF - Feed Aggregator for Cloudflare Python Workers
+// wrangler.production.jsonc - PRODUCTION configuration
+// Planet Cloudflare - Feed Aggregator for Cloudflare Python Workers
 //
-// =============================================================================
-// MODE CONFIGURATION
-// =============================================================================
-// This config runs in FULL mode with all features enabled.
+// ⚠️  This config deploys to PRODUCTION (www.planetcloudflare.dev).
+//     Deploy with: npx wrangler deploy -c wrangler.production.jsonc
 //
-// To ENABLE lite mode (disable search and admin):
-//   1. Add "INSTANCE_MODE": "lite" to vars section
-//   2. Remove the entire "vectorize" section
-//   3. Remove the entire "ai" section
-//   4. No OAuth secrets are required in lite mode
+// The default wrangler.jsonc targets test-planet for safe local development.
 //
-// Lite mode disables:
-//   - Semantic search functionality
-//   - Admin interface and OAuth login
-//   - Embedding generation
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "test-planet",
-  "main": "../../src/main.py",
+  "name": "planetcf",
+  "routes": [
+    { "pattern": "www.planetcloudflare.dev", "custom_domain": true }
+  ],
+  "main": "src/main.py",
   "compatibility_date": "2026-01-01",
   "compatibility_flags": ["python_workers", "python_dedicated_snapshot"],
 
@@ -31,7 +24,7 @@
   // Environment variables
   "vars": {
     "PLANET_NAME": "Planet Cloudflare",
-    "PLANET_DESCRIPTION": "Aggregated posts from the Cloudflare-adjacent community",
+    "PLANET_DESCRIPTION": "Aggregated posts from Cloudflare employees and community",
     "PLANET_URL": "https://www.planetcloudflare.dev",
     "PLANET_OWNER_NAME": "Cloudflare",
     "RETENTION_DAYS": "90",
@@ -40,7 +33,7 @@
     "HTTP_TIMEOUT_SECONDS": "30",
     // Observability context
     "THEME": "planet-cloudflare",
-    "DEPLOYMENT_ENVIRONMENT": "test"
+    "DEPLOYMENT_ENVIRONMENT": "production"
     // DEPLOYMENT_VERSION is set dynamically via VERSION_METADATA binding below
     // Search configuration (optional - uses defaults if not set):
     // "EMBEDDING_MAX_CHARS": "2000",       // Max chars to embed per entry
@@ -66,25 +59,20 @@
   },
 
   // D1 Database
-  // Use remote: true in dev to access production data (create preview_database_id for safer dev)
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "test-planet-db",
-      "database_id": "c0c494c0-6f97-4f55-8af3-9bc8f75cdff1",
+      "database_name": "planetcf",
+      "database_id": "e94e6c4e-83ba-42df-afd5-4648bfa558dd",
       "remote": true
     }
   ],
-
-  // No KV needed:
-  // - HTML/RSS/Atom/OPML: Generated on-demand, cached at edge via Cache-Control
-  // - Sessions: Stateless signed cookies (HMAC), no server-side storage
 
   // Vectorize (for semantic search)
   "vectorize": [
     {
       "binding": "SEARCH_INDEX",
-      "index_name": "test-planet-entries",
+      "index_name": "planetcf-entries",
       "remote": true
     }
   ],
@@ -103,17 +91,22 @@
   // Queues: Scheduler -> Fetcher
   "queues": {
     "producers": [
-      { "binding": "FEED_QUEUE", "queue": "test-planet-feed-queue" },
-      { "binding": "DEAD_LETTER_QUEUE", "queue": "test-planet-feed-dlq" }
+      { "binding": "FEED_QUEUE", "queue": "planetcf-feed-queue" },
+      { "binding": "DEAD_LETTER_QUEUE", "queue": "planetcf-feed-dlq" }
     ],
     "consumers": [
       {
-        "queue": "test-planet-feed-queue",
+        "queue": "planetcf-feed-queue",
         "max_batch_size": 5,
         "max_batch_timeout": 30,
         "max_retries": 3,
-        "dead_letter_queue": "test-planet-feed-dlq",
+        "dead_letter_queue": "planetcf-feed-dlq",
         "retry_delay": 300
+      },
+      {
+        "queue": "planetcf-feed-dlq",
+        "max_batch_size": 10,
+        "max_batch_timeout": 60
       }
     ]
   },

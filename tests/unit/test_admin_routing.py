@@ -50,7 +50,9 @@ class TestHandleAdminRouting:
     async def test_get_admin_returns_dashboard(self):
         """GET /admin returns the admin dashboard."""
         worker, env, cookie = make_authenticated_worker()
-        request = MockRequest(url="https://planetcf.com/admin", method="GET", cookies=cookie)
+        request = MockRequest(
+            url="https://www.planetcloudflare.dev/admin", method="GET", cookies=cookie
+        )
 
         response = await worker._handle_admin(request, "/admin")
 
@@ -64,7 +66,9 @@ class TestHandleAdminRouting:
             {"id": 1, "url": "https://example.com/feed.xml", "title": "Example", "is_active": 1},
         ]
         worker, env, cookie = make_authenticated_worker(feeds=feeds)
-        request = MockRequest(url="https://planetcf.com/admin/feeds", method="GET", cookies=cookie)
+        request = MockRequest(
+            url="https://www.planetcloudflare.dev/admin/feeds", method="GET", cookies=cookie
+        )
 
         response = await worker._handle_admin(request, "/admin/feeds")
 
@@ -77,7 +81,7 @@ class TestHandleAdminRouting:
         """POST /admin/feeds dispatches to _add_feed."""
         worker, env, cookie = make_authenticated_worker()
         request = MockRequest(
-            url="https://planetcf.com/admin/feeds",
+            url="https://www.planetcloudflare.dev/admin/feeds",
             method="POST",
             cookies=cookie,
             form_data={"url": "http://localhost/feed"},
@@ -96,7 +100,7 @@ class TestHandleAdminRouting:
         ]
         worker, env, cookie = make_authenticated_worker(feeds=feeds)
         request = MockRequest(
-            url="https://planetcf.com/admin/feeds/1",
+            url="https://www.planetcloudflare.dev/admin/feeds/1",
             method="DELETE",
             cookies=cookie,
         )
@@ -111,7 +115,7 @@ class TestHandleAdminRouting:
         """POST /admin/import-opml dispatches to _import_opml."""
         worker, env, cookie = make_authenticated_worker()
         request = MockRequest(
-            url="https://planetcf.com/admin/import-opml",
+            url="https://www.planetcloudflare.dev/admin/import-opml",
             method="POST",
             cookies=cookie,
             form_data={},  # No file => should return error
@@ -127,7 +131,9 @@ class TestHandleAdminRouting:
     async def test_get_admin_dlq_returns_response(self):
         """GET /admin/dlq returns dead letter queue view."""
         worker, env, cookie = make_authenticated_worker()
-        request = MockRequest(url="https://planetcf.com/admin/dlq", method="GET", cookies=cookie)
+        request = MockRequest(
+            url="https://www.planetcloudflare.dev/admin/dlq", method="GET", cookies=cookie
+        )
 
         response = await worker._handle_admin(request, "/admin/dlq")
 
@@ -137,7 +143,9 @@ class TestHandleAdminRouting:
     async def test_get_admin_audit_returns_response(self):
         """GET /admin/audit returns audit log view."""
         worker, env, cookie = make_authenticated_worker()
-        request = MockRequest(url="https://planetcf.com/admin/audit", method="GET", cookies=cookie)
+        request = MockRequest(
+            url="https://www.planetcloudflare.dev/admin/audit", method="GET", cookies=cookie
+        )
 
         response = await worker._handle_admin(request, "/admin/audit")
 
@@ -147,7 +155,9 @@ class TestHandleAdminRouting:
     async def test_get_admin_health_returns_response(self):
         """GET /admin/health returns feed health dashboard."""
         worker, env, cookie = make_authenticated_worker()
-        request = MockRequest(url="https://planetcf.com/admin/health", method="GET", cookies=cookie)
+        request = MockRequest(
+            url="https://www.planetcloudflare.dev/admin/health", method="GET", cookies=cookie
+        )
 
         response = await worker._handle_admin(request, "/admin/health")
 
@@ -169,7 +179,7 @@ class TestHandleAdminRouting:
         ]
         worker, env, cookie = make_authenticated_worker(feeds=feeds)
         request = MockRequest(
-            url="https://planetcf.com/admin/feeds/1/fetch-now",
+            url="https://www.planetcloudflare.dev/admin/feeds/1/fetch-now",
             method="POST",
             cookies=cookie,
         )
@@ -185,7 +195,7 @@ class TestHandleAdminRouting:
         """POST /admin/feeds/abc/fetch-now returns 400 for invalid ID."""
         worker, env, cookie = make_authenticated_worker()
         request = MockRequest(
-            url="https://planetcf.com/admin/feeds/abc/fetch-now",
+            url="https://www.planetcloudflare.dev/admin/feeds/abc/fetch-now",
             method="POST",
             cookies=cookie,
         )
@@ -199,7 +209,7 @@ class TestHandleAdminRouting:
         """POST /admin/feeds/999/fetch-now returns 404 for nonexistent feed."""
         worker, env, cookie = make_authenticated_worker(feeds=[])
         request = MockRequest(
-            url="https://planetcf.com/admin/feeds/999/fetch-now",
+            url="https://www.planetcloudflare.dev/admin/feeds/999/fetch-now",
             method="POST",
             cookies=cookie,
         )
@@ -226,7 +236,7 @@ class TestHandleAdminRouting:
         ]
         worker, env, cookie = make_authenticated_worker(feeds=feeds)
         request = MockRequest(
-            url="https://planetcf.com/admin/feeds/1/fetch-now",
+            url="https://www.planetcloudflare.dev/admin/feeds/1/fetch-now",
             method="POST",
             cookies=cookie,
         )
@@ -242,7 +252,7 @@ class TestHandleAdminRouting:
         """Unknown admin path returns 404."""
         worker, env, cookie = make_authenticated_worker()
         request = MockRequest(
-            url="https://planetcf.com/admin/nonexistent",
+            url="https://www.planetcloudflare.dev/admin/nonexistent",
             method="GET",
             cookies=cookie,
         )
@@ -259,7 +269,7 @@ class TestHandleAdminRouting:
         worker.env = env
 
         request = MockRequest(
-            url="https://planetcf.com/admin",
+            url="https://www.planetcloudflare.dev/admin",
             method="GET",
             cookies="",  # No session cookie
         )
@@ -278,7 +288,7 @@ class TestHandleAdminRouting:
         worker.env = env
 
         request = MockRequest(
-            url="https://planetcf.com/admin",
+            url="https://www.planetcloudflare.dev/admin",
             method="GET",
             cookies="session=invalid.cookie",
         )
@@ -298,7 +308,7 @@ class TestHandleAdminRouting:
         worker.env = env
 
         request = MockRequest(
-            url="https://planetcf.com/admin",
+            url="https://www.planetcloudflare.dev/admin",
             method="GET",
             cookies=session_cookie,
         )
@@ -436,7 +446,7 @@ class TestLiteModeBlocking:
         env.LITE_MODE = "true"
 
         request = MockRequest(
-            url="https://planetcf.com/search?q=test",
+            url="https://www.planetcloudflare.dev/search?q=test",
             method="GET",
         )
 
@@ -456,7 +466,7 @@ class TestLiteModeBlocking:
         env.LITE_MODE = "true"
 
         request = MockRequest(
-            url="https://planetcf.com/admin",
+            url="https://www.planetcloudflare.dev/admin",
             method="GET",
             cookies=cookie,
         )
@@ -483,7 +493,7 @@ class TestResponseSizeTracking:
         worker, _env, _ = make_authenticated_worker()
 
         request = MockRequest(
-            url="https://planetcf.com/health",
+            url="https://www.planetcloudflare.dev/health",
             method="GET",
         )
 
@@ -498,7 +508,7 @@ class TestResponseSizeTracking:
         worker, _env, _ = make_authenticated_worker()
 
         request = MockRequest(
-            url="https://planetcf.com/nonexistent-path",
+            url="https://www.planetcloudflare.dev/nonexistent-path",
             method="GET",
         )
 
@@ -526,7 +536,7 @@ class TestSearchQueryTooLong:
 
         long_query = "x" * (MAX_SEARCH_QUERY_LENGTH + 1)
         request = MockRequest(
-            url=f"https://planetcf.com/search?q={long_query}",
+            url=f"https://www.planetcloudflare.dev/search?q={long_query}",
             method="GET",
         )
 
@@ -546,7 +556,7 @@ class TestSearchQueryTooLong:
         # Query at exactly the limit should NOT trigger the too-long error
         exact_query = "x" * MAX_SEARCH_QUERY_LENGTH
         request = MockRequest(
-            url=f"https://planetcf.com/search?q={exact_query}",
+            url=f"https://www.planetcloudflare.dev/search?q={exact_query}",
             method="GET",
         )
 
@@ -572,7 +582,7 @@ class TestSearchQueryTooLong:
 
         long_query = "a" * (MAX_SEARCH_QUERY_LENGTH + 100)
         request = MockRequest(
-            url=f"https://planetcf.com/search?q={long_query}",
+            url=f"https://www.planetcloudflare.dev/search?q={long_query}",
             method="GET",
         )
 
@@ -592,7 +602,7 @@ class TestSearchQueryTooLong:
 
         long_query = "b" * (MAX_SEARCH_QUERY_LENGTH + 1)
         request = MockRequest(
-            url=f"https://planetcf.com/search?q={long_query}",
+            url=f"https://www.planetcloudflare.dev/search?q={long_query}",
             method="GET",
         )
         event = RequestEvent(method="GET", path="/search")
@@ -670,7 +680,7 @@ class TestRetryDlqFeed:
         worker, _env, cookie = make_authenticated_worker(feeds=feeds)
 
         request = MockRequest(
-            url="https://planetcf.com/admin/dlq/5/retry",
+            url="https://www.planetcloudflare.dev/admin/dlq/5/retry",
             method="POST",
             cookies=cookie,
         )
@@ -686,7 +696,7 @@ class TestRetryDlqFeed:
         worker, _env, cookie = make_authenticated_worker()
 
         request = MockRequest(
-            url="https://planetcf.com/admin/dlq/abc/retry",
+            url="https://www.planetcloudflare.dev/admin/dlq/abc/retry",
             method="POST",
             cookies=cookie,
         )

@@ -18,7 +18,8 @@ FEED_TIMEOUT_SECONDS = 60  # Max wall time per feed
 HTTP_TIMEOUT_SECONDS = 30  # HTTP request timeout
 
 # User agent for feed fetching
-USER_AGENT = "PlanetCF/1.0 (+https://planetcf.com; contact@planetcf.com)"
+# TODO: Set up a real mailbox for contact@planetcloudflare.dev
+USER_AGENT = "PlanetCF/1.0 (+https://www.planetcloudflare.dev; contact@planetcloudflare.dev)"
 
 # Security limits
 MAX_SEARCH_QUERY_LENGTH = 1000  # Max search query length
@@ -101,7 +102,7 @@ def get_planet_config(env: Any) -> dict[str, str]:
         "name": getattr(env, "PLANET_NAME", None) or "Planet CF",
         "description": getattr(env, "PLANET_DESCRIPTION", None)
         or "Aggregated posts from Cloudflare employees and community",
-        "link": getattr(env, "PLANET_URL", None) or "https://planetcf.com",
+        "link": getattr(env, "PLANET_URL", None) or "https://www.planetcloudflare.dev",
     }
 
 

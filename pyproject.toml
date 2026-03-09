@@ -9,7 +9,8 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = {text = "MIT"}
 authors = [
-    {name = "Adewale Oshineye", email = "planet@planetcf.com"}
+# TODO: Set up a real mailbox for planet@planetcloudflare.dev
+    {name = "Adewale Oshineye", email = "planet@planetcloudflare.dev"}
 ]
 keywords = ["cloudflare", "workers", "rss", "atom", "feed", "aggregator"]
 classifiers = [

@@ -72,12 +72,12 @@ planet:
   description: Aggregated posts from Cloudflare employees and community
 
   # Public URL of this planet
-  url: https://planetcf.com
+  url: https://www.planetcloudflare.dev
 
   # Owner information (shown in feeds and OPML)
   owner:
     name: Cloudflare
-    email: planet@planetcf.com
+    email: planet@www.planetcloudflare.dev
 
 # =============================================================================
 # Branding & Theme
@@ -170,7 +170,7 @@ auth:
 
   # Optional: explicit redirect URI (security best practice)
   # If not set, uses request origin
-  # redirect_uri: https://planetcf.com/auth/callback
+  # redirect_uri: https://www.planetcloudflare.dev/auth/callback
 
 # =============================================================================
 # Cloudflare Resources

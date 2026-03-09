@@ -22,10 +22,10 @@ planet:
   id: planetcf
   name: Planet CF
   description: Aggregated posts from Cloudflare employees and community
-  url: https://planetcf.com
+  url: https://www.planetcloudflare.dev
   owner:
     name: Cloudflare
-    email: planet@planetcf.com
+    email: planet@www.planetcloudflare.dev
 
 # =============================================================================
 # Branding & Theme
