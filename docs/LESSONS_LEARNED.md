@@ -503,6 +503,9 @@ async def test_semantic_search_returns_results(client):
 | Mock tests pass, prod fails | Add E2E tests against real infrastructure |
 | Query longer than title | Use bidirectional matching (title in query) |
 | E2E tests flaky/slow | Use synchronous fetch-now endpoint, not `asyncio.sleep` |
+| `is None` misses JsNull | Also check `_is_js_undefined(x)` at every FFI boundary |
+| Mock tests miss FFI bugs | Add `test_wrappers_ffi.py` with `pyodide_fakes` fixture |
+| `_to_py_list` crashes on JsNull | Guard with `_is_js_undefined()` before iteration |
 
 ---
 
@@ -685,3 +688,93 @@ assert result["entries_added"] > 0
 **Key insight:** The endpoint doesn't replace the queue for production use. It exists alongside it, specifically for testing and admin debugging. The queue handles batching, retries, and timeouts at scale; fetch-now handles "I need to know the result right now."
 
 **Caveat:** fetch-now only eliminates sleeps for *feed processing*. Vectorize indexing propagation still requires waiting — that's an external system with no synchronous API. The 3 remaining `asyncio.sleep(2)` calls in the E2E suite wait for Vectorize, not feed fetching.
+
+---
+
+## 20. Two-Tier FFI Testing: CPython Tests + Pyodide Fakes
+
+**Problem:** Unit tests using Python mocks verify business logic but completely miss FFI boundary bugs. JsNull, JsUndefined, and JsProxy types don't exist in CPython, so mock-based tests pass even when production code crashes on these types.
+
+**Symptom:** `_to_py_list()` had no guard for JsNull/JsUndefined input. The `None` check (`if js_array is None: return []`) didn't catch them because JsNull is **not** Python None. The function crashed with `TypeError: 'JsNull' object is not iterable` in production but all mock tests passed.
+
+**Solution:** Adopt a two-tier test structure (pattern from [tasche](https://github.com/adewale/tasche)):
+
+1. **`test_safe_wrappers.py`** — CPython tests with Python mocks. Fast, test logic.
+2. **`test_wrappers_ffi.py`** — Pyodide fake tests. Monkeypatch `HAS_PYODIDE=True` and inject fake JS types.
+
+**The fake JS types:**
+```python
+class FakeJsProxy:
+    """Simulates pyodide.ffi.JsProxy."""
+    def __init__(self, data):
+        self._data = data
+    def to_py(self):
+        return self._data
+
+class JsNull:
+    """JS null sentinel — NOT a JsProxy subclass."""
+    def __bool__(self):
+        return False
+JsNull.__name__ = "JsNull"  # Must match type(x).__name__ check
+
+class _Undefined:
+    """JS undefined singleton."""
+    pass
+_Undefined.__name__ = "JsUndefined"
+```
+
+**The `pyodide_fakes` fixture:**
+```python
+@pytest.fixture
+def pyodide_fakes(monkeypatch):
+    monkeypatch.setattr(W, "HAS_PYODIDE", True)
+    monkeypatch.setattr(W, "js", FakeJsModule())
+    monkeypatch.setattr(W, "to_js", fake_to_js)
+    monkeypatch.setattr(W, "JS_NULL", JsNull())
+```
+
+**What this caught immediately:** The `_to_py_list` bug — JsNull input bypassed the `is None` check and fell through to iteration, crashing. The fix was a two-line guard:
+
+```python
+def _to_py_list(js_array):
+    if js_array is None:
+        return []
+    # This line was missing — caught by FFI tests:
+    if _is_js_undefined(js_array):
+        return []
+```
+
+**Key insight:** Every function that checks `if x is None` at the JS/Python boundary is potentially broken because JsNull `is not None`. FFI fake tests systematically verify every such boundary. The effort to write fake JS types pays for itself by catching bugs that no amount of mock testing will find.
+
+---
+
+## 21. `is None` is Never Enough at the FFI Boundary
+
+**Problem:** In CPython, `None` is the only "null-like" value, so `if x is None` catches all null cases. At the Pyodide FFI boundary, there are **three** distinct null-like values:
+
+| Value | `is None` | `bool()` | `type().__name__` |
+|-------|:---------:|:--------:|:------------------:|
+| Python `None` | `True` | `False` | `NoneType` |
+| JS `null` (JsNull) | **`False`** | `False` | `JsNull` |
+| JS `undefined` (JsUndefined) | **`False`** | `False` | `JsUndefined` |
+
+**Where this bites you:**
+```python
+# ❌ Misses JsNull and JsUndefined
+if result is None:
+    return default_value
+
+# ❌ Also misses them (same check, different syntax)
+if result is not None:
+    process(result)  # Crashes on JsNull
+```
+
+**Solution:** Use the boundary layer's `_is_js_undefined()` which checks `type(x).__name__` against a set of known JS null types:
+
+```python
+# ✅ Catches all three null-like values
+if value is None or _is_js_undefined(value):
+    return default_value
+```
+
+**Rule of thumb:** Any function in `wrappers.py` that has `if x is None` should also check `_is_js_undefined(x)`. When writing new boundary code, always ask: "What happens when this receives JsNull instead of None?"
