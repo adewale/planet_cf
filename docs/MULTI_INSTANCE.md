@@ -9,7 +9,7 @@ Planet CF supports configurable multi-instance deployment through the `examples/
 - **Examples-Based Structure**: Each instance has its own directory in `examples/`
 - **Ready-to-Deploy Instances**: Planet Python and Planet Mozilla included
 - **Multiple Themes**: Per-instance templates in `examples/<id>/templates/`
-- **OAuth Abstraction**: Support for GitHub OAuth (Google and custom OIDC not yet implemented)
+- **OAuth Abstraction**: GitHub OAuth for admin authentication
 - **CLI Tooling**: Scripts to provision and deploy new instances
 - **One-Command Deployment**: Single script handles all Cloudflare resources
 
@@ -281,7 +281,7 @@ python scripts/build_templates.py --example my-planet
 
 ## OAuth Provider Configuration
 
-### GitHub (Default)
+### GitHub
 
 ```yaml
 auth:
@@ -293,14 +293,6 @@ auth:
 Required secrets:
 - `GITHUB_CLIENT_ID`
 - `GITHUB_CLIENT_SECRET`
-
-### Google (NOT YET IMPLEMENTED)
-
-> Google OAuth is not yet supported. Only GitHub OAuth is currently implemented.
-
-### Custom OIDC (NOT YET IMPLEMENTED)
-
-> Custom OIDC providers are not yet supported. Only GitHub OAuth is currently implemented.
 
 ## Comparison with Rogue Planet
 
