@@ -467,7 +467,7 @@ Note: `_trigger_regenerate()` is deferred - it just re-runs the scheduler which 
 
 **Impact**: Can't trace "show me everything that happened to this feed".
 
-**Recommendation**: Add `feed_id` to relevant events, use it as correlation key.
+**Fix**: Add `feed_ids_served: list[int] | None` to RequestEvent for homepage/search routes. The `feed_id` already present on FeedFetchEvent **is** the correlation key — query `WHERE feed_id = 42 ORDER BY timestamp` across all event types. No new correlation mechanism needed.
 
 ### 5. No Retry Correlation
 
@@ -477,6 +477,8 @@ Note: `_trigger_regenerate()` is deferred - it just re-runs the scheduler which 
 
 **Current Partial Solution**: `queue_attempt` field shows attempt number, but no `original_message_id`.
 
+**Fix**: Add `first_attempt_id: str | None` to FeedFetchEvent. Include `request_id` in the queue message body when enqueuing. On retry delivery (`queue_attempt > 1`), copy it to `first_attempt_id`. Query: `WHERE first_attempt_id = 'abc123' OR request_id = 'abc123'` to see all attempts. One new field on the existing wide event.
+
 ### 6. Silent Drops Not Visible
 
 **Problem**: When sampling drops an event, there's no record.
@@ -485,7 +487,7 @@ Note: `_trigger_regenerate()` is deferred - it just re-runs the scheduler which 
 - Metrics may undercount successes
 - Can't verify sampling is working correctly
 
-**Recommendation**: Emit lightweight "sampled_out" events or add counters.
+**Fix**: Don't emit per-dropped-event logs (defeats sampling). Instead, maintain module-level counters by event type and attach the drop count to the **next emitted event** as `events_dropped_since_last: int`. This is the wide event way — enrich the event you DO emit. Avoids inflating event volume while providing sampling visibility.
 
 ### 7. Database Query Counts
 
@@ -493,7 +495,7 @@ Note: `_trigger_regenerate()` is deferred - it just re-runs the scheduler which 
 
 **Impact**: Can't detect N+1 query patterns.
 
-**Recommendation**: Add `d1_query_count` fields.
+**Fix**: Add a counter to `SafeD1.prepare()` (the boundary layer is the right place since all D1 access goes through it). Add `d1_query_count: int | None` to RequestEvent and FeedFetchEvent. After each request/fetch completes, read `env.DB.query_count` into the event. Query: `WHERE d1_query_count > 10` to find N+1 patterns.
 
 ### 8. Cache Status Not Populated
 
@@ -501,7 +503,7 @@ Note: `_trigger_regenerate()` is deferred - it just re-runs the scheduler which 
 
 **Impact**: Can't analyze cache hit rates.
 
-**Recommendation**: Check `cf-cache-status` header or use Cache API.
+**Fix**: Populate based on route type: `"cdn"` for static assets, `"generated"` for homepage, `"bypass"` for search/admin. If a Cache API layer is added later, update to `"hit"` / `"miss"` based on `caches.default.match()`. The field already exists — just needs populating.
 
 ### 9. Specific Entry Failures Lost
 
@@ -509,7 +511,7 @@ Note: `_trigger_regenerate()` is deferred - it just re-runs the scheduler which 
 
 **Impact**: Can't debug why specific entries fail to index.
 
-**Recommendation**: Add structured error details or separate low-volume error log.
+**Fix**: Add `indexing_failed_ids: list[str] | None` (entry GUIDs, capped at 10) and `indexing_first_error: str | None` to FeedFetchEvent. Stays within the wide event model — structured fields on the existing event, not a separate error log. Query: `WHERE indexing_first_error LIKE '%timeout%'`.
 
 ### 10. Queue Backpressure
 
@@ -517,7 +519,7 @@ Note: `_trigger_regenerate()` is deferred - it just re-runs the scheduler which 
 
 **Impact**: Can't detect when queue is backing up.
 
-**Recommendation**: Query queue metrics API if available, or track time-since-scheduled.
+**Fix**: Include `enqueued_at` timestamp in queue message body. In the queue handler, compute `time_in_queue_ms: float | None` on FeedFetchEvent as `(now - enqueued_at)`. Query: `WHERE time_in_queue_ms > 30000` to detect backpressure. For queue depth approximation, add `feeds_pending_estimate` to SchedulerEvent as `feeds_enqueued - feeds_processed_since_last_cron`.
 
 ---
 
@@ -532,14 +534,14 @@ Note: `_trigger_regenerate()` is deferred - it just re-runs the scheduler which 
 4. **Add feed_id correlation**: Allow tracing operations for a specific feed (DEFERRED - feed_id already on FeedFetchEvent)
 
 ### P2 (Medium)
-5. **D1 query counts**: Detect N+1 patterns
-6. **Cache status population**: Understand CDN behavior
-7. **Retry correlation**: Link retry attempts
+5. **D1 query counts**: Add counter in `SafeD1.prepare()`, new `d1_query_count` field on events
+6. **Cache status population**: Populate existing `cache_status` field by route type
+7. **Retry correlation**: Add `first_attempt_id` field to FeedFetchEvent, propagate via queue message
 
 ### P3 (Low)
-8. **Sampling visibility**: Know what was dropped
-9. **Queue backpressure**: Monitor queue health
-10. **Entry-level error details**: Debug specific failures
+8. **Sampling visibility**: Attach `events_dropped_since_last` counter to next emitted event
+9. **Queue backpressure**: Add `enqueued_at` to queue message, compute `time_in_queue_ms` on FeedFetchEvent
+10. **Entry-level error details**: Add `indexing_failed_ids` and `indexing_first_error` to FeedFetchEvent
 
 ---
 

@@ -2565,12 +2565,16 @@ Comprehensive testing ensures the implementation matches this specification. Use
 ```
 tests/
 ├── conftest.py              # Shared fixtures
+├── mocks/
+│   └── jsproxy.py           # JsProxy/JsNull/JsUndefined mocks
 ├── unit/
 │   ├── test_models.py        # Domain model tests
 │   ├── test_parsing.py      # Feed parsing tests
 │   ├── test_sanitization.py # XSS prevention tests
 │   ├── test_security.py     # URL validation, SSRF tests
-│   └── test_session.py      # Signed cookie tests
+│   ├── test_session.py      # Signed cookie tests
+│   ├── test_safe_wrappers.py # CPython wrapper tests (88 tests)
+│   └── test_wrappers_ffi.py  # Pyodide FFI boundary tests (82 tests)
 ├── integration/
 │   ├── test_scheduler.py    # Cron → Queue flow
 │   ├── test_fetcher.py      # Queue → D1 flow

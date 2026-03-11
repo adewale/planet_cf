@@ -300,6 +300,10 @@ that shields business logic from JavaScript specifics:
 **Rule**: All JavaScript bindings MUST be accessed through boundary layer helpers.
 Business logic code should NEVER import or use JsProxy types directly.
 
+**Critical gotcha**: `if x is None` misses JsNull and JsUndefined — always also check `_is_js_undefined(x)` at the boundary. See [Lesson 21](LESSONS_LEARNED.md#21-is-none-is-never-enough-at-the-ffi-boundary).
+
+**Testing**: Wrappers have two-tier tests — CPython mocks (`test_safe_wrappers.py`, 88 tests) and FFI fakes (`test_wrappers_ffi.py`, 82 tests) that monkeypatch `HAS_PYODIDE=True` with fake JS types. See [Lesson 20](LESSONS_LEARNED.md#20-two-tier-ffi-testing-cpython-tests--pyodide-fakes).
+
 ### Python None vs JavaScript undefined
 
 ```python
@@ -771,8 +775,9 @@ src/
 │  Converters:                                                                  │
 │    _to_py_safe(obj)                # JsProxy → Python dict/list              │
 │    _to_py_list(js_array)           # JsProxy array → Python list             │
-│    _to_d1_value(value)             # Python → D1-safe value                  │
-│    _is_js_undefined(value)         # Check for JS undefined                  │
+│                                    # Guards: None + JsNull + JsUndefined     │
+│    _to_d1_value(value)             # Python → D1-safe value (None→JsNull)    │
+│    _is_js_undefined(value)         # Check for JS undefined/null types       │
 │    _safe_str(value)                # Safely stringify JsProxy                │
 │    _extract_form_value(form, key)  # Extract from JsProxy FormData          │
 │    entry_rows_from_d1(result)      # D1 results → Python dicts              │

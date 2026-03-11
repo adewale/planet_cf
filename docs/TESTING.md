@@ -21,10 +21,13 @@ uv run pytest tests/unit tests/integration -v
 
 Pure unit tests using mock Cloudflare bindings. No server needed.
 
-- **~1070+ tests**, runs in ~1 second
+- **~1180+ tests**, runs in ~2 seconds
 - Uses `MockD1`, `MockVectorize`, `MockAI`, `MockQueue` from `tests/conftest.py`
 - Simulates JsProxy behavior to catch conversion issues
 - Covers: rendering, search, config, auth, feeds, entries, observability
+- Includes **two-tier wrapper tests**:
+  - `test_safe_wrappers.py` — CPython tests with Python mocks (88 tests)
+  - `test_wrappers_ffi.py` — Pyodide FFI boundary tests with fake JS types (82 tests)
 
 ### Integration Tests (tests/integration/)
 
@@ -40,6 +43,14 @@ Tests against real Cloudflare infrastructure (D1, Vectorize, Workers AI).
 
 - **34 tests**, requires a running test-planet instance
 - Catches: JsProxy bugs, real SQL issues, Vectorize integration, network timing
+
+## Why FFI Tests Exist
+
+Unit tests with Python mocks verify business logic but completely miss FFI boundary bugs. JsNull, JsUndefined, and JsProxy types don't exist in CPython, so mock-based tests pass even when production code crashes on these types.
+
+`test_wrappers_ffi.py` solves this by monkeypatching `HAS_PYODIDE=True` and injecting fake JS types (JsNull, JsUndefined, FakeJsProxy) that replicate Pyodide's actual behavior. This caught a real bug in `_to_py_list()` where `if js_array is None` missed JsNull input (because JsNull `is not None`).
+
+See [Lesson 20 in LESSONS_LEARNED.md](LESSONS_LEARNED.md#20-two-tier-ffi-testing-cpython-tests--pyodide-fakes) for full details.
 
 ## Why E2E Tests Exist
 
@@ -111,7 +122,7 @@ This script creates infrastructure, sets secrets, seeds data, and deploys the wo
 Runs on every push and PR via `.github/workflows/check.yml`:
 - Type checking, linting, formatting
 - Unit tests + integration tests
-- 60% minimum coverage
+- 80% minimum coverage
 
 ### E2E (manual + main branch)
 
