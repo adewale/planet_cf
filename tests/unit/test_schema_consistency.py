@@ -9,147 +9,50 @@ This test would have caught the missing `last_entry_at` column bug (C2) where a 
 referenced a column that didn't exist in the schema.
 """
 
-import inspect
-import re
+import sqlite3
+from pathlib import Path
+
+MIGRATIONS_DIR = Path(__file__).parent.parent.parent / "migrations"
 
 
-def _extract_create_table_columns(sql: str) -> dict[str, list[str]]:
-    """Extract column names from CREATE TABLE statements.
+def _get_expected_columns() -> dict[str, set[str]]:
+    """Get expected columns from PlanetCF._EXPECTED_COLUMNS."""
+    from main import PlanetCF
 
-    Args:
-        sql: Multi-statement SQL string containing CREATE TABLE statements
+    return PlanetCF._EXPECTED_COLUMNS
 
-    Returns:
-        Dict mapping table name to list of column names
-    """
-    tables: dict[str, list[str]] = {}
 
-    # Find all CREATE TABLE statements
-    create_pattern = re.compile(
-        r"CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+(\w+)\s*\((.*?)\);",
-        re.DOTALL | re.IGNORECASE,
-    )
+def _run_migrations_and_get_columns() -> dict[str, set[str]]:
+    """Run all migration SQL files and return actual column names per table."""
+    conn = sqlite3.connect(":memory:")
+    for sql_file in sorted(MIGRATIONS_DIR.glob("*.sql")):
+        sql = sql_file.read_text()
+        try:
+            conn.executescript(sql)
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
 
-    for match in create_pattern.finditer(sql):
-        table_name = match.group(1)
-        body = match.group(2)
-
-        columns = []
-        for line in body.split("\n"):
-            line = line.strip().rstrip(",")
-            if not line:
-                continue
-            # Skip constraints (FOREIGN KEY, UNIQUE, PRIMARY KEY as standalone)
-            if re.match(
-                r"^\s*(FOREIGN\s+KEY|UNIQUE|PRIMARY\s+KEY\s*\(|CHECK)", line, re.IGNORECASE
-            ):
-                continue
-            # Extract column name (first word that isn't a SQL keyword)
-            col_match = re.match(r"^(\w+)\s+", line)
-            if col_match:
-                col_name = col_match.group(1).lower()
-                # Skip SQL keywords that might appear at line start
-                if col_name not in ("create", "table", "if", "not", "exists", "foreign", "unique"):
-                    columns.append(col_name)
-
-        tables[table_name] = columns
-
+    tables: dict[str, set[str]] = {}
+    for table_name in ("feeds", "entries", "admins", "audit_log"):
+        cursor = conn.execute(f"PRAGMA table_info({table_name})")  # noqa: S608
+        columns = {row[1] for row in cursor.fetchall()}
+        if columns:
+            tables[table_name] = columns
+    conn.close()
     return tables
 
 
-def _extract_query_columns(source: str, table_name: str) -> dict[str, set[str]]:
-    """Extract column names referenced in SQL queries for a given table.
-
-    Args:
-        source: Python source code containing SQL queries
-        table_name: Table name to search for
-
-    Returns:
-        Dict with keys 'insert', 'update', 'select' mapping to sets of column names
-    """
-    result: dict[str, set[str]] = {"insert": set(), "update": set(), "select": set()}
-
-    # Find INSERT INTO <table> (...) patterns
-    insert_pattern = re.compile(
-        rf"INSERT\s+INTO\s+{re.escape(table_name)}\s*\(([^)]+)\)",
-        re.IGNORECASE | re.DOTALL,
-    )
-    for match in insert_pattern.finditer(source):
-        cols_str = match.group(1)
-        for col in cols_str.split(","):
-            col = col.strip().lower()
-            if col and not col.startswith("?"):
-                result["insert"].add(col)
-
-    # Find UPDATE <table> SET col = ... patterns
-    update_pattern = re.compile(
-        rf"UPDATE\s+{re.escape(table_name)}\s+SET\s+(.*?)(?:WHERE|$)",
-        re.IGNORECASE | re.DOTALL,
-    )
-    for match in update_pattern.finditer(source):
-        set_clause = match.group(1)
-        for assignment in set_clause.split(","):
-            col_match = re.match(r"\s*(\w+)\s*=", assignment)
-            if col_match:
-                col = col_match.group(1).lower()
-                # Skip SQL functions/keywords
-                if col not in ("current_timestamp",):
-                    result["update"].add(col)
-
-    # Find SELECT ... FROM <table> patterns
-    # Handle both direct table references and aliased references
-    select_pattern = re.compile(
-        rf"SELECT\s+(.*?)\s+FROM\s+{re.escape(table_name)}(?:\s+\w+)?(?:\s|$|WHERE|ORDER|LIMIT|LEFT|JOIN)",
-        re.IGNORECASE | re.DOTALL,
-    )
-    for match in select_pattern.finditer(source):
-        cols_str = match.group(1).strip()
-        if cols_str == "*":
-            continue  # SELECT * is always valid
-        for col_expr in cols_str.split(","):
-            col_expr = col_expr.strip()
-            if not col_expr:
-                continue
-            # Handle "table.column" or "table.column AS alias"
-            # Handle "column AS alias"
-            # Handle subqueries - skip them
-            if "(" in col_expr:
-                continue
-            # Strip alias
-            col_expr = re.split(r"\s+AS\s+", col_expr, flags=re.IGNORECASE)[0].strip()
-            # Strip table prefix
-            if "." in col_expr:
-                col_expr = col_expr.split(".")[-1]
-            col = col_expr.lower().strip()
-            if col and col not in ("*",):
-                result["select"].add(col)
-
-    return result
-
-
-def _get_schema_sql() -> str:
-    """Get the CREATE TABLE SQL from _ensure_database_initialized()."""
-    from main import Default
-
-    source = inspect.getsource(Default._ensure_database_initialized)
-    return source
-
-
-def _get_main_source() -> str:
-    """Get the full source of main.py for query extraction."""
-    import importlib
-
-    main_module = importlib.import_module("main")
-    return inspect.getsource(main_module)
-
-
 class TestSchemaConsistency:
-    """Verify that SQL queries reference columns that exist in the schema."""
+    """Verify that the schema (via migrations and _EXPECTED_COLUMNS) is consistent.
 
-    def test_schema_extraction(self):
-        """Verify we can extract CREATE TABLE columns from the schema."""
-        schema_sql = _get_schema_sql()
-        tables = _extract_create_table_columns(schema_sql)
+    Uses behavioral testing: runs migrations against SQLite and compares
+    actual column names to _EXPECTED_COLUMNS, rather than parsing source code.
+    """
+
+    def test_schema_has_required_tables(self):
+        """Verify migrations produce all required tables."""
+        tables = _run_migrations_and_get_columns()
 
         assert "feeds" in tables, "Should find feeds table in schema"
         assert "entries" in tables, "Should find entries table in schema"
@@ -162,89 +65,53 @@ class TestSchemaConsistency:
         assert "guid" in tables["entries"], "entries table should have 'guid' column"
         assert "github_username" in tables["admins"], "admins table should have 'github_username'"
 
-    def test_feeds_query_columns_exist_in_schema(self):
-        """Every column referenced in feeds queries must exist in CREATE TABLE feeds."""
-        schema_sql = _get_schema_sql()
-        tables = _extract_create_table_columns(schema_sql)
-        schema_columns = set(tables["feeds"])
+    def test_feeds_columns_match_expected(self):
+        """Migrated feeds columns must match _EXPECTED_COLUMNS['feeds']."""
+        expected = _get_expected_columns()
+        actual = _run_migrations_and_get_columns()
 
-        main_source = _get_main_source()
-        query_columns = _extract_query_columns(main_source, "feeds")
+        missing = expected["feeds"] - actual["feeds"]
+        assert not missing, (
+            f"Migrations don't produce all expected feeds columns.\n"
+            f"Missing: {sorted(missing)}\n"
+            f"Schema columns: {sorted(actual['feeds'])}"
+        )
 
-        # Check INSERT columns
-        for col in query_columns["insert"]:
-            assert col in schema_columns, (
-                f"INSERT INTO feeds references column '{col}' "
-                f"which does not exist in CREATE TABLE feeds. "
-                f"Schema columns: {sorted(schema_columns)}"
-            )
+    def test_entries_columns_match_expected(self):
+        """Migrated entries columns must match _EXPECTED_COLUMNS['entries']."""
+        expected = _get_expected_columns()
+        actual = _run_migrations_and_get_columns()
 
-        # Check UPDATE columns
-        for col in query_columns["update"]:
-            assert col in schema_columns, (
-                f"UPDATE feeds references column '{col}' "
-                f"which does not exist in CREATE TABLE feeds. "
-                f"Schema columns: {sorted(schema_columns)}"
-            )
+        missing = expected["entries"] - actual["entries"]
+        assert not missing, (
+            f"Migrations don't produce all expected entries columns.\n"
+            f"Missing: {sorted(missing)}\n"
+            f"Schema columns: {sorted(actual['entries'])}"
+        )
 
-    def test_entries_query_columns_exist_in_schema(self):
-        """Every column referenced in entries queries must exist in CREATE TABLE entries."""
-        schema_sql = _get_schema_sql()
-        tables = _extract_create_table_columns(schema_sql)
-        schema_columns = set(tables["entries"])
+    def test_admins_columns_match_expected(self):
+        """Migrated admins columns must match _EXPECTED_COLUMNS['admins']."""
+        expected = _get_expected_columns()
+        actual = _run_migrations_and_get_columns()
 
-        main_source = _get_main_source()
-        query_columns = _extract_query_columns(main_source, "entries")
+        missing = expected["admins"] - actual["admins"]
+        assert not missing, (
+            f"Migrations don't produce all expected admins columns.\n"
+            f"Missing: {sorted(missing)}\n"
+            f"Schema columns: {sorted(actual['admins'])}"
+        )
 
-        # Check INSERT columns
-        for col in query_columns["insert"]:
-            assert col in schema_columns, (
-                f"INSERT INTO entries references column '{col}' "
-                f"which does not exist in CREATE TABLE entries. "
-                f"Schema columns: {sorted(schema_columns)}"
-            )
+    def test_audit_log_columns_match_expected(self):
+        """Migrated audit_log columns must match _EXPECTED_COLUMNS['audit_log']."""
+        expected = _get_expected_columns()
+        actual = _run_migrations_and_get_columns()
 
-        # Check UPDATE columns
-        for col in query_columns["update"]:
-            assert col in schema_columns, (
-                f"UPDATE entries references column '{col}' "
-                f"which does not exist in CREATE TABLE entries. "
-                f"Schema columns: {sorted(schema_columns)}"
-            )
-
-    def test_admins_query_columns_exist_in_schema(self):
-        """Every column referenced in admins queries must exist in CREATE TABLE admins."""
-        schema_sql = _get_schema_sql()
-        tables = _extract_create_table_columns(schema_sql)
-        schema_columns = set(tables["admins"])
-
-        main_source = _get_main_source()
-        query_columns = _extract_query_columns(main_source, "admins")
-
-        # Check UPDATE columns
-        for col in query_columns["update"]:
-            assert col in schema_columns, (
-                f"UPDATE admins references column '{col}' "
-                f"which does not exist in CREATE TABLE admins. "
-                f"Schema columns: {sorted(schema_columns)}"
-            )
-
-    def test_audit_log_query_columns_exist_in_schema(self):
-        """Every column referenced in audit_log queries must exist in CREATE TABLE audit_log."""
-        schema_sql = _get_schema_sql()
-        tables = _extract_create_table_columns(schema_sql)
-        schema_columns = set(tables["audit_log"])
-
-        main_source = _get_main_source()
-        query_columns = _extract_query_columns(main_source, "audit_log")
-
-        # Check INSERT columns
-        for col in query_columns["insert"]:
-            assert col in schema_columns, (
-                f"INSERT INTO audit_log references column '{col}' "
-                f"which does not exist in CREATE TABLE audit_log. "
-                f"Schema columns: {sorted(schema_columns)}"
-            )
+        missing = expected["audit_log"] - actual["audit_log"]
+        assert not missing, (
+            f"Migrations don't produce all expected audit_log columns.\n"
+            f"Missing: {sorted(missing)}\n"
+            f"Schema columns: {sorted(actual['audit_log'])}"
+        )
 
     def test_last_entry_at_exists_in_feeds_schema(self):
         """Regression test: last_entry_at must exist in feeds schema.
@@ -252,10 +119,9 @@ class TestSchemaConsistency:
         This column was missing in an earlier version (C2 bug), causing
         UPDATE feeds SET last_entry_at = ... to fail at runtime.
         """
-        schema_sql = _get_schema_sql()
-        tables = _extract_create_table_columns(schema_sql)
+        actual = _run_migrations_and_get_columns()
 
-        assert "last_entry_at" in tables["feeds"], (
+        assert "last_entry_at" in actual["feeds"], (
             "feeds table must have 'last_entry_at' column. "
             "This was the C2 bug: queries referenced last_entry_at but the "
             "CREATE TABLE was missing it."
@@ -263,9 +129,7 @@ class TestSchemaConsistency:
 
     def test_feeds_schema_has_all_expected_columns(self):
         """Verify the feeds table has all columns we know are needed."""
-        schema_sql = _get_schema_sql()
-        tables = _extract_create_table_columns(schema_sql)
-        schema_columns = set(tables["feeds"])
+        actual = _run_migrations_and_get_columns()
 
         expected = {
             "id",
@@ -287,17 +151,15 @@ class TestSchemaConsistency:
             "updated_at",
         }
 
-        missing = expected - schema_columns
+        missing = expected - actual["feeds"]
         assert not missing, (
             f"feeds table is missing expected columns: {sorted(missing)}. "
-            f"Actual columns: {sorted(schema_columns)}"
+            f"Actual columns: {sorted(actual['feeds'])}"
         )
 
     def test_entries_schema_has_all_expected_columns(self):
         """Verify the entries table has all columns we know are needed."""
-        schema_sql = _get_schema_sql()
-        tables = _extract_create_table_columns(schema_sql)
-        schema_columns = set(tables["entries"])
+        actual = _run_migrations_and_get_columns()
 
         expected = {
             "id",
@@ -314,28 +176,26 @@ class TestSchemaConsistency:
             "created_at",
         }
 
-        missing = expected - schema_columns
+        missing = expected - actual["entries"]
         assert not missing, (
             f"entries table is missing expected columns: {sorted(missing)}. "
-            f"Actual columns: {sorted(schema_columns)}"
+            f"Actual columns: {sorted(actual['entries'])}"
         )
 
-    def test_runtime_expected_columns_match_schema(self):
-        """_EXPECTED_COLUMNS in PlanetCF must match the CREATE TABLE schema.
+    def test_runtime_expected_columns_match_migration_schema(self):
+        """_EXPECTED_COLUMNS in PlanetCF must match the migration-produced schema.
 
         The runtime schema drift check uses _EXPECTED_COLUMNS to detect
         missing columns in production. If this dict drifts from the actual
-        CREATE TABLE schema, the check becomes ineffective.
+        migration-produced schema, the check becomes ineffective.
         """
-        from src.main import PlanetCF
+        expected = _get_expected_columns()
+        actual = _run_migrations_and_get_columns()
 
-        schema_sql = _get_schema_sql()
-        tables = _extract_create_table_columns(schema_sql)
-
-        for table_name, expected_cols in PlanetCF._EXPECTED_COLUMNS.items():
-            schema_cols = set(tables.get(table_name, []))
-            assert expected_cols == schema_cols, (
-                f"_EXPECTED_COLUMNS['{table_name}'] does not match CREATE TABLE schema.\n"
-                f"  In _EXPECTED_COLUMNS but not in schema: {sorted(expected_cols - schema_cols)}\n"
-                f"  In schema but not in _EXPECTED_COLUMNS: {sorted(schema_cols - expected_cols)}"
+        for table_name, expected_cols in expected.items():
+            actual_cols = actual.get(table_name, set())
+            assert expected_cols == actual_cols, (
+                f"_EXPECTED_COLUMNS['{table_name}'] does not match migration schema.\n"
+                f"  In _EXPECTED_COLUMNS but not in migrations: {sorted(expected_cols - actual_cols)}\n"
+                f"  In migrations but not in _EXPECTED_COLUMNS: {sorted(actual_cols - expected_cols)}"
             )

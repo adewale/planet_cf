@@ -11,9 +11,11 @@ These tests ensure that:
 6. Every TEMPLATE_FEED_* constant is wired up to a route
 """
 
-import inspect
+import json
 import re
 from pathlib import Path
+
+import pytest
 
 ADMIN_JS = (Path(__file__).parent.parent.parent / "static" / "admin.js").read_text()
 
@@ -134,45 +136,86 @@ class TestSearchEndpointResponses:
 class TestPublicEndpointContentTypes:
     """Verify public endpoints return correct content types."""
 
-    def test_search_validation_error_is_html_not_json(self):
+    @pytest.mark.asyncio
+    async def test_search_validation_error_is_html_not_json(self):
         """Search validation errors should return HTML for browser UX.
 
         The search form is submitted via browser, so errors should be
         rendered as HTML pages, not JSON responses.
         """
+        from tests.conftest import MockRequest, make_authenticated_worker
 
-        # Create a mock request with empty query
-        # This is a unit test that checks the response type
-        # Integration test will verify actual behavior
-        pass
+        worker, env, _ = make_authenticated_worker()
+
+        # Make a request with an empty query
+        request = MockRequest(url="https://example.com/search?q=", method="GET")
+        response = await worker._search_entries(request)
+
+        # Should return HTML, not JSON
+        assert response.status == 200
+        assert "<html" in response.body.lower() or "<!doctype" in response.body.lower()
+        # Should contain an error message about query length
+        assert "2 characters" in response.body.lower() or "at least" in response.body.lower()
 
 
 class TestBackendRouteDefinitions:
-    """Verify backend routes are defined as expected."""
+    """Verify backend routes are defined as expected by calling the handler."""
 
-    def test_feed_update_route_expects_put(self):
-        """Verify the feed update route checks for PUT method."""
-        import inspect
+    @pytest.mark.asyncio
+    async def test_feed_update_route_expects_put(self):
+        """Verify the feed update route accepts PUT method."""
+        from tests.conftest import MockRequest, make_authenticated_worker
 
-        from main import PlanetCF
+        feeds = [
+            {
+                "id": 1,
+                "url": "https://example.com/feed.xml",
+                "title": "Test",
+                "is_active": 1,
+                "site_url": "https://example.com",
+            }
+        ]
+        worker, env, cookie = make_authenticated_worker(feeds=feeds)
 
-        source = inspect.getsource(PlanetCF._handle_admin)
-
-        # Check that PUT is expected for feed updates
-        assert 'method == "PUT"' in source or "method == 'PUT'" in source, (
-            "Feed update route should check for PUT method"
+        # PUT request to update feed title should succeed
+        request = MockRequest(
+            url="https://example.com/admin/feeds/1",
+            method="PUT",
+            cookies=cookie,
+            json_data={"title": "New Title"},
         )
+        response = await worker._handle_admin(request, "/admin/feeds/1")
 
-    def test_feed_toggle_route_expects_post(self):
-        """Verify the feed toggle route checks for POST method."""
-        import inspect
+        body = json.loads(response.body)
+        assert body.get("success") is True
 
-        from main import PlanetCF
+    @pytest.mark.asyncio
+    async def test_feed_toggle_route_expects_post(self):
+        """Verify the feed toggle route accepts POST with /toggle path."""
+        from tests.conftest import MockRequest, make_authenticated_worker
 
-        source = inspect.getsource(PlanetCF._handle_admin)
+        feeds = [
+            {
+                "id": 1,
+                "url": "https://example.com/feed.xml",
+                "title": "Test",
+                "is_active": 1,
+                "site_url": "https://example.com",
+            }
+        ]
+        worker, env, cookie = make_authenticated_worker(feeds=feeds)
 
-        # Check that POST is expected for toggle with /toggle path
-        assert "/toggle" in source, "Toggle route should check for /toggle path"
+        # POST request to toggle feed should succeed
+        request = MockRequest(
+            url="https://example.com/admin/feeds/1/toggle",
+            method="POST",
+            cookies=cookie,
+            json_data={"is_active": 0},
+        )
+        response = await worker._handle_admin(request, "/admin/feeds/1/toggle")
+
+        body = json.loads(response.body)
+        assert body.get("success") is True
 
 
 # =============================================================================
@@ -231,28 +274,28 @@ class TestJSONResponseContracts:
 
         return functions
 
-    def test_dlq_response_uses_feeds_key(self):
+    @pytest.mark.asyncio
+    async def test_dlq_response_uses_feeds_key(self):
         """DLQ endpoint must return {"feeds": [...]} to match loadDLQ() JavaScript.
 
         C1 bug: Backend returned {"failed_feeds": ...} but JS expected data.feeds.
-        This test ensures the backend _view_dlq() returns the correct key.
+        This test calls _view_dlq() and verifies the response JSON has the correct key.
         """
-        from main import Default
+        from tests.conftest import make_authenticated_worker
 
-        source = inspect.getsource(Default._view_dlq)
+        worker, env, _ = make_authenticated_worker()
+        response = await worker._view_dlq()
+        body = json.loads(response.body)
 
-        # The response must contain "feeds" as a key
-        assert '"feeds"' in source, (
+        assert "feeds" in body, (
             '_view_dlq() must return JSON with "feeds" key. '
-            "The admin JS loadDLQ() accesses data.feeds - "
-            'if the backend returns {"failed_feeds": ...} the DLQ tab will show empty.'
+            "The admin JS loadDLQ() accesses data.feeds."
         )
-
-        # It should NOT use "failed_feeds"
-        assert '"failed_feeds"' not in source, (
+        assert "failed_feeds" not in body, (
             '_view_dlq() returns "failed_feeds" but JS expects "feeds". '
             "This is the C1 bug - the DLQ tab will appear empty."
         )
+        assert isinstance(body["feeds"], list)
 
     def test_dlq_js_expects_feeds_key(self):
         """Verify admin JS loadDLQ() accesses data.feeds."""
@@ -270,27 +313,35 @@ class TestJSONResponseContracts:
             "loadDLQ() should access data.feeds to match backend _view_dlq() response"
         )
 
-    def test_list_feeds_response_uses_feeds_key(self):
+    @pytest.mark.asyncio
+    async def test_list_feeds_response_uses_feeds_key(self):
         """_list_feeds() must return {"feeds": [...]} matching JS expectations."""
-        from main import Default
+        from tests.conftest import make_authenticated_worker
 
-        source = inspect.getsource(Default._list_feeds)
+        worker, env, _ = make_authenticated_worker()
+        response = await worker._list_feeds()
+        body = json.loads(response.body)
 
-        assert '"feeds"' in source, '_list_feeds() must return JSON with "feeds" key.'
+        assert "feeds" in body, '_list_feeds() must return JSON with "feeds" key.'
+        assert isinstance(body["feeds"], list)
 
-    def test_audit_log_response_uses_entries_key(self):
+    @pytest.mark.asyncio
+    async def test_audit_log_response_uses_entries_key(self):
         """_view_audit_log() must return {"entries": [...]} matching loadAuditLog() JS.
 
         The admin JS loadAuditLog() accesses data.entries to render audit items.
         """
-        from main import Default
+        from tests.conftest import make_authenticated_worker
 
-        source = inspect.getsource(Default._view_audit_log)
+        worker, env, _ = make_authenticated_worker()
+        response = await worker._view_audit_log()
+        body = json.loads(response.body)
 
-        assert '"entries"' in source, (
+        assert "entries" in body, (
             '_view_audit_log() must return JSON with "entries" key. '
             "The admin JS loadAuditLog() accesses data.entries."
         )
+        assert isinstance(body["entries"], list)
 
     def test_audit_log_js_expects_entries_key(self):
         """Verify admin JS loadAuditLog() accesses data.entries."""
@@ -307,34 +358,59 @@ class TestJSONResponseContracts:
             "loadAuditLog() should access data.entries to match backend _view_audit_log() response"
         )
 
-    def test_update_feed_response_uses_success_key(self):
+    @pytest.mark.asyncio
+    async def test_update_feed_response_uses_success_key(self):
         """_update_feed() must return {"success": true} matching JS expectations.
 
         The inline JS handler for feed title updates checks data.success.
         """
-        from main import Default
+        from tests.conftest import MockRequest, make_authenticated_worker
 
-        source = inspect.getsource(Default._update_feed)
+        feeds = [
+            {
+                "id": 1,
+                "url": "https://example.com/feed.xml",
+                "title": "Test",
+                "is_active": 1,
+                "site_url": "https://example.com",
+            }
+        ]
+        worker, env, cookie = make_authenticated_worker(feeds=feeds)
 
-        assert '"success"' in source, (
+        request = MockRequest(
+            url="https://example.com/admin/feeds/1",
+            method="PUT",
+            cookies=cookie,
+            json_data={"title": "Updated Title"},
+        )
+        admin = {"id": 1, "github_username": "testadmin", "display_name": "Admin", "is_active": 1}
+        response = await worker._update_feed(request, 1, admin)
+        body = json.loads(response.body)
+
+        assert "success" in body, (
             '_update_feed() must return JSON with "success" key. '
             "The admin JS checks data.success after title updates."
         )
+        assert body["success"] is True
 
-    def test_reindex_response_uses_success_and_indexed_keys(self):
+    @pytest.mark.asyncio
+    async def test_reindex_response_uses_success_and_indexed_keys(self):
         """_reindex_all_entries() must return {"success": true, "indexed": N}.
 
         The admin JS rebuildSearchIndex() checks data.success and data.indexed.
         """
-        from main import Default
+        from tests.conftest import make_authenticated_worker
 
-        source = inspect.getsource(Default._reindex_all_entries)
+        worker, env, _ = make_authenticated_worker()
+        admin = {"id": 1, "github_username": "testadmin", "display_name": "Admin", "is_active": 1}
+        response = await worker._reindex_all_entries(admin)
+        body = json.loads(response.body)
 
-        assert '"success"' in source, (
+        assert "success" in body, (
             '_reindex_all_entries() must return JSON with "success" key. '
             "The admin JS rebuildSearchIndex() checks data.success."
         )
-        assert '"indexed"' in source, (
+        assert "indexed" in body, (
             '_reindex_all_entries() must return JSON with "indexed" key. '
             "The admin JS shows 'Done! (N indexed)' using data.indexed."
         )
@@ -386,52 +462,50 @@ class TestJSONResponseContracts:
 
 
 class TestRouteHandlerCoverage:
-    """Verify every registered route has a corresponding handler in _dispatch_route.
+    """Verify every registered route has a corresponding handler.
 
     This test class prevents the class of bug where a route is defined in
-    create_default_routes() but never wired to a handler in _dispatch_route(),
+    _create_router() but never wired to a handler in _dispatch_route(),
     or where a TEMPLATE_FEED_* constant is defined but never used.
     """
 
-    def test_all_routes_have_dispatch_handlers(self):
-        """Every route path in create_default_routes() must appear in _dispatch_route().
+    @pytest.mark.asyncio
+    async def test_all_routes_have_dispatch_handlers(self):
+        """Every route path in _create_router() should be matchable by the dispatcher.
 
         This would have caught the missing RSS 1.0 route handler: the route
-        existed in create_default_routes() but _dispatch_route() had no case for it.
+        existed in the router but match() returned None for it.
         """
-        from main import Default
-        from route_dispatcher import create_default_routes
+        from tests.conftest import make_authenticated_worker
 
-        routes = create_default_routes()
-        dispatch_source = inspect.getsource(Default._dispatch_route)
+        worker, env, cookie = make_authenticated_worker()
+        router = worker._create_router()
 
-        for route in routes:
+        for route in router.routes:
             path = route.path
-            # Prefix routes (like /admin) are matched by startswith,
-            # so we just check the path string appears in the source
-            assert f'"{path}"' in dispatch_source or f"'{path}'" in dispatch_source, (
-                f"Route '{path}' is registered in create_default_routes() but has no "
-                f"handler case in _dispatch_route(). Add an elif branch for it."
+            # Skip prefix routes like /admin (they need sub-path dispatching)
+            if route.prefix:
+                continue
+            match = router.match(path)
+            assert match is not None, (
+                f"Route '{path}' is registered in _create_router() but "
+                f"RouteDispatcher.match() returns None for it."
             )
 
     def test_all_feed_template_constants_are_used_in_main(self):
-        """Every TEMPLATE_FEED_* constant should be referenced in main.py.
+        """Every TEMPLATE_FEED_* constant should be imported in main.py.
 
         This catches dead template constants that are defined in templates.py
         but never imported or used in main.py, indicating a missing feature.
         """
-        import importlib
-
+        import main as main_module
         import templates
 
         # Find all TEMPLATE_FEED_* constants
         feed_constants = [name for name in dir(templates) if name.startswith("TEMPLATE_FEED_")]
 
-        main_module = importlib.import_module("main")
-        main_source = inspect.getsource(main_module)
-
         for const_name in feed_constants:
-            assert const_name in main_source, (
-                f"Template constant '{const_name}' from templates.py is not used in "
+            assert hasattr(main_module, const_name), (
+                f"Template constant '{const_name}' from templates.py is not imported in "
                 f"main.py. Either wire it up to a route handler or remove it."
             )

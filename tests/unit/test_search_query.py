@@ -524,3 +524,102 @@ class TestSearchQueryMutations:
         # "test_func" is a single word with escaped underscore
         # "test func" is two separate words
         assert result_underscore.params != result_space.params
+
+
+# =============================================================================
+# Negative tests for invalid search queries (TQ4)
+# =============================================================================
+
+
+class TestSearchQueryNegativeCases:
+    """Negative tests verifying search handles invalid/edge-case queries gracefully."""
+
+    def test_empty_query_raises_value_error(self):
+        """Empty query string raises ValueError, not a 500."""
+        builder = SearchQueryBuilder(query="")
+        with pytest.raises(ValueError, match="cannot be empty"):
+            builder.build()
+
+    def test_extremely_long_query_builds_successfully(self):
+        """A 10,000 character query should build without crashing."""
+        long_query = "a" * 10000
+        builder = SearchQueryBuilder(query=long_query, is_phrase_search=True)
+        result = builder.build(limit=50)
+        assert result.sql
+        assert len(result.params) > 0
+
+    def test_extremely_long_multi_word_query_truncates(self):
+        """A query with 100 words should truncate to max_words, not crash."""
+        many_words = " ".join(f"word{i}" for i in range(100))
+        builder = SearchQueryBuilder(query=many_words, is_phrase_search=False, max_words=10)
+        result = builder.build(limit=50)
+        assert result.words_truncated is True
+        # Should have exactly 10 words x 2 (title + content) + 1 limit = 21 params
+        assert len(result.params) == 21
+
+    def test_special_chars_percent_underscore(self):
+        """Query with SQL wildcards (%, _) is escaped properly."""
+        builder = SearchQueryBuilder(query="100%_off!", is_phrase_search=True)
+        result = builder.build(limit=50)
+        # Wildcards must be escaped in the LIKE parameter
+        assert "100\\%\\_off!" in result.params[0]
+
+    def test_special_chars_backslash(self):
+        """Query with backslashes does not crash."""
+        builder = SearchQueryBuilder(query="C:\\Users\\test", is_phrase_search=True)
+        result = builder.build(limit=50)
+        assert result.sql
+        assert "C:\\Users\\test" in result.params[0]
+
+    def test_null_byte_does_not_crash(self):
+        """Query containing null bytes does not crash."""
+        builder = SearchQueryBuilder(query="test\x00injection", is_phrase_search=True)
+        result = builder.build(limit=50)
+        assert result.sql
+        assert isinstance(result.params[0], str)
+
+    def test_only_special_chars_query(self):
+        """Query consisting entirely of special characters builds successfully."""
+        builder = SearchQueryBuilder(query="!@#$%^&*()", is_phrase_search=True)
+        result = builder.build(limit=50)
+        assert result.sql
+        assert len(result.params) > 0
+
+    @pytest.mark.asyncio
+    async def test_search_handler_empty_query_returns_html_error(self):
+        """The search handler returns HTML with error for empty query, not 500."""
+        from tests.conftest import MockRequest, make_authenticated_worker
+
+        worker, env, _ = make_authenticated_worker()
+        request = MockRequest(url="https://example.com/search?q=", method="GET")
+        response = await worker._search_entries(request)
+
+        assert response.status == 200
+        assert "<html" in response.body.lower() or "<!doctype" in response.body.lower()
+        assert "2 characters" in response.body.lower() or "at least" in response.body.lower()
+
+    @pytest.mark.asyncio
+    async def test_search_handler_long_query_returns_html_error(self):
+        """The search handler returns HTML with error for excessively long query."""
+        from tests.conftest import MockRequest, make_authenticated_worker
+
+        worker, env, _ = make_authenticated_worker()
+        long_q = "x" * 2000
+        request = MockRequest(url=f"https://example.com/search?q={long_q}", method="GET")
+        response = await worker._search_entries(request)
+
+        assert response.status == 200
+        assert "<html" in response.body.lower() or "<!doctype" in response.body.lower()
+        assert "too long" in response.body.lower() or "1000" in response.body
+
+    @pytest.mark.asyncio
+    async def test_search_handler_special_chars_does_not_500(self):
+        """Search with special chars returns a valid response, not a 500."""
+        from tests.conftest import MockRequest, make_authenticated_worker
+
+        worker, env, _ = make_authenticated_worker()
+        request = MockRequest(url="https://example.com/search?q=%27+OR+1%3D1+--", method="GET")
+        response = await worker._search_entries(request)
+
+        # Should not be a 500 error
+        assert response.status != 500

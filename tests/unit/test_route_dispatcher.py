@@ -5,8 +5,17 @@ from src.route_dispatcher import (
     Route,
     RouteDispatcher,
     RouteMatch,
-    create_default_routes,
 )
+from tests.conftest import make_authenticated_worker
+
+
+def _get_default_routes() -> list[Route]:
+    """Get the default routes from PlanetCF._create_router().
+
+    Replaces the removed _get_default_routes() function.
+    """
+    worker, _env, _cookie = make_authenticated_worker()
+    return worker._create_router().routes
 
 
 class TestRoute:
@@ -293,7 +302,7 @@ class TestCreateDefaultRoutes:
 
     def test_creates_public_routes(self):
         """Creates standard public routes."""
-        routes = create_default_routes()
+        routes = _get_default_routes()
         paths = [r.path for r in routes]
 
         assert "/" in paths
@@ -305,7 +314,7 @@ class TestCreateDefaultRoutes:
 
     def test_creates_auth_routes(self):
         """Creates OAuth routes."""
-        routes = create_default_routes()
+        routes = _get_default_routes()
         paths = [r.path for r in routes]
 
         assert "/auth/github" in paths
@@ -313,7 +322,7 @@ class TestCreateDefaultRoutes:
 
     def test_creates_admin_routes(self):
         """Creates admin routes."""
-        routes = create_default_routes()
+        routes = _get_default_routes()
         admin_routes = [r for r in routes if r.path.startswith("/admin")]
 
         assert len(admin_routes) > 0
@@ -321,21 +330,21 @@ class TestCreateDefaultRoutes:
 
     def test_public_routes_cacheable(self):
         """Public routes are cacheable."""
-        routes = create_default_routes()
+        routes = _get_default_routes()
         home_route = next(r for r in routes if r.path == "/")
 
         assert home_route.cacheable is True
 
     def test_auth_routes_not_cacheable(self):
         """Auth routes are not cacheable."""
-        routes = create_default_routes()
+        routes = _get_default_routes()
         auth_route = next(r for r in routes if r.path == "/auth/github")
 
         assert auth_route.cacheable is False
 
     def test_lite_mode_flags(self):
         """Correct routes are marked as lite mode disabled."""
-        routes = create_default_routes()
+        routes = _get_default_routes()
 
         search_route = next(r for r in routes if r.path == "/search")
         assert search_route.lite_mode_disabled is True
@@ -349,7 +358,7 @@ class TestRouteDispatcher404:
 
     def test_unknown_route_returns_none(self):
         """Unknown routes return None for 404 handling."""
-        routes = create_default_routes()
+        routes = _get_default_routes()
         dispatcher = RouteDispatcher(routes)
 
         # Random paths that don't exist

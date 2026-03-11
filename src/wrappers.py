@@ -153,8 +153,10 @@ def _to_py_safe(value: Any, *, _depth: int = 0) -> Any:
     try:
         str_val = str(value)
         # Check if it's a number string
-        if str_val.isdigit():
+        try:
             return int(str_val)
+        except ValueError:
+            pass
         return str_val
     except Exception:
         logger.warning("JsProxy string conversion failed for type %s", type(value).__name__)

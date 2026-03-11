@@ -3,6 +3,8 @@
 
 import time
 
+from freezegun import freeze_time
+
 from src.auth import (
     build_clear_oauth_state_cookie_header,
     build_clear_session_cookie_header,
@@ -62,6 +64,7 @@ class TestParseCookieValue:
 class TestSignedCookieRoundtrip:
     """Tests for create_signed_cookie() and verify_signed_cookie()."""
 
+    @freeze_time("2026-01-01 12:00:00")
     def test_roundtrip_verify(self):
         """Created cookie can be verified with the same secret."""
         payload = {"user": "test", "exp": int(time.time()) + 3600}
@@ -96,6 +99,7 @@ class TestSignedCookieRoundtrip:
 class TestVerifySignedCookie:
     """Tests for verify_signed_cookie() edge cases."""
 
+    @freeze_time("2026-01-01 12:00:00")
     def test_rejects_tampered_payload(self):
         """Rejects cookie with tampered payload bytes."""
         payload = {"user": "test", "exp": int(time.time()) + 3600}
@@ -104,6 +108,7 @@ class TestVerifySignedCookie:
         tampered = "X" + cookie[1:]
         assert verify_signed_cookie(tampered, SECRET) is None
 
+    @freeze_time("2026-01-01 12:00:00")
     def test_rejects_tampered_signature(self):
         """Rejects cookie with modified signature."""
         payload = {"user": "test", "exp": int(time.time()) + 3600}
@@ -113,12 +118,14 @@ class TestVerifySignedCookie:
         bad_sig = ("a" if sig[0] != "a" else "b") + sig[1:]
         assert verify_signed_cookie(f"{payload_b64}.{bad_sig}", SECRET) is None
 
+    @freeze_time("2026-01-01 12:00:00")
     def test_rejects_expired_session(self):
         """Rejects cookie with expired timestamp."""
         payload = {"user": "test", "exp": int(time.time()) - 3600}
         cookie = create_signed_cookie(payload, SECRET)
         assert verify_signed_cookie(cookie, SECRET) is None
 
+    @freeze_time("2026-01-01 12:00:00")
     def test_rejects_wrong_secret(self):
         """Rejects cookie verified with a different secret."""
         payload = {"user": "test", "exp": int(time.time()) + 3600}
@@ -137,6 +144,7 @@ class TestVerifySignedCookie:
         """Returns None for empty string."""
         assert verify_signed_cookie("", SECRET) is None
 
+    @freeze_time("2026-01-01 12:00:00")
     def test_grace_period_allows_recent_expiry(self):
         """Grace period allows recently-expired sessions."""
         # Expired 3 seconds ago, grace period is 5 seconds
@@ -155,6 +163,7 @@ class TestVerifySignedCookie:
 class TestCreateSessionCookie:
     """Tests for create_session_cookie()."""
 
+    @freeze_time("2026-01-01 12:00:00")
     def test_contains_expected_fields(self):
         """Session cookie payload contains github_username, github_id, avatar_url, exp."""
         cookie = create_session_cookie("testuser", 12345, "https://avatar.url", SECRET)
@@ -165,6 +174,7 @@ class TestCreateSessionCookie:
         assert payload["avatar_url"] == "https://avatar.url"
         assert "exp" in payload
 
+    @freeze_time("2026-01-01 12:00:00")
     def test_expiry_is_in_the_future(self):
         """Session expiry is set in the future."""
         cookie = create_session_cookie("testuser", 12345, None, SECRET)

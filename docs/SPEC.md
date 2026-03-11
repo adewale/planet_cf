@@ -60,10 +60,12 @@ Planet CF is a feed aggregator that collects blog posts from Cloudflare employee
 │   │  (on demand) │      │  sufficient for this traffic.    │    │                      │
 │   │              │      └──────────────────────────────────┘    │                      │
 │   │  /          │                      │                        │                      │
+│   │  /titles    │                      │                        │                      │
 │   │  /feed.*    │      ┌───────────────┴────────────────────┐   │                      │
 │   │  /search    │◄────▶│           Vectorize               │◄──┘                      │
-│   │  /admin/*   │      │  (semantic search embeddings)      │                          │
-│   │  /feeds.opml│      └───────────────┬────────────────────┘                          │
+│   │  /health    │      │  (semantic search embeddings)      │                          │
+│   │  /admin/*   │      └───────────────┬────────────────────┘                          │
+│   │  /feeds.opml│                      │                                               │
 │   └──────────────┘                     │                                               │
 │          ▲              ┌──────────────┴────────────────────┐                          │
 │          │              │           Workers AI               │                          │
@@ -95,7 +97,7 @@ Inspired by [rogue_planet](https://github.com/adewale/rogue_planet):
 | Update frequency | Hourly |
 | Retention policy | Last 90 days OR last 100 posts per feed (configurable via env vars) |
 | Content storage | Full post content |
-| Output format | Single aggregated HTML page + RSS/Atom feed + OPML |
+| Output format | Single aggregated HTML page + titles page + RSS 2.0/Atom/RSS 1.0 feeds + OPML + FOAF |
 | Feed count | Dozens (50-100+) |
 | Templating | Jinja2 |
 | Feed parsing | Python `feedparser` |
@@ -114,7 +116,7 @@ See the architecture diagram in Section 1.1 for the visual overview.
 | Feed Queue | Holds pending feed fetch jobs (one message per feed) | Queues |
 | Feed Fetcher Worker | Consumes queue, fetches, parses, embeds | Worker (Queue Consumer) |
 | Dead Letter Queue | Captures feeds that fail 3+ times | Queues |
-| HTTP Worker | Serves HTML, RSS, OPML, search, admin (generates on-demand) | Worker |
+| HTTP Worker | Serves HTML, RSS/Atom, OPML, FOAF, search, health, admin (generates on-demand) | Worker |
 | D1 Database | Stores feeds, entries, admins, audit log | D1 |
 | Edge Cache | Caches generated HTML/RSS/Atom/OPML responses | Built-in |
 | Vectorize | Semantic search index (768-dim embeddings) | Vectorize |
@@ -128,8 +130,8 @@ This design uses the minimum infrastructure: **D1 for storage, edge cache for pe
 
 | Data | Storage | Why |
 |------|---------|-----|
-| feeds, entries, admins, audit_log | **D1** | Relational data requiring SQL |
-| HTML, RSS, Atom, OPML | **On-demand + Edge Cache** | Generated when requested, cached at edge |
+| feeds, entries, admins, audit_log, applied_migrations | **D1** | Relational data requiring SQL |
+| HTML, RSS, Atom, OPML, FOAF | **On-demand + Edge Cache** | Generated when requested, cached at edge |
 | Admin sessions | **Signed cookies** | Stateless, no storage needed |
 
 **No KV. No R2. Just D1 and Cloudflare's built-in edge cache.**
@@ -388,13 +390,14 @@ CREATE TABLE feeds (
     -- Health tracking
     last_fetch_at TEXT,
     last_success_at TEXT,
+    last_entry_at TEXT,
     fetch_error TEXT,
     fetch_error_count INTEGER DEFAULT 0,
     consecutive_failures INTEGER DEFAULT 0,
-    
+
     -- Status
     is_active INTEGER DEFAULT 1,
-    
+
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
@@ -414,9 +417,10 @@ CREATE TABLE entries (
     summary TEXT,           -- Short summary/excerpt
     published_at TEXT,
     updated_at TEXT,
-    
+    first_seen TEXT DEFAULT CURRENT_TIMESTAMP,
+
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    
+
     FOREIGN KEY (feed_id) REFERENCES feeds(id) ON DELETE CASCADE,
     UNIQUE(feed_id, guid)
 );
@@ -458,6 +462,13 @@ CREATE TABLE audit_log (
 );
 
 CREATE INDEX idx_audit_created ON audit_log(created_at DESC);
+
+-- Migration tracking
+CREATE TABLE applied_migrations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    migration_name TEXT UNIQUE NOT NULL,
+    applied_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 ```
 
 ### 4.2 Retention Policy Implementation
@@ -1635,11 +1646,13 @@ class PlanetCF(WorkerEntrypoint):
 **Trigger:** HTTP requests to the domain
 
 **Responsibilities:**
-1. Generate and serve HTML on-demand (edge cached)
-2. Generate and serve RSS/Atom feeds on-demand (edge cached)
-3. Handle semantic search queries
-4. Serve admin interface (protected by GitHub OAuth)
-5. Handle admin API endpoints
+1. Generate and serve HTML on-demand (edge cached): `/`, `/titles`
+2. Generate and serve RSS/Atom/RSS1.0 feeds on-demand (edge cached): `/feed.atom`, `/feed.rss`, `/feed.rss10`
+3. Serve OPML and FOAF exports: `/feeds.opml`, `/foafroll.xml`
+4. Handle semantic search queries: `/search`
+5. Serve health check: `/health`
+6. Handle GitHub OAuth login flow: `/auth/github`, `/auth/github/callback`
+7. Serve admin interface (protected by GitHub OAuth): `/admin/*`
 
 ```python
 # src/main.py (continued - fetch method and HTTP helpers)
@@ -1669,19 +1682,34 @@ class PlanetCF(WorkerEntrypoint):
         if path == "/" or path == "/index.html":
             return await self._serve_html()
 
+        if path == "/titles" or path == "/titles.html":
+            return await self._serve_titles()
+
         if path == "/feed.atom":
             return await self._serve_atom()
 
         if path == "/feed.rss":
             return await self._serve_rss()
 
+        if path == "/feed.rss10":
+            return await self._serve_rss10()
+
         if path == "/feeds.opml":
             return await self._export_opml()
+
+        if path == "/foafroll.xml":
+            return await self._serve_foaf()
+
+        if path == "/health":
+            return await self._serve_health()
 
         if path == "/search":
             return await self._search_entries(request)
 
-        # OAuth callback
+        # OAuth routes
+        if path == "/auth/github":
+            return self._redirect_to_github_oauth()
+
         if path == "/auth/github/callback":
             return await self._handle_github_callback(request)
 
@@ -1708,7 +1736,7 @@ class PlanetCF(WorkerEntrypoint):
 
         return Response(html, headers={
             "Content-Type": "text/html; charset=utf-8",
-            "Cache-Control": "public, max-age=3600, stale-while-revalidate=60",
+            "Cache-Control": "public, max-age=3600, stale-while-revalidate=3600",
         })
 
     async def _serve_atom(self):
@@ -1720,7 +1748,7 @@ class PlanetCF(WorkerEntrypoint):
 
         return Response(atom, headers={
             "Content-Type": "application/atom+xml; charset=utf-8",
-            "Cache-Control": "public, max-age=3600, stale-while-revalidate=60",
+            "Cache-Control": "public, max-age=3600, stale-while-revalidate=3600",
         })
 
     async def _serve_rss(self):
@@ -1732,7 +1760,7 @@ class PlanetCF(WorkerEntrypoint):
 
         return Response(rss, headers={
             "Content-Type": "application/rss+xml; charset=utf-8",
-            "Cache-Control": "public, max-age=3600, stale-while-revalidate=60",
+            "Cache-Control": "public, max-age=3600, stale-while-revalidate=3600",
         })
 
     async def _get_recent_entries(self, limit):
@@ -2350,6 +2378,9 @@ As of Wrangler v3.91.0 (late 2024), Cloudflare recommends **JSONC** (`wrangler.j
     "RETENTION_MAX_ENTRIES_PER_FEED": "100",
     "FEED_TIMEOUT_SECONDS": "60",
     "HTTP_TIMEOUT_SECONDS": "30",
+    "EMBEDDING_MAX_CHARS": "2000",
+    "SEARCH_SCORE_THRESHOLD": "0.3",
+    "SEARCH_TOP_K": "50",
     "GITHUB_CLIENT_ID": "your_github_client_id"
     // Secrets (set via wrangler secret put):
     // - GITHUB_CLIENT_SECRET: OAuth client secret

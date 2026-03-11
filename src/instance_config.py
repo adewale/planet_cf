@@ -35,7 +35,13 @@ DEFAULTS = {
 
 
 def _get_env(env: SafeEnv, key: str, default: str | None = None) -> str:
-    """Get environment variable with fallback to defaults."""
+    """Get environment variable with fallback to defaults.
+
+    P7: Instance config is read via getattr() on SafeEnv, which wraps the
+    Workers runtime env object. This is a trivial attribute lookup (no I/O,
+    no DB queries), so per-request caching is unnecessary. The cost is
+    comparable to reading a dict key.
+    """
     value = getattr(env, key, None)
     if value is not None:
         return str(value)

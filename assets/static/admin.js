@@ -6,32 +6,35 @@
 // =============================================================================
 
 function saveFeedTitle(titleDiv) {
-    const feedId = titleDiv.dataset.feedId;
-    const input = titleDiv.querySelector('.feed-title-input');
-    const textSpan = titleDiv.querySelector('.feed-title-text');
-    const newTitle = input.value.trim();
+    var feedId = titleDiv.dataset.feedId;
+    var input = titleDiv.querySelector('.feed-title-input');
+    var textSpan = titleDiv.querySelector('.feed-title-text');
+    var newTitle = input.value.trim();
 
     fetch('/admin/feeds/' + feedId, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: newTitle })
     })
-    .then(function(r) { return r.json(); })
+    .then(function(r) {
+        if (!r.ok) throw new Error('Server error: ' + r.status);
+        return r.json();
+    })
     .then(function(data) {
         if (data.success) {
             textSpan.textContent = newTitle || 'Untitled';
         }
+        titleDiv.classList.remove('editing');
     })
     .catch(function(err) {
+        titleDiv.classList.remove('editing');
         alert('Failed to save feed title: ' + (err.message || 'Network error'));
     });
-
-    titleDiv.classList.remove('editing');
 }
 
 function cancelEditTitle(titleDiv) {
-    const textSpan = titleDiv.querySelector('.feed-title-text');
-    const input = titleDiv.querySelector('.feed-title-input');
+    var textSpan = titleDiv.querySelector('.feed-title-text');
+    var input = titleDiv.querySelector('.feed-title-input');
     // Reset input to current displayed value
     input.value = textSpan.textContent === 'Untitled' ? '' : textSpan.textContent;
     titleDiv.classList.remove('editing');
@@ -39,7 +42,7 @@ function cancelEditTitle(titleDiv) {
 
 function enterEditMode(titleDiv) {
     titleDiv.classList.add('editing');
-    const input = titleDiv.querySelector('.feed-title-input');
+    var input = titleDiv.querySelector('.feed-title-input');
     input.focus();
     input.select();
 }
@@ -49,9 +52,12 @@ function enterEditMode(titleDiv) {
 // =============================================================================
 
 function loadDLQ() {
-    const list = document.getElementById('dlq-list');
+    var list = document.getElementById('dlq-list');
     return fetch('/admin/dlq')
-        .then(function(r) { return r.json(); })
+        .then(function(r) {
+            if (!r.ok) throw new Error('Server error: ' + r.status);
+            return r.json();
+        })
         .then(function(data) {
             if (!data.feeds || data.feeds.length === 0) {
                 list.innerHTML = '<p class="empty-state">No failed feeds</p>';
@@ -62,20 +68,23 @@ function loadDLQ() {
                     '<strong>' + escapeHtml(f.title || 'Untitled') + '</strong><br>' +
                     '<small>' + escapeHtml(f.url) + '</small><br>' +
                     '<small>Failures: ' + f.consecutive_failures + '</small>' +
-                    '<form action="/admin/feeds/' + f.id + '/retry" method="POST" style="margin-top:0.5rem">' +
+                    '<form action="/admin/feeds/' + f.id + '/retry" method="POST" class="dlq-retry-form">' +
                     '<button type="submit" class="btn btn-sm btn-warning">Retry</button></form>' +
                     '</div>';
             }).join('');
         })
         .catch(function(err) {
-            list.innerHTML = '<p class="empty-state" style="color:var(--error)">Failed to load: ' + escapeHtml(err.message || 'Network error') + '</p>';
+            list.innerHTML = '<p class="empty-state empty-state-error">Failed to load: ' + escapeHtml(err.message || 'Network error') + '</p>';
         });
 }
 
 function loadAuditLog() {
-    const list = document.getElementById('audit-list');
+    var list = document.getElementById('audit-list');
     return fetch('/admin/audit')
-        .then(function(r) { return r.json(); })
+        .then(function(r) {
+            if (!r.ok) throw new Error('Server error: ' + r.status);
+            return r.json();
+        })
         .then(function(data) {
             if (!data.entries || data.entries.length === 0) {
                 list.innerHTML = '<p class="empty-state">No audit entries</p>';
@@ -90,12 +99,12 @@ function loadAuditLog() {
             }).join('');
         })
         .catch(function(err) {
-            list.innerHTML = '<p class="empty-state" style="color:var(--error)">Failed to load: ' + escapeHtml(err.message || 'Network error') + '</p>';
+            list.innerHTML = '<p class="empty-state empty-state-error">Failed to load: ' + escapeHtml(err.message || 'Network error') + '</p>';
         });
 }
 
 function escapeHtml(text) {
-    const div = document.createElement('div');
+    var div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
@@ -105,8 +114,8 @@ function escapeHtml(text) {
 // =============================================================================
 
 function rebuildSearchIndex() {
-    const btn = document.getElementById('reindex-btn');
-    const originalText = btn.textContent;
+    var btn = document.getElementById('reindex-btn');
+    var originalText = btn.textContent;
     btn.disabled = true;
     btn.textContent = 'Reindexing...';
     btn.style.opacity = '0.7';
@@ -114,7 +123,10 @@ function rebuildSearchIndex() {
     return fetch('/admin/reindex', {
         method: 'POST'
     })
-    .then(function(r) { return r.json(); })
+    .then(function(r) {
+        if (!r.ok) throw new Error('Server error: ' + r.status);
+        return r.json();
+    })
     .then(function(data) {
         btn.disabled = false;
         btn.style.opacity = '1';
@@ -142,7 +154,7 @@ function initAdminDashboard() {
     // Tab switching
     document.querySelectorAll('.tab').forEach(function(tab) {
         tab.addEventListener('click', function() {
-            const target = this.dataset.tab;
+            var target = this.dataset.tab;
             document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
             document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
             this.classList.add('active');
@@ -155,12 +167,15 @@ function initAdminDashboard() {
     // Feed toggles
     document.querySelectorAll('.feed-toggle').forEach(function(toggle) {
         toggle.addEventListener('change', function() {
-            const feedId = this.dataset.feedId;
-            const isActive = this.checked;
+            var feedId = this.dataset.feedId;
+            var isActive = this.checked;
             fetch('/admin/feeds/' + feedId + '/toggle', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ is_active: isActive })
+            })
+            .then(function(r) {
+                if (!r.ok) throw new Error('Server error: ' + r.status);
             })
             .catch(function(err) {
                 alert('Failed to toggle feed: ' + (err.message || 'Network error'));
@@ -174,17 +189,17 @@ function initTitleEditing() {
     document.addEventListener('click', function(e) {
         // Click on title text to enter edit mode
         if (e.target.classList.contains('feed-title-text')) {
-            const titleDiv = e.target.closest('.feed-title');
+            var titleDiv = e.target.closest('.feed-title');
             enterEditMode(titleDiv);
         }
         // Save button
         if (e.target.classList.contains('save-title-btn')) {
-            const titleDiv = e.target.closest('.feed-title');
+            var titleDiv = e.target.closest('.feed-title');
             saveFeedTitle(titleDiv);
         }
         // Cancel button
         if (e.target.classList.contains('cancel-title-btn')) {
-            const titleDiv = e.target.closest('.feed-title');
+            var titleDiv = e.target.closest('.feed-title');
             cancelEditTitle(titleDiv);
         }
     });
@@ -193,10 +208,10 @@ function initTitleEditing() {
         if (e.target.classList.contains('feed-title-input')) {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                const titleDiv = e.target.closest('.feed-title');
+                var titleDiv = e.target.closest('.feed-title');
                 saveFeedTitle(titleDiv);
             } else if (e.key === 'Escape') {
-                const titleDiv = e.target.closest('.feed-title');
+                var titleDiv = e.target.closest('.feed-title');
                 cancelEditTitle(titleDiv);
             }
         }

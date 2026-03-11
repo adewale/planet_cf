@@ -16,6 +16,8 @@ Before writing any code, download everything from the original site.
 
 ### 1.1 Logo and Images
 
+> **Note:** The external URLs below (planetpython.org, planet.mozilla.org) may change or become unavailable. Verify that each URL is still live before running these commands.
+
 ```bash
 # Create asset directories
 mkdir -p examples/planet-python/static/images
@@ -109,23 +111,9 @@ THEME_LOGOS = {
 
 **Critical:** Missing `url` key causes HTTP 500 errors.
 
-### 3.2 THEME_ASSETS for Embedded Images
+### 3.2 Static Assets via Workers Static Assets
 
-For Cloudflare Workers (no filesystem), embed images as base64:
-
-```python
-THEME_ASSETS = {
-    "planet-python": {
-        "logo": "data:image/gif;base64,R0lGODlh0wBH...",
-    },
-    "planet-mozilla": {
-        "logo": "data:image/png;base64,iVBORw0KGgo...",
-        "header_bg": "data:image/jpeg;base64,...",
-        "footer_bg": "data:image/jpeg;base64,...",
-        "background": "data:image/jpeg;base64,...",
-    },
-}
-```
+With Workers Static Assets, images are served directly from the `assets/static/` directory at the edge rather than embedded in Python code. Place logos, backgrounds, and icons in `examples/<instance>/assets/static/` and reference them via URL paths in `THEME_LOGOS` (defined in `src/templates.py`).
 
 ---
 
@@ -185,7 +173,7 @@ python scripts/convert_planet.py https://planetpython.org/ --name planet-python
 3. Detects sidebar position
 4. Extracts template text
 5. Generates wrangler.jsonc config
-6. Generates theme_assets.py for integration
+6. Generates THEME_LOGOS entry for `src/templates.py`
 
 **Output:**
 ```
@@ -193,10 +181,9 @@ examples/{name}/
 ├── wrangler.jsonc          # Ready-to-deploy config
 ├── theme/
 │   └── style.css           # Adapted CSS
-├── assets/
-│   ├── images/             # Downloaded logos, icons
-│   └── styles/             # Original CSS files
-└── theme_assets.py         # Python dict for templates.py
+└── assets/
+    ├── images/             # Downloaded logos, icons
+    └── styles/             # Original CSS files
 ```
 
 ### Tool 2: Visual Comparison (`scripts/visual_compare.py`)
@@ -394,6 +381,8 @@ Workers run in WebAssembly - no `open()`, no `pathlib`. Assets must be:
 ---
 
 ## Results Achieved
+
+Pixel-match percentages measured February 2026; these are historical baselines and may vary with content changes.
 
 | Site | Initial | Final | Structural |
 |------|---------|-------|------------|

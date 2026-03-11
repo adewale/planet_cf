@@ -357,9 +357,10 @@ class TestPostDeployHealthCheck:
 
     def test_health_endpoint_route_exists(self):
         """Route dispatcher should have /health route."""
-        from src.route_dispatcher import create_default_routes
+        from tests.conftest import make_authenticated_worker
 
-        routes = create_default_routes()
+        worker, _env, _cookie = make_authenticated_worker()
+        routes = worker._create_router().routes
         paths = [r.path for r in routes]
         assert "/health" in paths, "/health route should exist"
 

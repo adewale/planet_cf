@@ -84,9 +84,8 @@ AdminRow.created_at  # unused variable
 # =============================================================================
 # route_dispatcher.py - used in tests
 # =============================================================================
-from route_dispatcher import RouteMatch, create_default_routes
+from route_dispatcher import RouteMatch
 
-create_default_routes  # unused function (used in tests)
 RouteMatch.path_params  # unused variable (used in pattern matching)
 
 # RouteDispatcher methods used in tests
@@ -168,17 +167,9 @@ get_http_timeout  # unused function (used in tests)
 # =============================================================================
 # admin.py - helper functions used by main.py
 # =============================================================================
-from admin import (
-    format_feed_validation_result,
-    log_admin_action,
-    parse_opml,
-    validate_opml_feeds,
-)
+from admin import parse_opml
 
 parse_opml  # unused function (used by main.py _import_opml)
-validate_opml_feeds  # unused function (used by main.py _import_opml)
-format_feed_validation_result  # unused function (used by main.py)
-log_admin_action  # unused function (used by main.py)
 
 # =============================================================================
 # content_processor.py - used in tests
@@ -315,6 +306,7 @@ AdminActionEvent.dlq_original_error
 AdminActionEvent.dlq_action
 AdminActionEvent.outcome
 AdminActionEvent.deployment_environment
+AdminActionEvent.admin_username
 
 # Timer.__exit__ parameters (required by context manager protocol)
 Timer.__exit__  # exc_type, exc_val, exc_tb are required by __exit__ signature
@@ -356,51 +348,3 @@ _.exc_tb  # unused variable (required by __exit__ signature)
 
 # main.py parameter used for admin-triggered generation
 _.triggered_by  # unused variable (parameter for admin manual refresh tracking)
-
-# =============================================================================
-# feed_generator.py - extracted module (not yet imported by main.py)
-# =============================================================================
-from feed_generator import (
-    generate_atom_feed,
-    generate_rss10_feed,
-    generate_rss_feed,
-    prepare_atom_entries,
-    prepare_rss10_entries,
-    prepare_rss_entries,
-)
-
-generate_atom_feed  # unused function (will be imported by main.py)
-generate_rss_feed  # unused function (will be imported by main.py)
-generate_rss10_feed  # unused function (will be imported by main.py)
-prepare_atom_entries  # unused function (entry preparation helper)
-prepare_rss_entries  # unused function (entry preparation helper)
-prepare_rss10_entries  # unused function (entry preparation helper)
-
-# =============================================================================
-# feed_processor.py - extracted module (not yet imported by main.py)
-# =============================================================================
-from feed_processor import (
-    RateLimitError,
-    index_entry_for_search,
-    is_safe_url,
-    process_single_feed,
-    record_feed_error,
-    sanitize_html,
-    set_feed_retry_after,
-    update_feed_metadata,
-    update_feed_success,
-    update_feed_url,
-    upsert_entry,
-)
-
-RateLimitError  # unused class (will be imported by main.py)
-process_single_feed  # unused function (will be imported by main.py)
-upsert_entry  # unused function (will be imported by main.py)
-index_entry_for_search  # unused function (will be imported by main.py)
-sanitize_html  # unused function (will be imported by main.py)
-is_safe_url  # unused function (will be imported by main.py)
-update_feed_success  # unused function (will be imported by main.py)
-record_feed_error  # unused function (will be imported by main.py)
-update_feed_url  # unused function (will be imported by main.py)
-update_feed_metadata  # unused function (will be imported by main.py)
-set_feed_retry_after  # unused function (will be imported by main.py)

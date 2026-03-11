@@ -97,7 +97,7 @@ Each day is a `<section class="day">` containing entries from that publication d
 |  +------------------------------------------------------------------+   |
 |                                                                         |
 |  +------------------------------------------------------------------+   |
-|  | <article>  (max 5 entries per feed per day)                      |   |
+|  | <article>  (limited entries per feed per day; see config)         |   |
 |  |   ...                                                            |   |
 |  +------------------------------------------------------------------+   |
 |                                                                         |
@@ -178,9 +178,9 @@ Entries are grouped and sorted as follows:
    "January 15, 2026" (absolute, not "Today" or "Yesterday")
 
 4. Limits Applied:
-   - Max 5 entries per feed per day (prevents firehose)
-   - Max 100 entries total per feed (configurable via MAX_ENTRIES_PER_FEED)
-   - Retention: 90 days (configurable via RETENTION_DAYS env var)
+   - Per-feed-per-day cap to prevent firehose (see MAX_ENTRIES_PER_FEED_PER_DAY)
+   - Per-feed total cap (configurable via MAX_ENTRIES_PER_FEED env var)
+   - Retention period (configurable via RETENTION_DAYS env var, default: 90)
 ```
 
 ## Responsive Behavior
@@ -201,4 +201,8 @@ grid-template-columns:                |       MAIN         |
 
                                       grid-template-columns:
                                         1fr
+
+Breakpoints and sidebar width are defined in the CSS source
+(see assets/static/style.css). The values above reflect current
+defaults but the CSS is the source of truth.
 ```

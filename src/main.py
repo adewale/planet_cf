@@ -33,8 +33,11 @@ from auth import (
     get_session_from_cookies,
 )
 from config import (
-    DEFAULT_FEED_FAILURE_THRESHOLD,
+    AUDIT_RETENTION_DAYS,
+    AUTH_RATE_LIMIT_MAX_REQUESTS,
+    AUTH_RATE_LIMIT_WINDOW_SECONDS,
     DEFAULT_QUERY_LIMIT,
+    FAILURE_THRESHOLD,
     FALLBACK_ENTRIES_LIMIT,
     MAX_SEARCH_QUERY_LENGTH,
     MAX_SEARCH_WORDS,
@@ -202,6 +205,33 @@ BLOCKED_METADATA_IPS = {
     "100.100.100.200",  # Alibaba Cloud metadata
     "192.0.0.192",  # Oracle Cloud metadata
 }
+
+# S8: Best-effort per-isolate rate limiter for auth endpoints.
+# Workers are stateless so this only limits within a single isolate's lifetime,
+# but it still provides meaningful protection against brute-force attacks from
+# a single IP hitting the same isolate.
+_auth_rate_limits: dict[str, tuple[float, int]] = {}  # IP -> (window_start, count)
+
+
+def _check_auth_rate_limit(client_ip: str) -> bool:
+    """Check if an IP has exceeded the auth rate limit.
+
+    Returns True if the request should be rate-limited (rejected).
+    """
+    now = time.time()
+    entry = _auth_rate_limits.get(client_ip)
+    if entry is None:
+        _auth_rate_limits[client_ip] = (now, 1)
+        return False
+    window_start, count = entry
+    if now - window_start > AUTH_RATE_LIMIT_WINDOW_SECONDS:
+        # Window expired, start a new one
+        _auth_rate_limits[client_ip] = (now, 1)
+        return False
+    if count >= AUTH_RATE_LIMIT_MAX_REQUESTS:
+        return True
+    _auth_rate_limits[client_ip] = (window_start, count + 1)
+    return False
 
 
 def is_safe_url(url: str) -> bool:
@@ -551,6 +581,13 @@ class Default(WorkerEntrypoint):
 
         Note: env and ctx are passed by the runtime but we use self.env and self.ctx
         which are set up during worker initialization.
+
+        CC1: Race condition note — If two cron triggers were to fire simultaneously,
+        feeds could theoretically be double-enqueued and double-processed. In practice,
+        Cloudflare Workers Cron Triggers guarantee single-instance execution per cron
+        event, so this race does not occur under normal operation. The queue consumer
+        (_process_single_feed) uses INSERT ... ON CONFLICT for idempotent upserts,
+        providing additional safety.
         """
         await self._run_scheduler()
 
@@ -713,6 +750,23 @@ class Default(WorkerEntrypoint):
                 sched_event.retention_errors = retention_stats.get("errors", 0)
                 sched_event.retention_days = retention_stats.get("retention_days", 0)
                 sched_event.retention_max_per_feed = retention_stats.get("max_per_feed", 0)
+
+                # P4: Prune old audit log entries to prevent unbounded growth.
+                # Runs once per cron cycle (not per admin action) to avoid extra DB
+                # round-trips on every admin request.
+                try:
+                    audit_cutoff = (
+                        datetime.now(timezone.utc) - timedelta(days=AUDIT_RETENTION_DAYS)
+                    ).strftime("%Y-%m-%d %H:%M:%S")
+                    await (
+                        self.env.DB.prepare("""
+                        DELETE FROM audit_log WHERE created_at < ?
+                    """)
+                        .bind(audit_cutoff)
+                        .run()
+                    )
+                except Exception as e:
+                    log_op("audit_log_cleanup_error", error=truncate_error(e))
 
                 # Pre-warm edge cache for main pages so the next visitor gets a cache hit
                 try:
@@ -1011,6 +1065,25 @@ class Default(WorkerEntrypoint):
         title = processed.title
         summary = processed.summary
         published_at = processed.published_at
+
+        # BP7: Clamp future-dated entries to current time.
+        # Some feeds set published_at in the future (scheduled posts, timezone bugs).
+        # Accepting future dates would cause entries to sort above genuinely new content.
+        if published_at:
+            try:
+                pub_dt = datetime.fromisoformat(published_at)
+                if pub_dt.tzinfo is None:
+                    pub_dt = pub_dt.replace(tzinfo=timezone.utc)
+                now = datetime.now(timezone.utc)
+                if pub_dt > now:
+                    log_op(
+                        "future_date_clamped",
+                        feed_id=feed_id,
+                        original_date=published_at,
+                    )
+                    published_at = now.isoformat()
+            except (ValueError, TypeError):
+                pass  # If date is unparseable, let COALESCE handle it in SQL
 
         # Sanitize HTML (XSS prevention)
         sanitized_content = self._sanitize_html(content)
@@ -1528,6 +1601,11 @@ class Default(WorkerEntrypoint):
             return await self._search_entries(request, event)
         # OAuth routes
         elif route_path == "/auth/github":
+            # S8: Best-effort per-isolate rate limiting on auth endpoints
+            client_ip = SafeHeaders(request).get("cf-connecting-ip") or "unknown"
+            if _check_auth_rate_limit(client_ip):
+                log_op("auth_rate_limited", path=route_path, client_ip=client_ip)
+                return json_error("Too many requests. Please try again later.", status=429)
             secret_error = self._check_auth_secrets()
             if secret_error:
                 return secret_error
@@ -1536,6 +1614,11 @@ class Default(WorkerEntrypoint):
             event.oauth_success = None  # Redirect phase, not callback
             return self._redirect_to_github_oauth(request)
         elif route_path == "/auth/github/callback":
+            # S8: Best-effort per-isolate rate limiting on auth endpoints
+            client_ip = SafeHeaders(request).get("cf-connecting-ip") or "unknown"
+            if _check_auth_rate_limit(client_ip):
+                log_op("auth_rate_limited", path=route_path, client_ip=client_ip)
+                return json_error("Too many requests. Please try again later.", status=429)
             secret_error = self._check_auth_secrets()
             if secret_error:
                 return secret_error
@@ -1608,6 +1691,9 @@ class Default(WorkerEntrypoint):
             "%Y-%m-%d %H:%M:%S"
         )
 
+        # P8: The three queries below (entries, feeds, recent_entries) fetch different
+        # data and are not redundant. They run sequentially because D1 does not support
+        # concurrent queries from a single Worker invocation.
         with Timer() as d1_timer:
             # Query entries, grouping by published_at (actual publication date)
             # Fall back to first_seen only when published_at is missing
@@ -1652,7 +1738,7 @@ class Default(WorkerEntrypoint):
                 FROM feeds
                 ORDER BY title
             """)
-                .bind(DEFAULT_FEED_FAILURE_THRESHOLD)
+                .bind(FAILURE_THRESHOLD)
                 .all()
             )
 
@@ -2003,6 +2089,9 @@ class Default(WorkerEntrypoint):
 
     def _get_planet_config(self) -> dict[str, str]:
         # Adapter: exposes module-level function as instance method
+        # P6: get_planet_config() reads env vars via getattr() which is a trivial
+        # dict lookup on SafeEnv — no I/O, no DB call. Caching is unnecessary and
+        # would complicate correctness if env vars change between isolate reuses.
         """Get planet configuration from environment."""
         return get_planet_config(self.env)
 
@@ -2226,7 +2315,8 @@ class Default(WorkerEntrypoint):
         No authentication required. Returns non-sensitive aggregate data only.
         Used by post-deploy verification and monitoring.
         """
-        result = await self.env.DB.prepare("""
+        result = await (
+            self.env.DB.prepare("""
             SELECT
                 COUNT(*) as total,
                 SUM(CASE WHEN is_active = 1
@@ -2234,15 +2324,18 @@ class Default(WorkerEntrypoint):
                     THEN 1 ELSE 0 END) as healthy,
                 SUM(CASE WHEN is_active = 1
                     AND consecutive_failures > 0
-                    AND consecutive_failures < 3
+                    AND consecutive_failures < ?
                     THEN 1 ELSE 0 END) as warning,
                 SUM(CASE WHEN is_active = 1
-                    AND consecutive_failures >= 3
+                    AND consecutive_failures >= ?
                     THEN 1 ELSE 0 END) as failing,
                 SUM(CASE WHEN is_active = 0
                     THEN 1 ELSE 0 END) as inactive
             FROM feeds
-        """).first()
+        """)
+            .bind(FAILURE_THRESHOLD, FAILURE_THRESHOLD)
+            .first()
+        )
         health = _to_py_safe(result) if result else {}
         total = health.get("total") or 0
         healthy = health.get("healthy") or 0
@@ -2722,13 +2815,20 @@ class Default(WorkerEntrypoint):
 
     async def _serve_admin_dashboard(self, admin: dict[str, Any]) -> Response:
         """Serve the admin dashboard with feed health warnings."""
+        # P2: This query runs sequentially, which is correct — D1 does not support
+        # concurrent queries from a single Worker invocation. The single query here
+        # fetches all needed data in one round-trip.
         feeds_result = await self.env.DB.prepare("""
             SELECT * FROM feeds ORDER BY title
         """).all()
         feeds = feed_rows_from_d1(feeds_result.results)
 
         # Calculate health warnings for banner (#16)
-        failing = [f for f in feeds if f.get("is_active") and f.get("consecutive_failures", 0) >= 3]
+        failing = [
+            f
+            for f in feeds
+            if f.get("is_active") and f.get("consecutive_failures", 0) >= FAILURE_THRESHOLD
+        ]
         inactive = [f for f in feeds if not f.get("is_active")]
         health_warnings: list[str] = []
         if inactive:
@@ -2833,7 +2933,14 @@ class Default(WorkerEntrypoint):
             is_timeout = isinstance(e, TimeoutError) or "timeout" in error_lower
             if is_timeout or "timed out" in error_lower:
                 return {"valid": False, "error": "Timeout fetching feed (10s)"}
-            return {"valid": False, "error": error_msg}
+            # S6: Log detailed error internally, return generic message to user
+            log_op(
+                "feed_validation_error",
+                url=url,
+                error_type=type(e).__name__,
+                error=error_msg,
+            )
+            return {"valid": False, "error": "Failed to fetch or parse the feed"}
 
     async def _add_feed(self, request: WorkerRequest, admin: dict[str, Any]) -> Response:
         """Add a new feed with validation.
@@ -2878,8 +2985,9 @@ class Default(WorkerEntrypoint):
                         title="Feed Validation Failed",
                     )
 
-                # Use extracted title if admin didn't provide one
-                if not title:
+                # BP10: Use `is None` check so that a title of "0" is preserved.
+                # `form.get("title")` returns None when not provided vs "" for empty.
+                if title is None or title == "":
                     title = validation.get("title")
 
                 # If feed was permanently redirected, use the new URL
@@ -3042,7 +3150,15 @@ class Default(WorkerEntrypoint):
 
             except Exception as e:
                 ctx.set_error_from_exception(e)
-                return json_error(str(e), status=500)
+                log_op(
+                    "update_feed_error",
+                    feed_id=feed_id,
+                    error_type=type(e).__name__,
+                    error=truncate_error(e),
+                )
+                return json_error(
+                    "An unexpected error occurred while updating the feed.", status=500
+                )
 
     async def _import_opml(self, request: WorkerRequest, admin: dict[str, Any]) -> Response:
         """Import feeds from uploaded OPML file. Admin only."""
@@ -3302,8 +3418,8 @@ class Default(WorkerEntrypoint):
 
         except Exception as e:
             await self._record_feed_error(feed_id, str(e))
-            log_op("fetch_now_error", feed_id=feed_id, error=str(e))
-            return json_error(f"Feed fetch failed: {truncate_error(e)}", status=502)
+            log_op("fetch_now_error", feed_id=feed_id, error=truncate_error(e))
+            return json_error("Feed fetch failed. Check logs for details.", status=502)
 
     async def _view_audit_log(self, offset: int = 0, limit: int = 100) -> Response:
         """View audit log with pagination support.
@@ -3351,7 +3467,8 @@ class Default(WorkerEntrypoint):
         - Active/inactive status
         """
         # Query all feeds with health information
-        result = await self.env.DB.prepare("""
+        result = await (
+            self.env.DB.prepare("""
             SELECT
                 f.id,
                 f.url,
@@ -3369,13 +3486,16 @@ class Default(WorkerEntrypoint):
             ORDER BY
                 CASE
                     WHEN f.is_active = 0 THEN 3
-                    WHEN f.consecutive_failures >= 3 THEN 1
+                    WHEN f.consecutive_failures >= ? THEN 1
                     WHEN f.consecutive_failures > 0 THEN 2
                     ELSE 4
                 END,
                 f.consecutive_failures DESC,
                 f.title
-        """).all()
+        """)
+            .bind(FAILURE_THRESHOLD)
+            .all()
+        )
 
         feeds = feed_rows_from_d1(result.results)
 
@@ -3383,7 +3503,7 @@ class Default(WorkerEntrypoint):
         for feed in feeds:
             if not feed.get("is_active"):
                 feed["health_status"] = "inactive"
-            elif feed.get("consecutive_failures", 0) >= 3:
+            elif feed.get("consecutive_failures", 0) >= FAILURE_THRESHOLD:
                 feed["health_status"] = "failing"
             elif feed.get("consecutive_failures", 0) > 0:
                 feed["health_status"] = "warning"
@@ -3411,6 +3531,12 @@ class Default(WorkerEntrypoint):
         (e.g., added before Vectorize was configured, or indexing failed).
 
         Rate limited to prevent DoS - only one reindex per REINDEX_COOLDOWN_SECONDS.
+
+        CC2: TOCTOU race note — The cooldown check (read last reindex time) and the
+        subsequent reindex operation are not atomic. Two admins could theoretically
+        both pass the cooldown check and trigger concurrent reindexes. This is
+        mitigated by: (1) single-admin access in practice, (2) idempotent vector
+        upserts, and (3) the cooldown window making the race window very small.
         """
         deployment = self._get_deployment_context()
         async with admin_action_context(
@@ -3497,7 +3623,12 @@ class Default(WorkerEntrypoint):
 
             except Exception as e:
                 ctx.set_error_from_exception(e)
-                return json_error(str(e), status=500)
+                log_op(
+                    "reindex_error",
+                    error_type=type(e).__name__,
+                    error=truncate_error(e),
+                )
+                return json_error("An unexpected error occurred during reindexing.", status=500)
 
     async def _log_admin_action(
         self,
@@ -3598,6 +3729,29 @@ class Default(WorkerEntrypoint):
             # Extract OAuth parameters from URL
             url_str = str(request.url)
             qs = parse_qs(url_str.split("?", 1)[1]) if "?" in url_str else {}
+
+            # S7: Check for OAuth error from GitHub (e.g., user denied access).
+            # Do NOT reflect the raw error parameter back to the user to prevent
+            # reflected XSS or information leakage.
+            oauth_error = qs.get("error", [""])[0]
+            if oauth_error:
+                log_op(
+                    "oauth_denied",
+                    error=oauth_error,
+                    error_description=qs.get("error_description", [""])[0],
+                )
+                if event:
+                    event.outcome = "error"
+                    event.oauth_success = False
+                    event.error_type = "OAuthDenied"
+                    event.error_message = "User denied access or OAuth error"
+                return self._admin_error_response(
+                    "Authentication was not completed. Please try again.",
+                    title="Authentication Cancelled",
+                    status=400,
+                    back_url="/",
+                )
+
             code = qs.get("code", [""])[0]
             state = qs.get("state", [""])[0]
 

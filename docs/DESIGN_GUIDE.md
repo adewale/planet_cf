@@ -80,6 +80,9 @@ A reference for maintaining visual consistency across Planet CF.
 ## Spacing System
 
 ### Core Values
+
+> These values reflect the current CSS defaults. See `assets/static/style.css` for the source of truth.
+
 - **Container max-width**: 1200px
 - **Container margin**: 2rem auto
 - **Grid gap**: 2rem (main/sidebar)
@@ -213,7 +216,7 @@ input:focus {
 | UI typography | System sans-serif for clarity |
 | Card style | White, 1px border, subtle shadow |
 | Border radius | 6px (inputs, buttons) to 10px (cards, sidebar) |
-| Responsive | Single column below 768px |
+| Responsive | Single column below 768px (see CSS source for breakpoint) |
 
 ### Accessibility Notes
 - Focus rings use 3px accent-light box-shadow

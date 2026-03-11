@@ -114,7 +114,6 @@ Edit `config.yaml` or the `vars` section of `wrangler.jsonc`:
 # config.yaml
 content:
   days: 14          # Show entries from last 14 days
-  group_by_date: true
 
 # Or in wrangler.jsonc vars:
 # "CONTENT_DAYS": "14"
@@ -185,7 +184,7 @@ npx wrangler d1 execute my-planet-db --remote \
 To upgrade an existing lite instance to full mode:
 
 1. Add Vectorize and AI bindings to `wrangler.jsonc` (see `examples/planet-cloudflare/wrangler.jsonc` for reference)
-2. Create the Vectorize index: `npx wrangler vectorize create my-planet-entries --dimensions 768 --metric cosine`
+2. Create the Vectorize index: `npx wrangler vectorize create my-planet-entries --dimensions 768 --metric cosine` (768 dimensions must match the Workers AI model, currently `@cf/baai/bge-base-en-v1.5`)
 3. Set OAuth secrets: `npx wrangler secret put GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `SESSION_SECRET`
 4. Change `INSTANCE_MODE` from `"lite"` to `"full"` in `wrangler.jsonc`
 5. Seed admin users: `uv run python scripts/seed_admins.py`

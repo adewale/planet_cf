@@ -7,7 +7,7 @@ ensure the feature was cleanly removed and _upsert_entry processes
 feed content directly without any outbound HTTP requests.
 """
 
-import inspect
+import unittest.mock
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -40,15 +40,25 @@ class TestFullContentFetchRemoved:
         """Default class should not have _fetch_full_content method."""
         assert not hasattr(Default, "_fetch_full_content")
 
-    def test_no_fetch_full_content_in_upsert_entry(self):
-        """_upsert_entry should not reference _fetch_full_content."""
-        source = inspect.getsource(Default._upsert_entry)
-        assert "_fetch_full_content" not in source
+    @pytest.mark.asyncio
+    async def test_upsert_entry_does_not_call_fetch_full_content(self):
+        """_upsert_entry should not call any _fetch_full_content method."""
+        worker = Default()
+        worker.env = _make_mock_env()
 
-    def test_no_full_content_config_in_upsert_entry(self):
-        """_upsert_entry should not reference fetch_full_content config."""
-        source = inspect.getsource(Default._upsert_entry)
-        assert "fetch_full_content" not in source.lower()
+        entry = {
+            "id": "https://example.com/post",
+            "link": "https://example.com/post",
+            "title": "Test Post",
+            "content": [{"value": "<p>Short.</p>"}],
+        }
+
+        # If _fetch_full_content existed and were called, this would fail
+        with unittest.mock.patch.object(worker, "_sanitize_html", side_effect=lambda x: x):
+            await worker._upsert_entry(feed_id=1, entry=entry)
+
+        # Verify there is no _fetch_full_content method at all
+        assert not hasattr(worker, "_fetch_full_content")
 
     def test_no_fetch_full_content_config_getter(self):
         """config module should not have get_fetch_full_content_enabled."""
@@ -186,7 +196,3 @@ class TestUpsertEntryWithoutFullContentFetch:
 
         call_arg = mock_sanitize.call_args[0][0]
         assert "only provides a summary" in call_arg
-
-
-# Need the import for patch.object
-import unittest.mock

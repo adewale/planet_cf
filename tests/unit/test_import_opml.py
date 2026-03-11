@@ -240,3 +240,117 @@ class TestImportOpml:
         # Should have an audit_log INSERT
         audit_stmts = [s for s in db.statements if "INSERT INTO audit_log" in s.sql]
         assert len(audit_stmts) >= 1
+
+
+# =============================================================================
+# Negative tests: Malformed OPML imports (TQ5)
+# =============================================================================
+
+
+class TestImportOpmlMalformed:
+    """Tests for importing invalid, empty, or malformed OPML files."""
+
+    @pytest.mark.asyncio
+    async def test_import_completely_invalid_xml(self):
+        """Completely invalid XML returns a 400 error."""
+        env = _make_env()
+        worker = Default()
+        worker.env = env
+        admin = admin_row()
+
+        request = OpmlRequest(opml_content="this is not xml at all!!!")
+
+        with patch("src.admin.ET.XMLParser", _patched_xml_parser):
+            response = await worker._import_opml(request, admin)
+
+        assert response.status == 400
+        body_lower = response.body.lower()
+        assert "invalid" in body_lower or "error" in body_lower or "format" in body_lower
+
+    @pytest.mark.asyncio
+    async def test_import_truncated_xml(self):
+        """Truncated XML (unclosed tags) returns a 400 error."""
+        env = _make_env()
+        worker = Default()
+        worker.env = env
+        admin = admin_row()
+
+        truncated = '<?xml version="1.0"?><opml><body><outline text="broken"'
+
+        request = OpmlRequest(opml_content=truncated)
+
+        with patch("src.admin.ET.XMLParser", _patched_xml_parser):
+            response = await worker._import_opml(request, admin)
+
+        assert response.status == 400
+
+    @pytest.mark.asyncio
+    async def test_import_empty_string(self):
+        """Empty string OPML content returns a 400 error."""
+        env = _make_env()
+        worker = Default()
+        worker.env = env
+        admin = admin_row()
+
+        request = OpmlRequest(opml_content="")
+
+        with patch("src.admin.ET.XMLParser", _patched_xml_parser):
+            response = await worker._import_opml(request, admin)
+
+        assert response.status == 400
+
+    @pytest.mark.asyncio
+    async def test_import_valid_xml_but_no_outline_elements(self):
+        """Valid XML with no outline elements imports zero feeds."""
+        db = TrackingD1()
+        env = _make_env(db=db)
+        worker = Default()
+        worker.env = env
+        admin = admin_row()
+
+        no_outlines = """<?xml version="1.0" encoding="UTF-8"?>
+        <opml version="2.0">
+          <head><title>No Outlines</title></head>
+          <body>
+            <p>This is not an outline element</p>
+          </body>
+        </opml>"""
+
+        request = OpmlRequest(opml_content=no_outlines)
+
+        with patch("src.admin.ET.XMLParser", _patched_xml_parser):
+            response = await worker._import_opml(request, admin)
+
+        # Should complete successfully (redirect) but with zero feeds inserted
+        assert response.status == 302
+        feed_inserts = [s for s in db.statements if "INSERT INTO feeds" in s.sql]
+        assert len(feed_inserts) == 0
+
+    @pytest.mark.asyncio
+    async def test_import_outline_without_xmlurl(self):
+        """Outline elements missing xmlUrl attribute are skipped."""
+        db = TrackingD1()
+        env = _make_env(db=db)
+        worker = Default()
+        worker.env = env
+        admin = admin_row()
+
+        no_url = """<?xml version="1.0" encoding="UTF-8"?>
+        <opml version="2.0">
+          <body>
+            <outline type="rss" text="Missing URL Feed" title="Missing URL"/>
+            <outline type="rss" text="Good Feed" title="Good Feed"
+                     xmlUrl="https://example.com/good.xml"/>
+          </body>
+        </opml>"""
+
+        request = OpmlRequest(opml_content=no_url)
+
+        with patch("src.admin.ET.XMLParser", _patched_xml_parser):
+            response = await worker._import_opml(request, admin)
+
+        assert response.status == 302
+        feed_inserts = [s for s in db.statements if "INSERT INTO feeds" in s.sql]
+        # Only the one with xmlUrl should be inserted
+        assert len(feed_inserts) == 1
+        assert "https://example.com/good.xml" in feed_inserts[0].bound_args

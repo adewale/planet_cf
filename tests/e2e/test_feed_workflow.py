@@ -32,9 +32,11 @@ class TestPublicEndpoints:
         self.client.close()
 
     def test_homepage_returns_200(self):
-        """Homepage should return 200 OK."""
+        """Homepage should return 200 OK with HTML content."""
         response = self.client.get("/")
         assert response.status_code == 200
+        assert "<html" in response.text.lower()
+        assert "text/html" in response.headers.get("content-type", "")
 
     def test_atom_feed_returns_xml(self):
         """Atom feed should return valid XML."""
@@ -55,24 +57,29 @@ class TestPublicEndpoints:
         response = self.client.get("/feeds.opml")
         assert response.status_code == 200
         assert "application/xml" in response.headers.get("content-type", "")
+        assert "<opml" in response.text
 
     def test_search_requires_query(self):
-        """Search without query should show error message."""
+        """Search without query should show error message in HTML."""
         response = self.client.get("/search")
         assert response.status_code == 200
         assert "at least 2 characters" in response.text
+        assert "<html" in response.text.lower()
 
     def test_search_with_short_query_shows_error(self):
-        """Search with too-short query should show error message."""
+        """Search with too-short query should show error message in HTML."""
         response = self.client.get("/search?q=a")
         assert response.status_code == 200
         assert "at least 2 characters" in response.text
+        assert "<html" in response.text.lower()
 
     def test_static_css_served(self):
-        """Static CSS should be served."""
+        """Static CSS should be served with CSS content."""
         response = self.client.get("/static/style.css")
         assert response.status_code == 200
         assert "text/css" in response.headers.get("content-type", "")
+        # CSS files should have some content (not empty)
+        assert len(response.text) > 0
 
     def test_unknown_route_returns_404(self):
         """Unknown routes should return 404."""

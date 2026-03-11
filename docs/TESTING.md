@@ -21,19 +21,20 @@ uv run pytest tests/unit tests/integration -v
 
 Pure unit tests using mock Cloudflare bindings. No server needed.
 
-- **~1153 tests**, runs in ~2 seconds
+- Run `uv run pytest tests/unit --co -q | tail -1` for the current count; typically runs in ~2 seconds
 - Uses `MockD1`, `MockVectorize`, `MockAI`, `MockQueue` from `tests/conftest.py`
 - Simulates JsProxy behavior to catch conversion issues
 - Covers: rendering, search, config, auth, feeds, entries, observability
 - Includes **two-tier wrapper tests**:
-  - `test_safe_wrappers.py` — CPython tests with Python mocks (88 tests)
-  - `test_wrappers_ffi.py` — Pyodide FFI boundary tests with fake JS types (82 tests)
+  - `test_safe_wrappers.py` -- CPython tests with Python mocks
+  - `test_wrappers_ffi.py` -- Pyodide FFI boundary tests with fake JS types
+  - Run `uv run pytest tests/unit/test_safe_wrappers.py tests/unit/test_wrappers_ffi.py --co -q` for current counts
 
 ### Integration Tests (tests/integration/)
 
 Tests that verify end-to-end flows using mock bindings. No external services needed.
 
-- **~110 tests**, runs in ~2 seconds
+- Run `uv run pytest tests/integration --co -q | tail -1` for the current count; typically runs in ~2 seconds
 - Covers: HTTP endpoints, feed processing, search, admin UI, scheduler
 - Uses factory fixtures (`FeedFactory`, `EntryFactory`, `SessionFactory`)
 
@@ -41,7 +42,7 @@ Tests that verify end-to-end flows using mock bindings. No external services nee
 
 Tests against real Cloudflare infrastructure (D1, Vectorize, Workers AI).
 
-- **~72 tests**, requires a running test-planet instance
+- Run `uv run pytest tests/e2e --co -q | tail -1` for the current count; requires a running test-planet instance
 - Catches: JsProxy bugs, real SQL issues, Vectorize integration, network timing
 
 ## Why FFI Tests Exist

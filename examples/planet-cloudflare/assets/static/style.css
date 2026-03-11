@@ -29,6 +29,10 @@
     --success: #059669;
     --error: #dc2626;
 
+    /* Border radius scale */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+
     /* Shadows */
     --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
     --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.07);
@@ -108,7 +112,7 @@ header a:hover {
 .search-form input {
     padding: 0.75rem 1rem;
     border: 1px solid var(--border-light);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     width: 100%;
     box-sizing: border-box;
     font-size: 0.9rem;
@@ -128,7 +132,7 @@ header a:hover {
     background: var(--accent);
     color: white;
     border: 1px solid var(--accent-dark);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     cursor: pointer;
     font-weight: 600;
     font-size: 0.9rem;
@@ -172,7 +176,7 @@ main { min-width: 0; }
 article {
     background: var(--bg-primary);
     border: 1px solid var(--border-light);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 1.5rem;
     margin-bottom: 1rem;
     box-shadow: var(--shadow-sm);
@@ -251,7 +255,7 @@ article header {
     height: auto;
     max-height: 600px;
     object-fit: contain;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     margin: 1rem 0;
 }
 
@@ -264,14 +268,14 @@ article header {
     background: var(--bg-tertiary);
     color: var(--accent-dark);
     padding: 0.15rem 0.4rem;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
 }
 
 .content pre {
     background: var(--code-bg);
     color: var(--code-text);
     padding: 1.25rem;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     overflow-x: auto;
     max-width: 100%;
     margin: 1rem 0;
@@ -310,7 +314,7 @@ article header {
     padding: 0.75rem 1.25rem;
     background: var(--bg-tertiary);
     color: var(--text-secondary);
-    border-radius: 0 6px 6px 0;
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
     font-style: italic;
 }
 
@@ -351,7 +355,7 @@ article header {
     background: var(--bg-primary);
     border: 1px solid var(--border-light);
     padding: 1.5rem;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     height: fit-content;
     position: sticky;
     top: 1rem;
@@ -475,7 +479,7 @@ footer .hint kbd {
     display: inline-block;
     background: var(--bg-secondary);
     border: 1px solid var(--border-light);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     padding: 0.1rem 0.35rem;
     font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
     font-size: 0.75rem;
@@ -485,7 +489,7 @@ footer .hint kbd {
 .search-error {
     background: var(--accent-light);
     border: 1px solid var(--accent-subtle);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 1rem 1.5rem;
     margin-bottom: 1.5rem;
     color: var(--text-secondary);
@@ -498,7 +502,7 @@ footer .hint kbd {
 .search-notice {
     background: #f0f7ff;
     border: 1px solid #c9e0ff;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 0.75rem 1rem;
     margin-bottom: 1rem;
     color: var(--text-secondary);
@@ -511,7 +515,7 @@ footer .hint kbd {
 .search-results li {
     background: var(--bg-primary);
     border: 1px solid var(--border-light);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 1.5rem;
     margin-bottom: 1rem;
     box-shadow: var(--shadow-sm);
@@ -562,7 +566,7 @@ button, .btn {
     background: var(--bg-primary);
     color: var(--accent);
     border: 1px solid var(--accent);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     cursor: pointer;
     font-weight: 600;
     font-size: 0.95rem;
@@ -605,7 +609,7 @@ article.selected {
     transform: translate(-50%, -50%);
     background: var(--bg-primary);
     border: 1px solid var(--border-medium);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 1.5rem 2rem;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
     z-index: 1000;
@@ -639,7 +643,7 @@ article.selected {
     display: inline-block;
     background: var(--bg-tertiary);
     border: 1px solid var(--border-light);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     padding: 0.15rem 0.5rem;
     font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
     font-size: 0.8rem;
@@ -652,7 +656,7 @@ article.selected {
     padding: 0.5rem;
     background: var(--bg-tertiary);
     border: 1px solid var(--border-light);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     font-size: 0.85rem;
     color: var(--text-secondary);
@@ -876,9 +880,9 @@ article.selected {
 /* Admin sections */
 .section {
     margin-bottom: 1.5rem;
-    padding: 1rem;
+    padding: 1.25rem;
     background: var(--bg-tertiary);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
 }
 
 .section h2 {
@@ -899,7 +903,7 @@ article.selected {
     min-width: 200px;
     padding: 0.5rem;
     border: 1px solid var(--border-light);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: 0.875rem;
 }
 
@@ -907,7 +911,7 @@ article.selected {
     width: 200px;
     padding: 0.5rem;
     border: 1px solid var(--border-light);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: 0.875rem;
 }
 
@@ -931,7 +935,7 @@ article.selected {
     background: var(--bg-primary);
     border: 1px solid var(--border-light);
     margin-bottom: 0.5rem;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
 }
 
 .feed-info {
@@ -960,7 +964,7 @@ article.selected {
     font-size: 0.9rem;
     padding: 0.125rem 0.25rem;
     border: 1px solid var(--accent);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     width: 200px;
 }
 
@@ -1076,7 +1080,7 @@ article.selected {
     background: var(--bg-primary);
     border: 1px solid var(--border-light);
     margin-bottom: 0.5rem;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
 }
 
 .dlq-item { border-left: 3px solid var(--error); }
@@ -1126,7 +1130,7 @@ article.selected {
 .summary-card {
     padding: 1rem;
     background: var(--bg-tertiary);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     text-align: center;
 }
 
@@ -1141,7 +1145,7 @@ article.selected {
     width: 100%;
     border-collapse: collapse;
     background: var(--bg-primary);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     overflow: hidden;
 }
 
@@ -1162,7 +1166,7 @@ article.selected {
 
 .status-badge {
     padding: 0.25rem 0.5rem;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: 0.75rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -1208,7 +1212,7 @@ article.selected {
     background: #24292e;
     color: white;
     padding: 0.875rem 1.5rem;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     text-decoration: none;
     font-weight: 500;
     font-size: 1rem;
@@ -1233,6 +1237,50 @@ article.selected {
     display: none !important;
 }
 
+/* DLQ retry form spacing (replaces inline style="margin-top:0.5rem") */
+.dlq-retry-form {
+    margin-top: 0.5rem;
+}
+
+/* Error variant for empty state (replaces inline style="color:var(--error)") */
+.empty-state-error {
+    color: var(--error);
+}
+
+/* =============================================================================
+   Focus-visible styles for keyboard accessibility
+   ============================================================================= */
+
+button:focus-visible,
+.btn:focus-visible,
+.github-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 0;
+}
+
+.toggle input:focus-visible + .toggle-slider {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.tab:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     header {
@@ -1252,4 +1300,23 @@ article.selected {
     }
     .search-form input { width: 100%; }
     article { padding: 1.25rem; }
+
+    /* Feed list alignment on mobile */
+    .feed-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
+    .feed-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    /* Admin section spacing on mobile */
+    .admin-content {
+        padding: 1rem;
+    }
+    .section {
+        padding: 1rem;
+    }
 }

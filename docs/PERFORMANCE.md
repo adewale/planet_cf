@@ -1,6 +1,6 @@
 # Performance Guide
 
-Planet CF runs on Cloudflare Workers with Python via Pyodide (WebAssembly). The main performance constraint is Pyodide's cold-start latency (~1-3s TTFB on the first request to a cold isolate). Every optimization in this document exists either to hide that cold start from real users or to make the warm path as fast as possible.
+Planet CF runs on Cloudflare Workers with Python via Pyodide (WebAssembly). The main performance constraint is Pyodide's cold-start latency (typically ~1-3s TTFB on the first request to a cold isolate; varies by region and load). Every optimization in this document exists either to hide that cold start from real users or to make the warm path as fast as possible.
 
 ## Caching Strategy
 
@@ -16,7 +16,7 @@ Cache-Control: public, max-age=3600, stale-while-revalidate=3600
 - **Hour 1-2 (stale):** Edge serves the stale response instantly to the visitor while making a background request to the Worker to refresh the cache.
 - **Hour 2+ (expired):** Only if nobody visits for 2+ hours does the cache fully expire.
 
-This means visitors almost always get an edge-cached response (~20-50ms), even when the content is slightly stale.
+This means visitors almost always get an edge-cached response (typically ~20-50ms), even when the content is slightly stale.
 
 ### Edge cache pre-warming
 
@@ -32,8 +32,8 @@ This ensures the edge cache always has a fresh copy, even if no real user has vi
 | Time | What happens | Visitor experience |
 |------|-------------|-------------------|
 | 0:00 | Cron fires, fetches feeds, pre-warms cache | Cache now fresh |
-| 0:01-1:00 | Visitors get cached responses | ~20-50ms |
-| 1:00-2:00 | `stale-while-revalidate` window | ~20-50ms (stale but fast) |
+| 0:01-1:00 | Visitors get cached responses | typically ~20-50ms |
+| 1:00-2:00 | `stale-while-revalidate` window | typically ~20-50ms (stale but fast) |
 | 2:00 | Next cron fires, pre-warms again | Cache refreshed |
 
 ### Conditional GETs
@@ -169,7 +169,7 @@ Database schema checks and auto-migration run only once per Worker isolate via a
 
 ### Pyodide dedicated snapshot
 
-The `python_dedicated_snapshot` compatibility flag (`wrangler.jsonc:23`) uses Cloudflare's pre-built Python snapshot for faster cold starts. This is the single most impactful Worker-level optimization.
+The `python_dedicated_snapshot` compatibility flag (in `wrangler.jsonc`) uses Cloudflare's pre-built Python snapshot for faster cold starts. This is the single most impactful Worker-level optimization.
 
 ### Per-isolate caching
 
@@ -202,10 +202,10 @@ Three layers of result limiting prevent unbounded response sizes:
 
 ## Known Bottleneck: TTFB
 
-The ~1-3s TTFB on true cold starts is the biggest performance gap. This is inherent to Pyodide on Workers. Mitigations:
+The approximate ~1-3s TTFB on true cold starts (measured as of early 2025; varies by region and Pyodide version) is the biggest performance gap. This is inherent to Pyodide on Workers. Mitigations:
 
 1. **stale-while-revalidate + cron pre-warming** ensures real visitors almost never hit a cold Worker.
 2. **Dedicated Pyodide snapshot** reduces cold-start overhead.
 3. **Minimal Python imports** at module level (no heavy libraries loaded until needed).
 
-The TTFB only matters for the very first request to a cold isolate. Once warm, subsequent requests in the same isolate are fast (~50-200ms for HTML generation).
+The TTFB only matters for the very first request to a cold isolate. Once warm, subsequent requests in the same isolate are typically fast (approximately ~50-200ms for HTML generation, depending on query complexity and region).

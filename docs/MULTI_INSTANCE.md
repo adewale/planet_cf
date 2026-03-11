@@ -19,8 +19,8 @@ Planet CF supports configurable multi-instance deployment through the `examples/
 |---------|------|-------------|
 | `examples/default/` | lite | Minimal starting point, no search/auth |
 | `examples/planet-cloudflare/` | full | Full-featured with search and admin |
-| `examples/planet-python/` | lite | 500+ Python community feeds, no search/auth |
-| `examples/planet-mozilla/` | lite | ~190 Mozilla community feeds, no search/auth |
+| `examples/planet-python/` | lite | Hundreds of Python community feeds, no search/auth |
+| `examples/planet-mozilla/` | lite | Hundreds of Mozilla community feeds, no search/auth |
 | `examples/test-planet/` | full | Test instance for CI/E2E testing |
 
 ## Quick Start
@@ -30,10 +30,10 @@ Planet CF supports configurable multi-instance deployment through the `examples/
 The fastest way to get started is to deploy one of the included examples:
 
 ```bash
-# Deploy Planet Python (500+ feeds)
+# Deploy Planet Python
 ./scripts/deploy_instance.sh planet-python
 
-# Deploy Planet Mozilla (~190 feeds)
+# Deploy Planet Mozilla
 ./scripts/deploy_instance.sh planet-mozilla
 
 # Skip interactive secret prompts (set later)
@@ -127,7 +127,7 @@ This creates:
 npx wrangler d1 create planet-python-db
 # Copy the database_id from output and update examples/planet-python/wrangler.jsonc
 
-# Create Vectorize index
+# Create Vectorize index (768 dimensions must match the Workers AI model, currently @cf/baai/bge-base-en-v1.5)
 npx wrangler vectorize create planet-python-entries --dimensions 768 --metric cosine
 
 # Create queues
@@ -186,12 +186,10 @@ branding:
 
 content:
   days: 7
-  group_by_date: true
   max_entries_per_feed: 100
   retention_days: 90
 
 search:
-  enabled: true
   embedding_max_chars: 2000
   score_threshold: 0.3
   top_k: 50
@@ -204,8 +202,7 @@ feeds:
 auth:
   provider: github
   scopes:
-    - user:email
-  session_ttl_seconds: 604800
+    - read:user
 
 admins:
   - username: guido
@@ -287,7 +284,7 @@ python scripts/build_templates.py --example my-planet
 auth:
   provider: github
   scopes:
-    - user:email
+    - read:user
 ```
 
 Required secrets:
@@ -324,13 +321,13 @@ planet_cf/
 │   │   ├── assets/
 │   │   └── README.md
 │   ├── planet-python/           # Planet Python clone
-│   │   ├── config.yaml          # 500+ feeds
+│   │   ├── config.yaml          # Python community feeds
 │   │   ├── wrangler.jsonc
 │   │   ├── assets/
 │   │   ├── templates/
 │   │   └── README.md
 │   ├── planet-mozilla/          # Planet Mozilla clone
-│   │   ├── config.yaml          # ~190 feeds
+│   │   ├── config.yaml          # Mozilla community feeds
 │   │   ├── wrangler.jsonc
 │   │   ├── assets/
 │   │   ├── templates/

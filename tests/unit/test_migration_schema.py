@@ -7,7 +7,6 @@ Runs all migration files against an in-memory SQLite database and verifies
 the resulting schema matches what _ensure_database_initialized() would produce.
 """
 
-import re
 import sqlite3
 from pathlib import Path
 
@@ -106,58 +105,23 @@ class TestMigrationSchemaMatchesCode:
         # Second run should succeed (idempotent)
         _run_migrations(conn)
 
-    def test_fresh_db_matches_migrated_db(self):
-        """_ensure_database_initialized schema must be a superset of migration schema.
+    def test_expected_columns_match_migrated_db(self):
+        """_EXPECTED_COLUMNS must be a superset of migration schema.
 
-        This catches the case where code adds a column to _ensure_database_initialized
+        This catches the case where code adds a column to _EXPECTED_COLUMNS
         but forgets to create a migration for existing databases.
         """
-        import inspect
-
-        from main import Default
-
-        # Get columns from _ensure_database_initialized CREATE TABLE
-        source = inspect.getsource(Default._ensure_database_initialized)
-
-        create_pattern = re.compile(
-            r"CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+(\w+)\s*\((.*?)\);",
-            re.DOTALL | re.IGNORECASE,
-        )
-
-        fresh_schema: dict[str, set[str]] = {}
-        for match in create_pattern.finditer(source):
-            table_name = match.group(1)
-            body = match.group(2)
-            columns = set()
-            for line in body.split("\n"):
-                line = line.strip().rstrip(",")
-                if not line:
-                    continue
-                if re.match(
-                    r"^\s*(FOREIGN\s+KEY|UNIQUE|PRIMARY\s+KEY\s*\(|CHECK)",
-                    line,
-                    re.IGNORECASE,
-                ):
-                    continue
-                col_match = re.match(r"^(\w+)\s+", line)
-                if col_match:
-                    col_name = col_match.group(1).lower()
-                    skip = {"create", "table", "if", "not", "exists", "foreign", "unique"}
-                    if col_name not in skip:
-                        columns.add(col_name)
-            fresh_schema[table_name] = columns
+        expected = _get_expected_columns()
 
         # Compare with migration output
         conn = sqlite3.connect(":memory:")
         _run_migrations(conn)
 
-        for table_name, fresh_cols in fresh_schema.items():
-            if table_name == "applied_migrations":
-                continue  # Tracking table
+        for table_name, expected_cols in expected.items():
             migrated_cols = _get_table_columns(conn, table_name)
-            in_fresh_not_migrated = fresh_cols - migrated_cols
-            assert not in_fresh_not_migrated, (
-                f"Table '{table_name}': columns {sorted(in_fresh_not_migrated)} exist in "
-                f"_ensure_database_initialized but NOT after running migrations. "
+            in_expected_not_migrated = expected_cols - migrated_cols
+            assert not in_expected_not_migrated, (
+                f"Table '{table_name}': columns {sorted(in_expected_not_migrated)} exist in "
+                f"_EXPECTED_COLUMNS but NOT after running migrations. "
                 f"A new migration is needed."
             )

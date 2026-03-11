@@ -33,6 +33,7 @@ DEFAULT_CONTENT_DAYS = 7  # Days of entries to display on homepage
 # Retention policy defaults
 DEFAULT_RETENTION_DAYS = 90
 DEFAULT_MAX_ENTRIES_PER_FEED = 100
+AUDIT_RETENTION_DAYS = 90  # Auto-delete audit log entries older than this
 
 # Search defaults
 DEFAULT_EMBEDDING_MAX_CHARS = 2000
@@ -42,6 +43,11 @@ DEFAULT_SEARCH_TOP_K = 50
 # Feed failure thresholds
 DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD = 10
 DEFAULT_FEED_FAILURE_THRESHOLD = 3
+FAILURE_THRESHOLD = DEFAULT_FEED_FAILURE_THRESHOLD  # Alias for use in SQL/health checks
+
+# Auth rate limiting (best-effort per-isolate)
+AUTH_RATE_LIMIT_MAX_REQUESTS = 10  # Max requests per window per IP
+AUTH_RATE_LIMIT_WINDOW_SECONDS = 60  # Window size in seconds
 
 # Feed auto-recovery
 DEFAULT_FEED_RECOVERY_ENABLED = True

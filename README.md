@@ -36,6 +36,18 @@ Sensible defaults for reliable feed fetching:
 | Retention period | 90 days | `RETENTION_DAYS` |
 | Auto-deactivate after | 10 failures | `FEED_AUTO_DEACTIVATE_THRESHOLD` |
 
+### Search Defaults
+
+Configuration for semantic search (full mode only):
+
+| Setting | Default | Override |
+|---------|---------|----------|
+| Max embedding chars | 2000 | `EMBEDDING_MAX_CHARS` — max characters sent to Workers AI per entry |
+| Top-K results | 50 | `SEARCH_TOP_K` — max Vectorize results before score filtering |
+| Score threshold | 0.3 | `SEARCH_SCORE_THRESHOLD` — minimum cosine similarity to include a result |
+| Max query length | 1000 chars | `SEARCH_QUERY_LENGTH` (constant in `src/config.py`) |
+| Max query words | 10 | `SEARCH_WORDS` (constant in `src/config.py`) |
+
 ### Theme Fallback
 
 If a specified theme doesn't exist, the build script gracefully falls back to the `default` theme instead of erroring. This prevents deployment failures due to theme misconfiguration.
@@ -71,11 +83,15 @@ All configuration values have sensible defaults so minimal setup works:
 | Instance mode | `full` | `INSTANCE_MODE` — `full` enables search/Vectorize; `lite` disables them |
 | Footer text | "Powered by Planet CF" | `FOOTER_TEXT` |
 | Planet URL | `https://www.planetcloudflare.dev` | `PLANET_URL` — used for RSS/Atom self-links |
+| Planet owner name | (empty) | `PLANET_OWNER_NAME` — used in user agent template and FOAF output |
+| Planet owner email | (empty) | `PLANET_OWNER_EMAIL` — used in user agent template and FOAF output |
 | Feed recovery | enabled | `FEED_RECOVERY_ENABLED` — auto-retry deactivated feeds |
 | Feed recovery limit | 2 per scheduler run | `FEED_RECOVERY_LIMIT` |
 | OAuth redirect URI | (auto-detected) | `OAUTH_REDIRECT_URI` — override for custom domains |
 | User agent template | (built-in) | `USER_AGENT_TEMPLATE` — supports `{name}`, `{url}`, `{email}` placeholders |
 | Deployment environment | (empty) | `DEPLOYMENT_ENVIRONMENT` — attached to observability events |
+| Deployment version | (empty) | `DEPLOYMENT_VERSION` — version tag attached to observability events |
+| Hide sidebar links | false | `HIDE_SIDEBAR_LINKS` — set to `"true"` to hide RSS/titles-only links in the sidebar |
 
 ### Overriding Defaults
 
@@ -216,6 +232,25 @@ npx wrangler deploy
 | URL | Description |
 |-----|-------------|
 | `/admin` | Admin dashboard (requires GitHub login) |
+
+#### Admin API Endpoints
+
+All admin endpoints require an authenticated session (GitHub OAuth).
+
+| Method | URL | Description |
+|--------|-----|-------------|
+| GET | `/admin/feeds` | List all feeds with status |
+| POST | `/admin/feeds` | Add a new feed |
+| DELETE | `/admin/feeds/:id` | Remove a feed |
+| PUT | `/admin/feeds/:id/toggle` | Activate/deactivate a feed |
+| POST | `/admin/feeds/:id/fetch-now` | Trigger an immediate fetch for a feed |
+| POST | `/admin/import-opml` | Bulk-import feeds from an OPML file |
+| POST | `/admin/reindex` | Rebuild the Vectorize search index |
+| GET | `/admin/dlq` | View dead-letter queue entries |
+| POST | `/admin/dlq/:id/retry` | Retry a dead-letter queue entry |
+| GET | `/admin/audit` | View the admin audit log |
+| GET | `/admin/health` | Admin health check (feed stats, DB status) |
+| POST | `/admin/logout` | Clear the session cookie and log out |
 
 ## Development
 

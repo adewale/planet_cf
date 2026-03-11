@@ -467,30 +467,6 @@ async def test_semantic_search_returns_results(client):
 
 ---
 
-## Quick Reference: Common Gotchas
-
-| Issue | Solution |
-|-------|----------|
-| JsProxy not subscriptable | Use `to_js()` / `.to_py()` |
-| JsProxy checks everywhere | Create boundary layer at edge |
-| No filesystem access | Embed files at build time, not runtime |
-| Tests pass, prod fails | Add E2E tests with real infra |
-| Templates not loading | Embed in Python, use build script |
-| Search misses keywords | Add hybrid search (semantic + LIKE) |
-| XSS in feed content | Sanitize with bleach before storage |
-| Sessions in Workers | HMAC-signed cookies |
-| Missing feed dates | Store NULL, don't fake current time |
-| SSRF via feed URLs | Block private IPs + metadata endpoints |
-| Search misses exact matches | Rank exact title matches first (score 1.0) |
-| Mock tests pass, prod fails | Add E2E tests against real infrastructure |
-| Query longer than title | Use bidirectional matching (title in query) |
-| E2E tests flaky/slow | Use synchronous fetch-now endpoint, not `asyncio.sleep` |
-| `is None` misses JsNull | Also check `_is_js_undefined(x)` at every FFI boundary |
-| Mock tests miss FFI bugs | Add `test_wrappers_ffi.py` with `pyodide_fakes` fixture |
-| `_to_py_list` crashes on JsNull | Guard with `_is_js_undefined()` before iteration |
-
----
-
 ## 17. Pyodide FFI Type-Compatibility Matrix
 
 **Problem:** Python and JavaScript have different type systems. When Python values cross the Pyodide FFI boundary into JavaScript (e.g., D1 `.bind()` params, Queue `.send()`, Vectorize `.upsert()`), some types convert cleanly while others cause subtle, hard-to-debug failures.

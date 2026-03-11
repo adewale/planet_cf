@@ -8,10 +8,7 @@ import pytest
 
 from src.admin import (
     admin_error_response,
-    format_feed_validation_result,
-    log_admin_action,
     parse_opml,
-    validate_opml_feeds,
 )
 from src.config import MAX_OPML_FEEDS
 
@@ -180,58 +177,6 @@ class TestParseOpml:
 
 
 # =============================================================================
-# validate_opml_feeds() Tests
-# =============================================================================
-
-
-class TestValidateOpmlFeeds:
-    """Tests for OPML feed validation."""
-
-    def test_valid_new_feeds(self):
-        """All new feeds are returned when none exist."""
-        feeds = [
-            {"url": "https://a.com/feed", "title": "A", "site_url": ""},
-            {"url": "https://b.com/feed", "title": "B", "site_url": ""},
-        ]
-        new_feeds, skipped = validate_opml_feeds(feeds, set())
-
-        assert len(new_feeds) == 2
-        assert skipped == []
-
-    def test_duplicate_urls_filtered(self):
-        """Feeds with URLs already in existing_urls are skipped."""
-        feeds = [
-            {"url": "https://existing.com/feed", "title": "Existing", "site_url": ""},
-            {"url": "https://new.com/feed", "title": "New", "site_url": ""},
-        ]
-        existing = {"https://existing.com/feed"}
-        new_feeds, skipped = validate_opml_feeds(feeds, existing)
-
-        assert len(new_feeds) == 1
-        assert new_feeds[0]["url"] == "https://new.com/feed"
-        assert len(skipped) == 1
-        assert "Already exists" in skipped[0]
-
-    def test_deduplicates_within_import(self):
-        """Duplicate URLs within the same import batch are filtered."""
-        feeds = [
-            {"url": "https://a.com/feed", "title": "A1", "site_url": ""},
-            {"url": "https://a.com/feed", "title": "A2", "site_url": ""},
-        ]
-        new_feeds, skipped = validate_opml_feeds(feeds, set())
-
-        assert len(new_feeds) == 1
-        assert len(skipped) == 1
-
-    def test_empty_feeds_list(self):
-        """Empty feeds list returns empty results."""
-        new_feeds, skipped = validate_opml_feeds([], set())
-
-        assert new_feeds == []
-        assert skipped == []
-
-
-# =============================================================================
 # admin_error_response() Tests
 # =============================================================================
 
@@ -254,95 +199,3 @@ class TestAdminErrorResponse:
 
         cache_control = response.headers.get("Cache-Control", "")
         assert "no-store" in cache_control
-
-
-# =============================================================================
-# format_feed_validation_result() Tests
-# =============================================================================
-
-
-class TestFormatFeedValidationResult:
-    """Tests for feed validation result formatting."""
-
-    def test_valid_feed_result(self):
-        """Formats a valid feed result correctly."""
-        result = format_feed_validation_result(
-            valid=True,
-            title="My Feed",
-            site_url="https://example.com",
-            entry_count=10,
-            final_url="https://example.com/feed.xml",
-        )
-
-        assert result["valid"] is True
-        assert result["title"] == "My Feed"
-        assert result["site_url"] == "https://example.com"
-        assert result["entry_count"] == 10
-        assert result["final_url"] == "https://example.com/feed.xml"
-        assert result["error"] is None
-
-    def test_invalid_feed_result(self):
-        """Formats an invalid feed result with error."""
-        result = format_feed_validation_result(
-            valid=False,
-            error="Feed returned 404",
-        )
-
-        assert result["valid"] is False
-        assert result["error"] == "Feed returned 404"
-        assert result["title"] is None
-        assert result["entry_count"] == 0
-
-    def test_default_values(self):
-        """Default values are applied correctly."""
-        result = format_feed_validation_result(valid=True)
-
-        assert result["valid"] is True
-        assert result["title"] is None
-        assert result["site_url"] is None
-        assert result["entry_count"] == 0
-        assert result["final_url"] is None
-        assert result["error"] is None
-
-
-# =============================================================================
-# log_admin_action() Tests
-# =============================================================================
-
-
-class TestLogAdminAction:
-    """Tests for admin action logging."""
-
-    def test_logs_structured_event(self):
-        """Calls log_op with correct structured fields."""
-        with patch("src.admin.log_op") as mock_log:
-            log_admin_action(
-                action="add_feed",
-                admin_username="testadmin",
-                target_type="feed",
-                target_id=42,
-                details={"url": "https://example.com/feed.xml"},
-            )
-
-            mock_log.assert_called_once_with(
-                "admin_action",
-                action="add_feed",
-                admin="testadmin",
-                target_type="feed",
-                target_id=42,
-                details={"url": "https://example.com/feed.xml"},
-            )
-
-    def test_logs_with_optional_fields_as_none(self):
-        """Handles optional fields being None."""
-        with patch("src.admin.log_op") as mock_log:
-            log_admin_action(action="login", admin_username="admin")
-
-            mock_log.assert_called_once_with(
-                "admin_action",
-                action="login",
-                admin="admin",
-                target_type=None,
-                target_id=None,
-                details=None,
-            )

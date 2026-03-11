@@ -14,9 +14,19 @@ from src.auth import (
 )
 from src.main import is_safe_url
 from src.models import BleachSanitizer, FeedId, FeedJob, Session
-from src.route_dispatcher import Route, RouteDispatcher, create_default_routes
+from src.route_dispatcher import Route, RouteDispatcher
 from src.search_query import SearchQueryBuilder
 from src.wrappers import _to_py_safe, feed_row_from_js
+from tests.conftest import make_authenticated_worker
+
+
+def _get_default_routes() -> list[Route]:
+    """Get the default routes from PlanetCF._create_router().
+
+    Replaces the removed _get_default_routes() function.
+    """
+    worker, _env, _cookie = make_authenticated_worker()
+    return worker._create_router().routes
 
 
 class TestFeedJobProperties:
@@ -766,7 +776,7 @@ class TestRouteDispatchProperties:
     @settings(max_examples=50)
     def test_arbitrary_path_method_never_crashes(self, path, method):
         """Dispatcher never crashes on arbitrary path + method combinations."""
-        dispatcher = RouteDispatcher(create_default_routes())
+        dispatcher = RouteDispatcher(_get_default_routes())
         result = dispatcher.match(path, method)
         assert result is None or result.route is not None
 
@@ -777,7 +787,7 @@ class TestRouteDispatchProperties:
     @settings(max_examples=50)
     def test_realistic_paths_never_crash(self, path, method):
         """Realistic URL paths with standard HTTP methods never crash."""
-        dispatcher = RouteDispatcher(create_default_routes())
+        dispatcher = RouteDispatcher(_get_default_routes())
         result = dispatcher.match(path, method)
         assert result is None or result.route is not None
 
@@ -790,7 +800,7 @@ class TestRouteDispatchProperties:
     @settings(max_examples=50)
     def test_admin_prefix_always_matches(self, suffix):
         """Any path starting with /admin matches the admin prefix route."""
-        dispatcher = RouteDispatcher(create_default_routes())
+        dispatcher = RouteDispatcher(_get_default_routes())
         path = f"/admin{suffix}"
         result = dispatcher.match(path, "GET")
         assert result is not None
@@ -798,7 +808,7 @@ class TestRouteDispatchProperties:
 
     def test_all_known_routes_match(self):
         """All defined exact routes are matchable."""
-        routes = create_default_routes()
+        routes = _get_default_routes()
         dispatcher = RouteDispatcher(routes)
         exact_paths = [r.path for r in routes if not r.prefix and not r.pattern]
         for path in exact_paths:
@@ -811,7 +821,7 @@ class TestRouteDispatchProperties:
     @settings(max_examples=50)
     def test_match_returns_none_or_route_match(self, path):
         """match() always returns None or a RouteMatch with valid properties."""
-        dispatcher = RouteDispatcher(create_default_routes())
+        dispatcher = RouteDispatcher(_get_default_routes())
         result = dispatcher.match(path, "GET")
         if result is not None:
             assert isinstance(result.content_type, str)
@@ -860,7 +870,7 @@ class TestRouteDispatchProperties:
     @settings(max_examples=50)
     def test_get_route_name_never_crashes(self, path):
         """get_route_name never crashes on arbitrary paths."""
-        dispatcher = RouteDispatcher(create_default_routes())
+        dispatcher = RouteDispatcher(_get_default_routes())
         name = dispatcher.get_route_name(path)
         assert isinstance(name, str)
 
@@ -1156,3 +1166,129 @@ class TestTruncateErrorProperties:
         result = truncate_error(exc)
         assert isinstance(result, str)
         assert len(result) <= ERROR_MESSAGE_MAX_LENGTH
+
+
+# =============================================================================
+# Additional Property-Based Tests (TQ7)
+# =============================================================================
+
+
+class TestXmlEscapeRoundtripProperties:
+    """Property-based tests for xml_escape roundtrip and composition properties."""
+
+    @given(
+        a=st.text(max_size=50),
+        b=st.text(max_size=50),
+    )
+    @settings(max_examples=100)
+    def test_escape_distributes_over_concatenation(self, a, b):
+        """xml_escape(a + b) == xml_escape(a) + xml_escape(b).
+
+        This confirms escape is applied character-by-character and
+        the result of escaping a concatenation equals concatenating
+        the escaped parts.
+        """
+        from src.utils import xml_escape
+
+        assert xml_escape(a + b) == xml_escape(a) + xml_escape(b)
+
+    @given(text=st.text(max_size=200))
+    @settings(max_examples=100)
+    def test_escaped_text_safe_for_xml_element(self, text):
+        """Escaped text can be safely embedded in an XML element.
+
+        After escaping, the result must not contain raw < or > which
+        would break XML parsing.
+        """
+        from src.utils import xml_escape
+
+        escaped = xml_escape(text)
+        # No raw angle brackets (only entities &lt; &gt;)
+        stripped = escaped.replace("&lt;", "").replace("&gt;", "").replace("&amp;", "")
+        assert "<" not in stripped
+        assert ">" not in stripped
+
+
+class TestIsSafeUrlProperties:
+    """Additional property-based tests for is_safe_url."""
+
+    @given(
+        host=st.from_regex(r"[a-z]{3,10}\.[a-z]{2,5}", fullmatch=True),
+        path=st.from_regex(r"/[a-z0-9/]{0,30}", fullmatch=True),
+    )
+    @settings(max_examples=100)
+    def test_public_https_urls_accepted(self, host, path):
+        """Public HTTPS URLs with valid TLDs are accepted."""
+        url = f"https://{host}{path}"
+        result = is_safe_url(url)
+        # Should be accepted unless the host happens to resolve to a private IP
+        # (which won't happen with random alphanumeric hosts)
+        assert result is True
+
+    @given(
+        scheme=st.sampled_from(["ftp", "file", "data", "javascript", "gopher", ""]),
+        host=st.from_regex(r"[a-z]{3,10}\.[a-z]{2,5}", fullmatch=True),
+    )
+    @settings(max_examples=50)
+    def test_non_http_schemes_rejected(self, scheme, host):
+        """Non-HTTP/HTTPS schemes are always rejected."""
+        url = f"{scheme}://{host}/feed.xml"
+        assert is_safe_url(url) is False
+
+    @given(
+        private_host=st.sampled_from(
+            [
+                "localhost",
+                "127.0.0.1",
+                "10.0.0.1",
+                "192.168.1.1",
+                "172.16.0.1",
+                "169.254.169.254",
+                "[::1]",
+            ]
+        ),
+    )
+    @settings(max_examples=20)
+    def test_private_addresses_rejected(self, private_host):
+        """Private/internal addresses are always rejected."""
+        url = f"https://{private_host}/feed.xml"
+        assert is_safe_url(url) is False
+
+
+class TestNormalizeEntryContentProperties:
+    """Property-based tests for normalize_entry_content from src/utils.py."""
+
+    @given(
+        content=st.text(max_size=200),
+        title=st.one_of(st.none(), st.text(max_size=100)),
+    )
+    @settings(max_examples=100)
+    def test_never_crashes(self, content, title):
+        """normalize_entry_content never raises on arbitrary input."""
+        from src.utils import normalize_entry_content
+
+        result = normalize_entry_content(content, title)
+        assert isinstance(result, str)
+
+    @given(content=st.text(max_size=200))
+    @settings(max_examples=50)
+    def test_no_title_returns_content_unchanged(self, content):
+        """When title is None, content is returned unchanged."""
+        from src.utils import normalize_entry_content
+
+        result = normalize_entry_content(content, None)
+        assert result == content
+
+    @given(
+        body=st.text(min_size=1, max_size=200),
+        title=st.text(min_size=1, max_size=50),
+    )
+    @settings(max_examples=50)
+    def test_content_without_heading_returned_unchanged(self, body, title):
+        """Content that doesn't start with a heading matching title is returned unchanged."""
+        from src.utils import normalize_entry_content
+
+        # Ensure body doesn't start with an HTML heading tag
+        assume(not body.lstrip().lower().startswith("<h"))
+        result = normalize_entry_content(body, title)
+        assert result == body
