@@ -356,3 +356,51 @@ _.exc_tb  # unused variable (required by __exit__ signature)
 
 # main.py parameter used for admin-triggered generation
 _.triggered_by  # unused variable (parameter for admin manual refresh tracking)
+
+# =============================================================================
+# feed_generator.py - extracted module (not yet imported by main.py)
+# =============================================================================
+from feed_generator import (
+    generate_atom_feed,
+    generate_rss10_feed,
+    generate_rss_feed,
+    prepare_atom_entries,
+    prepare_rss10_entries,
+    prepare_rss_entries,
+)
+
+generate_atom_feed  # unused function (will be imported by main.py)
+generate_rss_feed  # unused function (will be imported by main.py)
+generate_rss10_feed  # unused function (will be imported by main.py)
+prepare_atom_entries  # unused function (entry preparation helper)
+prepare_rss_entries  # unused function (entry preparation helper)
+prepare_rss10_entries  # unused function (entry preparation helper)
+
+# =============================================================================
+# feed_processor.py - extracted module (not yet imported by main.py)
+# =============================================================================
+from feed_processor import (
+    RateLimitError,
+    index_entry_for_search,
+    is_safe_url,
+    process_single_feed,
+    record_feed_error,
+    sanitize_html,
+    set_feed_retry_after,
+    update_feed_metadata,
+    update_feed_success,
+    update_feed_url,
+    upsert_entry,
+)
+
+RateLimitError  # unused class (will be imported by main.py)
+process_single_feed  # unused function (will be imported by main.py)
+upsert_entry  # unused function (will be imported by main.py)
+index_entry_for_search  # unused function (will be imported by main.py)
+sanitize_html  # unused function (will be imported by main.py)
+is_safe_url  # unused function (will be imported by main.py)
+update_feed_success  # unused function (will be imported by main.py)
+record_feed_error  # unused function (will be imported by main.py)
+update_feed_url  # unused function (will be imported by main.py)
+update_feed_metadata  # unused function (will be imported by main.py)
+set_feed_retry_after  # unused function (will be imported by main.py)

@@ -766,7 +766,7 @@ class TestOpmlImportFeedLimit:
         worker, _env, _cookie = make_authenticated_worker()
         request = MockOpmlRequest(opml_content)
 
-        with patch("src.main.ET.XMLParser", _patched_xml_parser):
+        with patch("src.admin.ET.XMLParser", _patched_xml_parser):
             response = await worker._import_opml(request, admin_row())
 
         # Should still succeed (redirect)

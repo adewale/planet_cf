@@ -120,7 +120,7 @@ class TestImportOpml:
 
         request = OpmlRequest(opml_content=VALID_OPML)
 
-        with patch("src.main.ET.XMLParser", _patched_xml_parser):
+        with patch("src.admin.ET.XMLParser", _patched_xml_parser):
             response = await worker._import_opml(request, admin)
 
         # Should redirect on success
@@ -163,7 +163,7 @@ class TestImportOpml:
 
         request = OpmlRequest(opml_content=EMPTY_OPML)
 
-        with patch("src.main.ET.XMLParser", _patched_xml_parser):
+        with patch("src.admin.ET.XMLParser", _patched_xml_parser):
             response = await worker._import_opml(request, admin)
 
         # Should redirect (successful even if no feeds imported)
@@ -196,7 +196,7 @@ class TestImportOpml:
 
         request = OpmlRequest(opml_content=opml_with_unsafe)
 
-        with patch("src.main.ET.XMLParser", _patched_xml_parser):
+        with patch("src.admin.ET.XMLParser", _patched_xml_parser):
             response = await worker._import_opml(request, admin)
 
         assert response.status == 302
@@ -216,7 +216,7 @@ class TestImportOpml:
 
         request = OpmlRequest(opml_content="<not valid xml")
 
-        with patch("src.main.ET.XMLParser", _patched_xml_parser):
+        with patch("src.admin.ET.XMLParser", _patched_xml_parser):
             response = await worker._import_opml(request, admin)
 
         # admin_error_response now returns proper status codes
@@ -234,7 +234,7 @@ class TestImportOpml:
 
         request = OpmlRequest(opml_content=VALID_OPML)
 
-        with patch("src.main.ET.XMLParser", _patched_xml_parser):
+        with patch("src.admin.ET.XMLParser", _patched_xml_parser):
             await worker._import_opml(request, admin)
 
         # Should have an audit_log INSERT

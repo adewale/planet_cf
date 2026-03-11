@@ -144,6 +144,13 @@ ignore = [
 "src/utils.py" = [
     "UP017",  # Keep timezone.utc for consistency across the codebase
 ]
+"src/feed_generator.py" = [
+    "UP017",  # Keep timezone.utc for consistency across the codebase
+]
+"src/feed_processor.py" = [
+    "S608",  # SQL uses bind() parameters, not string formatting
+    "UP017",  # Keep timezone.utc for consistency across the codebase
+]
 "src/wrappers.py" = [
     "ANN401",  # JS/Python boundary layer - Any is intentional for JsProxy types
 ]

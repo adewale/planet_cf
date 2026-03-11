@@ -12,7 +12,6 @@ import ipaddress
 import json
 import secrets
 import time
-import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from typing import Any, TypeAlias
 from urllib.parse import parse_qs, urlencode, urlparse
@@ -21,6 +20,7 @@ import feedparser
 from workers import Response, WorkerEntrypoint
 
 from admin import admin_error_response as _admin_error_response_fn
+from admin import parse_opml
 
 # Abstraction modules for reduced code duplication
 from admin_context import admin_action_context
@@ -36,7 +36,6 @@ from config import (
     DEFAULT_FEED_FAILURE_THRESHOLD,
     DEFAULT_QUERY_LIMIT,
     FALLBACK_ENTRIES_LIMIT,
-    MAX_OPML_FEEDS,
     MAX_SEARCH_QUERY_LENGTH,
     MAX_SEARCH_WORDS,
     REINDEX_COOLDOWN_SECONDS,
@@ -2076,80 +2075,84 @@ class Default(WorkerEntrypoint):
         """Get threshold for DLQ display from environment, default 3."""
         return get_feed_failure_threshold(self.env)
 
+    def _prepare_feed_entries(
+        self, entries: list[dict[str, Any]], fmt: str = "atom"
+    ) -> list[dict[str, str]]:
+        """Prepare entry dicts for feed XML templates.
+
+        Applies strip_xml_control_chars() to title, author, and content fields
+        as defense-in-depth against illegal XML control characters in stored data.
+
+        Args:
+            entries: Raw entry dicts from the database.
+            fmt: Feed format - "atom", "rss", or "rss10".
+
+        Returns:
+            List of template-ready entry dicts with sanitized fields.
+        """
+        template_entries: list[dict[str, str]] = []
+        for e in entries:
+            title = strip_xml_control_chars(e.get("title", ""))
+            url = e.get("url", "")
+            raw_content = e.get("content", "")
+
+            # Author: Atom and RSS 1.0 fall back to feed_title; RSS 2.0 does not
+            if fmt in ("atom", "rss10"):
+                author = strip_xml_control_chars(e.get("author", e.get("feed_title", "")))
+            else:
+                author = strip_xml_control_chars(e.get("author", ""))
+
+            entry: dict[str, str] = {"title": title, "url": url, "author": author}
+
+            if fmt == "atom":
+                entry["guid"] = e.get("guid", e.get("url", ""))
+                entry["published_at"] = e.get("published_at", "")
+                entry["content"] = strip_xml_control_chars(raw_content)
+            elif fmt == "rss":
+                entry["guid"] = e.get("guid", e.get("url", ""))
+                entry["published_at"] = e.get("published_at", "")
+                # Escape ]]> in CDATA to prevent breakout attacks (Issue 2.1)
+                # Content is already HTML-sanitized, but ensure CDATA boundaries are safe
+                entry["content_cdata"] = strip_xml_control_chars(raw_content).replace(
+                    "]]>", "]]]]><![CDATA[>"
+                )
+            elif fmt == "rss10":
+                entry["published_at_iso"] = e.get("published_at", "")
+                # Truncate content for RSS 1.0 descriptions, escape CDATA boundary
+                entry["content_truncated"] = strip_xml_control_chars(raw_content[:500]).replace(
+                    "]]>", "]]]]><![CDATA[>"
+                )
+
+            template_entries.append(entry)
+        return template_entries
+
     def _generate_atom_feed(self, planet: dict[str, str], entries: list[dict[str, Any]]) -> str:
         """Generate Atom 1.0 feed XML using template."""
-        # Prepare entries with defaults for template
-        # Strip illegal XML control characters as defense-in-depth for existing data
-        template_entries = [
-            {
-                "title": strip_xml_control_chars(e.get("title", "")),
-                "url": e.get("url", ""),
-                "guid": e.get("guid", e.get("url", "")),
-                "published_at": e.get("published_at", ""),
-                "author": strip_xml_control_chars(e.get("author", e.get("feed_title", ""))),
-                "content": strip_xml_control_chars(e.get("content", "")),
-            }
-            for e in entries
-        ]
         return render_template(
             TEMPLATE_FEED_ATOM,
             theme=self._get_theme(),
             planet=planet,
-            entries=template_entries,
+            entries=self._prepare_feed_entries(entries, fmt="atom"),
             updated_at=f"{datetime.now(timezone.utc).isoformat()}Z",
         )
 
     def _generate_rss_feed(self, planet: dict[str, str], entries: list[dict[str, Any]]) -> str:
         """Generate RSS 2.0 feed XML using template."""
-        # Prepare entries with CDATA-safe content
-        # Strip illegal XML control characters as defense-in-depth for existing data
-        template_entries = [
-            {
-                "title": strip_xml_control_chars(e.get("title", "")),
-                "url": e.get("url", ""),
-                "guid": e.get("guid", e.get("url", "")),
-                "published_at": e.get("published_at", ""),
-                "author": strip_xml_control_chars(e.get("author", "")),
-                # Escape ]]> in CDATA to prevent breakout attacks (Issue 2.1)
-                # Content is already HTML-sanitized, but ensure CDATA boundaries are safe
-                # Also strip illegal XML control chars for defense-in-depth
-                "content_cdata": strip_xml_control_chars(e.get("content", "")).replace(
-                    "]]>", "]]]]><![CDATA[>"
-                ),
-            }
-            for e in entries
-        ]
         return render_template(
             TEMPLATE_FEED_RSS,
             theme=self._get_theme(),
             planet=planet,
-            entries=template_entries,
+            entries=self._prepare_feed_entries(entries, fmt="rss"),
             last_build_date=datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000"),
         )
 
     def _generate_rss10_feed(self, planet: dict[str, str], entries: list[dict[str, Any]]) -> str:
         """Generate RSS 1.0 (RDF) feed XML using template."""
-        # RSS 1.0 uses dc:date (ISO 8601) and truncated descriptions
-        # Strip illegal XML control characters as defense-in-depth for existing data
-        max_desc_chars = 500
-        template_entries = [
-            {
-                "title": strip_xml_control_chars(e.get("title", "")),
-                "url": e.get("url", ""),
-                "published_at_iso": e.get("published_at", ""),
-                "author": strip_xml_control_chars(e.get("author", e.get("feed_title", ""))),
-                # Truncate content for RSS 1.0 descriptions, escape CDATA boundary
-                "content_truncated": strip_xml_control_chars(
-                    e.get("content", "")[:max_desc_chars]
-                ).replace("]]>", "]]]]><![CDATA[>"),
-            }
-            for e in entries
-        ]
         return render_template(
             TEMPLATE_FEED_RSS10,
             theme=self._get_theme(),
             planet=planet,
-            entries=template_entries,
+            entries=self._prepare_feed_entries(entries, fmt="rss10"),
         )
 
     async def _export_opml(self) -> Response:
@@ -2293,15 +2296,9 @@ class Default(WorkerEntrypoint):
             qs = parse_qs(url_str.split("?", 1)[1])
             query = qs.get("q", [""])[0]
 
-        # Detect if query was originally quoted (phrase search)
-        query = query.strip()
-        is_phrase_search = (query.startswith('"') and query.endswith('"')) or (
-            query.startswith("'") and query.endswith("'")
-        )
-
-        # Strip quotes for actual search, but remember the intent
-        if is_phrase_search:
-            query = query[1:-1].strip()
+        # Detect phrase search (quoted queries) and normalize
+        builder = SearchQueryBuilder.from_raw_query(query, max_words=MAX_SEARCH_WORDS)
+        query = builder.query
 
         # Populate search query fields on consolidated event
         if event:
@@ -2383,12 +2380,7 @@ class Default(WorkerEntrypoint):
         try:
             search_limit = self._get_search_top_k()
             with Timer() as d1_timer:
-                # Build search query using SearchQueryBuilder
-                builder = SearchQueryBuilder(
-                    query=query,
-                    is_phrase_search=is_phrase_search,
-                    max_words=MAX_SEARCH_WORDS,
-                )
+                # Build SQL from the already-configured builder
                 search_result = builder.build(limit=search_limit)
 
                 # Track if words were truncated for DoS protection
@@ -3085,14 +3077,10 @@ class Default(WorkerEntrypoint):
 
                 ctx.set_import_metrics(file_size=len(content) if content else 0)
 
-                # Parse OPML with XXE/Billion Laughs protection
-                # Security: forbid_dtd=True prevents DOCTYPE declarations and entity expansion
-                try:
-                    parser = ET.XMLParser(forbid_dtd=True)
-                    root = ET.fromstring(content, parser=parser)
-                except ET.ParseError as e:
-                    # Don't expose detailed parse errors to users
-                    log_op("opml_parse_error", error=truncate_error(e))
+                # Parse OPML using shared parser (XXE/Billion Laughs protection)
+                parsed_feeds, parse_errors = parse_opml(content)
+
+                if not parsed_feeds and parse_errors:
                     ctx.set_error("ParseError", "Invalid OPML format")
                     return self._admin_error_response(
                         "The uploaded file is not a valid OPML file. Please check the file format.",
@@ -3101,24 +3089,12 @@ class Default(WorkerEntrypoint):
 
                 imported = 0
                 skipped = 0
-                feeds_parsed = 0
-                errors = []
+                errors = list(parse_errors)
 
-                for outline in root.iter("outline"):
-                    xml_url = outline.get("xmlUrl")
-                    if not xml_url:
-                        continue
-
-                    feeds_parsed += 1
-
-                    # Enforce feed limit to prevent DoS via unbounded imports
-                    if feeds_parsed > MAX_OPML_FEEDS:
-                        errors.append(f"Feed limit ({MAX_OPML_FEEDS}) reached, skipping rest")
-                        skipped += 1
-                        continue
-
-                    title = outline.get("title") or outline.get("text") or xml_url
-                    html_url = outline.get("htmlUrl")
+                for feed in parsed_feeds:
+                    xml_url = feed["url"]
+                    title = feed["title"] or xml_url
+                    html_url = feed["site_url"] or None
 
                     # Validate URL (SSRF protection)
                     if not self._is_safe_url(xml_url):
@@ -3147,7 +3123,7 @@ class Default(WorkerEntrypoint):
 
                 # Populate OPML import metrics
                 ctx.set_import_metrics(
-                    feeds_parsed=feeds_parsed,
+                    feeds_parsed=len(parsed_feeds),
                     feeds_added=imported,
                     feeds_skipped=skipped,
                     errors=len(errors),
