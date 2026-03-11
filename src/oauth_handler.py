@@ -31,6 +31,7 @@ Usage:
 from dataclasses import dataclass
 from typing import Any
 
+from auth import parse_cookie_value
 from wrappers import safe_http_fetch
 
 
@@ -328,8 +329,4 @@ def extract_oauth_state_from_cookies(cookie_header: str) -> str | None:
     Returns:
         OAuth state value if found, None otherwise
     """
-    for cookie in cookie_header.split(";"):
-        cookie = cookie.strip()
-        if cookie.startswith("oauth_state="):
-            return cookie[12:]
-    return None
+    return parse_cookie_value(cookie_header, "oauth_state")

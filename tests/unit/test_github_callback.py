@@ -174,8 +174,8 @@ class TestHandleGitHubCallback:
         ):
             response = await worker._handle_github_callback(request)
 
-        # Should return an error page (not 302 redirect)
-        assert response.status != 302
+        # admin_error_response now returns proper status codes
+        assert response.status == 400
 
     @pytest.mark.asyncio
     async def test_reused_state_replay_attack_returns_error(self):
@@ -206,7 +206,8 @@ class TestHandleGitHubCallback:
         ):
             response = await worker._handle_github_callback(request)
 
-        assert response.status != 302
+        # admin_error_response now returns proper status codes
+        assert response.status == 400
 
     @pytest.mark.asyncio
     async def test_github_api_error_returns_error(self):
@@ -236,11 +237,12 @@ class TestHandleGitHubCallback:
         ):
             response = await worker._handle_github_callback(request)
 
-        assert response.status != 302
+        # admin_error_response now returns proper status codes
+        assert response.status == 502
 
     @pytest.mark.asyncio
     async def test_non_admin_user_returns_access_denied(self):
-        """User who is not an admin gets 403 access denied."""
+        """User who is not an admin gets access denied error page."""
         # admin=None means no admin found in DB
         env = MockOAuthEnv(admin=None)
 
@@ -267,12 +269,12 @@ class TestHandleGitHubCallback:
         ):
             response = await worker._handle_github_callback(request)
 
-        # Should be an error page (rendered HTML), not a redirect
-        assert response.status != 302
+        # admin_error_response now returns proper status codes
+        assert response.status == 403
 
     @pytest.mark.asyncio
-    async def test_exception_during_callback_returns_500(self):
-        """Unexpected exception during callback returns 500 error."""
+    async def test_exception_during_callback_returns_error_page(self):
+        """Unexpected exception during callback returns error page."""
         env = MockOAuthEnv()
 
         worker = Default()
@@ -290,5 +292,5 @@ class TestHandleGitHubCallback:
         ):
             response = await worker._handle_github_callback(request)
 
-        # Should return 500 error page
-        assert response.status != 302
+        # admin_error_response now returns proper status codes
+        assert response.status == 500

@@ -26,6 +26,7 @@ Requirements:
 """
 
 import argparse
+import atexit
 import json
 import os
 import sqlite3
@@ -39,6 +40,7 @@ from urllib.request import Request, urlopen
 
 # Module-level connection for efficient SQL quoting
 _quote_conn = sqlite3.connect(":memory:")
+atexit.register(_quote_conn.close)
 
 
 def sql_quote(value: str) -> str:

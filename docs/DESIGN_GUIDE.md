@@ -2,6 +2,8 @@
 
 A reference for maintaining visual consistency across Planet CF.
 
+> **Note:** The CSS files in `assets/static/` are the source of truth. When values here conflict with the CSS, the CSS wins.
+
 ---
 
 ## Color Palette

@@ -1,5 +1,7 @@
 # CLI-First Administration Proposal for Planet CF
 
+**Note: This CLI has not been implemented. This document is a historical design proposal.**
+
 ## Executive Summary
 
 This document proposes a unified CLI tool (`planet`) for Planet CF administration, inspired by [Rogue Planet](https://github.com/adewale/rogue_planet)'s command-line interface design. The goal is to consolidate the existing scripts (`create_instance.py`, `deploy_instance.sh`, `build_templates.py`, `seed_admins.py`) into a cohesive, discoverable CLI that follows modern Python CLI conventions.

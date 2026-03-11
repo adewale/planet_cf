@@ -21,7 +21,7 @@ uv run pytest tests/unit tests/integration -v
 
 Pure unit tests using mock Cloudflare bindings. No server needed.
 
-- **~1180+ tests**, runs in ~2 seconds
+- **~1153 tests**, runs in ~2 seconds
 - Uses `MockD1`, `MockVectorize`, `MockAI`, `MockQueue` from `tests/conftest.py`
 - Simulates JsProxy behavior to catch conversion issues
 - Covers: rendering, search, config, auth, feeds, entries, observability
@@ -33,7 +33,7 @@ Pure unit tests using mock Cloudflare bindings. No server needed.
 
 Tests that verify end-to-end flows using mock bindings. No external services needed.
 
-- **~85+ tests**, runs in ~2 seconds
+- **~110 tests**, runs in ~2 seconds
 - Covers: HTTP endpoints, feed processing, search, admin UI, scheduler
 - Uses factory fixtures (`FeedFactory`, `EntryFactory`, `SessionFactory`)
 
@@ -41,7 +41,7 @@ Tests that verify end-to-end flows using mock bindings. No external services nee
 
 Tests against real Cloudflare infrastructure (D1, Vectorize, Workers AI).
 
-- **34 tests**, requires a running test-planet instance
+- **~72 tests**, requires a running test-planet instance
 - Catches: JsProxy bugs, real SQL issues, Vectorize integration, network timing
 
 ## Why FFI Tests Exist

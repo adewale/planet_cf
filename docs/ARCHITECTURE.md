@@ -395,6 +395,7 @@ Feed formats are controlled by theme-based frozensets in `src/main.py`:
 |-----------|----------|--------|
 | `_THEMES_HIDE_SIDEBAR_LINKS` | Hides RSS/titles-only sidebar links | `planet-cloudflare` |
 | `_THEMES_WITH_RSS10` | Enables RSS 1.0 (RDF) feed link | `planet-mozilla` |
+| `_THEMES_WITH_FOAF` | Enables FOAF (Friend of a Friend) RDF feed | `planet-mozilla` |
 
 RSS 2.0, Atom, and OPML are available for all instances. RSS 1.0 is only linked in templates
 for themes in `_THEMES_WITH_RSS10`. All feed routes (`/feed.rss`, `/feed.atom`, `/feeds.opml`,
@@ -609,7 +610,7 @@ src/
 │  │    - queue() → process feed messages                                         │  │
 │  │    - fetch() → route HTTP requests via RouteDispatcher                       │  │
 │  │                                                                              │  │
-│  │  Imports from ALL 15 other modules (see arrows below)                        │  │
+│  │  Imports from ALL 16 other modules (see arrows below)                        │  │
 │  └──────┬────────────────────────────────────────────────────────────────┬──────┘  │
 │         │                                                                │         │
 │    ┌────┴────────────┬──────────────┬──────────────┬──────────────┐      │         │

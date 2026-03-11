@@ -205,16 +205,16 @@ async def admin_action_context(
         _log_action_callback=log_action_callback,
     )
 
-    timer.__enter__()
-    try:
-        yield ctx
-    except Exception as e:
-        ctx.set_error_from_exception(e)
-        raise
-    finally:
-        timer.__exit__(None, None, None)
-        event.wall_time_ms = timer.elapsed_ms
-        # Also set reindex_total_ms if this is a reindex action
-        if action == "reindex":
-            event.reindex_total_ms = timer.elapsed_ms
-        emit_event(event)
+    with timer:
+        try:
+            yield ctx
+        except Exception as e:
+            ctx.set_error_from_exception(e)
+            raise
+        finally:
+            elapsed = timer.elapsed()
+            event.wall_time_ms = elapsed
+            # Also set reindex_total_ms if this is a reindex action
+            if action == "reindex":
+                event.reindex_total_ms = elapsed
+            emit_event(event)

@@ -300,9 +300,9 @@ class TestAddFeed:
             )
             response = await worker._add_feed(request, admin)
 
-        # When feed_id is None, it still redirects (the feed was technically inserted)
-        # The important thing is no crash
-        assert response.status in (200, 302)
+        # When TrackingD1 returns no result rows, the feed_id is None but the
+        # code still redirects to /admin (no crash, no error page)
+        assert response.status == 302
 
     @pytest.mark.asyncio
     async def test_ssrf_blocked_url_returns_error(self):
@@ -314,8 +314,8 @@ class TestAddFeed:
 
         response = await worker._add_feed(request, admin)
 
-        # Should return error page (not redirect)
-        assert response.status in (200, 400)
+        # admin_error_response now returns proper status codes
+        assert response.status == 400
         assert "Invalid URL" in response.body or "unsafe" in response.body.lower()
 
     @pytest.mark.asyncio
@@ -328,7 +328,8 @@ class TestAddFeed:
 
         response = await worker._add_feed(request, admin)
 
-        assert response.status in (200, 400)
+        # admin_error_response now returns proper status codes
+        assert response.status == 400
         assert "URL Required" in response.body or "provide a feed URL" in response.body
 
     @pytest.mark.asyncio
@@ -348,7 +349,8 @@ class TestAddFeed:
             )
             response = await worker._add_feed(request, admin)
 
-        assert response.status in (200, 400)
+        # admin_error_response now returns proper status codes
+        assert response.status == 400
         assert "Validation Failed" in response.body or "validate" in response.body.lower()
 
     @pytest.mark.asyncio

@@ -89,8 +89,8 @@ class TestHandleAdminRouting:
 
         response = await worker._handle_admin(request, "/admin/feeds")
 
-        # Should return an error because localhost is SSRF-blocked
-        assert response.status in (200, 400)
+        # SSRF validation rejects localhost URL; admin_error_response returns proper status
+        assert response.status == 400
 
     @pytest.mark.asyncio
     async def test_delete_admin_feeds_dispatches_to_remove_feed(self):
@@ -107,8 +107,8 @@ class TestHandleAdminRouting:
 
         response = await worker._handle_admin(request, "/admin/feeds/1")
 
-        # Should handle the delete request (may return 200 or redirect)
-        assert response.status in (200, 302)
+        # _remove_feed returns redirect on success
+        assert response.status == 302
 
     @pytest.mark.asyncio
     async def test_post_import_opml_dispatches(self):
@@ -123,8 +123,8 @@ class TestHandleAdminRouting:
 
         response = await worker._handle_admin(request, "/admin/import-opml")
 
-        # Should return an error because no file was provided
-        assert response.status in (200, 400)
+        # No file uploaded returns 400 validation error
+        assert response.status == 400
         assert "No File" in response.body or "OPML" in response.body
 
     @pytest.mark.asyncio
@@ -187,8 +187,9 @@ class TestHandleAdminRouting:
         response = await worker._handle_admin(request, "/admin/feeds/1/fetch-now")
 
         # Will fail the actual fetch (no real HTTP), but should route correctly
-        # and return a JSON error (502) rather than 404
-        assert response.status != 404
+        # and return a JSON error (502) rather than 404. The mock has no real
+        # HTTP so _fetch_feed_now hits an exception and returns 502.
+        assert response.status == 502
 
     @pytest.mark.asyncio
     async def test_fetch_now_rejects_invalid_feed_id(self):
@@ -658,8 +659,8 @@ class TestRetryDlqFeed:
 
         response = await worker._retry_dlq_feed(999, admin_row())
 
-        # _admin_error_response returns HTML error page (status may be 200 for HTML)
-        assert response.status in (200, 404)
+        # Nonexistent feed returns proper 404 status
+        assert response.status == 404
         assert "not found" in response.body.lower() or "Not Found" in response.body
 
     @pytest.mark.asyncio
@@ -687,8 +688,8 @@ class TestRetryDlqFeed:
 
         response = await worker._handle_admin(request, "/admin/dlq/5/retry")
 
-        # Should redirect (success) or return an error, but NOT 404 for unknown route
-        assert response.status in (200, 302, 400, 500)
+        # Successful retry redirects to /admin
+        assert response.status == 302
 
     @pytest.mark.asyncio
     async def test_retry_dlq_invalid_feed_id_returns_400(self):

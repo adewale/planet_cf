@@ -422,40 +422,19 @@ HAVING failed > 0
 
 ---
 
+## Resolved Gaps
+
+The following gaps have been addressed:
+
+1. **Retention Policy Timing**: Retention now runs in the scheduler and populates SchedulerEvent with `retention_d1_ms`, `retention_vectorize_ms`, `retention_entries_scanned`, `retention_entries_deleted`, `retention_vectors_deleted`, `retention_errors`, `retention_days`, `retention_max_per_feed`.
+
+2. **Indexing Stats Aggregation**: Feed processing now returns indexing stats and aggregates them onto FeedFetchEvent: `indexing_attempted`, `indexing_succeeded`, `indexing_failed`, `indexing_total_ms`, `indexing_embedding_ms`, `indexing_upsert_ms`, `indexing_text_truncated`.
+
+3. **Admin Action Events**: All admin actions (add feed, OPML import, remove feed, toggle feed, reindex, DLQ retry) now emit AdminActionEvent. Regeneration defers to the scheduler which already emits SchedulerEvent.
+
+---
+
 ## Known Gaps
-
-### 1. ~~Retention Policy Timing~~ (FIXED)
-
-**Status**: ✅ FIXED
-
-Retention now runs in `_run_scheduler()` and populates SchedulerEvent with:
-- `retention_d1_ms`, `retention_vectorize_ms`
-- `retention_entries_scanned`, `retention_entries_deleted`, `retention_vectors_deleted`
-- `retention_errors`, `retention_days`, `retention_max_per_feed`
-
-### 2. ~~Indexing Stats Not Aggregated~~ (FIXED)
-
-**Status**: ✅ FIXED
-
-`_upsert_entry()` now returns indexing stats, and `_process_single_feed()` aggregates them onto FeedFetchEvent:
-- `indexing_attempted`, `indexing_succeeded`, `indexing_failed`
-- `indexing_total_ms`, `indexing_embedding_ms`, `indexing_upsert_ms`
-- `indexing_text_truncated`
-
-### 3. ~~Missing Admin Actions~~ (FIXED)
-
-**Status**: ✅ FIXED - All admin actions now emit AdminActionEvent
-
-| Action | Handler | Status |
-|--------|---------|--------|
-| Add feed | `_add_feed()` | ✅ Emits event |
-| OPML import | `_import_opml()` | ✅ Emits event |
-| Remove feed | `_remove_feed()` | ✅ Emits event |
-| Toggle feed | `_update_feed()` | ✅ Emits event |
-| Reindex | `_reindex_all_entries()` | ✅ Emits event |
-| DLQ retry | `_retry_dlq_feed()` | ✅ Emits event |
-
-Note: `_trigger_regenerate()` is deferred - it just re-runs the scheduler which already emits SchedulerEvent.
 
 ### 4. No Cross-Request Correlation
 
@@ -525,12 +504,9 @@ Note: `_trigger_regenerate()` is deferred - it just re-runs the scheduler which 
 
 ## Recommended Improvements (Priority Order)
 
-### P0 (Critical) - ✅ COMPLETE
-1. ~~**Aggregate indexing stats**: Update `_process_single_feed()` to populate indexing_* fields~~ ✅ DONE
-2. ~~**Move retention to scheduler**: Architectural fix for correct observability~~ ✅ DONE
+### P0/P1 (Resolved)
+Items 1-3 (indexing stats, retention in scheduler, admin action events) are complete. See "Resolved Gaps" above.
 
-### P1 (High) - ✅ COMPLETE
-3. ~~**Add missing AdminActionEvents**: remove_feed, toggle_feed, dlq_retry, reindex~~ ✅ DONE
 4. **Add feed_id correlation**: Allow tracing operations for a specific feed (DEFERRED - feed_id already on FeedFetchEvent)
 
 ### P2 (Medium)

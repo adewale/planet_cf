@@ -91,34 +91,11 @@ class SearchQueryBuilder:
             JOIN feeds f ON e.feed_id = f.id
         """
 
-    def _build_phrase_query(self, limit: int) -> SearchQueryResult:
-        """Build query for phrase search (exact sequence).
+    def _build_single_term_query(self, limit: int) -> SearchQueryResult:
+        """Build query for single-term search (phrase or single word).
 
-        Args:
-            limit: Maximum number of results
-
-        Returns:
-            SearchQueryResult with SQL and params
-        """
-        escaped_query = self.escape_like_pattern(self.query)
-        like_pattern = f"%{escaped_query}%"
-
-        sql = f"""
-            {self._build_base_select()}
-            WHERE e.title LIKE ? ESCAPE '\\'
-               OR e.content LIKE ? ESCAPE '\\'
-            ORDER BY e.published_at DESC
-            LIMIT ?
-        """
-
-        return SearchQueryResult(
-            sql=sql,
-            params=(like_pattern, like_pattern, limit),
-            words_truncated=False,
-        )
-
-    def _build_single_word_query(self, limit: int) -> SearchQueryResult:
-        """Build query for single-word search.
+        Both phrase search and single-word search produce the same SQL:
+        a LIKE match against title and content columns.
 
         Args:
             limit: Maximum number of results
@@ -197,11 +174,11 @@ class SearchQueryBuilder:
             raise ValueError("Search query cannot be empty")
 
         if self.is_phrase_search:
-            return self._build_phrase_query(limit)
+            return self._build_single_term_query(limit)
 
         # Word-based search
         if len(self._words) <= 1:
-            return self._build_single_word_query(limit)
+            return self._build_single_term_query(limit)
 
         return self._build_multi_word_query(limit)
 

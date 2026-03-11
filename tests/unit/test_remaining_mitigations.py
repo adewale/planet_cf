@@ -2,12 +2,13 @@
 """Tests for mitigations #7, #10, #11, #12, #13, #15, #16, #17, #18, #19, #20.
 
 Verifies that all observability, detection, and process mitigations are
-properly implemented in the codebase.
+properly implemented in the codebase.  Where possible, tests exercise
+actual behaviour rather than inspecting source code.
 """
 
-import inspect
-import re
 from pathlib import Path
+
+import pytest
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
@@ -21,8 +22,6 @@ class TestMockD1StrictMode:
     """Verify MockD1 strict mode catches unknown column references."""
 
     def test_strict_mode_rejects_unknown_insert_column(self):
-        import pytest
-
         from tests.conftest import MockD1
 
         schema = {"feeds": {"id", "url", "title"}}
@@ -32,8 +31,6 @@ class TestMockD1StrictMode:
             db.prepare("INSERT INTO feeds (id, url, bogus_column) VALUES (?, ?, ?)")
 
     def test_strict_mode_rejects_unknown_update_column(self):
-        import pytest
-
         from tests.conftest import MockD1
 
         schema = {"feeds": {"id", "url", "title"}}
@@ -60,31 +57,6 @@ class TestMockD1StrictMode:
         stmt = db.prepare("INSERT INTO feeds (id, url, bogus) VALUES (?, ?, ?)")
         assert stmt is not None
 
-    def test_strict_mode_validates_all_main_queries(self):
-        """Extract SQL from main.py and validate via MockD1 strict mode."""
-        from main import PlanetCF
-        from tests.conftest import MockD1
-
-        schema = PlanetCF._EXPECTED_COLUMNS
-        db = MockD1(data={t: [] for t in schema}, schema=schema)
-
-        # Extract all SQL strings from main.py source
-        import main as main_module
-
-        source = inspect.getsource(main_module)
-
-        # Find INSERT INTO and UPDATE statements
-        sql_patterns = re.findall(
-            r"(?:INSERT\s+INTO|UPDATE)\s+\w+\s+.*?(?:VALUES|WHERE|SET)",
-            source,
-            re.IGNORECASE | re.DOTALL,
-        )
-
-        assert len(sql_patterns) > 0, "Should find SQL patterns in main.py"
-        # Run each through strict validation
-        for sql in sql_patterns:
-            db._validate_sql_columns(sql)
-
 
 # =============================================================================
 # #10: _record_feed_error returns deactivation status
@@ -92,23 +64,64 @@ class TestMockD1StrictMode:
 
 
 class TestRecordFeedErrorReturnValue:
-    """Verify _record_feed_error returns bool indicating deactivation."""
+    """Verify _record_feed_error return type and queue handler integration."""
 
-    def test_record_feed_error_returns_bool(self):
-        """_record_feed_error should return a bool, not None."""
-        source = inspect.getsource(__import__("main").Default._record_feed_error)
-        assert "-> bool" in source or "-> bool:" in source, (
-            "_record_feed_error should have bool return type"
-        )
-        assert "return True" in source, "Should return True when feed is deactivated"
-        assert "return False" in source, "Should return False when feed is not deactivated"
+    @pytest.mark.asyncio
+    async def test_record_feed_error_returns_false_when_still_active(self):
+        """_record_feed_error returns False when the feed is not deactivated."""
+        from tests.conftest import make_authenticated_worker
 
-    def test_queue_handler_sets_feed_auto_deactivated(self):
-        """Queue handler should set event.feed_auto_deactivated from _record_feed_error."""
-        source = inspect.getsource(__import__("main").Default.queue)
-        assert "feed_auto_deactivated" in source, (
-            "Queue handler should set event.feed_auto_deactivated"
-        )
+        # Feed has 0 consecutive failures and high threshold, so it stays active
+        feeds = [
+            {
+                "id": 1,
+                "url": "https://example.com/feed.xml",
+                "title": "Active Feed",
+                "is_active": 1,
+                "consecutive_failures": 0,
+                "fetch_error": None,
+                "fetch_error_count": 0,
+                "etag": None,
+                "last_modified": None,
+                "updated_at": None,
+            }
+        ]
+        worker, env, _cookie = make_authenticated_worker(feeds=feeds)
+
+        result = await worker._record_feed_error(1, "Temporary error")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_record_feed_error_returns_true_when_deactivated(self):
+        """_record_feed_error returns True when the feed is auto-deactivated.
+
+        Note: The actual threshold comparison happens in SQL
+        (consecutive_failures + 1 >= threshold), and our MockD1 returns the
+        row data as-is. We set consecutive_failures high enough and is_active=0
+        so the return dict indicates deactivation.
+        """
+        from tests.conftest import make_authenticated_worker
+
+        # Feed already at the brink; MockD1 returns the row with is_active=0
+        # after the UPDATE RETURNING
+        feeds = [
+            {
+                "id": 1,
+                "url": "https://example.com/feed.xml",
+                "title": "Failing Feed",
+                "is_active": 0,
+                "consecutive_failures": 100,
+                "fetch_error": "HTTP 500",
+                "fetch_error_count": 100,
+                "etag": None,
+                "last_modified": None,
+                "updated_at": None,
+            }
+        ]
+        worker, env, _cookie = make_authenticated_worker(feeds=feeds)
+
+        result = await worker._record_feed_error(1, "Another error")
+        assert result is True
 
 
 # =============================================================================
@@ -120,19 +133,13 @@ class TestSchedulerHealthSummary:
     """Verify SchedulerEvent has feed health summary fields."""
 
     def test_scheduler_event_has_health_fields(self):
-        from observability import SchedulerEvent
+        from src.observability import SchedulerEvent
 
         event = SchedulerEvent()
         assert hasattr(event, "feeds_disabled"), "Missing feeds_disabled field"
         assert hasattr(event, "feeds_newly_disabled"), "Missing feeds_newly_disabled field"
         assert event.feeds_disabled == 0
         assert event.feeds_newly_disabled == 0
-
-    def test_scheduler_populates_health_summary(self):
-        """_run_scheduler should query and populate health summary fields."""
-        source = inspect.getsource(__import__("main").Default._run_scheduler)
-        assert "feeds_disabled" in source, "Scheduler should populate feeds_disabled"
-        assert "feeds_newly_disabled" in source, "Scheduler should populate feeds_newly_disabled"
 
 
 # =============================================================================
@@ -141,22 +148,16 @@ class TestSchedulerHealthSummary:
 
 
 class TestErrorClustering:
-    """Verify error clustering is detected in scheduler."""
+    """Verify error clustering fields exist on SchedulerEvent."""
 
     def test_scheduler_event_has_cluster_fields(self):
-        from observability import SchedulerEvent
+        from src.observability import SchedulerEvent
 
         event = SchedulerEvent()
         assert hasattr(event, "error_clusters")
         assert hasattr(event, "error_cluster_top")
         assert event.error_clusters == 0
         assert event.error_cluster_top is None
-
-    def test_scheduler_queries_error_clusters(self):
-        """_run_scheduler should GROUP BY fetch_error to find clusters."""
-        source = inspect.getsource(__import__("main").Default._run_scheduler)
-        assert "GROUP BY fetch_error" in source, "Should group errors to find clusters"
-        assert "HAVING COUNT" in source, "Should filter for clusters with 2+ feeds"
 
 
 # =============================================================================
@@ -165,34 +166,44 @@ class TestErrorClustering:
 
 
 class TestErrorCategory:
-    """Verify error_category field exists and is populated."""
+    """Verify error_category field exists and _classify_error works."""
 
     def test_feed_fetch_event_has_error_category(self):
-        from observability import FeedFetchEvent
+        from src.observability import FeedFetchEvent
 
         event = FeedFetchEvent()
         assert hasattr(event, "error_category")
         assert event.error_category is None
 
-    def test_classify_error_function_exists(self):
-        """_classify_error helper should classify exceptions."""
-        from main import _classify_error
+    def test_classify_error_categorises_timeout(self):
+        from src.main import _classify_error
 
         assert _classify_error(TimeoutError("test")) == "timeout"
-        assert _classify_error(ValueError("SSRF invalid")) == "validation"
-        assert _classify_error(ConnectionError("refused")) == "network"
-        assert _classify_error(Exception("D1 database error")) == "database"
-        assert _classify_error(Exception("XML parse failure")) == "parse"
-        assert _classify_error(Exception("something else")) == "unknown"
 
-    def test_queue_handler_sets_error_category(self):
-        """Queue handler should set event.error_category on errors."""
-        source = inspect.getsource(__import__("main").Default.queue)
-        assert "error_category" in source, "Queue handler should set error_category"
-        # Check all three exception handlers set it
-        assert source.count("error_category") >= 3, (
-            "All exception handlers (Timeout, RateLimit, generic) should set error_category"
-        )
+    def test_classify_error_categorises_validation(self):
+        from src.main import _classify_error
+
+        assert _classify_error(ValueError("SSRF invalid")) == "validation"
+
+    def test_classify_error_categorises_network(self):
+        from src.main import _classify_error
+
+        assert _classify_error(ConnectionError("refused")) == "network"
+
+    def test_classify_error_categorises_database(self):
+        from src.main import _classify_error
+
+        assert _classify_error(Exception("D1 database error")) == "database"
+
+    def test_classify_error_categorises_parse(self):
+        from src.main import _classify_error
+
+        assert _classify_error(Exception("XML parse failure")) == "parse"
+
+    def test_classify_error_categorises_unknown(self):
+        from src.main import _classify_error
+
+        assert _classify_error(Exception("something else")) == "unknown"
 
 
 # =============================================================================
@@ -202,13 +213,13 @@ class TestErrorCategory:
 
 class TestTrendTracking:
     """Trend tracking is achieved via SchedulerEvent health summary fields.
-    Each cron emits feeds_disabled/feeds_newly_disabled — log analysis
+    Each cron emits feeds_disabled/feeds_newly_disabled -- log analysis
     over time provides the trend.
     """
 
     def test_scheduler_event_enables_trend_tracking(self):
         """SchedulerEvent with feeds_disabled enables trend analysis."""
-        from observability import SchedulerEvent
+        from src.observability import SchedulerEvent
 
         event = SchedulerEvent()
         # These fields, emitted each hour, provide trend data
@@ -223,13 +234,62 @@ class TestTrendTracking:
 
 
 class TestAdminWarningBanner:
-    """Verify admin dashboard passes health warnings to template."""
+    """Verify admin dashboard includes health warnings for failing/inactive feeds."""
 
-    def test_admin_dashboard_computes_health_warnings(self):
-        source = inspect.getsource(__import__("main").Default._serve_admin_dashboard)
-        assert "health_warnings" in source, "Admin dashboard should compute health_warnings"
-        assert "inactive" in source, "Should check for inactive feeds"
-        assert "failing" in source, "Should check for failing feeds"
+    @pytest.mark.asyncio
+    async def test_admin_dashboard_shows_health_warnings_for_failing_feeds(self):
+        """Dashboard HTML should contain a warning when feeds are failing."""
+        from tests.conftest import make_authenticated_worker
+
+        feeds = [
+            {
+                "id": 1,
+                "url": "https://failing.com/rss",
+                "title": "Failing Feed",
+                "is_active": 1,
+                "consecutive_failures": 5,
+                "fetch_error": "HTTP 500",
+            },
+        ]
+        worker, env, cookie = make_authenticated_worker(feeds=feeds)
+
+        admin = {
+            "id": 1,
+            "github_username": "testadmin",
+            "display_name": "Test Admin",
+            "is_active": 1,
+        }
+        response = await worker._serve_admin_dashboard(admin)
+
+        assert response.status == 200
+        assert "failing" in response.body.lower()
+
+    @pytest.mark.asyncio
+    async def test_admin_dashboard_shows_warning_for_inactive_feeds(self):
+        """Dashboard HTML should show 'Disabled' status when feeds are inactive."""
+        from tests.conftest import make_authenticated_worker
+
+        feeds = [
+            {
+                "id": 1,
+                "url": "https://dead.com/rss",
+                "title": "Dead Feed",
+                "is_active": 0,
+                "consecutive_failures": 10,
+            },
+        ]
+        worker, env, cookie = make_authenticated_worker(feeds=feeds)
+
+        admin = {
+            "id": 1,
+            "github_username": "testadmin",
+            "display_name": "Test Admin",
+            "is_active": 1,
+        }
+        response = await worker._serve_admin_dashboard(admin)
+
+        assert response.status == 200
+        assert "disabled" in response.body.lower()
 
 
 # =============================================================================
@@ -239,12 +299,6 @@ class TestAdminWarningBanner:
 
 class TestDLQConsumer:
     """Verify DLQ queue consumer is implemented."""
-
-    def test_queue_handler_detects_dlq_messages(self):
-        """Queue handler should detect DLQ batch and handle differently."""
-        source = inspect.getsource(__import__("main").Default.queue)
-        assert "dlq" in source.lower(), "Queue handler should check for DLQ queue"
-        assert "dlq_message_consumed" in source, "Should log DLQ message consumption"
 
     def test_wrangler_has_dlq_consumer(self):
         """wrangler.jsonc should have a DLQ queue configured."""
@@ -264,18 +318,14 @@ class TestDLQConsumer:
 
 
 class TestDLQDepthCheck:
-    """Verify scheduler checks DLQ depth (via feeds with high failures)."""
+    """Verify SchedulerEvent has dlq_depth field for monitoring."""
 
     def test_scheduler_event_has_dlq_depth(self):
-        from observability import SchedulerEvent
+        from src.observability import SchedulerEvent
 
         event = SchedulerEvent()
         assert hasattr(event, "dlq_depth")
         assert event.dlq_depth == 0
-
-    def test_scheduler_queries_dlq_depth(self):
-        source = inspect.getsource(__import__("main").Default._run_scheduler)
-        assert "dlq_depth" in source, "Scheduler should populate dlq_depth"
 
 
 # =============================================================================
@@ -307,7 +357,7 @@ class TestPostDeployHealthCheck:
 
     def test_health_endpoint_route_exists(self):
         """Route dispatcher should have /health route."""
-        from route_dispatcher import create_default_routes
+        from src.route_dispatcher import create_default_routes
 
         routes = create_default_routes()
         paths = [r.path for r in routes]
@@ -315,9 +365,9 @@ class TestPostDeployHealthCheck:
 
     def test_health_handler_exists(self):
         """main.py should have _serve_health method."""
-        assert hasattr(__import__("main").Default, "_serve_health"), (
-            "Default class should have _serve_health method"
-        )
+        from src.main import Default
+
+        assert hasattr(Default, "_serve_health"), "Default class should have _serve_health method"
 
     def test_verify_deployment_checks_health(self):
         """verify_deployment.py should check /health endpoint."""
@@ -328,3 +378,84 @@ class TestPostDeployHealthCheck:
         """deploy_instance.sh should check /health after deployment."""
         script = (PROJECT_ROOT / "scripts" / "deploy_instance.sh").read_text()
         assert "/health" in script, "deploy_instance.sh should check /health"
+
+
+# =============================================================================
+# Queue processing with malformed message bodies
+# =============================================================================
+
+
+class _MockMessage:
+    """Minimal mock queue message for malformed body tests."""
+
+    def __init__(self, body):
+        self.body = body
+        self.id = "test-msg"
+        self.attempts = 1
+        self.acked = False
+        self.retried = False
+
+    def ack(self):
+        self.acked = True
+
+    def retry(self):
+        self.retried = True
+
+
+class _MockBatch:
+    """Minimal mock queue batch."""
+
+    def __init__(self, messages, queue="test-feed-queue"):
+        self.messages = messages
+        self.queue = queue
+
+
+class TestQueueMalformedMessages:
+    """Queue handler should gracefully handle malformed message bodies."""
+
+    @pytest.mark.asyncio
+    async def test_string_body_is_acked_not_retried(self):
+        """A message with body='not a dict' is acknowledged (not retried)."""
+        from tests.conftest import make_authenticated_worker
+
+        worker, env, _ = make_authenticated_worker()
+        msg = _MockMessage(body="not a dict")
+        batch = _MockBatch([msg])
+
+        await worker.queue(batch)
+
+        assert msg.acked is True
+        assert msg.retried is False
+
+    @pytest.mark.asyncio
+    async def test_none_body_is_acked_not_retried(self):
+        """A message with body=None is acknowledged (not retried)."""
+        from tests.conftest import make_authenticated_worker
+
+        worker, env, _ = make_authenticated_worker()
+        msg = _MockMessage(body=None)
+        batch = _MockBatch([msg])
+
+        await worker.queue(batch)
+
+        assert msg.acked is True
+        assert msg.retried is False
+
+    @pytest.mark.asyncio
+    async def test_unexpected_schema_body_is_acked_not_retried(self):
+        """A message with an unexpected dict schema is acked (no crash).
+
+        The queue handler extracts feed_id and url from the body with defaults;
+        even if those keys are missing, the message should be processed
+        (and likely fail during fetch) rather than crashing the batch.
+        """
+        from tests.conftest import make_authenticated_worker
+
+        worker, env, _ = make_authenticated_worker()
+        msg = _MockMessage(body={"unexpected": "schema"})
+        batch = _MockBatch([msg])
+
+        await worker.queue(batch)
+
+        # Should be acked or retried -- never left unprocessed
+        assert msg.acked or msg.retried

@@ -10,7 +10,7 @@ from typing import Any
 
 from config import MAX_OPML_FEEDS
 from templates import TEMPLATE_ADMIN_ERROR, render_template
-from utils import html_response, log_op, truncate_error
+from utils import log_op, truncate_error
 
 # =============================================================================
 # Admin Response Helpers
@@ -38,6 +38,8 @@ def admin_error_response(
     Returns:
         Response with rendered error page.
     """
+    from workers import Response
+
     html = render_template(
         TEMPLATE_ADMIN_ERROR,
         theme=theme,
@@ -46,7 +48,14 @@ def admin_error_response(
         message=message,
         back_url=back_url,
     )
-    return html_response(html, cache_max_age=0)
+    return Response(
+        html,
+        status=status,
+        headers={
+            "Content-Type": "text/html; charset=utf-8",
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 # =============================================================================

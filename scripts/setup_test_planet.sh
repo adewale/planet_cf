@@ -17,7 +17,7 @@
 #   npx wrangler dev --remote --config examples/test-planet/wrangler.jsonc
 #   RUN_E2E_TESTS=1 uv run pytest tests/e2e/ -v
 
-set -e
+set -euo pipefail
 
 # Colors
 RED='\033[0;31m'
@@ -135,7 +135,7 @@ if [[ "$SKIP_REINDEX" == "false" && "$LOCAL" == "false" && "$SEED_ONLY" == "fals
     sleep 5
 
     # Get the deployed URL from wrangler
-    WORKER_URL=$(npx wrangler deployments list --config "$CONFIG_FILE" 2>&1 | grep -oP 'https://[^\s]+\.workers\.dev' | head -1 || true)
+    WORKER_URL=$(npx wrangler deployments list --config "$CONFIG_FILE" 2>&1 | grep -oE 'https://[^[:space:]]+\.workers\.dev' | head -1) || true
 
     if [[ -n "$WORKER_URL" ]]; then
         echo -e "  Worker URL: ${WORKER_URL}"

@@ -240,20 +240,20 @@ class TestAdminErrorResponse:
     """Tests for admin error response helper."""
 
     def test_returns_html_response(self):
-        """Returns an HTML response with the rendered error template."""
+        """Returns an HTML response with the rendered error template and correct status."""
         planet = {"name": "Test Planet", "description": "Test", "link": "https://test.com"}
         response = admin_error_response(planet, "Something went wrong")
 
-        assert response.status == 200
+        assert response.status == 400  # Default status for admin errors
         assert "text/html" in response.headers.get("Content-Type", "")
 
     def test_no_cache(self):
-        """Response has cache_max_age=0 (no caching)."""
+        """Response has no-store cache control (no caching)."""
         planet = {"name": "Test", "description": "", "link": ""}
         response = admin_error_response(planet, "Error")
 
         cache_control = response.headers.get("Cache-Control", "")
-        assert "max-age=0" in cache_control
+        assert "no-store" in cache_control
 
 
 # =============================================================================

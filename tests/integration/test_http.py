@@ -313,8 +313,8 @@ async def test_admin_add_feed_rejects_unsafe_url(mock_env_with_admins):
 
     response = await worker.fetch(request)
 
-    # Should return error page (200 with error content), not redirect
-    assert response.status == 200
+    # Should return error page (400 with error content), not redirect
+    assert response.status == 400
     assert "Invalid URL" in response.body or "unsafe" in response.body.lower()
 
 
@@ -338,8 +338,8 @@ async def test_admin_add_feed_requires_url(mock_env_with_admins):
 
     response = await worker.fetch(request)
 
-    # Should return error page (200 with error content)
-    assert response.status == 200
+    # Should return error page (400 with error content)
+    assert response.status == 400
     assert "URL Required" in response.body or "provide a feed URL" in response.body
 
 

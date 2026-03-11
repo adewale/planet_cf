@@ -131,6 +131,13 @@ class PlanetConverter:
         self.errors: list[str] = []
         self.warnings: list[str] = []
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.session.close()
+        return False
+
     def convert(self) -> ConversionResult:
         """Main conversion process."""
         print(f"Converting {self.source_url} to PlanetCF instance '{self.name}'")
@@ -699,13 +706,12 @@ Lessons Applied:
         sys.exit(1)
 
     # Run conversion
-    converter = PlanetConverter(
+    with PlanetConverter(
         source_url=args.url,
         name=args.name,
         output_dir=Path(args.output),
-    )
-
-    result = converter.convert()
+    ) as converter:
+        result = converter.convert()
 
     # Print summary
     print("\n" + "=" * 60)

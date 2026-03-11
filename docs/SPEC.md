@@ -1,7 +1,7 @@
 # Planet CF Specification
 
 **Version:** 1.0 Draft
-**Status:** Proposal
+**Status:** Historical design document — implementation has diverged in places. See source code for current behavior.
 **Domain:** https://www.planetcloudflare.dev
 
 ## 1. Overview
@@ -723,6 +723,8 @@ from typing import Protocol
 
 class ContentSanitizer(Protocol):
     """Protocol for HTML sanitization - enables testing with mocks."""
+    # NOTE: This Protocol was proposed but not implemented.
+    # The actual code uses BleachSanitizer directly without a Protocol base.
     def clean(self, html: str) -> str: ...
 
 class BleachSanitizer:
@@ -2117,6 +2119,10 @@ ON CONFLICT(github_username) DO NOTHING;
 | GET | `/admin/dlq` | View dead letter queue |
 | POST | `/admin/dlq/:id/retry` | Retry failed feed |
 | GET | `/admin/audit` | View audit log |
+| POST | `/admin/feeds/:id/fetch-now` | Synchronously fetch a single feed (bypasses queue) |
+| GET | `/admin/health` | Admin health check endpoint |
+| POST | `/admin/reindex` | Rebuild Vectorize search index for all entries |
+| POST | `/admin/logout` | End admin session |
 
 ### 7.4 Admin Dashboard Features
 
@@ -2254,6 +2260,8 @@ async def fetch_with_rate_limit_respect(url: str, headers: dict) -> httpx.Respon
 ```
 
 #### 7.3.3 Exponential Backoff with Jitter
+
+> **Note:** The `calculate_backoff` function below was proposed but not implemented. Retry backoff is handled by Cloudflare Queues' built-in retry configuration.
 
 For transient failures, use exponential backoff with ±10% jitter to prevent thundering herd:
 

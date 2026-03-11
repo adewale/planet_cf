@@ -416,15 +416,15 @@ class TestFieldConversionEdgeCases:
         assert result["is_healthy"] is not None
 
     def test_empty_strings_handled_correctly(self):
-        """Empty string fields should be preserved as-is or converted to None based on field type."""
+        """Empty string fields should be preserved as empty strings by _safe_str."""
         row = {
             "id": 1,
             "url": "https://example.com/feed.xml",
-            "title": "",  # Empty title should become None after _safe_str
+            "title": "",  # Empty title should be preserved as "" by _safe_str
         }
         result = feed_row_from_js(row)
-        # _safe_str converts empty string to None
-        assert result["title"] is None
+        # _safe_str preserves empty strings (returns "" not None)
+        assert result["title"] == ""
 
     def test_batch_conversion_preserves_order(self):
         """feed_rows_from_d1 preserves the order of rows."""

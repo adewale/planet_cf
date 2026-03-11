@@ -2,16 +2,20 @@
 """Type definitions for Planet CF."""
 
 import json
+import re
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from enum import Enum, auto
 from typing import Literal, NewType, NotRequired, Self, TypedDict
+
+import bleach
 
 # =============================================================================
 # Semantic Type Aliases
 # =============================================================================
 
 # Semantic IDs - prevent mixing up feed_id and entry_id
+# Used by tests only — kept for type safety and future production use
 FeedId = NewType("FeedId", int)
 EntryId = NewType("EntryId", int)
 AdminId = NewType("AdminId", int)
@@ -35,6 +39,7 @@ ContentType = Literal["html", "atom", "rss", "opml"]
 # =============================================================================
 
 
+# Used by tests only — kept for queue message serialization and future production use
 @dataclass(frozen=True, slots=True)
 class FeedJob:
     """Message sent to the feed queue. Immutable."""
@@ -84,6 +89,7 @@ class Session:
         return cls(**json.loads(data))
 
 
+# Used by tests only — kept for feed parsing normalization and future production use
 @dataclass(frozen=True, slots=True)
 class ParsedEntry:
     """Normalized entry from feedparser. Handles the many edge cases."""
@@ -218,9 +224,11 @@ class Err[E]:
 
 
 # Result is either Ok or Err
+# Defined for future use; not currently used in production code.
 type Result[T, E] = Ok[T] | Err[E]
 
 
+# Used by tests only — kept for feed error classification and future production use
 class FetchError(Enum):
     """Possible errors when fetching a feed."""
 
@@ -251,6 +259,13 @@ class FetchError(Enum):
 # =============================================================================
 # HTML Sanitization
 # =============================================================================
+
+# Pre-compiled regex patterns for BleachSanitizer.clean()
+_RE_SCRIPT_TAG = re.compile(r"<script[^>]*>.*?</script>", re.DOTALL | re.IGNORECASE)
+_RE_STYLE_TAG = re.compile(r"<style[^>]*>.*?</style>", re.DOTALL | re.IGNORECASE)
+_RE_EXTERNAL_LINK = re.compile(r'<a\s+href="(https?://[^"]+)"([^>]*)>', re.IGNORECASE)
+_RE_JAVASCRIPT_HREF = re.compile(r'\s*href="[^"]*javascript:[^"]*"', re.IGNORECASE)
+_RE_IMG_TAG = re.compile(r"<img\s+[^>]*>", re.IGNORECASE)
 
 
 class BleachSanitizer:
@@ -309,15 +324,11 @@ class BleachSanitizer:
 
     def clean(self, html: str) -> str:
         """Sanitize HTML content and return safe HTML."""
-        import re
-
-        import bleach
-
         # Pre-process: Remove script and style tags with their content
         # These tags' content should never appear in output, unlike other tags
         # where we might want to preserve text but strip the tag.
-        html = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL | re.IGNORECASE)
-        html = re.sub(r"<style[^>]*>.*?</style>", "", html, flags=re.DOTALL | re.IGNORECASE)
+        html = _RE_SCRIPT_TAG.sub("", html)
+        html = _RE_STYLE_TAG.sub("", html)
 
         # Clean HTML with bleach
         cleaned = bleach.clean(
@@ -331,21 +342,14 @@ class BleachSanitizer:
         # Post-process: Add security attributes to links and enhancements to images
         # Use regex since bleach callbacks don't work the way we need
         # Add rel="noopener noreferrer" and target="_blank" to external links
-        cleaned = re.sub(
-            r'<a\s+href="(https?://[^"]+)"([^>]*)>',
+        cleaned = _RE_EXTERNAL_LINK.sub(
             r'<a href="\1" target="_blank" rel="noopener noreferrer"\2>',
             cleaned,
-            flags=re.IGNORECASE,
         )
 
         # Strip href from links containing javascript: anywhere in the URL
         # (e.g., href="https://example.com/javascript:void(0);")
-        cleaned = re.sub(
-            r'\s*href="[^"]*javascript:[^"]*"',
-            "",
-            cleaned,
-            flags=re.IGNORECASE,
-        )
+        cleaned = _RE_JAVASCRIPT_HREF.sub("", cleaned)
 
         # Add loading="lazy" to images and ensure alt exists
         def add_img_attrs(match: re.Match[str]) -> str:
@@ -358,7 +362,7 @@ class BleachSanitizer:
                 tag = tag.replace("<img ", '<img alt="" ')
             return tag
 
-        cleaned = re.sub(r"<img\s+[^>]*>", add_img_attrs, cleaned, flags=re.IGNORECASE)
+        cleaned = _RE_IMG_TAG.sub(add_img_attrs, cleaned)
 
         return cleaned
 

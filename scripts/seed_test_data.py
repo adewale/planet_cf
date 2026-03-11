@@ -24,6 +24,7 @@ Usage:
 """
 
 import argparse
+import atexit
 import base64
 import hashlib
 import hmac
@@ -37,6 +38,7 @@ from pathlib import Path
 
 # Module-level connection for efficient SQL quoting
 _quote_conn = sqlite3.connect(":memory:")
+atexit.register(_quote_conn.close)
 
 # Default database name (overridden by --db-name)
 DEFAULT_DB_NAME = "test-planet-db"
@@ -178,13 +180,12 @@ def trigger_reindex(base_url: str, session_secret: str) -> bool:
 
     print(f"Triggering reindex at {base_url}/admin/reindex...")
     try:
-        client = httpx.Client(base_url=base_url, timeout=120.0)
-        response = client.post(
-            "/admin/reindex",
-            cookies={"session": session_value},
-            follow_redirects=True,
-        )
-        client.close()
+        with httpx.Client(base_url=base_url, timeout=120.0) as client:
+            response = client.post(
+                "/admin/reindex",
+                cookies={"session": session_value},
+                follow_redirects=True,
+            )
 
         if response.status_code == 200:
             print("  [OK] Reindex triggered successfully")

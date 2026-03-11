@@ -138,6 +138,19 @@ def xml_escape(text: str) -> str:
 # Content Processing
 # =============================================================================
 
+# Pre-compiled regex for detecting duplicate title headings at the start of content.
+# Matches optional date prefix, optional reading time, then an <h1> or <h2> heading
+# (possibly wrapped in a link) whose text we compare against the entry title.
+_RE_LEADING_HEADING = re.compile(
+    r"^(\s*(?:[A-Za-z]+\s+\d{1,2},?\s+\d{4}\s*)?(?:/\s*\d+\s*min\s*read\s*)?\s*)"
+    r"<(h[12])(?:\s[^>]*)?>\s*"
+    r"(?:(<a[^>]*>)\s*)?"
+    r"([^<]+?)"
+    r"\s*(?:(</a>)\s*)?"
+    r"</\2>",
+    re.IGNORECASE,
+)
+
 
 def normalize_entry_content(content: str, title: str | None) -> str:
     """Normalize entry content for display by removing duplicate title headings.
@@ -153,16 +166,7 @@ def normalize_entry_content(content: str, title: str | None) -> str:
     title_normalized = title.strip().lower()
     search_content = content[:1000] if len(content) > 1000 else content
 
-    pattern = (
-        r"^(\s*(?:[A-Za-z]+\s+\d{1,2},?\s+\d{4}\s*)?(?:/\s*\d+\s*min\s*read\s*)?\s*)"
-        r"<(h[12])(?:\s[^>]*)?>\s*"
-        r"(?:(<a[^>]*>)\s*)?"
-        r"([^<]+?)"
-        r"\s*(?:(</a>)\s*)?"
-        r"</\2>"
-    )
-
-    match = re.match(pattern, search_content, re.IGNORECASE)
+    match = _RE_LEADING_HEADING.match(search_content)
 
     if match:
         heading_text = match.group(4).strip().lower()

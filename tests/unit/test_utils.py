@@ -217,6 +217,14 @@ class TestGetDisplayAuthor:
         """Both missing returns 'Unknown'."""
         assert get_display_author(None, None) == "Unknown"
 
+    def test_returns_unknown_when_email_and_no_feed_title(self):
+        """Returns 'Unknown' when author is email and feed_title is None."""
+        assert get_display_author("user@domain.com", None) == "Unknown"
+
+    def test_allows_at_sign_in_name(self):
+        """Filters names containing @ (they look like emails)."""
+        assert get_display_author("John @home", "Blog Title") == "Blog Title"
+
 
 # =============================================================================
 # normalize_entry_content
@@ -252,6 +260,55 @@ class TestNormalizeEntryContent:
         """Content without headings is returned unchanged."""
         content = "<p>Just text</p>"
         assert normalize_entry_content(content, "Title") == content
+
+    def test_strips_h1_with_whitespace_padding(self):
+        """Strips h1 with whitespace padding inside tags."""
+        content = "  <h1> What even are Cloudflare Durable Objects? </h1> \n\nNov 4, 2025"
+        title = "What even are Cloudflare Durable Objects?"
+        result = normalize_entry_content(content, title)
+        assert "<h1>" not in result
+        assert "Nov 4, 2025" in result
+
+    def test_strips_h1_with_metadata_before(self):
+        """Strips h1 when metadata (date/read time) appears before it."""
+        content = "January 15, 2026  / 9 min read   \n\n <h1> Open Graph Images in Astro: Build-Time vs Runtime </h1>   \n<p>Content here</p>"
+        title = "Open Graph Images in Astro: Build-Time vs Runtime"
+        result = normalize_entry_content(content, title)
+        assert "<h1>" not in result
+        assert "January 15, 2026" not in result
+        assert "<p>Content here</p>" in result
+
+    def test_case_insensitive_matching(self):
+        """Matches title case-insensitively."""
+        content = "<h1>THE CONTEXT IS THE WORK</h1><p>Content</p>"
+        title = "the context is the work"
+        result = normalize_entry_content(content, title)
+        assert "<h1>" not in result
+        assert "<p>Content</p>" in result
+
+    def test_preserves_h1_in_middle_of_content(self):
+        """Preserves h1 that appears in middle of content, not at start."""
+        content = "<p>Intro paragraph</p><h1>My Title</h1><p>More content</p>"
+        title = "My Title"
+        result = normalize_entry_content(content, title)
+        assert "<h1>My Title</h1>" in result
+        assert result == content
+
+    def test_strips_h2_matching_title(self):
+        """Strips h2 when it matches title."""
+        content = "<h2>My Post Title</h2><p>Content here</p>"
+        title = "My Post Title"
+        result = normalize_entry_content(content, title)
+        assert "<h2>" not in result
+        assert "<p>Content here</p>" in result
+
+    def test_strips_h1_with_link_wrapper(self):
+        """Strips h1 containing a link-wrapped title."""
+        content = '<h1><a href="https://example.com/post">My Post Title</a></h1><p>Content</p>'
+        title = "My Post Title"
+        result = normalize_entry_content(content, title)
+        assert "<h1>" not in result
+        assert "<p>Content</p>" in result
 
 
 # =============================================================================
@@ -300,6 +357,19 @@ class TestParseIsoDatetime:
         assert result is not None
         delta = datetime.now(UTC) - result
         assert delta is not None
+
+    def test_result_is_always_timezone_aware(self):
+        """All valid inputs produce timezone-aware datetimes."""
+        for s in ["2026-01-17T12:30:00Z", "2026-01-17T12:30:00+00:00", "2026-01-17T12:30:00"]:
+            result = parse_iso_datetime(s)
+            assert result is not None
+            assert result.tzinfo is not None
+
+    def test_parses_microseconds(self):
+        """Parses ISO datetime with microseconds."""
+        result = parse_iso_datetime("2026-01-17T12:30:00.123456Z")
+        assert result is not None
+        assert result.microsecond == 123456
 
 
 # =============================================================================

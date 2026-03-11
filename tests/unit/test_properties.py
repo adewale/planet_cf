@@ -968,3 +968,191 @@ class TestSearchQueryProperties2:
         builder = SearchQueryBuilder(query=query, max_words=10)
         result = builder.build(limit=50)
         assert isinstance(result.params, tuple)
+
+
+# =============================================================================
+# xml_escape Properties
+# =============================================================================
+
+
+class TestXmlEscapeProperties:
+    """Property-based tests for xml_escape from src/utils.py."""
+
+    @given(text=st.text(max_size=200))
+    @settings(max_examples=100)
+    def test_never_crashes(self, text):
+        """xml_escape never raises on arbitrary input."""
+        from src.utils import xml_escape
+
+        result = xml_escape(text)
+        assert isinstance(result, str)
+
+    @given(text=st.text(max_size=200))
+    @settings(max_examples=100)
+    def test_idempotent_on_safe_strings(self, text):
+        """Strings without &, <, > are returned unchanged."""
+        from src.utils import xml_escape
+
+        assume("&" not in text and "<" not in text and ">" not in text)
+        assert xml_escape(text) == text
+
+    @given(text=st.text(max_size=200))
+    @settings(max_examples=100)
+    def test_output_contains_no_raw_special_chars(self, text):
+        """Output never contains unescaped &, < or > (except as part of entities)."""
+        from src.utils import xml_escape
+
+        result = xml_escape(text)
+        # Remove all known entities, then check no raw & < > remain
+        cleaned = result.replace("&amp;", "").replace("&lt;", "").replace("&gt;", "")
+        assert "&" not in cleaned
+        assert "<" not in cleaned
+        assert ">" not in cleaned
+
+    @given(text=st.text(max_size=200))
+    @settings(max_examples=100)
+    def test_double_escape_is_stable(self, text):
+        """Escaping already-escaped text does not produce triple entities."""
+        from src.utils import xml_escape
+
+        once = xml_escape(text)
+        twice = xml_escape(once)
+        # Double-escaping should transform &amp; -> &amp;amp; etc.
+        # The important property: the result is still valid XML-escaped text.
+        assert isinstance(twice, str)
+
+    @given(text=st.text(min_size=1, max_size=200))
+    @settings(max_examples=100)
+    def test_preserves_length_or_increases(self, text):
+        """Escaped string is always >= original length (entities are longer)."""
+        from src.utils import xml_escape
+
+        assert len(xml_escape(text)) >= len(text)
+
+
+# =============================================================================
+# validate_feed_id Properties
+# =============================================================================
+
+
+class TestValidateFeedIdProperties:
+    """Property-based tests for validate_feed_id from src/utils.py."""
+
+    @given(value=st.integers(min_value=1, max_value=10**9))
+    @settings(max_examples=100)
+    def test_valid_positive_integers_accepted(self, value):
+        """String representations of positive integers are accepted."""
+        from src.utils import validate_feed_id
+
+        result = validate_feed_id(str(value))
+        assert result == value
+
+    @given(value=st.integers(max_value=0))
+    @settings(max_examples=50)
+    def test_zero_and_negative_rejected(self, value):
+        """Zero and negative numbers (as strings) return None."""
+        from src.utils import validate_feed_id
+
+        result = validate_feed_id(str(value))
+        assert result is None
+
+    @given(text=st.text(max_size=100))
+    @settings(max_examples=100)
+    def test_never_crashes(self, text):
+        """validate_feed_id never raises on arbitrary input."""
+        from src.utils import validate_feed_id
+
+        result = validate_feed_id(text)
+        assert result is None or isinstance(result, int)
+
+    @given(
+        text=st.text(
+            min_size=1,
+            max_size=50,
+            alphabet=st.characters(blacklist_categories=("N",)),
+        )
+    )
+    @settings(max_examples=50)
+    def test_non_numeric_strings_rejected(self, text):
+        """Strings without digits are always rejected."""
+        from src.utils import validate_feed_id
+
+        assume(not text.isdigit())
+        assert validate_feed_id(text) is None
+
+    def test_none_returns_none(self):
+        """None input returns None."""
+        from src.utils import validate_feed_id
+
+        assert validate_feed_id(None) is None
+
+    def test_empty_string_returns_none(self):
+        """Empty string returns None."""
+        from src.utils import validate_feed_id
+
+        assert validate_feed_id("") is None
+
+
+# =============================================================================
+# truncate_error Properties
+# =============================================================================
+
+
+class TestTruncateErrorProperties:
+    """Property-based tests for truncate_error from src/utils.py."""
+
+    @given(text=st.text(max_size=500))
+    @settings(max_examples=100)
+    def test_output_never_exceeds_max_length(self, text):
+        """Output is always <= ERROR_MESSAGE_MAX_LENGTH."""
+        from src.utils import ERROR_MESSAGE_MAX_LENGTH, truncate_error
+
+        result = truncate_error(text)
+        assert len(result) <= ERROR_MESSAGE_MAX_LENGTH
+
+    @given(text=st.text(max_size=500), max_len=st.integers(min_value=4, max_value=500))
+    @settings(max_examples=100)
+    def test_custom_max_length_respected(self, text, max_len):
+        """Custom max_length is always respected."""
+        from src.utils import truncate_error
+
+        result = truncate_error(text, max_length=max_len)
+        assert len(result) <= max_len
+
+    @given(text=st.text(max_size=100))
+    @settings(max_examples=100)
+    def test_short_strings_unchanged(self, text):
+        """Strings at or below the limit are returned unchanged."""
+        from src.utils import ERROR_MESSAGE_MAX_LENGTH, truncate_error
+
+        assume(len(text) <= ERROR_MESSAGE_MAX_LENGTH)
+        assert truncate_error(text) == text
+
+    @given(text=st.text(min_size=201, max_size=500))
+    @settings(max_examples=100)
+    def test_long_strings_end_with_ellipsis(self, text):
+        """Strings exceeding the limit end with '...'."""
+        from src.utils import truncate_error
+
+        result = truncate_error(text)
+        assert result.endswith("...")
+
+    @given(text=st.text(max_size=500))
+    @settings(max_examples=100)
+    def test_never_crashes(self, text):
+        """truncate_error never raises on arbitrary input."""
+        from src.utils import truncate_error
+
+        result = truncate_error(text)
+        assert isinstance(result, str)
+
+    @given(msg=st.text(min_size=1, max_size=200))
+    @settings(max_examples=50)
+    def test_works_with_exception_objects(self, msg):
+        """Works with Exception objects as well as strings."""
+        from src.utils import ERROR_MESSAGE_MAX_LENGTH, truncate_error
+
+        exc = ValueError(msg)
+        result = truncate_error(exc)
+        assert isinstance(result, str)
+        assert len(result) <= ERROR_MESSAGE_MAX_LENGTH

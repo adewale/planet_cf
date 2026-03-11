@@ -314,28 +314,10 @@ result = await env.AI.run(
 
 **Problem:** Feed content can contain XSS payloads.
 
-**Solution:** Always sanitize HTML before storage:
+**Solution:** Always sanitize HTML before storage using bleach. See `ALLOWED_TAGS` and `ALLOWED_ATTRS` in `src/models.py` for the current allowlists.
+
 ```python
 import bleach  # Safe HTML sanitizer
-
-ALLOWED_TAGS = [
-    "a", "abbr", "acronym", "b", "blockquote", "br", "code", "div", "em",
-    "figure", "figcaption", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i",
-    "img", "li", "ol", "p", "pre", "span", "strong", "table", "tbody", "td",
-    "th", "thead", "tr", "ul",
-]
-ALLOWED_ATTRS = {
-    "a": ["href", "title", "rel", "target"],
-    "img": ["src", "alt", "title", "width", "height", "loading"],
-    "abbr": ["title"],
-    "acronym": ["title"],
-    "code": ["class"],
-    "div": ["class"],
-    "figure": ["class"],
-    "figcaption": ["class"],
-    "pre": ["class", "data-language"],
-    "span": ["class"],
-}
 
 def sanitize(html):
     return bleach.clean(html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS, strip=True)

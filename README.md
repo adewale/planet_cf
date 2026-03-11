@@ -16,7 +16,7 @@ Planet CF is designed to "just work" with minimal configuration, inspired by Rog
 
 ### Content Display Fallback
 
-When there are no entries in the configured display range (e.g., last 7 days), the homepage automatically shows the **50 most recent entries** instead of an empty page.
+When there are no entries in the configured display range (e.g., last 7 days), the homepage automatically shows the **50 most recent entries** (`FALLBACK_ENTRIES_LIMIT`) instead of an empty page.
 
 | Setting | Default | Override |
 |---------|---------|----------|
@@ -62,9 +62,20 @@ All configuration values have sensible defaults so minimal setup works:
 | Planet name | "Planet CF" | `PLANET_NAME` |
 | Planet description | "Aggregated posts from Cloudflare employees and community" | `PLANET_DESCRIPTION` |
 | Theme | `default` | `THEME` |
-| Group by date | true | `GROUP_BY_DATE` |
 | Show admin link | true | `SHOW_ADMIN_LINK` |
-| Search enabled | true | `SEARCH_ENABLED` |
+
+### Instance Configuration
+
+| Setting | Default | Notes |
+|---------|---------|-------|
+| Instance mode | `full` | `INSTANCE_MODE` — `full` enables search/Vectorize; `lite` disables them |
+| Footer text | "Powered by Planet CF" | `FOOTER_TEXT` |
+| Planet URL | `https://www.planetcloudflare.dev` | `PLANET_URL` — used for RSS/Atom self-links |
+| Feed recovery | enabled | `FEED_RECOVERY_ENABLED` — auto-retry deactivated feeds |
+| Feed recovery limit | 2 per scheduler run | `FEED_RECOVERY_LIMIT` |
+| OAuth redirect URI | (auto-detected) | `OAUTH_REDIRECT_URI` — override for custom domains |
+| User agent template | (built-in) | `USER_AGENT_TEMPLATE` — supports `{name}`, `{url}`, `{email}` placeholders |
+| Deployment environment | (empty) | `DEPLOYMENT_ENVIRONMENT` — attached to observability events |
 
 ### Overriding Defaults
 
@@ -196,7 +207,9 @@ npx wrangler deploy
 | `/feed.rss` | RSS 2.0 feed |
 | `/feed.rss10` | RSS 1.0 (RDF) feed |
 | `/feeds.opml` | OPML export of all subscriptions |
-| `/search` | Semantic search |
+| `/foafroll.xml` | FOAF RDF feed (enabled per theme or via `ENABLE_FOAF`) |
+| `/search` | Semantic search (full mode only, controlled by `INSTANCE_MODE`) |
+| `/health` | Health check endpoint (used by deployment verification) |
 
 ### Admin Pages
 

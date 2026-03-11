@@ -20,7 +20,7 @@
 #   - Instance config created (wrangler.<instance-id>.jsonc)
 #   - GitHub OAuth app created (for GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET)
 
-set -e
+set -euo pipefail
 
 # Colors for output
 RED='\033[0;31m'
@@ -152,7 +152,7 @@ DB_NAME="${INSTANCE_ID}-db"
 if npx wrangler d1 info "$DB_NAME" &> /dev/null; then
     echo -e "  ${GREEN}Database already exists: ${DB_NAME}${NC}"
     # Try to extract the ID from info command
-    DB_ID=$(npx wrangler d1 info "$DB_NAME" 2>&1 | extract_uuid)
+    DB_ID=$(npx wrangler d1 info "$DB_NAME" 2>&1 | extract_uuid) || true
     if [[ -n "$DB_ID" ]]; then
         echo -e "  Database ID: ${DB_ID}"
         update_database_id "$DB_ID"
@@ -163,7 +163,7 @@ else
         echo "$OUTPUT"
         exit 1
     }
-    DB_ID=$(echo "$OUTPUT" | extract_uuid)
+    DB_ID=$(echo "$OUTPUT" | extract_uuid) || true
     if [[ -n "$DB_ID" ]]; then
         echo -e "  ${GREEN}Created database: ${DB_NAME}${NC}"
         echo -e "  Database ID: ${DB_ID}"
@@ -366,7 +366,7 @@ DEPLOY_OUTPUT=$(npx wrangler deploy --config "$CONFIG_FILE" 2>&1) || {
 echo "$DEPLOY_OUTPUT"
 
 # Extract the deployed URL from wrangler output
-DEPLOYED_URL=$(echo "$DEPLOY_OUTPUT" | grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' | head -1)
+DEPLOYED_URL=$(echo "$DEPLOY_OUTPUT" | grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' | head -1) || true
 echo ""
 
 # Step 8: Verify deployment

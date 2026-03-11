@@ -9,10 +9,13 @@ This ensures that application code NEVER sees JsProxy objects - they are
 converted at the boundary layer before reaching business logic.
 """
 
+import logging
 from typing import Any
 from urllib.parse import urlencode
 
 import httpx
+
+logger = logging.getLogger("src.main")
 
 # =============================================================================
 # Module-level constants
@@ -154,6 +157,7 @@ def _to_py_safe(value: Any, *, _depth: int = 0) -> Any:
             return int(str_val)
         return str_val
     except Exception:
+        logger.warning("JsProxy string conversion failed for type %s", type(value).__name__)
         return None
 
 
@@ -161,7 +165,7 @@ def _safe_str(value: Any) -> str | None:
     """Convert a value to Python string, handling JsProxy/undefined/null.
 
     Returns None for JavaScript undefined/null or Python None.
-    Returns str for any other value.
+    Returns str for any other value (including empty string "").
     """
     if value is None:
         return None
@@ -171,7 +175,7 @@ def _safe_str(value: Any) -> str | None:
     py_val = _to_py_safe(value)
     if py_val is None:
         return None
-    return str(py_val) if py_val else None
+    return str(py_val)
 
 
 def _extract_form_value(form: Any, key: str) -> str | None:
@@ -193,6 +197,7 @@ def _extract_form_value(form: Any, key: str) -> str | None:
         # Handle case where value is already a string or has string conversion
         return str(py_value) if py_value else None
     except Exception:
+        logger.warning("Form value extraction failed for key '%s'", key)
         return None
 
 
@@ -221,6 +226,10 @@ def _to_py_list(js_array: Any) -> list[dict[str, Any]]:
     try:
         return [dict(row) if hasattr(row, "items") else row.to_py() for row in js_array]
     except Exception:
+        logger.warning(
+            "JsProxy list conversion fell back to list() for type %s",
+            type(js_array).__name__,
+        )
         return list(js_array)
 
 
@@ -421,6 +430,9 @@ async def safe_http_fetch(
 
     if HAS_PYODIDE:
         # Production: Use native Workers fetch
+        # Note: timeout_seconds is NOT applied in the Pyodide code path because the
+        # Workers fetch API does not accept a timeout option. Instead, Cloudflare's
+        # built-in subrequest timeout (~30s) applies automatically.
         fetch_options_dict = {"method": method, "headers": headers, "redirect": "follow"}
 
         # Handle form data for POST

@@ -82,7 +82,7 @@ def get_config_value(
     """
     try:
         value = getattr(env, env_key, None)
-        return value_type(value) if value else default
+        return value_type(value) if value is not None else default
     except (ValueError, TypeError) as e:
         log_op(
             "config_validation_error",

@@ -811,10 +811,10 @@ class TestEntryBindValues:
         assert result[1] is None
         assert result[2] is None
 
-    def test_converts_empty_string_to_none(self):
-        """Empty strings are converted to None by _safe_str."""
+    def test_preserves_empty_string(self):
+        """Empty strings are preserved as "" by _safe_str (not converted to None)."""
         result = entry_bind_values(1, "", "", "", "", "", "", "")
-        assert result[1] is None  # _safe_str returns None for empty string
+        assert result[1] == ""  # _safe_str preserves empty strings
 
 
 class TestFeedBindValues:

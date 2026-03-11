@@ -3,6 +3,7 @@
 
 import json
 
+import pytest
 from freezegun import freeze_time
 
 from src.observability import (
@@ -424,24 +425,49 @@ class TestEmitEvent:
 
 class TestTimer:
     def test_measures_elapsed_time(self):
-        import time
+        """Timer context manager records wall time in milliseconds."""
+        from unittest.mock import patch
 
-        with Timer() as t:
-            time.sleep(0.01)  # 10ms
+        # Mock perf_counter to avoid flakiness from real wall-clock jitter
+        call_count = 0
+        times = [0.0, 0.015]  # start, end (15ms)
 
-        assert t.elapsed_ms >= 10
-        assert t.elapsed_ms < 100  # Should not take 100ms
+        def fake_perf_counter():
+            nonlocal call_count
+            t = times[min(call_count, len(times) - 1)]
+            call_count += 1
+            return t
+
+        with (
+            patch("src.observability.time.perf_counter", side_effect=fake_perf_counter),
+            Timer() as t,
+        ):
+            pass
+
+        assert t.elapsed_ms == pytest.approx(15.0, abs=0.01)
 
     def test_elapsed_during_execution(self):
-        import time
+        """Timer.elapsed() returns intermediate time before context exit."""
+        from unittest.mock import patch
 
-        with Timer() as t:
-            time.sleep(0.01)
+        call_count = 0
+        # __enter__ start, elapsed() call, __exit__ end
+        times = [0.0, 0.010, 0.025]
+
+        def fake_perf_counter():
+            nonlocal call_count
+            t = times[min(call_count, len(times) - 1)]
+            call_count += 1
+            return t
+
+        with (
+            patch("src.observability.time.perf_counter", side_effect=fake_perf_counter),
+            Timer() as t,
+        ):
             mid_elapsed = t.elapsed()
-            time.sleep(0.01)
 
-        assert mid_elapsed >= 10
-        assert t.elapsed_ms >= 20
+        assert mid_elapsed == pytest.approx(10.0, abs=0.01)
+        assert t.elapsed_ms == pytest.approx(25.0, abs=0.01)
         assert t.elapsed_ms > mid_elapsed
 
 

@@ -148,7 +148,8 @@ class TestImportOpml:
 
         response = await worker._import_opml(request, admin)
 
-        assert response.status in (200, 400)
+        # admin_error_response now returns proper status codes
+        assert response.status == 400
         assert "No File" in response.body or "OPML" in response.body
 
     @pytest.mark.asyncio
@@ -218,7 +219,8 @@ class TestImportOpml:
         with patch("src.main.ET.XMLParser", _patched_xml_parser):
             response = await worker._import_opml(request, admin)
 
-        assert response.status in (200, 400)
+        # admin_error_response now returns proper status codes
+        assert response.status == 400
         assert "Invalid OPML" in response.body or "format" in response.body.lower()
 
     @pytest.mark.asyncio

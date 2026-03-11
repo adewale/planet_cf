@@ -179,11 +179,14 @@ class TestCreateSessionCookie:
 
     def test_custom_ttl(self):
         """Respects custom TTL."""
-        cookie = create_session_cookie("testuser", 12345, None, SECRET, ttl_seconds=60)
-        payload = verify_signed_cookie(cookie, SECRET)
-        # Expiry should be within ~60s of now
-        assert payload["exp"] <= int(time.time()) + 61
-        assert payload["exp"] >= int(time.time()) + 59
+        from unittest.mock import patch
+
+        frozen_time = 1700000000.0
+        with patch("src.auth.time.time", return_value=frozen_time):
+            cookie = create_session_cookie("testuser", 12345, None, SECRET, ttl_seconds=60)
+            payload = verify_signed_cookie(cookie, SECRET)
+        # Expiry should be exactly frozen_time + 60
+        assert payload["exp"] == int(frozen_time) + 60
 
 
 # =============================================================================

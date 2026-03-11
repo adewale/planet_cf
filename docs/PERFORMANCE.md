@@ -6,7 +6,7 @@ Planet CF runs on Cloudflare Workers with Python via Pyodide (WebAssembly). The 
 
 ### Cache-Control with stale-while-revalidate
 
-Every HTML and feed response includes (see `_build_cache_control()` in `src/utils.py`):
+Every HTML and feed response includes (see cache-control logic in `src/utils.py`):
 
 ```
 Cache-Control: public, max-age=3600, stale-while-revalidate=3600
@@ -20,7 +20,7 @@ This means visitors almost always get an edge-cached response (~20-50ms), even w
 
 ### Edge cache pre-warming
 
-The hourly cron scheduler, after enqueueing feed fetches and running retention cleanup, requests the 4 most important pages on itself (see `_run_scheduler()` in `src/main.py`):
+The hourly cron scheduler, after enqueueing feed fetches and running retention cleanup, requests the 4 most important pages on itself (see scheduler logic in `src/main.py`):
 
 ```python
 for path in ("/", "/titles", "/feed.atom", "/feed.rss"):
@@ -38,7 +38,7 @@ This ensures the edge cache always has a fresh copy, even if no real user has vi
 
 ### Conditional GETs
 
-Feed fetches store ETag and Last-Modified from each response (see `_process_single_feed()` in `src/main.py`). On the next fetch, we send `If-None-Match` and `If-Modified-Since` headers. If the feed hasn't changed, the server returns 304 Not Modified with no body, saving bandwidth and parse time.
+Feed fetches store ETag and Last-Modified from each response (see feed processing in `src/main.py`). On the next fetch, we send `If-None-Match` and `If-Modified-Since` headers. If the feed hasn't changed, the server returns 304 Not Modified with no body, saving bandwidth and parse time.
 
 ## Asset Delivery
 
@@ -128,7 +128,7 @@ Web fonts (Google Fonts, Adobe Fonts, self-hosted WOFF2) typically add 50-200 Ki
 
 ### Queue isolation
 
-Each feed is enqueued as a separate queue message (see `_run_scheduler()` in `src/main.py`). This gives us:
+Each feed is enqueued as a separate queue message (see scheduler logic in `src/main.py`). This gives us:
 
 - **Isolated retries:** Only the failed feed is retried, not the entire batch.
 - **Isolated timeouts:** A slow feed doesn't block others. Each gets its own `asyncio.wait_for()` with a configurable timeout (default 60s).
@@ -137,17 +137,17 @@ Each feed is enqueued as a separate queue message (see `_run_scheduler()` in `sr
 
 ### Rate limit compliance
 
-HTTP 429/503 responses with `Retry-After` headers are handled specially (see `_process_single_feed()` in `src/main.py`). They don't increment the consecutive failure counter and trigger a queue retry instead. This prevents well-behaved feeds from being auto-deactivated due to temporary rate limiting.
+HTTP 429/503 responses with `Retry-After` headers are handled specially (see feed processing in `src/main.py`). They don't increment the consecutive failure counter and trigger a queue retry instead. This prevents well-behaved feeds from being auto-deactivated due to temporary rate limiting.
 
 ### Auto-deactivation
 
-After a configurable number of consecutive failures (default 10), feeds are automatically deactivated (see `_record_feed_error()` in `src/main.py`). This prevents permanently broken feeds from wasting queue capacity and CPU time every hour.
+After a configurable number of consecutive failures (default 10, `FEED_AUTO_DEACTIVATE_THRESHOLD`), feeds are automatically deactivated (see error recording in `src/main.py`). This prevents permanently broken feeds from wasting queue capacity and CPU time every hour.
 
 ## Database Optimization
 
 ### Indexes
 
-Five indexes on the two main tables (see `_ensure_database_initialized()` in `src/main.py`):
+Five indexes on the two main tables (see database initialization in `src/main.py`):
 
 - `idx_feeds_active` on `feeds(is_active)` for filtering active feeds
 - `idx_feeds_url` on `feeds(url)` for URL lookups
@@ -157,13 +157,13 @@ Five indexes on the two main tables (see `_ensure_database_initialized()` in `sr
 
 ### Window functions for smart result limiting
 
-The homepage query uses `ROW_NUMBER() OVER (PARTITION BY feed_id, date(...))` to limit entries to 5 per feed per day and 100 per feed total (see `_generate_html()` in `src/main.py`). This prevents any single prolific feed from dominating the page without requiring multiple queries.
+The homepage query uses `ROW_NUMBER() OVER (PARTITION BY feed_id, date(...))` to limit entries to 5 per feed per day and 100 per feed total (`RETENTION_MAX_ENTRIES_PER_FEED`) (see HTML generation in `src/main.py`). This prevents any single prolific feed from dominating the page without requiring multiple queries.
 
-The same pattern is used for retention cleanup (see `_apply_retention_policy()` in `src/main.py`), identifying excess entries in a single query rather than looping per-feed.
+The same pattern is used for retention cleanup (see retention policy logic in `src/main.py`), identifying excess entries in a single query rather than looping per-feed.
 
 ### Per-isolate initialization
 
-Database schema checks and auto-migration run only once per Worker isolate via a `_db_initialized` flag (see `_ensure_database_initialized()` in `src/main.py`). Subsequent requests skip the check entirely.
+Database schema checks and auto-migration run only once per Worker isolate via a `_db_initialized` flag (see database initialization in `src/main.py`). Subsequent requests skip the check entirely.
 
 ## Worker Runtime
 
@@ -173,7 +173,7 @@ The `python_dedicated_snapshot` compatibility flag (`wrangler.jsonc:23`) uses Cl
 
 ### Per-isolate caching
 
-The `SafeEnv` wrapper and `RouteDispatcher` are cached as instance variables (see `env` property and `_create_router()` in `src/main.py`). Route matching is computed once per isolate, not per request.
+The `SafeEnv` wrapper and `RouteDispatcher` are cached as instance variables (see route initialization in `src/main.py`). Route matching is computed once per isolate, not per request.
 
 ### Async I/O throughout
 
@@ -183,22 +183,22 @@ All D1 queries, HTTP requests, vector operations, and AI inference use `async/aw
 
 ### Image lazy loading
 
-All images in feed content get `loading="lazy"` added during sanitization (see `ContentSanitizer.clean()` in `src/models.py`). Only images in the viewport load initially.
+All images in feed content get `loading="lazy"` added during sanitization (see `BleachSanitizer.clean()` in `src/models.py`). Only images in the viewport load initially.
 
 ### Content deduplication
 
-Feeds often include the post title as an `<h1>` at the start of the content body. `normalize_entry_content()` strips this duplicate heading (see `normalize_entry_content()` in `src/utils.py`).
+Feeds often include the post title as an `<h1>` at the start of the content body. The content normalization step strips this duplicate heading (see `src/utils.py`).
 
 ### Summary truncation
 
-Summaries are capped at 500 characters (see `truncate_summary()` in `src/content_processor.py`) for feed formats that use summaries.
+Summaries are capped at 500 characters (`SUMMARY_MAX_LENGTH`) for feed formats that use summaries (see `src/content_processor.py`).
 
 ### Entry count limits
 
 Three layers of result limiting prevent unbounded response sizes:
-- 5 entries per feed per day (window function)
+- 5 entries per feed per day (hardcoded in SQL window function)
 - 100 entries per feed total (configurable via `RETENTION_MAX_ENTRIES_PER_FEED`)
-- 500 entries global cap (`DEFAULT_QUERY_LIMIT`)
+- 500 entries global cap (`DEFAULT_QUERY_LIMIT` in `src/config.py`)
 
 ## Known Bottleneck: TTFB
 
