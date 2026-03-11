@@ -129,9 +129,9 @@ header a:hover {
 
 .search-form button {
     padding: 0.75rem 1rem;
-    background: var(--accent);
-    color: white;
-    border: 1px solid var(--accent-dark);
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-medium);
     border-radius: var(--radius-md);
     cursor: pointer;
     font-weight: 600;
@@ -141,9 +141,9 @@ header a:hover {
 }
 
 .search-form button:hover {
-    background: var(--accent-dark);
-    border-color: var(--accent-dark);
-    color: white;
+    background: var(--bg-secondary);
+    border-color: var(--accent-subtle);
+    color: var(--text-primary);
 }
 
 .search-form button:active {
@@ -198,15 +198,13 @@ article h3 {
 }
 
 article h3 a {
-    color: var(--accent);
+    color: var(--text-primary);
     text-decoration: none;
-    border-bottom: 1px solid transparent;
-    transition: color 0.15s ease, border-color 0.15s ease;
+    transition: color 0.15s ease;
 }
 
 article h3 a:hover {
-    color: var(--accent-dark);
-    border-bottom-color: var(--accent-dark);
+    color: var(--accent);
 }
 
 article header {
@@ -360,7 +358,8 @@ article header {
     position: sticky;
     top: 1rem;
     box-shadow: var(--shadow-sm);
-    align-self: start;
+    /* Align top of sidebar with first article card (offset = day h2 height) */
+    margin-top: 3.25rem;
 }
 
 .sidebar h2 {
@@ -530,16 +529,12 @@ footer .hint kbd {
 }
 
 .search-results h3 a {
-    color: var(--accent);
+    color: var(--text-primary);
     text-decoration: none;
-    border-bottom: 1px solid transparent;
-    transition: color 0.15s ease, border-color 0.15s ease;
+    transition: color 0.15s ease;
 }
 
-.search-results h3 a:hover {
-    color: var(--accent-dark);
-    border-bottom-color: var(--accent-dark);
-}
+.search-results h3 a:hover { color: var(--accent); }
 
 /* Admin table styles */
 table {
