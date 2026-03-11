@@ -520,8 +520,7 @@ class TestSafeVectorizeFFI:
                 pass
 
         idx = W.SafeVectorize(FakeIndex())
-        result = await idx.upsert([{"id": "1", "values": [0.1]}])
-        # With fakes, list → FakeJsProxy
+        await idx.upsert([{"id": "1", "values": [0.1]}])
         assert captured["vectors"] is not None
 
     @pytest.mark.asyncio
@@ -757,10 +756,12 @@ class TestSafeFeedInfoFFI:
         assert info.link == "https://example.com"
 
     def test_author_detail_with_jsnull_name(self, pyodide_fakes):
-        info = W.SafeFeedInfo({
-            "author_detail": {"name": JsNull(), "email": "a@b.com"},
-            "author": "Fallback",
-        })
+        info = W.SafeFeedInfo(
+            {
+                "author_detail": {"name": JsNull(), "email": "a@b.com"},
+                "author": "Fallback",
+            }
+        )
         # JsNull name → falls back to author field
         assert info.author == "Fallback"
 
