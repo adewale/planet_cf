@@ -1099,11 +1099,11 @@ class Default(WorkerEntrypoint):
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), CURRENT_TIMESTAMP)
             ON CONFLICT(feed_id, guid) DO UPDATE SET
-                url = excluded.url,
                 title = excluded.title,
                 content = excluded.content,
                 summary = excluded.summary,
                 author = excluded.author,
+                url = excluded.url,
                 updated_at = CURRENT_TIMESTAMP
             RETURNING id
         """)

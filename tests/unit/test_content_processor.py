@@ -113,6 +113,200 @@ class TestEntryContentProcessorGUID:
         assert guid1 != guid2
 
 
+class TestFeedProvidedIdentifiers:
+    """The feed is responsible for providing permanent entry identifiers.
+
+    Per RFC 4287 (Atom) and RSS 2.0, the entry's identifier (atom:id or
+    <guid>) is a permanent, opaque string chosen by the feed publisher.
+    The aggregator MUST use it verbatim — never rewrite, normalise, or
+    second-guess it.  These tests enforce that contract across the
+    identifier formats commonly seen in real-world Atom and RSS feeds.
+
+    feedparser normalises both atom:id and RSS <guid> into entry["id"].
+    """
+
+    # -----------------------------------------------------------------
+    # Atom feeds — atom:id (RFC 4287 §4.2.6)
+    # -----------------------------------------------------------------
+
+    def test_atom_tag_uri(self):
+        """Atom tag URI (RFC 4151) is used verbatim.
+
+        Tag URIs are the recommended way to mint permanent Atom IDs:
+          <id>tag:example.com,2025:post-42</id>
+        """
+        entry = {
+            "id": "tag:example.com,2025:post-42",
+            "link": "https://example.com/posts/42",
+            "title": "Post 42",
+        }
+        processor = EntryContentProcessor(entry, feed_id=1)
+        assert processor.generate_guid() == "tag:example.com,2025:post-42"
+
+    def test_atom_urn_uuid(self):
+        """Atom URN:UUID identifier is used verbatim.
+
+        Some generators mint UUIDs:
+          <id>urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a</id>
+        """
+        entry = {
+            "id": "urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a",
+            "link": "https://example.com/entry",
+            "title": "UUID Entry",
+        }
+        processor = EntryContentProcessor(entry, feed_id=1)
+        assert processor.generate_guid() == "urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a"
+
+    def test_atom_http_id_distinct_from_link(self):
+        """Atom HTTP-based ID that differs from the link is used verbatim.
+
+        Some feeds mint a permanent URL as the ID that is different from
+        the current permalink (e.g. a versioned URL or a resolver):
+          <id>https://example.com/entries/42</id>
+          <link href="https://example.com/posts/my-title" />
+        """
+        entry = {
+            "id": "https://example.com/entries/42",
+            "link": "https://example.com/posts/my-title",
+            "title": "My Title",
+        }
+        processor = EntryContentProcessor(entry, feed_id=1)
+        assert processor.generate_guid() == "https://example.com/entries/42"
+
+    def test_atom_id_not_normalised(self):
+        """Atom IDs are compared character-by-character (RFC 4287 §4.2.6.1).
+
+        The aggregator must not normalise case, trailing slashes, or
+        percent-encoding.  Two IDs that look "equivalent" as URLs are
+        still distinct identifiers.
+        """
+        entry_a = {
+            "id": "https://Example.COM/Post/42",
+            "link": "https://example.com/post/42",
+            "title": "Post",
+        }
+        entry_b = {
+            "id": "https://example.com/post/42",
+            "link": "https://example.com/post/42",
+            "title": "Post",
+        }
+        guid_a = EntryContentProcessor(entry_a, feed_id=1).generate_guid()
+        guid_b = EntryContentProcessor(entry_b, feed_id=1).generate_guid()
+
+        assert guid_a == "https://Example.COM/Post/42"
+        assert guid_b == "https://example.com/post/42"
+        assert guid_a != guid_b
+
+    # -----------------------------------------------------------------
+    # RSS feeds — <guid> (RSS 2.0 spec)
+    # -----------------------------------------------------------------
+
+    def test_rss_guid_ispermalink_true(self):
+        """RSS <guid isPermaLink="true"> is used verbatim.
+
+        feedparser maps <guid> to entry["id"].  When isPermaLink="true"
+        (the default), the GUID doubles as a browsable URL, but it is
+        still an opaque identifier from the aggregator's perspective.
+        """
+        # feedparser sets id == link when guid isPermaLink="true"
+        entry = {
+            "id": "https://example.com/2025/hello-world",
+            "link": "https://example.com/2025/hello-world",
+            "title": "Hello World",
+        }
+        processor = EntryContentProcessor(entry, feed_id=1)
+        assert processor.generate_guid() == "https://example.com/2025/hello-world"
+
+    def test_rss_guid_ispermalink_false(self):
+        """RSS <guid isPermaLink="false"> is used verbatim.
+
+        Non-permalink GUIDs are arbitrary opaque strings:
+          <guid isPermaLink="false">post-20250115-abc</guid>
+        """
+        entry = {
+            "id": "post-20250115-abc",
+            "link": "https://example.com/hello",
+            "title": "Hello",
+        }
+        processor = EntryContentProcessor(entry, feed_id=1)
+        assert processor.generate_guid() == "post-20250115-abc"
+
+    def test_rss_guid_numeric(self):
+        """RSS numeric GUID (e.g. database row ID) is used verbatim."""
+        entry = {
+            "id": "98765",
+            "link": "https://example.com/article/98765",
+            "title": "Article",
+        }
+        processor = EntryContentProcessor(entry, feed_id=1)
+        assert processor.generate_guid() == "98765"
+
+    # -----------------------------------------------------------------
+    # Feeds that omit an explicit identifier
+    # -----------------------------------------------------------------
+
+    def test_missing_id_falls_back_to_link(self):
+        """When the feed provides no id, the link is the next best thing.
+
+        Many RSS feeds omit <guid> entirely.  feedparser then leaves
+        entry["id"] unset, and the link is the most specific fallback.
+        """
+        entry = {
+            "link": "https://example.com/no-guid",
+            "title": "No GUID",
+        }
+        processor = EntryContentProcessor(entry, feed_id=1)
+        assert processor.generate_guid() == "https://example.com/no-guid"
+
+    def test_missing_id_and_link_falls_back_to_title(self):
+        """When neither id nor link exist, title is the last textual fallback."""
+        entry = {"title": "Only a Title"}
+        processor = EntryContentProcessor(entry, feed_id=1)
+        assert processor.generate_guid() == "Only a Title"
+
+    def test_completely_empty_entry_gets_generated_guid(self):
+        """Entries with no usable fields get a deterministic generated GUID."""
+        entry = {"id": "", "link": "", "title": ""}
+        processor = EntryContentProcessor(entry, feed_id=1)
+        guid = processor.generate_guid()
+
+        assert guid.startswith("generated:")
+
+    # -----------------------------------------------------------------
+    # The aggregator never rewrites a feed-provided identifier
+    # -----------------------------------------------------------------
+
+    def test_id_never_replaced_by_hash(self):
+        """A non-empty id is never replaced with a generated hash.
+
+        The aggregator must not invent its own identifier when the feed
+        has already provided one — even if the id happens to equal the
+        link (permalink-as-GUID pattern).
+        """
+        entry = {
+            "id": "https://example.com/post/slug",
+            "link": "https://example.com/post/slug",
+            "title": "Slug Post",
+        }
+        processor = EntryContentProcessor(entry, feed_id=1)
+        guid = processor.generate_guid()
+
+        assert not guid.startswith("generated:")
+        assert guid == "https://example.com/post/slug"
+
+    def test_id_preserved_across_repeated_processing(self):
+        """Processing the same entry twice yields the same feed-provided id."""
+        entry = {
+            "id": "tag:blog.example.com,2026:entry-7",
+            "link": "https://blog.example.com/entry-7",
+            "title": "Entry 7",
+        }
+        guid1 = EntryContentProcessor(entry, feed_id=1).generate_guid()
+        guid2 = EntryContentProcessor(entry, feed_id=1).generate_guid()
+
+        assert guid1 == guid2 == "tag:blog.example.com,2026:entry-7"
+
+
 class TestEntryContentProcessorContent:
     """Tests for content extraction."""
 

@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.main import Default
+from tests.conftest import TrackingD1
 
 
 def _make_mock_env():
@@ -198,13 +199,6 @@ class TestUpsertEntryWithoutFullContentFetch:
         assert "only provides a summary" in call_arg
 
 
-
-# Need the import for patch.object
-import unittest.mock
-
-from tests.conftest import TrackingD1
-
-
 # =============================================================================
 # Upsert refreshes url and summary on conflict
 # =============================================================================
@@ -237,15 +231,11 @@ class TestUpsertRefreshesPermalink:
             "summary": "Updated summary",
         }
 
-        with unittest.mock.patch.object(
-            worker, "_sanitize_html", side_effect=lambda x: x
-        ):
+        with unittest.mock.patch.object(worker, "_sanitize_html", side_effect=lambda x: x):
             await worker._upsert_entry(feed_id=1, entry=entry)
 
         # Find the INSERT statement
-        upsert_stmt = next(
-            s for s in db.statements if "INSERT INTO entries" in s.sql
-        )
+        upsert_stmt = next(s for s in db.statements if "INSERT INTO entries" in s.sql)
 
         # The ON CONFLICT clause must update url and summary
         assert "url = excluded.url" in upsert_stmt.sql
@@ -272,13 +262,9 @@ class TestUpsertRefreshesPermalink:
             "content": [{"value": "<p>Content</p>"}],
         }
 
-        with unittest.mock.patch.object(
-            worker, "_sanitize_html", side_effect=lambda x: x
-        ):
+        with unittest.mock.patch.object(worker, "_sanitize_html", side_effect=lambda x: x):
             await worker._upsert_entry(feed_id=1, entry=entry)
 
-        upsert_stmt = next(
-            s for s in db.statements if "INSERT INTO entries" in s.sql
-        )
+        upsert_stmt = next(s for s in db.statements if "INSERT INTO entries" in s.sql)
         assert "summary = excluded.summary" in upsert_stmt.sql
         assert "A new summary after the author revised it" in upsert_stmt.bound_args
