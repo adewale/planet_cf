@@ -31,7 +31,7 @@ jobs:
         run: uvx ruff format --check src/ tests/
 
       - name: Dead code detection
-        run: uvx vulture src/ vulture_whitelist.py
+        run: uvx --python 3.12 vulture src/ vulture_whitelist.py
 
       - name: Secrets scan
         run: uvx detect-secrets scan --baseline .secrets.baseline

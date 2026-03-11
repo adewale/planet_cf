@@ -41,7 +41,7 @@ fmt: ## Auto-format code with ruff
 	uvx ruff format .
 
 vulture: ## Run dead code detection with vulture
-	uvx vulture src/ vulture_whitelist.py
+	uvx --python 3.12 vulture src/ vulture_whitelist.py
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Security & Quality Audits
