@@ -228,7 +228,7 @@ uv run pytest tests/unit tests/integration -x -q
 uvx ruff check .              # Lint
 uvx ruff format --check .     # Format check
 uvx ty check src/              # Type check
-uvx vulture src/ vulture_whitelist.py  # Dead code detection
+uvx --python 3.12 vulture src/ vulture_whitelist.py  # Dead code detection
 ```
 
 ## Scripts

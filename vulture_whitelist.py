@@ -4,7 +4,7 @@
 # (tests, runtime entry points, JavaScript boundary layer, etc.).
 #
 # Format: reference the symbol so vulture sees it as "used".
-# Run: uvx vulture src/ vulture_whitelist.py
+# Run: uvx --python 3.12 vulture src/ vulture_whitelist.py
 
 # =============================================================================
 # Cloudflare Workers entry points (called by runtime, not by Python code)

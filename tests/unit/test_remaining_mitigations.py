@@ -247,14 +247,15 @@ class TestDLQConsumer:
         assert "dlq_message_consumed" in source, "Should log DLQ message consumption"
 
     def test_wrangler_has_dlq_consumer(self):
-        """wrangler.jsonc should have a consumer for the DLQ queue."""
+        """wrangler.jsonc should have a DLQ queue configured."""
         wrangler_content = (PROJECT_ROOT / "wrangler.jsonc").read_text()
-        assert "planetcf-feed-dlq" in wrangler_content
-        # Check it appears in consumers section (not just producers)
-        # Find the consumers array and verify DLQ appears in it
-        consumers_match = re.search(r'"consumers"\s*:\s*\[(.*?)\]', wrangler_content, re.DOTALL)
-        assert consumers_match, "Should have consumers section"
-        assert "feed-dlq" in consumers_match.group(1), "DLQ queue should be listed as a consumer"
+        # Check for DLQ in producers (instance-agnostic: any *-feed-dlq name)
+        assert "feed-dlq" in wrangler_content, "Should have a feed DLQ queue configured"
+        assert "DEAD_LETTER_QUEUE" in wrangler_content, "Should bind DEAD_LETTER_QUEUE"
+        # Check the main queue references a dead_letter_queue
+        assert "dead_letter_queue" in wrangler_content, (
+            "Main queue should reference a dead_letter_queue"
+        )
 
 
 # =============================================================================

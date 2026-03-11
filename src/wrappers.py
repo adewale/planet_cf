@@ -205,6 +205,10 @@ def _to_py_list(js_array: Any) -> list[dict[str, Any]]:
     if js_array is None:
         return []
 
+    # Handle JsNull and JsUndefined (not caught by `is None` check above)
+    if _is_js_undefined(js_array):
+        return []
+
     # In test environment, it's already a Python list
     if isinstance(js_array, list):
         return js_array
