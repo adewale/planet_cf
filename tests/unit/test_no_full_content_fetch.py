@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.main import Default
+from tests.conftest import TrackingD1
 
 
 def _make_mock_env():
@@ -196,3 +197,74 @@ class TestUpsertEntryWithoutFullContentFetch:
 
         call_arg = mock_sanitize.call_args[0][0]
         assert "only provides a summary" in call_arg
+
+
+# =============================================================================
+# Upsert refreshes url and summary on conflict
+# =============================================================================
+
+
+class TestUpsertRefreshesPermalink:
+    """Verify _upsert_entry updates url and summary when GUID matches.
+
+    Per RFC 4287 / RSS 2.0 the GUID is the canonical stable identifier.
+    When the same GUID reappears with a different link (e.g. the site
+    changed its URL structure), the aggregator should update the stored
+    permalink rather than leaving a stale one.
+    """
+
+    @pytest.mark.asyncio
+    async def test_upsert_updates_url_on_conflict(self):
+        """ON CONFLICT clause includes url = excluded.url."""
+        worker = Default()
+        db = TrackingD1([{"id": 1}])
+        worker.env = MagicMock()
+        worker.env.DB = db
+        worker.env.SEARCH_INDEX = None
+        worker.env.AI = None
+
+        entry = {
+            "id": "urn:uuid:stable-guid-123",
+            "link": "https://example.com/new-permalink/post",
+            "title": "My Post",
+            "content": [{"value": "<p>Content</p>"}],
+            "summary": "Updated summary",
+        }
+
+        with unittest.mock.patch.object(worker, "_sanitize_html", side_effect=lambda x: x):
+            await worker._upsert_entry(feed_id=1, entry=entry)
+
+        # Find the INSERT statement
+        upsert_stmt = next(s for s in db.statements if "INSERT INTO entries" in s.sql)
+
+        # The ON CONFLICT clause must update url and summary
+        assert "url = excluded.url" in upsert_stmt.sql
+        assert "summary = excluded.summary" in upsert_stmt.sql
+
+        # The new URL should be in the bound args
+        assert "https://example.com/new-permalink/post" in upsert_stmt.bound_args
+
+    @pytest.mark.asyncio
+    async def test_upsert_updates_summary_on_conflict(self):
+        """ON CONFLICT clause includes summary = excluded.summary."""
+        worker = Default()
+        db = TrackingD1([{"id": 1}])
+        worker.env = MagicMock()
+        worker.env.DB = db
+        worker.env.SEARCH_INDEX = None
+        worker.env.AI = None
+
+        entry = {
+            "id": "urn:uuid:stable-guid-456",
+            "link": "https://example.com/post",
+            "title": "My Post",
+            "summary": "A new summary after the author revised it",
+            "content": [{"value": "<p>Content</p>"}],
+        }
+
+        with unittest.mock.patch.object(worker, "_sanitize_html", side_effect=lambda x: x):
+            await worker._upsert_entry(feed_id=1, entry=entry)
+
+        upsert_stmt = next(s for s in db.statements if "INSERT INTO entries" in s.sql)
+        assert "summary = excluded.summary" in upsert_stmt.sql
+        assert "A new summary after the author revised it" in upsert_stmt.bound_args
