@@ -355,8 +355,6 @@ article header {
     padding: 1.5rem;
     border-radius: var(--radius-md);
     height: fit-content;
-    position: sticky;
-    top: 1rem;
     box-shadow: var(--shadow-sm);
     /* Align top of sidebar with first article card (offset = day h2 height) */
     margin-top: 3.25rem;
@@ -1288,7 +1286,7 @@ textarea:focus-visible {
         gap: 1.5rem;
         margin: 1.5rem auto;
     }
-    .sidebar { position: static; }
+    .sidebar { margin-top: 0; }
     .search-form {
         flex-direction: column;
         align-items: stretch;
