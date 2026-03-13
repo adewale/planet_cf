@@ -3015,11 +3015,12 @@ class Default(WorkerEntrypoint):
                     existing_title = existing.get("title") or final_url
                     is_active = existing.get("is_active")
                     if is_active:
-                        msg = f"The feed \"{existing_title}\" is already in your feed list."
+                        msg = f'The feed "{existing_title}" is already in your feed list.'
                     else:
                         msg = (
-                            f"The feed \"{existing_title}\" already exists but is currently inactive. "
-                            "You can reactivate it from the feed list."
+                            f'The feed "{existing_title}" already exists'
+                            " but is currently inactive."
+                            " You can reactivate it from the feed list."
                         )
                     ctx.set_error("DuplicateFeed", f"Feed already exists: {final_url}")
                     return self._admin_error_response(

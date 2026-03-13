@@ -281,10 +281,12 @@ class TestAddFeed:
     @pytest.mark.asyncio
     async def test_successful_feed_addition(self):
         """Valid feed URL is inserted into DB and queued for processing."""
-        db = PerQueryTrackingD1({
-            "SELECT id, title, is_active": [],  # No duplicate
-            "INSERT INTO feeds": [{"id": 42}],
-        })
+        db = PerQueryTrackingD1(
+            {
+                "SELECT id, title, is_active": [],  # No duplicate
+                "INSERT INTO feeds": [{"id": 42}],
+            }
+        )
         env = _make_env(db=db)
         worker = _make_worker(env)
         admin = _mock_admin()
@@ -382,10 +384,12 @@ class TestAddFeed:
     @pytest.mark.asyncio
     async def test_uses_extracted_title_when_not_provided(self):
         """When no title is provided, uses title extracted from feed."""
-        db = PerQueryTrackingD1({
-            "SELECT id, title, is_active": [],  # No duplicate
-            "INSERT INTO feeds": [{"id": 1}],
-        })
+        db = PerQueryTrackingD1(
+            {
+                "SELECT id, title, is_active": [],  # No duplicate
+                "INSERT INTO feeds": [{"id": 1}],
+            }
+        )
         env = _make_env(db=db)
         worker = _make_worker(env)
         admin = _mock_admin()
@@ -421,11 +425,13 @@ class TestAddFeedDuplicateDetection:
     @pytest.mark.asyncio
     async def test_duplicate_active_feed_returns_409(self):
         """Adding a URL that already exists as an active feed returns 409."""
-        db = PerQueryTrackingD1({
-            "SELECT id, title, is_active": [
-                {"id": 10, "title": "Existing Feed", "is_active": 1}
-            ],
-        })
+        db = PerQueryTrackingD1(
+            {
+                "SELECT id, title, is_active": [
+                    {"id": 10, "title": "Existing Feed", "is_active": 1}
+                ],
+            }
+        )
         env = _make_env(db=db)
         worker = _make_worker(env)
         admin = _mock_admin()
@@ -452,11 +458,11 @@ class TestAddFeedDuplicateDetection:
     @pytest.mark.asyncio
     async def test_duplicate_inactive_feed_returns_409_with_reactivate_message(self):
         """Adding a URL that exists as an inactive feed suggests reactivation."""
-        db = PerQueryTrackingD1({
-            "SELECT id, title, is_active": [
-                {"id": 10, "title": "Old Feed", "is_active": 0}
-            ],
-        })
+        db = PerQueryTrackingD1(
+            {
+                "SELECT id, title, is_active": [{"id": 10, "title": "Old Feed", "is_active": 0}],
+            }
+        )
         env = _make_env(db=db)
         worker = _make_worker(env)
         admin = _mock_admin()
@@ -479,11 +485,13 @@ class TestAddFeedDuplicateDetection:
     @pytest.mark.asyncio
     async def test_duplicate_detected_via_redirect_url(self):
         """Duplicate is caught when the original URL redirects to an existing feed URL."""
-        db = PerQueryTrackingD1({
-            "SELECT id, title, is_active": [
-                {"id": 5, "title": "Redirect Target Feed", "is_active": 1}
-            ],
-        })
+        db = PerQueryTrackingD1(
+            {
+                "SELECT id, title, is_active": [
+                    {"id": 5, "title": "Redirect Target Feed", "is_active": 1}
+                ],
+            }
+        )
         env = _make_env(db=db)
         worker = _make_worker(env)
         admin = _mock_admin()
@@ -511,10 +519,12 @@ class TestAddFeedDuplicateDetection:
     @pytest.mark.asyncio
     async def test_non_duplicate_feed_proceeds_to_insert(self):
         """When no duplicate is found, the feed is inserted normally."""
-        db = PerQueryTrackingD1({
-            "SELECT id, title, is_active": [],  # No existing feed
-            "INSERT INTO feeds": [{"id": 99}],
-        })
+        db = PerQueryTrackingD1(
+            {
+                "SELECT id, title, is_active": [],  # No existing feed
+                "INSERT INTO feeds": [{"id": 99}],
+            }
+        )
         env = _make_env(db=db)
         worker = _make_worker(env)
         admin = _mock_admin()
@@ -542,11 +552,11 @@ class TestAddFeedDuplicateDetection:
     @pytest.mark.asyncio
     async def test_duplicate_without_title_shows_url(self):
         """When duplicate feed has no title, the URL is shown in the message."""
-        db = PerQueryTrackingD1({
-            "SELECT id, title, is_active": [
-                {"id": 10, "title": None, "is_active": 1}
-            ],
-        })
+        db = PerQueryTrackingD1(
+            {
+                "SELECT id, title, is_active": [{"id": 10, "title": None, "is_active": 1}],
+            }
+        )
         env = _make_env(db=db)
         worker = _make_worker(env)
         admin = _mock_admin()
