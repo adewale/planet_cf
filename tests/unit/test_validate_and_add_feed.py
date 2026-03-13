@@ -7,7 +7,7 @@ import pytest
 
 from src.main import Default
 from src.wrappers import HttpResponse
-from tests.conftest import MockEnv, MockQueue, TrackingD1
+from tests.conftest import MockEnv, MockQueue, TrackingD1, TrackingD1Statement
 
 # =============================================================================
 # Mock Infrastructure
@@ -85,6 +85,29 @@ def _make_env(db=None):
         SEARCH_INDEX=None,
         AI=None,
     )
+
+
+class PerQueryTrackingD1:
+    """Mock D1 that returns different results based on SQL content.
+
+    Accepts a dict mapping SQL substring patterns to result lists.
+    Falls back to empty results if no pattern matches.
+    """
+
+    def __init__(self, query_results: dict[str, list[dict]]):
+        self._query_results = query_results
+        self.statements: list[TrackingD1Statement] = []
+
+    def prepare(self, sql: str) -> TrackingD1Statement:
+        results = []
+        for pattern, res in self._query_results.items():
+            if pattern in sql:
+                results = res
+                break
+        stmt = TrackingD1Statement(results, sql)
+        stmt.sql = sql
+        self.statements.append(stmt)
+        return stmt
 
 
 def _make_worker(env=None) -> Default:
@@ -258,7 +281,10 @@ class TestAddFeed:
     @pytest.mark.asyncio
     async def test_successful_feed_addition(self):
         """Valid feed URL is inserted into DB and queued for processing."""
-        db = TrackingD1([{"id": 42}])
+        db = PerQueryTrackingD1({
+            "SELECT id, title, is_active": [],  # No duplicate
+            "INSERT INTO feeds": [{"id": 42}],
+        })
         env = _make_env(db=db)
         worker = _make_worker(env)
         admin = _mock_admin()
@@ -356,7 +382,10 @@ class TestAddFeed:
     @pytest.mark.asyncio
     async def test_uses_extracted_title_when_not_provided(self):
         """When no title is provided, uses title extracted from feed."""
-        db = TrackingD1([{"id": 1}])
+        db = PerQueryTrackingD1({
+            "SELECT id, title, is_active": [],  # No duplicate
+            "INSERT INTO feeds": [{"id": 1}],
+        })
         env = _make_env(db=db)
         worker = _make_worker(env)
         admin = _mock_admin()
@@ -379,3 +408,159 @@ class TestAddFeed:
         assert len(insert_stmts) > 0
         # The title from the RSS feed is "Test Blog"
         assert "Test Blog" in insert_stmts[0].bound_args
+
+
+# =============================================================================
+# Tests: Duplicate feed detection
+# =============================================================================
+
+
+class TestAddFeedDuplicateDetection:
+    """Tests for duplicate feed URL detection in _add_feed."""
+
+    @pytest.mark.asyncio
+    async def test_duplicate_active_feed_returns_409(self):
+        """Adding a URL that already exists as an active feed returns 409."""
+        db = PerQueryTrackingD1({
+            "SELECT id, title, is_active": [
+                {"id": 10, "title": "Existing Feed", "is_active": 1}
+            ],
+        })
+        env = _make_env(db=db)
+        worker = _make_worker(env)
+        admin = _mock_admin()
+
+        request = MockRequest(form_data={"url": "https://example.com/feed.xml"})
+
+        with patch("src.main.safe_http_fetch", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = HttpResponse(
+                status_code=200,
+                text=VALID_RSS_FEED,
+                headers={"content-type": "application/rss+xml"},
+                final_url="https://example.com/feed.xml",
+            )
+            response = await worker._add_feed(request, admin)
+
+        assert response.status == 409
+        assert "already in your feed list" in response.body
+        assert "Existing Feed" in response.body
+
+        # Should NOT have attempted an INSERT
+        insert_stmts = [s for s in db.statements if "INSERT INTO feeds" in s.sql]
+        assert len(insert_stmts) == 0
+
+    @pytest.mark.asyncio
+    async def test_duplicate_inactive_feed_returns_409_with_reactivate_message(self):
+        """Adding a URL that exists as an inactive feed suggests reactivation."""
+        db = PerQueryTrackingD1({
+            "SELECT id, title, is_active": [
+                {"id": 10, "title": "Old Feed", "is_active": 0}
+            ],
+        })
+        env = _make_env(db=db)
+        worker = _make_worker(env)
+        admin = _mock_admin()
+
+        request = MockRequest(form_data={"url": "https://example.com/feed.xml"})
+
+        with patch("src.main.safe_http_fetch", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = HttpResponse(
+                status_code=200,
+                text=VALID_RSS_FEED,
+                headers={"content-type": "application/rss+xml"},
+                final_url="https://example.com/feed.xml",
+            )
+            response = await worker._add_feed(request, admin)
+
+        assert response.status == 409
+        assert "inactive" in response.body
+        assert "reactivate" in response.body
+
+    @pytest.mark.asyncio
+    async def test_duplicate_detected_via_redirect_url(self):
+        """Duplicate is caught when the original URL redirects to an existing feed URL."""
+        db = PerQueryTrackingD1({
+            "SELECT id, title, is_active": [
+                {"id": 5, "title": "Redirect Target Feed", "is_active": 1}
+            ],
+        })
+        env = _make_env(db=db)
+        worker = _make_worker(env)
+        admin = _mock_admin()
+
+        # User submits old URL, but it redirects to an already-stored URL
+        request = MockRequest(form_data={"url": "https://old.example.com/feed.xml"})
+
+        with patch("src.main.safe_http_fetch", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = HttpResponse(
+                status_code=200,
+                text=VALID_RSS_FEED,
+                headers={"content-type": "application/rss+xml"},
+                final_url="https://new.example.com/feed.xml",
+            )
+            response = await worker._add_feed(request, admin)
+
+        assert response.status == 409
+        assert "already in your feed list" in response.body
+
+        # The SELECT should check both original and final URLs
+        select_stmts = [s for s in db.statements if "SELECT" in s.sql]
+        assert len(select_stmts) == 1
+        assert "OR" in select_stmts[0].sql
+
+    @pytest.mark.asyncio
+    async def test_non_duplicate_feed_proceeds_to_insert(self):
+        """When no duplicate is found, the feed is inserted normally."""
+        db = PerQueryTrackingD1({
+            "SELECT id, title, is_active": [],  # No existing feed
+            "INSERT INTO feeds": [{"id": 99}],
+        })
+        env = _make_env(db=db)
+        worker = _make_worker(env)
+        admin = _mock_admin()
+
+        request = MockRequest(form_data={"url": "https://example.com/feed.xml"})
+
+        with patch("src.main.safe_http_fetch", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = HttpResponse(
+                status_code=200,
+                text=VALID_RSS_FEED,
+                headers={"content-type": "application/rss+xml"},
+                final_url="https://example.com/feed.xml",
+            )
+            response = await worker._add_feed(request, admin)
+
+        assert response.status == 302
+        assert response.headers.get("Location") == "/admin"
+
+        # Should have done both SELECT and INSERT
+        select_stmts = [s for s in db.statements if "SELECT" in s.sql]
+        insert_stmts = [s for s in db.statements if "INSERT INTO feeds" in s.sql]
+        assert len(select_stmts) >= 1
+        assert len(insert_stmts) == 1
+
+    @pytest.mark.asyncio
+    async def test_duplicate_without_title_shows_url(self):
+        """When duplicate feed has no title, the URL is shown in the message."""
+        db = PerQueryTrackingD1({
+            "SELECT id, title, is_active": [
+                {"id": 10, "title": None, "is_active": 1}
+            ],
+        })
+        env = _make_env(db=db)
+        worker = _make_worker(env)
+        admin = _mock_admin()
+
+        request = MockRequest(form_data={"url": "https://example.com/feed.xml"})
+
+        with patch("src.main.safe_http_fetch", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = HttpResponse(
+                status_code=200,
+                text=VALID_RSS_FEED,
+                headers={"content-type": "application/rss+xml"},
+                final_url="https://example.com/feed.xml",
+            )
+            response = await worker._add_feed(request, admin)
+
+        assert response.status == 409
+        assert "example.com/feed.xml" in response.body
