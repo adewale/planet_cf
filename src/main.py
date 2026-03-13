@@ -2993,6 +2993,42 @@ class Default(WorkerEntrypoint):
                 # If feed was permanently redirected, use the new URL
                 final_url = validation.get("final_url") or url
 
+                # Check for duplicate feed URL (check both original and final URL after redirects)
+                if final_url != url:
+                    existing_raw = (
+                        await self.env.DB.prepare(
+                            "SELECT id, title, is_active FROM feeds WHERE url = ? OR url = ?"
+                        )
+                        .bind(final_url, url)
+                        .first()
+                    )
+                else:
+                    existing_raw = (
+                        await self.env.DB.prepare(
+                            "SELECT id, title, is_active FROM feeds WHERE url = ?"
+                        )
+                        .bind(final_url)
+                        .first()
+                    )
+                existing = _to_py_safe(existing_raw)
+                if existing:
+                    existing_title = existing.get("title") or final_url
+                    is_active = existing.get("is_active")
+                    if is_active:
+                        msg = f'The feed "{existing_title}" is already in your feed list.'
+                    else:
+                        msg = (
+                            f'The feed "{existing_title}" already exists'
+                            " but is currently inactive."
+                            " You can reactivate it from the feed list."
+                        )
+                    ctx.set_error("DuplicateFeed", f"Feed already exists: {final_url}")
+                    return self._admin_error_response(
+                        msg,
+                        title="Duplicate Feed",
+                        status=409,
+                    )
+
                 # Insert the validated feed
                 result_raw = (
                     await self.env.DB.prepare("""
