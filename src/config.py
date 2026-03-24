@@ -18,7 +18,6 @@ FEED_TIMEOUT_SECONDS = 60  # Max wall time per feed
 HTTP_TIMEOUT_SECONDS = 30  # HTTP request timeout
 
 # User agent for feed fetching
-# TODO: Set up a real mailbox for contact@planetcloudflare.dev
 USER_AGENT = "PlanetCF/1.0 (+https://www.planetcloudflare.dev; contact@planetcloudflare.dev)"
 
 # Security limits

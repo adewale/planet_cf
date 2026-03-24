@@ -24,3 +24,12 @@ intentionally disabled.
 
 **Fix:** Add `WHERE is_active = 1` to the OPML export query, or add an optional
 `?include_inactive=1` query parameter for admins who want the full list.
+
+## Ops — Set up real mailboxes for planetcloudflare.dev (Low)
+
+Two email addresses are referenced but have no mailbox behind them:
+
+- `contact@planetcloudflare.dev` — used in the User-Agent string (`src/config.py`)
+- `planet@planetcloudflare.dev` — used as the author email (`pyproject.toml`)
+
+**Fix:** Set up mailboxes or forwarding via Cloudflare Email Routing.
