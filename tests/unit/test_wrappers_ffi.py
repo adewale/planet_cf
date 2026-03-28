@@ -93,15 +93,20 @@ class FakeJsModule:
     Object = _FakeObject
 
 
-def fake_to_js(value, *, dict_converter=None):
-    """Simulates pyodide.ffi.to_js()."""
+def fake_to_js(value, *, dict_converter=None, create_pyproxies=True):
+    """Simulates pyodide.ffi.to_js().
+
+    Accepts create_pyproxies for compatibility with _to_js_value's
+    safety assertion. In the fake, we don't actually create proxies
+    for non-primitive types — we just accept the parameter.
+    """
     if isinstance(value, dict):
         if dict_converter:
             return dict_converter(value.items())
         return FakeJsProxy(value)
     if isinstance(value, list):
         return FakeJsProxy(value)
-    if isinstance(value, (bytes, bytearray, memoryview)):
+    if isinstance(value, bytes | bytearray | memoryview):
         return FakeJsProxy(bytes(value))
     return value
 
@@ -613,11 +618,11 @@ class TestSafeEnvFFI:
         class FakeEnv:
             DB = "raw_db"
             PLANET_NAME = "Test Planet"
-            SESSION_SECRET = "secret"
+            SESSION_SECRET = "secret"  # pragma: allowlist secret
 
         env = W.SafeEnv(FakeEnv())
         assert env.PLANET_NAME == "Test Planet"
-        assert env.SESSION_SECRET == "secret"
+        assert env.SESSION_SECRET == "secret"  # pragma: allowlist secret
 
 
 # =============================================================================
@@ -906,3 +911,191 @@ class TestToPyListFFI:
     def test_python_list_passes_through(self, pyodide_fakes):
         result = W._to_py_list([{"id": 1}])
         assert result == [{"id": 1}]
+
+
+# =============================================================================
+# memoryview / Float32Array conversion
+# =============================================================================
+
+
+class TestTypedArrayConversion:
+    """Tests for typed array / memoryview / bytearray handling in _to_py_safe.
+
+    Pyodide converts ALL JavaScript typed arrays to Python memoryview via
+    .to_py(). Without explicit handling, memoryview falls through to the
+    str() fallback and becomes "<memory at 0x...>" — truthy, has len(),
+    but semantically destroyed.
+
+    Without explicit handling, memoryview falls through to the str()
+    fallback and becomes "<memory at 0x...>". This matters for R2/KV
+    typed arrays. (The Vectorize 0-dimension bug was caused by Map-vs-Object
+    in to_js(), not memoryview — see lesson 29 in LESSONS_LEARNED.md.)
+
+    The complete Pyodide typed array → memoryview mapping:
+      Float32Array → memoryview format='f'  (used by Workers AI embeddings)
+      Float64Array → memoryview format='d'
+      Int8Array    → memoryview format='b'
+      Int16Array   → memoryview format='h'
+      Int32Array   → memoryview format='i'
+      Uint8Array   → memoryview format='B'  (used by R2 .arrayBuffer(), KV arrayBuffer)
+      Uint16Array  → memoryview format='H'
+      Uint32Array  → memoryview format='I'
+      ArrayBuffer  → memoryview format='B'
+      DataView     → memoryview format='B'
+    """
+
+    import array
+
+    # --- Float32Array (Workers AI embeddings) ---
+
+    def test_float32_memoryview_to_list(self, pyodide_fakes):
+        """Float32Array.to_py() → memoryview format='f' → list of floats."""
+        import array
+
+        arr = array.array("f", [0.1, 0.2, 0.3])
+        result = W._to_py_safe(memoryview(arr))
+        assert isinstance(result, list)
+        assert len(result) == 3
+        assert abs(result[0] - 0.1) < 0.01
+
+    def test_float32_768_dimensions_preserved(self, pyodide_fakes):
+        """768-dim Float32Array must produce a 768-element list, not a string."""
+        import array
+
+        arr = array.array("f", [0.5] * 768)
+        result = W._to_py_safe(memoryview(arr))
+        assert isinstance(result, list)
+        assert not isinstance(result, str)
+        assert len(result) == 768
+
+    def test_float32_empty_returns_empty_list(self, pyodide_fakes):
+        """Empty Float32Array → empty memoryview → empty list."""
+        import array
+
+        result = W._to_py_safe(memoryview(array.array("f", [])))
+        assert isinstance(result, list)
+        assert len(result) == 0
+
+    # --- Float64Array ---
+
+    def test_float64_memoryview_to_list(self, pyodide_fakes):
+        """Float64Array.to_py() → memoryview format='d' → list of floats."""
+        import array
+
+        arr = array.array("d", [1.5, 2.5, 3.5])
+        result = W._to_py_safe(memoryview(arr))
+        assert isinstance(result, list)
+        assert result == [1.5, 2.5, 3.5]
+
+    # --- Int typed arrays ---
+
+    def test_int8_memoryview_to_list(self, pyodide_fakes):
+        """Int8Array.to_py() → memoryview format='b' → list of ints."""
+        import array
+
+        arr = array.array("b", [-1, 0, 127])
+        result = W._to_py_safe(memoryview(arr))
+        assert isinstance(result, list)
+        assert result == [-1, 0, 127]
+
+    def test_int16_memoryview_to_list(self, pyodide_fakes):
+        """Int16Array.to_py() → memoryview format='h' → list of ints."""
+        import array
+
+        arr = array.array("h", [-1000, 0, 1000])
+        result = W._to_py_safe(memoryview(arr))
+        assert isinstance(result, list)
+        assert result == [-1000, 0, 1000]
+
+    def test_int32_memoryview_to_list(self, pyodide_fakes):
+        """Int32Array.to_py() → memoryview format='i' → list of ints."""
+        import array
+
+        arr = array.array("i", [-100000, 0, 100000])
+        result = W._to_py_safe(memoryview(arr))
+        assert isinstance(result, list)
+        assert result == [-100000, 0, 100000]
+
+    # --- Uint typed arrays (R2, KV, ArrayBuffer) ---
+
+    def test_uint8_memoryview_to_list(self, pyodide_fakes):
+        """Uint8Array.to_py() → memoryview format='B' → list of ints.
+
+        This is what R2 .arrayBuffer() and KV arrayBuffer return.
+        """
+        import array
+
+        arr = array.array("B", [0, 128, 255])
+        result = W._to_py_safe(memoryview(arr))
+        assert isinstance(result, list)
+        assert result == [0, 128, 255]
+
+    def test_uint16_memoryview_to_list(self, pyodide_fakes):
+        """Uint16Array.to_py() → memoryview format='H' → list of ints."""
+        import array
+
+        arr = array.array("H", [0, 32768, 65535])
+        result = W._to_py_safe(memoryview(arr))
+        assert isinstance(result, list)
+        assert result == [0, 32768, 65535]
+
+    def test_uint32_memoryview_to_list(self, pyodide_fakes):
+        """Uint32Array.to_py() → memoryview format='I' → list of ints."""
+        import array
+
+        arr = array.array("I", [0, 2**31, 2**32 - 1])
+        result = W._to_py_safe(memoryview(arr))
+        assert isinstance(result, list)
+        assert result == [0, 2**31, 2**32 - 1]
+
+    # --- bytearray (Python-native, but similar to Uint8Array) ---
+
+    def test_bytearray_to_list(self, pyodide_fakes):
+        """bytearray should also convert to list."""
+        result = W._to_py_safe(bytearray([1, 2, 3]))
+        assert isinstance(result, list)
+        assert result == [1, 2, 3]
+
+    # --- bytes should NOT be converted to list ---
+
+    def test_bytes_preserved_as_bytes(self, pyodide_fakes):
+        """bytes should remain bytes (not be iterated into a list of ints)."""
+        result = W._to_py_safe(b"hello")
+        assert isinstance(result, bytes)
+        assert result == b"hello"
+
+    # --- Nested structures containing memoryview ---
+
+    def test_nested_dict_with_memoryview(self, pyodide_fakes):
+        """AI response dict containing memoryview should fully convert."""
+        import array
+
+        mv = memoryview(array.array("f", [0.1] * 768))
+        converted = W._to_py_safe({"data": [mv]})
+
+        assert isinstance(converted, dict)
+        assert isinstance(converted["data"], list)
+        assert isinstance(converted["data"][0], list)
+        assert len(converted["data"][0]) == 768
+
+    def test_jsproxy_wrapping_memoryview(self, pyodide_fakes):
+        """JsProxy wrapping dict with memoryview should fully convert."""
+        import array
+
+        mv = memoryview(array.array("f", [0.5] * 10))
+        proxy = FakeJsProxy({"data": [mv]})
+
+        result = W._to_py_safe(proxy)
+        assert isinstance(result, dict)
+        assert isinstance(result["data"][0], list)
+        assert len(result["data"][0]) == 10
+
+    def test_list_of_memoryviews(self, pyodide_fakes):
+        """List containing multiple memoryviews should convert each."""
+        import array
+
+        mvs = [memoryview(array.array("f", [float(i)])) for i in range(3)]
+        result = W._to_py_safe(mvs)
+        assert isinstance(result, list)
+        assert all(isinstance(r, list) for r in result)
+        assert result == [[0.0], [1.0], [2.0]]

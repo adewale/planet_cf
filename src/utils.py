@@ -8,6 +8,7 @@ and content processing. These have no dependencies on the Worker class.
 import json
 import logging
 import re
+import sys
 from datetime import datetime, timezone
 from typing import Any
 
@@ -35,9 +36,19 @@ ERROR_MESSAGE_MAX_LENGTH = 200
 # Use "src.main" name for backward compatibility with tests
 logger = logging.getLogger("src.main")
 if not logger.handlers:
-    _handler = logging.StreamHandler()
-    _handler.setFormatter(logging.Formatter("%(message)s"))
-    logger.addHandler(_handler)
+    # stdout handler for INFO+ (Cloudflare Workers treats stdout as info level)
+    _stdout_handler = logging.StreamHandler(sys.stdout)
+    _stdout_handler.setFormatter(logging.Formatter("%(message)s"))
+    _stdout_handler.setLevel(logging.INFO)
+    _stdout_handler.addFilter(lambda r: r.levelno < logging.ERROR)
+    logger.addHandler(_stdout_handler)
+
+    # stderr handler for ERROR+ (Cloudflare Workers treats stderr as error level)
+    _stderr_handler = logging.StreamHandler(sys.stderr)
+    _stderr_handler.setFormatter(logging.Formatter("%(message)s"))
+    _stderr_handler.setLevel(logging.ERROR)
+    logger.addHandler(_stderr_handler)
+
     logger.setLevel(logging.INFO)
     # Note: propagate defaults to True, needed for test caplog capture
 

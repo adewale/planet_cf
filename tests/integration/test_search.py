@@ -721,3 +721,51 @@ async def test_search_phrase_search_in_handler(mock_env_with_entries):
     body = response.body if hasattr(response, "body") else str(response)
     # Should be valid HTML, not a crash
     assert "<html" in body.lower() or "<!doctype" in body.lower() or "search" in body.lower()
+
+
+# =========================================================================
+# Missing binding tests (misconfigured full mode or lite mode)
+# =========================================================================
+
+
+@pytest.mark.asyncio
+async def test_search_missing_bindings_falls_back_to_keyword(mock_env_with_entries):
+    """Full mode with missing AI/SEARCH_INDEX should fall back to keyword search.
+
+    This simulates a misconfigured full-mode instance (INSTANCE_MODE != lite
+    but AI/SEARCH_INDEX bindings not provisioned). The search endpoint should
+    still work via keyword search, not crash with AttributeError.
+    """
+    from src.main import PlanetCF
+
+    # Full mode (default) but no AI/SEARCH_INDEX — the dangerous misconfiguration
+    mock_env_with_entries.AI = None
+    mock_env_with_entries.SEARCH_INDEX = None
+
+    worker = PlanetCF()
+    worker.env = mock_env_with_entries
+
+    request = MockRequest("https://www.planetcloudflare.dev/search?q=test")
+    response = await worker.fetch(request)
+
+    assert response.status == 200
+    body = response.body if hasattr(response, "body") else str(response)
+    # Keyword search should still find entries with "test" in title
+    assert "Test Entry" in body
+
+
+@pytest.mark.asyncio
+async def test_index_entry_skipped_when_no_bindings(mock_env_with_entries):
+    """_index_entry_for_search should return NotConfigured when AI/SEARCH_INDEX are None."""
+    from src.main import PlanetCF
+
+    mock_env_with_entries.AI = None
+    mock_env_with_entries.SEARCH_INDEX = None
+
+    worker = PlanetCF()
+    worker.env = mock_env_with_entries
+
+    stats = await worker._index_entry_for_search(1, "Test Title", "Test content")
+
+    assert stats["success"] is False
+    assert stats["error_type"] == "NotConfigured"

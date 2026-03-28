@@ -80,10 +80,13 @@ def parse_opml(opml_content: str) -> tuple[list[dict[str, str]], list[str]]:
     errors = []
 
     try:
-        # Security: forbid_dtd=True prevents DOCTYPE declarations and entity expansion
-        # S314: We use forbid_dtd=True to mitigate XXE attacks, same as defusedxml
-        parser = ET.XMLParser(forbid_dtd=True)  # noqa: S314
-        root = ET.fromstring(opml_content, parser=parser)  # noqa: S314
+        # Security: Strip DOCTYPE declarations to prevent XXE/entity expansion.
+        # forbid_dtd=True was added in CPython 3.13.3 but is unavailable in
+        # Pyodide (Workers runtime), so we strip DTDs manually for portability.
+        import re
+
+        opml_content = re.sub(r"<!DOCTYPE[^>]*>", "", opml_content, count=1)
+        root = ET.fromstring(opml_content)  # noqa: S314
     except ET.ParseError as e:
         log_op("opml_parse_error", error=truncate_error(e))
         return [], [f"Invalid OPML format: {truncate_error(e)}"]

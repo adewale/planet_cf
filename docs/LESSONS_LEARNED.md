@@ -736,3 +736,358 @@ if value is None or _is_js_undefined(value):
 ```
 
 **Rule of thumb:** Any function in `wrappers.py` that has `if x is None` should also check `_is_js_undefined(x)`. When writing new boundary code, always ask: "What happens when this receives JsNull instead of None?"
+
+---
+
+## 22. Pyodide Doesn't Have All CPython APIs
+
+**Problem:** CPython 3.13.3 added `ET.XMLParser(forbid_dtd=True)` for XXE protection. Pyodide bundles an older Python — calling `forbid_dtd=True` crashes with `TypeError: XMLParser() got an unexpected keyword argument 'forbid_dtd'`.
+
+**Symptom:** OPML import returns 500 in production but passes all unit tests (which run on CPython).
+
+**Why unit tests can't catch this:** Unit tests run on the system CPython (3.13+) where `forbid_dtd` exists. The bug only manifests in the Pyodide runtime used by Cloudflare Workers.
+
+**Solution:** Use portable XXE mitigation — strip DOCTYPE declarations with regex before parsing:
+```python
+import re
+import xml.etree.ElementTree as ET
+
+# ✅ Works in both CPython and Pyodide
+opml_content = re.sub(r"<!DOCTYPE[^>]*>", "", opml_content, count=1)
+root = ET.fromstring(opml_content)
+
+# ❌ Fails in Pyodide
+parser = ET.XMLParser(forbid_dtd=True)  # CPython 3.13.3+ only
+root = ET.fromstring(opml_content, parser=parser)
+```
+
+**Key insight:** Any stdlib API added after Python 3.12 may not exist in Pyodide. When using newer Python features, always check Pyodide compatibility — and rely on E2E tests against deployed Workers to catch these, since unit tests on CPython are structurally blind to them.
+
+---
+
+## 23. Optional Bindings Must Be Guarded, Not Assumed
+
+**Problem:** `planet-python` runs in lite mode — no AI or Vectorize bindings. The code called `self.env.AI.run()` without checking if `AI` was `None`, causing `AttributeError` on every queue message. The error was caught by a `try/except` and logged, so all 1267 unit tests passed while production logged errors on every feed fetch.
+
+**Symptom:**
+```
+AttributeError: 'NoneType' object has no attribute 'run'
+```
+Logged as `search_index_skipped` on every queue-processed entry, but the entry was still inserted — so the bug was invisible to tests that only checked for successful inserts.
+
+**Solution:** Guard bindings at three levels:
+
+```python
+# 1. Startup validation: warn on mode/binding mismatch (once per isolate)
+def _validate_config(self):
+    is_lite = check_lite_mode(self.env)
+    has_ai = getattr(self.env, "AI", None) is not None
+    has_search = getattr(self.env, "SEARCH_INDEX", None) is not None
+    if not is_lite and (not has_ai or not has_search):
+        log_op("config_warning", severity="warning",
+               message=f"Missing bindings: {missing}. Set INSTANCE_MODE=lite.")
+
+# 2. Loop-level guard: skip indexing entirely when bindings absent
+has_search_bindings = getattr(self.env, "AI", None) and getattr(self.env, "SEARCH_INDEX", None)
+if entry_id and title and has_search_bindings:
+    indexing_stats = await self._index_entry_for_search(...)
+
+# 3. Function-level guard: early return if called without bindings
+async def _index_entry_for_search(self, ...):
+    if not getattr(self.env, "AI", None) or not getattr(self.env, "SEARCH_INDEX", None):
+        return {"success": False, "error_type": "NotConfigured", ...}
+```
+
+**Key insight:** Tests passing doesn't mean the code is correct. If an error is caught and swallowed, the bug is invisible. Tests must assert *absence of errors*, not just *absence of crashes*. The integration test that would have caught this:
+
+```python
+async def test_fetcher_no_ai_binding_inserts_entry_without_error():
+    """Verify no error-level logs when processing feeds without AI binding."""
+    # ... process feed with AI=None ...
+    # Assert: no ERROR-level log records emitted
+```
+
+---
+
+## 24. Cap Feed Entry Processing to Prevent CPU Exhaustion
+
+**Problem:** Some feeds are enormous — `pythonbytes.fm` has 474 entries in a 1.4MB RSS file. Processing all 474 (D1 upsert per entry + indexing attempt per entry) exceeds the Workers 60-second CPU limit. This causes cascading Pyodide runtime crashes:
+
+1. `exceededCpu` — CPU limit hit
+2. `RuntimeError: table index is out of bounds` — Wasm crash during cleanup
+3. `NoGilError: Attempted to use PyProxy when Python GIL not held` — Pyodide state corruption
+4. `TypeError: There is no 'Default' class defined` — Module can't load after crash
+5. `Recursive call to fatal_error` — Death spiral
+
+Since queue batches share one CPU budget (e.g., 5 messages × 60s total), one expensive feed starves the entire batch.
+
+**Solution:** Cap entries processed per feed to the retention limit:
+
+```python
+max_entries = self._get_max_entries_per_feed()  # e.g., 100
+if len(entries_list) > max_entries:
+    entries_list = entries_list[:max_entries]
+```
+
+**Why this is correct:** The retention policy deletes entries beyond the limit anyway. Processing 474 entries when you'll only keep 100 is pure waste.
+
+**Also:** Skip indexing calls entirely when bindings are absent — don't make 130 function calls that each return `NotConfigured` immediately:
+
+```python
+# ❌ 130 no-op function calls per feed in lite mode
+for entry in entries:
+    await self._index_entry_for_search(entry_id, ...)  # Returns NotConfigured
+
+# ✅ Check once before the loop
+has_search_bindings = getattr(self.env, "AI", None) and getattr(self.env, "SEARCH_INDEX", None)
+for entry in entries:
+    if has_search_bindings:
+        await self._index_entry_for_search(entry_id, ...)
+```
+
+---
+
+## 25. Cloudflare Workers Observability: Log Level Classification
+
+**Problem:** Every log event showed `$metadata.level: "error"` in the Cloudflare dashboard — even successful feed fetches and routine 304 responses. This made the error signal useless.
+
+**Root causes (multiple, compounding):**
+
+1. **`logging.StreamHandler()` defaults to `sys.stderr`** — Cloudflare Workers classifies stderr output as error level. All `logger.info()` calls went to stderr, poisoning every invocation.
+
+2. **`$metadata.level` is per-invocation, not per-log-line** — Queue batches process 5 messages in one invocation. If one feed fails (404, timeout), the entire invocation — including successful feeds — is tagged `level: "error"`.
+
+3. **`logger.error()` in expected failure paths** — Transient D1 errors during the per-request database init check called `log_error()` (which uses `logger.error()`), elevating every invocation that hit a cold start.
+
+**Solutions:**
+
+```python
+# Fix 1: Split stdout (info) and stderr (error) handlers
+_stdout_handler = logging.StreamHandler(sys.stdout)
+_stdout_handler.addFilter(lambda r: r.levelno < logging.ERROR)
+logger.addHandler(_stdout_handler)
+
+_stderr_handler = logging.StreamHandler(sys.stderr)
+_stderr_handler.setLevel(logging.ERROR)
+logger.addHandler(_stderr_handler)
+
+# Fix 2: Don't use logger.error() for recoverable/expected failures
+# Transient D1 errors, feed 404s, etc. should use logger.info()
+log_op("database_auto_init_error", error_type=type(e).__name__, error=str(e))
+# NOT: log_error("database_auto_init_error", e)  # This uses logger.error()
+
+# Fix 3: Use "severity" not "level" in JSON fields
+# Cloudflare may parse JSON content and use "level" field for classification
+log_op("config_warning", severity="warning", ...)  # Not level="warning"
+```
+
+**Key insight:** Reserve `logger.error()` (stderr) for truly unexpected failures where you want the invocation flagged in the dashboard. Everything else — including feed 404s, timeouts, validation errors — should use `logger.info()` (stdout) with error context in the JSON fields. The structured JSON fields (`error_type`, `error_message`, `outcome`) are searchable without polluting the invocation-level severity.
+
+---
+
+## 26. Stateless Execution: Per-Isolate State is Unreliable
+
+**Problem:** Class variables like `_db_initialized = None` and `_config_validated = False` are intended to cache per-isolate state so expensive checks only run once. In Workers' stateless execution model, each request gets a new instance — these variables reset to their defaults every time.
+
+**Consequences:**
+- `_ensure_database_initialized()` runs a D1 query on every request
+- `_validate_config()` runs on every request
+- Logging "already initialized" on every request creates noise
+
+**Solutions:**
+
+1. **Make per-request checks cheap** — The DB init check (`SELECT name FROM sqlite_master`) is fast but still a D1 round-trip. Accept the cost; don't try to cache what can't be cached.
+
+2. **Don't log routine per-request checks** — Remove the `already_initialized` log since it fires on every request with zero signal.
+
+3. **Keep logging for genuine first-time events** — `database_auto_init status=completed` (actual schema creation) is worth logging; `status=already_initialized` is not.
+
+4. **Downgrade error handling for per-request code** — If a per-request check fails transiently (cold start D1 error), log at info level, not error level. Otherwise transient failures poison the entire invocation.
+
+```python
+# ❌ Every transient D1 error elevates the whole invocation to error
+except Exception as e:
+    log_error("database_auto_init_error", e)  # logger.error()
+
+# ✅ Transient failures logged at info level
+except Exception as e:
+    log_op("database_auto_init_error",
+           error_type=type(e).__name__, error=truncate_error(e))
+```
+
+---
+
+## 27. Don't Hardcode Instance-Specific Logic in Shared Code
+
+**Problem:** To make `planetcloudflare.dev` redirect to `www.planetcloudflare.dev`, we initially added a hostname check directly in `src/main.py`:
+
+```python
+# ❌ Instance-specific logic in shared codebase
+if hostname == "planetcloudflare.dev":
+    return Response.redirect(target, 301)
+```
+
+This meant every deployed instance (planet-python, planet-mozilla, etc.) carried a redirect rule that didn't apply to them.
+
+**Solution:** Use Cloudflare's infrastructure layer instead:
+
+1. **DNS:** Add a proxied A record for the apex domain → `192.0.2.1`
+2. **Redirect Rules** (dashboard): `hostname eq "planetcloudflare.dev"` → 301 to `www.planetcloudflare.dev`
+
+**Why Redirect Rules over other options:**
+
+| Option | Fit |
+|--------|-----|
+| **Redirect Rules** | Best — free, runs at edge before Worker, no cold start |
+| Bulk Redirects | Overkill for one domain |
+| Page Rules | Deprecated |
+| CNAME flattening | Not a redirect — just DNS resolution |
+| Separate Worker | Unnecessary overhead |
+
+**Key insight:** Routing and redirect logic belongs in the infrastructure layer (DNS, Cloudflare Rules, Terraform), not in application code. Application code should handle application concerns; the platform handles traffic routing.
+
+---
+
+## 28. Pyodide Typed Arrays → memoryview: The Complete Picture
+
+**Problem:** Every JavaScript typed array — `Float32Array`, `Uint8Array`, `Int32Array`, etc. — becomes a Python `memoryview` when `.to_py()` is called. `memoryview` is truthy, has `len()`, and is iterable, but it is **not** a `list` and behaves differently when passed back to JavaScript via `to_js()`.
+
+**The complete conversion table (from Pyodide's `buffer_datatype_map`):**
+
+| JavaScript Type | `.to_py()` returns | memoryview `.format` | Cloudflare binding |
+|---|---|---|---|
+| `Float32Array` | `memoryview` | `'f'` (float) | Workers AI embeddings (possible, not documented) |
+| `Float64Array` | `memoryview` | `'d'` (double) | — |
+| `Int8Array` | `memoryview` | `'b'` (signed char) | — |
+| `Int16Array` | `memoryview` | `'h'` (signed short) | — |
+| `Int32Array` | `memoryview` | `'i'` (signed int) | — |
+| `Uint8Array` | `memoryview` | `'B'` (unsigned char) | R2 `.arrayBuffer()`, KV `arrayBuffer` type |
+| `Uint16Array` | `memoryview` | `'H'` (unsigned short) | — |
+| `Uint32Array` | `memoryview` | `'I'` (unsigned int) | — |
+| `ArrayBuffer` | `memoryview` | `'B'` (unsigned char) | R2 `.arrayBuffer()`, KV `arrayBuffer` type |
+| `DataView` | `memoryview` | `'B'` (unsigned char) | — |
+
+**What does NOT convert via `.to_py()`:**
+
+| JavaScript Type | Behavior | Handling |
+|---|---|---|
+| `Blob` | Stays as JsProxy | Call `.arrayBuffer()` first (async), then `.to_py()` |
+| `ReadableStream` | Stays as JsProxy | Consume via JS stream APIs |
+| `SharedArrayBuffer` | Not available in Workers | Requires cross-origin isolation |
+| `File` | Stays as JsProxy | Call `.text()` (async) or `.arrayBuffer()` |
+
+**The bug this caused:** Workers AI returned embedding vectors that ended up as `memoryview` in Python. Our `_to_py_safe()` function didn't recognize `memoryview` and fell through to its `str()` fallback, mangling 768 floats into `"<memory at 0x7f...>"`. This passed our Python-side `len()` and truthiness checks but produced 0 dimensions when Vectorize received it via `to_js()`.
+
+**Solution in `_to_py_safe()`:**
+```python
+# Handle memoryview/bytearray (from Pyodide typed array .to_py())
+if isinstance(value, (memoryview, bytearray)):
+    return list(value)
+
+# bytes should be preserved, not converted to list
+if isinstance(value, bytes):
+    return value
+```
+
+**Where this matters in Planet CF:**
+- Any future R2 or KV integration reading binary data (`.arrayBuffer()` returns typed arrays)
+- Workers AI embeddings are NOT Float32Array — they are plain `Array` (confirmed by E2E test)
+- The memoryview handling is defensive and correct regardless
+
+**Key insight:** Don't just handle the types you expect — handle every type the runtime *could* produce. `_to_py_safe()` is the last line of defense before business logic; it must never fall through to `str()` for any structured data type.
+
+---
+
+## 29. `to_js()` Without `dict_converter` Produces Maps, Not Objects
+
+**Problem:** This was the actual root cause of the 0-dimension Vectorize upsert bug. Pyodide's `to_js()` converts Python dicts to JS `Map` objects by default. Vectorize expects plain JS `Object`s with property access (`.id`, `.values`, `.metadata`).
+
+When upserting a list of vector dicts:
+```python
+vectors = [{"id": "123", "values": [0.1, ...], "metadata": {"title": "..."}}]
+js_vectors = to_js(vectors)  # Inner dicts become Maps!
+await vectorize.upsert(js_vectors)  # Vectorize reads .values → undefined → 0 dimensions
+```
+
+**How we found it:** After weeks of wrong theories (memoryview, Float32Array, transient AI degradation), we added instrumentation to log the JS-side constructor name right before the Vectorize call. We also built a reproduction Worker (`6-vectorize-map-vs-object` in python-workers-issues) that demonstrates the bug directly.
+
+The data showed:
+- `js_constructor: "Object"` + `js_values.length: 768` = success (with fix)
+- No new `search_index_skipped` errors after deploying the fix
+- The E2E type inspection (issue 5) proved embeddings are plain `Array`, not `Float32Array`
+
+**Why our earlier theories were wrong:**
+- **memoryview theory:** Workers AI returns `Array` of numbers, not `Float32Array`. `.to_py()` produces `list[float]`, not `memoryview`. Confirmed by deploying a type-inspection Worker.
+- **transient AI degradation theory:** The AI was returning correct 768-dim vectors. The vector survived Python intact. The corruption happened in `to_js()` on the way back to JS.
+- We spent time on these theories because we didn't have instrumentation at the boundary. We could see the Python-side input (correct) and the Vectorize-side error (0 dimensions) but not the conversion step in between.
+
+**The fix:**
+```python
+# ❌ Inner dicts become Maps
+js_vectors = to_js(vectors)
+
+# ✅ Inner dicts become Objects
+js_vectors = to_js(vectors, dict_converter=js.Object.fromEntries)
+```
+
+**Why it was intermittent:** It wasn't. Every upsert without `dict_converter` produced Maps. But:
+- Most feed fetches return 304 (no new entries, no indexing)
+- The error was caught by try/except and logged as `search_index_skipped`
+- The log lacked vector diagnostics, so we couldn't see that the vector was correct on the Python side
+
+**The broader lesson:** When `_to_js_value()` checked `isinstance(value, dict)` to apply `dict_converter`, it missed lists-of-dicts. The top-level value was a `list`, so it took the default `to_js(value)` path. The inner dicts got default conversion (LiteralMap).
+
+**The complete fix:** Don't selectively apply `dict_converter`. Always apply it:
+
+```python
+def _to_js_value(value):
+    if not HAS_PYODIDE or to_js is None:
+        return value
+    return to_js(value, dict_converter=js.Object.fromEntries)
+```
+
+No `isinstance` check. `dict_converter` applies recursively to all nested dicts regardless of the top-level type. This eliminates the entire class of bugs — any future caller of `_to_js_value()` gets correct Object conversion automatically. And there should be no direct calls to `to_js()` outside of `_to_js_value()`.
+
+**Lesson for debugging:** When a value crosses a boundary and the downstream system reports it as invalid, instrument the boundary itself — not just the input (Python side) or the output (error message). We needed to see what JS type `to_js()` actually produced, and we only got that by adding `constructor.name` logging at the Vectorize call site.
+
+**How to prevent this class of bug:**
+1. **Single gate for outbound conversion.** All `to_js()` calls go through `_to_js_value()`. No direct `to_js()` in business logic or wrapper code. A PBT source-scanning test enforces this.
+2. **Always pass `dict_converter`.** There is no case in a Workers app where you want Python dicts to become JS Maps instead of Objects.
+3. **`create_pyproxies=False`.** Raises `ConversionError` if any value in the object graph can't be natively converted (custom class, function, bytes, datetime). Catches non-primitive types that would silently create leaking PyProxies.
+4. **PBT invariant:** For any nested Python structure of primitives/lists/dicts, `_to_js_value()` should succeed without creating PyProxies. A source-scanning test ensures no direct `to_js()` calls bypass the gate.
+
+**Pyodide version context:** Cloudflare Workers uses **Pyodide 0.28.2** (as of 2026-03). The `to_js()` default changed from `LiteralMap` to `Object` in **Pyodide 0.29.0** (October 2025), but Workers hasn't shipped 0.29 yet. Our `dict_converter` fix is required on 0.28.2. It becomes redundant but harmless on 0.29+.
+
+---
+
+## 30. Pyodide Version Awareness and Binding Type Safety
+
+**Problem:** Different Pyodide versions have different default behaviors. Code that works on one version may silently break on another. And different Cloudflare bindings return different JS types — some convert cleanly via `to_py()`, others stay as JsProxy.
+
+**What Workers ships (as of 2026-03):**
+
+| Pyodide | Python | Flag | Auto-enabled after |
+|---------|--------|------|--------------------|
+| 0.26.0a2 | 3.12.1 | `python_workers` | Always |
+| **0.28.2** | **3.13.2** | `python_workers_20250116` | 2025-09-29 |
+
+Planet CF uses compatibility date `2026-01-01` → runs **Pyodide 0.28.2**.
+
+**Binding return type risk matrix:**
+
+| Binding | `to_py()` converts? | Risk | Affected types |
+|---------|---------------------|------|----------------|
+| D1 | Yes — results are plain Objects | Low | — |
+| Workers AI | Yes — embeddings are `number[][]` | Low | `ReadableStream` for streaming/images stays JsProxy |
+| Vectorize | Mostly — matches may have custom prototypes | Medium | `Float32Array`/`Float64Array` → memoryview |
+| Queues | Partially — `Message` is a class, `timestamp` is `Date` | Medium | `Date` stays JsProxy |
+| R2 | No — `R2Object`, `R2ObjectBody` are classes | High | All return objects stay JsProxy |
+| KV | Mostly — `arrayBuffer` type → memoryview | Low-Medium | `ArrayBuffer`, `ReadableStream` |
+
+**Key rules from the Pyodide docs:**
+- `to_py()` only converts objects with `constructor === Object` to dicts. Custom prototypes stay as JsProxy.
+- `None` → `undefined` (not `null`). Use `js.JSON.parse("null")` for D1 SQL NULL.
+- `null` → `pyodide.ffi.jsnull` (not Python `None`). Check with `_is_js_undefined()`.
+- `to_js()` without `dict_converter` produces `LiteralMap` on Pyodide 0.28.2.
+- `create_pyproxies=False` on `to_js()` raises `ConversionError` for non-primitive types instead of silently leaking.
+- Wasm linear memory never shrinks — freed pages stay allocated until isolate eviction.

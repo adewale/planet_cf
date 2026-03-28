@@ -428,3 +428,80 @@ class TestWritePath:
                     cookies=admin_cookies,
                     follow_redirects=False,
                 )
+
+
+# =============================================================================
+# Full indexing chain — AI → embedding → to_js → Vectorize → search
+# =============================================================================
+
+
+class TestIndexingChainIntegrity:
+    """Verify the complete indexing chain works end to end.
+
+    This is the canary test for the 0-dimension bug. It exercises every
+    step that can fail:
+      1. Workers AI generates a 768-dim embedding (AI.run)
+      2. SafeAI converts the result to Python (to_py)
+      3. The vector is passed to SafeVectorize.upsert (to_js)
+      4. Vectorize accepts the vector (correct dimensions + type)
+      5. A search query finds the entry via semantic similarity
+
+    If any step silently corrupts the vector (memoryview mangling,
+    Map-vs-Object conversion, dimension mismatch), the entry won't
+    be searchable and this test fails.
+    """
+
+    @pytest.mark.asyncio
+    async def test_reindex_produces_searchable_vectors(self, client, admin_cookies, fixtures):
+        """Reindex fixture entries and verify they're searchable.
+
+        Unlike test_d1_vectorize_consistency (which checks existing state),
+        this test triggers a fresh reindex — forcing the full chain to run
+        right now — then immediately verifies the results.
+        """
+        # Step 1: Trigger reindex (needs long timeout — reindexes all entries)
+        reindex_client = httpx.AsyncClient(base_url=E2E_BASE_URL, timeout=120.0)
+        reindex_response = await reindex_client.post(
+            "/admin/reindex",
+            cookies=admin_cookies,
+            follow_redirects=True,
+        )
+        await reindex_client.aclose()
+        # 200 = success, 429 = rate limited (recently reindexed)
+        if reindex_response.status_code == 429:
+            pytest.skip("Reindex rate limited — recently triggered")
+        assert reindex_response.status_code == 200, (
+            f"Reindex failed: {reindex_response.status_code}"
+        )
+
+        # Step 2: Wait for Vectorize propagation
+        import asyncio
+
+        await asyncio.sleep(3)
+
+        # Step 3: Search for each fixture entry by a distinctive term.
+        # If the indexing chain is broken (0-dim vectors, Map conversion,
+        # etc.), semantic search won't find these entries.
+        entries = fixtures["entries"]
+        sample = entries[:3]
+        failures = []
+
+        for entry in sample:
+            title = entry["title"]
+            response = await client.get("/search", params={"q": title})
+
+            if response.status_code != 200:
+                failures.append(f"'{title}': HTTP {response.status_code}")
+                continue
+
+            if entry["url"] not in response.text:
+                failures.append(f"'{title}': not found after fresh reindex")
+
+        if failures:
+            pytest.fail(
+                "Indexing chain broken — entries not searchable after reindex:\n"
+                + "\n".join(f"  - {f}" for f in failures)
+                + "\n\nThis likely means the AI → Vectorize upsert pipeline is "
+                "silently failing (check vectorize_upsert_debug and "
+                "search_index_skipped logs for diagnostics)."
+            )

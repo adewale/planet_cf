@@ -9,6 +9,8 @@ This ensures that application code NEVER sees JsProxy objects - they are
 converted at the boundary layer before reaching business logic.
 """
 
+import asyncio
+import json
 import logging
 from typing import Any
 from urllib.parse import urlencode
@@ -59,17 +61,26 @@ except ImportError:
 def _to_js_value(value: Any) -> Any:
     """Convert Python value to JavaScript for Workers bindings.
 
-    Centralizes the HAS_PYODIDE check and proper dict conversion.
-    For dicts, uses Object.fromEntries to create proper JS objects.
-    For other types (lists, primitives), uses plain to_js().
+    Always applies dict_converter=Object.fromEntries so that ALL dicts
+    at any nesting depth become JS Objects, not Maps (LiteralMap).
+    Without this, Vectorize, AI, and other bindings can't read properties
+    on the resulting JS values. See lesson 29 in LESSONS_LEARNED.md.
+
+    Uses create_pyproxies=False as a safety assertion: if any value in
+    the object graph can't be natively converted (custom class, function,
+    bytes, datetime), this raises ConversionError instead of silently
+    creating a leaking PyProxy. All data we pass to bindings should be
+    primitives, lists, and dicts — if it isn't, we want to know.
 
     Returns value unchanged in test environment (not Pyodide).
     """
     if not HAS_PYODIDE or to_js is None:
         return value
-    if isinstance(value, dict):
-        return to_js(value, dict_converter=js.Object.fromEntries)
-    return to_js(value)
+    return to_js(
+        value,
+        dict_converter=js.Object.fromEntries,
+        create_pyproxies=False,
+    )
 
 
 # =============================================================================
@@ -148,6 +159,19 @@ def _to_py_safe(value: Any, *, _depth: int = 0) -> Any:
     # This ensures published_parsed can be indexed and converted to datetime
     if isinstance(value, tuple):
         return [_to_py_safe(item, _depth=_depth + 1) for item in value]
+
+    # For memoryview/bytearray (from Pyodide typed array .to_py()), convert to list.
+    # Pyodide converts JS typed arrays (Float32Array, Uint8Array, etc.) to
+    # memoryview objects which are truthy and have len() but are not lists.
+    # Without this, they fall through to the str() fallback and get mangled.
+    # Relevant for R2 .arrayBuffer(), KV arrayBuffer type, and any future
+    # binding that returns typed arrays.
+    if isinstance(value, memoryview | bytearray):
+        return list(value)
+
+    # For bytes, return as-is (not iterable as meaningful values)
+    if isinstance(value, bytes):
+        return value
 
     # Try to convert to string as last resort
     try:
@@ -286,7 +310,22 @@ class SafeD1Statement:
     async def first(self) -> dict[str, Any] | None:
         """Execute and return first result as Python dict."""
         result = await self._stmt.first()
-        return _to_py_safe(result)
+        converted = _to_py_safe(result)
+
+        # Type assertion: first() must return dict or None.
+        if converted is not None and not isinstance(converted, dict):
+            logger.info(
+                json.dumps(
+                    {
+                        "event_type": "boundary_type_violation",
+                        "binding": "D1.first",
+                        "expected": "dict|None",
+                        "actual": type(converted).__name__,
+                    }
+                )
+            )
+
+        return converted
 
     async def all(self) -> Any:
         """Execute and return all results with Python list of dicts.
@@ -339,7 +378,25 @@ class SafeAI:
         """Run AI model and return Python dict result."""
         js_inputs = _to_js_value(inputs)
         result = await self._ai.run(model, js_inputs)
-        return _to_py_safe(result)
+        converted = _to_py_safe(result)
+
+        # Type assertion: AI.run() must return a Python dict after conversion.
+        # If _to_py_safe produced something else, log it — this catches
+        # conversion bugs before they propagate to business logic.
+        if converted is not None and not isinstance(converted, dict):
+            logger.info(
+                json.dumps(
+                    {
+                        "event_type": "boundary_type_violation",
+                        "binding": "AI.run",
+                        "model": model,
+                        "expected": "dict",
+                        "actual": type(converted).__name__,
+                    }
+                )
+            )
+
+        return converted
 
 
 class SafeVectorize:
@@ -357,6 +414,20 @@ class SafeVectorize:
         py_result = _to_py_safe(result)
         if py_result is None:
             return {"matches": []}
+
+        # Type assertion: query() must return a dict with "matches" key.
+        if not isinstance(py_result, dict):
+            logger.info(
+                json.dumps(
+                    {
+                        "event_type": "boundary_type_violation",
+                        "binding": "Vectorize.query",
+                        "expected": "dict",
+                        "actual": type(py_result).__name__,
+                    }
+                )
+            )
+
         return py_result
 
     async def upsert(self, vectors: Any) -> Any:
@@ -718,6 +789,36 @@ class SafeFormData:
     def get_str(self, key: str, default: str = "") -> str:
         """Get a form value by key, returns default if missing."""
         return _extract_form_value(self._form, key) or default
+
+    async def get_file_text(self, key: str) -> str | None:
+        """Get uploaded file content as a Python string.
+
+        Handles JsProxy File objects (production) and string values (tests).
+        In Pyodide, File.text() returns an awaitable JS Promise.
+        """
+        try:
+            value = self._form.get(key)
+            if value is None or _is_js_undefined(value):
+                return None
+
+            # Already a string (test mocks)
+            if isinstance(value, str):
+                return value
+
+            # JsProxy File — call .text() and await
+            if hasattr(value, "text") and callable(value.text):
+                result = value.text()
+                if asyncio.iscoroutine(result) or hasattr(result, "__await__"):
+                    content = await result
+                else:
+                    content = result
+                return _safe_str(content) or ""
+
+            # Fallback
+            return _safe_str(value)
+        except Exception:
+            logger.warning("File text extraction failed for key '%s'", key)
+            return None
 
     def get_int(self, key: str, default: int = 0) -> int:
         """Get a form value as int, returns default if missing or invalid."""

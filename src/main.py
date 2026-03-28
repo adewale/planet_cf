@@ -110,7 +110,6 @@ from wrappers import (
     SafeFeedInfo,
     SafeFormData,
     SafeHeaders,
-    _is_js_undefined,
     _safe_str,
     _to_py_list,
     _to_py_safe,
@@ -356,6 +355,46 @@ class Default(WorkerEntrypoint):
         """Get HTTP timeout from environment, default 30 seconds."""
         return get_http_timeout(self.env)
 
+    # Track if config has been validated (per-isolate, runs once)
+    _config_validated: bool = False
+
+    def _validate_config(self) -> None:
+        """Check for binding/mode mismatches and log warnings.
+
+        Runs once per isolate. Detects:
+        - Full mode without AI/SEARCH_INDEX bindings (search will silently fail)
+        - Lite mode with AI/SEARCH_INDEX bindings (unnecessary cost)
+        """
+        if self._config_validated:
+            return
+        self._config_validated = True
+
+        is_lite = check_lite_mode(self.env)
+        has_ai = getattr(self.env, "AI", None) is not None
+        has_search = getattr(self.env, "SEARCH_INDEX", None) is not None
+
+        if not is_lite and (not has_ai or not has_search):
+            missing = []
+            if not has_ai:
+                missing.append("AI")
+            if not has_search:
+                missing.append("SEARCH_INDEX")
+            log_op(
+                "config_warning",
+                severity="warning",
+                message=f"INSTANCE_MODE is not 'lite' but missing bindings: {', '.join(missing)}. "
+                "Search and indexing will be silently skipped. "
+                "Either add the missing bindings or set INSTANCE_MODE=lite.",
+            )
+
+        if is_lite and has_ai and has_search:
+            log_op(
+                "config_warning",
+                severity="info",
+                message="INSTANCE_MODE is 'lite' but AI and SEARCH_INDEX bindings are present. "
+                "These bindings are unused in lite mode and add unnecessary cost.",
+            )
+
     # Track if database has been initialized (per-isolate state)
     # Tri-state: None=not attempted, True=success, False=failed (will retry)
     _db_initialized: bool | None = None
@@ -466,15 +505,25 @@ class Default(WorkerEntrypoint):
                     );
                 """)
                 log_op("database_auto_init", status="completed")
-            else:
-                log_op("database_auto_init", status="already_initialized")
-                # Validate existing schema has all expected columns
+                # Validate schema after fresh initialization
                 await self._check_schema_drift()
+            else:
+                # Database already initialized — skip silently.
+                # In stateless execution mode this runs every request;
+                # logging here would create noise with zero signal.
+                pass
 
             self._db_initialized = True
 
         except Exception as e:
-            log_error("database_auto_init_error", e)
+            # Log at info level, not error — in stateless execution mode this
+            # runs every request, and transient D1 errors (cold starts, rate
+            # limits) would otherwise poison the entire invocation's log level.
+            log_op(
+                "database_auto_init_error",
+                error_type=type(e).__name__,
+                error=truncate_error(e),
+            )
             # Mark as failed so next request retries (transient D1 errors)
             self._db_initialized = False
 
@@ -716,10 +765,9 @@ class Default(WorkerEntrypoint):
                         .first()
                     )
                     if health_result:
-                        health = _to_py_safe(health_result)
-                        sched_event.feeds_disabled = health.get("disabled") or 0
-                        sched_event.feeds_newly_disabled = health.get("newly_disabled") or 0
-                        sched_event.dlq_depth = health.get("dlq_depth") or 0
+                        sched_event.feeds_disabled = health_result.get("disabled") or 0
+                        sched_event.feeds_newly_disabled = health_result.get("newly_disabled") or 0
+                        sched_event.dlq_depth = health_result.get("dlq_depth") or 0
 
                     # Error clustering: find error patterns affecting 2+ feeds
                     cluster_result = await self.env.DB.prepare("""
@@ -730,7 +778,7 @@ class Default(WorkerEntrypoint):
                         HAVING COUNT(*) >= 2
                         ORDER BY cnt DESC
                     """).all()
-                    clusters = _to_py_safe(cluster_result.results) if cluster_result else []
+                    clusters = cluster_result.results if cluster_result else []
                     if clusters:
                         sched_event.error_clusters = len(clusters)
                         top = clusters[0] if isinstance(clusters, list) and clusters else None
@@ -803,6 +851,9 @@ class Default(WorkerEntrypoint):
 
         Note: Workers Python runtime passes (batch, env, ctx) but we use self.env from __init__.
         """
+        # Validate config on first queue event (once per isolate)
+        self._validate_config()
+
         batch_queue = _safe_str(getattr(batch, "queue", "")) or ""
         log_op("queue_batch_received", batch_size=len(batch.messages), queue=batch_queue)
 
@@ -1018,6 +1069,13 @@ class Default(WorkerEntrypoint):
         if event:
             event.entries_found = entries_found
 
+        # Cap entries processed to retention limit — no point upserting more
+        # entries than we'll keep. Feeds like pythonbytes.fm have 474 entries;
+        # processing all of them exhausts the 60s CPU limit.
+        max_entries = self._get_max_entries_per_feed()
+        if len(entries_list) > max_entries:
+            entries_list = entries_list[:max_entries]
+
         log_op("feed_entries_found", feed_id=feed_id, entries_count=entries_found)
 
         for entry in entries_list:
@@ -1122,9 +1180,7 @@ class Default(WorkerEntrypoint):
             .first()
         )
 
-        # Convert JsProxy to Python dict
-        result = _to_py_safe(result_raw)
-        entry_id = result.get("id") if result else None
+        entry_id = result_raw.get("id") if result_raw else None
 
         # Update feed's last_entry_at when a new entry is successfully added
         if entry_id:
@@ -1139,32 +1195,46 @@ class Default(WorkerEntrypoint):
                 .run()
             )
 
-        # Index for semantic search (may fail in local dev - Vectorize not supported)
-        # Capture stats for aggregation on FeedFetchEvent
+        # Index for semantic search — skip entirely if bindings not configured
+        # to avoid per-entry overhead in lite mode instances
         indexing_stats = None
-        if entry_id and title:
+        has_search_bindings = getattr(self.env, "AI", None) and getattr(
+            self.env, "SEARCH_INDEX", None
+        )
+        if entry_id and title and has_search_bindings:
             try:
                 indexing_stats = await self._index_entry_for_search(
                     entry_id, title, sanitized_content, feed_id=feed_id
                 )
             except Exception as e:
-                # Log but don't fail - entry is still usable without search
+                # Extract diagnostics attached by _index_entry_for_search
+                diag = getattr(e, "_indexing_stats", {})
                 log_op(
                     "search_index_skipped",
                     entry_id=entry_id,
+                    feed_id=feed_id,
                     error_type=type(e).__name__,
                     error=truncate_error(e),
+                    title_len=len(title) if title else 0,
+                    content_len=len(sanitized_content) if sanitized_content else 0,
+                    vector_type=diag.get("vector_type"),
+                    vector_len=diag.get("vector_len"),
+                    embedding_ms=diag.get("embedding_ms"),
                 )
                 # Create failed stats for aggregation
-                indexing_stats = {
-                    "success": False,
-                    "embedding_ms": 0,
-                    "upsert_ms": 0,
-                    "total_ms": 0,
-                    "text_truncated": False,
-                    "error_type": type(e).__name__,
-                    "error_message": truncate_error(e),
-                }
+                indexing_stats = (
+                    diag
+                    if diag.get("error_type")
+                    else {
+                        "success": False,
+                        "embedding_ms": 0,
+                        "upsert_ms": 0,
+                        "total_ms": 0,
+                        "text_truncated": False,
+                        "error_type": type(e).__name__,
+                        "error_message": truncate_error(e),
+                    }
+                )
 
         return {"entry_id": entry_id, "indexing_stats": indexing_stats}
 
@@ -1204,12 +1274,24 @@ class Default(WorkerEntrypoint):
             "error_message": None,
         }
 
+        # Skip if AI or Vectorize bindings are not configured
+        if not getattr(self.env, "AI", None) or not getattr(self.env, "SEARCH_INDEX", None):
+            stats["error_type"] = "NotConfigured"
+            stats["error_message"] = "AI or SEARCH_INDEX binding not available"
+            return stats
+
         with Timer() as wall_timer:
             try:
                 # Combine title and content for embedding (truncate to configurable limit)
                 max_chars = self._get_embedding_max_chars()
-                combined_text = f"{title}\n\n{content[:max_chars]}"
+                combined_text = f"{title}\n\n{content[:max_chars]}".strip()
                 stats["text_truncated"] = len(content) > max_chars
+
+                # Skip if combined text is too short for meaningful embedding
+                if len(combined_text) < 3:
+                    stats["error_type"] = "InputTooShort"
+                    stats["error_message"] = f"Combined text is {len(combined_text)} chars"
+                    return stats
 
                 # Generate embedding using Workers AI with cls pooling for accuracy
                 with Timer() as embedding_timer:
@@ -1219,18 +1301,37 @@ class Default(WorkerEntrypoint):
                     )
                 stats["embedding_ms"] = embedding_timer.elapsed_ms
 
-                if not embedding_result or "data" not in embedding_result:
+                # SafeAI.run() already converts JsProxy to Python via _to_py_safe()
+                if (
+                    not embedding_result
+                    or not isinstance(embedding_result, dict)
+                    or "data" not in embedding_result
+                ):
                     stats["error_type"] = "NoEmbeddingData"
                     stats["error_message"] = "No data in embedding result"
                     return stats
 
                 data = embedding_result["data"]
-                if not data or len(data) == 0:
+                if not data or not isinstance(data, list) or len(data) == 0:
                     stats["error_type"] = "EmptyEmbedding"
                     stats["error_message"] = "Empty data array in result"
                     return stats
 
-                vector = data[0]
+                raw_vector = data[0]
+                vector = list(raw_vector) if raw_vector else []
+
+                # Capture vector diagnostics for error context
+                stats["vector_type"] = type(raw_vector).__name__
+                stats["vector_len"] = len(vector)
+
+                # Validate embedding dimensions before upserting
+                if len(vector) != 768:
+                    stats["error_type"] = "InvalidDimensions"
+                    stats["error_message"] = f"Expected 768 dimensions, got {len(vector)}"
+                    stats["raw_vector_type"] = type(raw_vector).__name__
+                    if vector:
+                        stats["vector_sample"] = [type(vector[0]).__name__, repr(vector[0])[:20]]
+                    return stats
 
                 # Upsert to Vectorize with entry_id as the vector ID
                 with Timer() as upsert_timer:
@@ -1249,6 +1350,8 @@ class Default(WorkerEntrypoint):
             except Exception as e:
                 stats["error_type"] = type(e).__name__
                 stats["error_message"] = truncate_error(e)
+                # Attach diagnostics to exception so caller can log them
+                e._indexing_stats = stats  # type: ignore[attr-defined]
                 raise
 
         stats["total_ms"] = wall_timer.elapsed_ms
@@ -1309,13 +1412,11 @@ class Default(WorkerEntrypoint):
             .bind(error_message[:500], threshold, feed_id)
             .first()
         )
-        # Convert JsProxy to Python dict
-        result = _to_py_safe(result_raw)
-        if result and result.get("is_active") == 0:
+        if result_raw and result_raw.get("is_active") == 0:
             log_op(
                 "feed_auto_deactivated",
                 feed_id=feed_id,
-                consecutive_failures=result.get("consecutive_failures"),
+                consecutive_failures=result_raw.get("consecutive_failures"),
                 reason="Too many consecutive failures",
             )
             return True
@@ -1498,6 +1599,9 @@ class Default(WorkerEntrypoint):
         headers = SafeHeaders(request)
         user_agent = headers.user_agent
         referer = headers.referer
+
+        # Validate config on first request (once per isolate)
+        self._validate_config()
 
         # Get deployment context for observability
         deployment = self._get_deployment_context()
@@ -2336,7 +2440,7 @@ class Default(WorkerEntrypoint):
             .bind(FAILURE_THRESHOLD, FAILURE_THRESHOLD)
             .first()
         )
-        health = _to_py_safe(result) if result else {}
+        health = result if result else {}
         total = health.get("total") or 0
         healthy = health.get("healthy") or 0
         warning = health.get("warning") or 0
@@ -2441,32 +2545,35 @@ class Default(WorkerEntrypoint):
         semantic_matches_raw = []
         keyword_entries = []
 
-        # 1. Semantic search via Vectorize
-        try:
-            with Timer() as embedding_timer:
-                embedding_result = await self.env.AI.run(
-                    "@cf/baai/bge-base-en-v1.5", {"text": [query], "pooling": "cls"}
-                )
-            if event:
-                event.search_embedding_ms = embedding_timer.elapsed_ms
-
-            if embedding_result and "data" in embedding_result:
-                query_vector = embedding_result["data"][0]
-                with Timer() as vectorize_timer:
-                    results = await self.env.SEARCH_INDEX.query(
-                        query_vector, {"topK": top_k, "returnMetadata": True}
+        # 1. Semantic search via Vectorize (skip if bindings not configured)
+        if getattr(self.env, "AI", None) and getattr(self.env, "SEARCH_INDEX", None):
+            try:
+                with Timer() as embedding_timer:
+                    embedding_result = await self.env.AI.run(
+                        "@cf/baai/bge-base-en-v1.5", {"text": [query], "pooling": "cls"}
                     )
                 if event:
-                    event.search_vectorize_ms = vectorize_timer.elapsed_ms
+                    event.search_embedding_ms = embedding_timer.elapsed_ms
 
-                semantic_matches_raw = results.get("matches", []) if results else []
+                if embedding_result and "data" in embedding_result:
+                    # Ensure vector is a plain Python list for Vectorize
+                    raw_vector = embedding_result["data"][0]
+                    query_vector = list(raw_vector) if raw_vector else []
+                    with Timer() as vectorize_timer:
+                        results = await self.env.SEARCH_INDEX.query(
+                            query_vector, {"topK": top_k, "returnMetadata": True}
+                        )
+                    if event:
+                        event.search_vectorize_ms = vectorize_timer.elapsed_ms
 
-                # Apply score threshold
-                semantic_matches = [
-                    m for m in semantic_matches_raw if m.get("score", 0) >= score_threshold
-                ]
-        except Exception as e:
-            log_op("semantic_search_failed", error=truncate_error(e))
+                    semantic_matches_raw = results.get("matches", []) if results else []
+
+                    # Apply score threshold
+                    semantic_matches = [
+                        m for m in semantic_matches_raw if m.get("score", 0) >= score_threshold
+                    ]
+            except Exception as e:
+                log_op("semantic_search_failed", error=truncate_error(e))
 
         # 2. Keyword search via D1 (primary ranking signal)
         # Use SearchQueryBuilder for SQL query construction
@@ -3004,9 +3111,7 @@ class Default(WorkerEntrypoint):
                     .first()
                 )
 
-                # Convert JsProxy to Python dict
-                result = _to_py_safe(result_raw)
-                feed_id = result.get("id") if result else None
+                feed_id = result_raw.get("id") if result_raw else None
                 ctx.set_target_id(feed_id)
 
                 # Audit log with validation info
@@ -3167,31 +3272,17 @@ class Default(WorkerEntrypoint):
             admin, "import_opml", "feeds", deployment, self._log_admin_action
         ) as ctx:
             try:
-                form = await request.form_data()
-                # File uploads need direct access, not string conversion
-                opml_file = form.get("opml")
+                form = SafeFormData(await request.form_data())
+                content = await form.get_file_text("opml")
 
-                # Check for both Python None and JavaScript undefined
-                if not opml_file or _is_js_undefined(opml_file):
+                if not content:
                     ctx.set_error("ValidationError", "No file uploaded")
                     return self._admin_error_response(
                         "Please select an OPML file to upload.",
                         title="No File Selected",
                     )
 
-                # Handle both JsProxy File and test mock
-                if hasattr(opml_file, "text"):
-                    result = opml_file.text()
-                    # Await if it's a coroutine or JS Promise (JsProxy with 'then' method)
-                    if asyncio.iscoroutine(result) or hasattr(result, "then"):
-                        content = await result
-                    else:
-                        content = result
-                else:
-                    # Already a string (test fallback)
-                    content = str(opml_file)
-
-                ctx.set_import_metrics(file_size=len(content) if content else 0)
+                ctx.set_import_metrics(file_size=len(content))
 
                 # Parse OPML using shared parser (XXE/Billion Laughs protection)
                 parsed_feeds, parse_errors = parse_opml(content)
@@ -3259,6 +3350,7 @@ class Default(WorkerEntrypoint):
                 return redirect_response("/admin")
 
             except Exception as e:
+                log_error("opml_import_error", e)
                 ctx.set_error_from_exception(e)
                 return self._admin_error_response(
                     "An unexpected error occurred while importing the OPML file. Please try again.",
@@ -3552,9 +3644,7 @@ class Default(WorkerEntrypoint):
                 """).first()
 
                 if last_reindex:
-                    last_reindex_time = parse_iso_datetime(
-                        _to_py_safe(last_reindex).get("created_at")
-                    )
+                    last_reindex_time = parse_iso_datetime(last_reindex.get("created_at"))
                     if last_reindex_time:
                         elapsed = (datetime.now(timezone.utc) - last_reindex_time).total_seconds()
                         if elapsed < REINDEX_COOLDOWN_SECONDS:

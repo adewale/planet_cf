@@ -89,10 +89,9 @@ class TestParseOpml:
     def test_xxe_attack_rejected(self):
         """DTD/XXE payloads are rejected.
 
-        Note: In Cloudflare Workers runtime, forbid_dtd=True blocks DTD declarations.
-        In standard CPython the DTD is processed but entity resolution behaviour varies.
-        This test verifies that parse_opml does not return usable feed data from
-        malicious XXE payloads regardless of runtime.
+        parse_opml strips DOCTYPE declarations before parsing to prevent XXE
+        attacks portably (Pyodide lacks forbid_dtd support). This test verifies
+        that no usable feed data can be extracted from malicious XXE payloads.
         """
         xxe_payload = """<?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE foo [
@@ -105,13 +104,32 @@ class TestParseOpml:
         </opml>"""
         feeds, errors = parse_opml(xxe_payload)
 
-        # The entity &xxe; either gets rejected (forbid_dtd runtime),
-        # or on standard CPython, entity resolution may fail or produce empty url.
-        # Either way, we should not get a valid "file:///etc/passwd" feed URL.
+        # DOCTYPE is stripped, so &xxe; is an undefined entity reference.
+        # The parser should either reject it entirely or produce no valid feed URL.
         if feeds:
             for feed in feeds:
                 assert "file:///" not in feed["url"]
                 assert "/etc/passwd" not in feed["url"]
+
+    def test_doctype_stripped_from_opml(self):
+        """DOCTYPE declarations are stripped before parsing.
+
+        This is critical for Pyodide compatibility — CPython 3.13.3+ has
+        forbid_dtd=True, but Pyodide's bundled Python does not. We strip
+        DOCTYPE manually to ensure portability across all runtimes.
+        """
+        # Valid OPML with an innocuous DOCTYPE — should parse fine after stripping
+        opml_with_doctype = """<?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE opml SYSTEM "opml.dtd">
+        <opml version="2.0">
+          <body>
+            <outline xmlUrl="https://example.com/feed.xml" text="Test" />
+          </body>
+        </opml>"""
+        feeds, errors = parse_opml(opml_with_doctype)
+
+        assert len(feeds) == 1
+        assert feeds[0]["url"] == "https://example.com/feed.xml"
 
     def test_exceeds_max_feeds_limit(self):
         """Truncates feeds exceeding MAX_OPML_FEEDS and adds warning."""
