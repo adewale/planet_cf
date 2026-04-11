@@ -1091,3 +1091,35 @@ Planet CF uses compatibility date `2026-01-01` → runs **Pyodide 0.28.2**.
 - `to_js()` without `dict_converter` produces `LiteralMap` on Pyodide 0.28.2.
 - `create_pyproxies=False` on `to_js()` raises `ConversionError` for non-primitive types instead of silently leaking.
 - Wasm linear memory never shrinks — freed pages stay allocated until isolate eviction.
+
+---
+
+## 31. Test Count is Not Test Quality
+
+**Problem:** Planet CF had ~1294 tests, all passing, with branch coverage enabled. This looked healthy. A test quality audit revealed that most test files had assertion density below 1.5 — meaning the average test made only one assertion. Security-critical files (`test_xml_sanitizer.py`, `test_session.py`, `test_security.py`, `test_auth.py`) were the worst offenders, with densities between 1.0 and 1.34.
+
+**Why this matters:** A test with one assertion can pass even when the code is wrong. A sanitizer test that asserts `<script>` is removed but never checks that `<p>Hello</p>` survives will pass if the sanitizer strips *everything*. An auth test that asserts "invalid token returns None" but never checks "valid token returns session data" will pass even if the function always returns None.
+
+**What we measured:**
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Test count | ~1294 | ~1426 |
+| Avg assertion density | 1.82 | ≥3.0 (all files) |
+| Hypothesis `@given` tests | 117 | 159 |
+| Security test density | 1.0–1.34 | 3.0–4.4 |
+
+**Three rules that emerged:**
+
+1. **Bidirectional security checks.** Every security test must verify what's *allowed* AND what's *blocked*. A test that only checks one direction can pass even if the function is a no-op or strips everything.
+
+2. **Assertion density ≥3.0 for all files, ≥4.0 for security.** A test function with 1 assertion is testing one property. A function with 3+ assertions tests behavior: the return value, its type, its side effects, and the absence of unwanted side effects. The density target is per-file average, not per-test minimum.
+
+3. **Count mock assertions too.** `mock.assert_called_once()`, `mock.assert_awaited_once()`, and `mock.assert_not_called()` are real assertions — they raise `AssertionError` on failure. Automated audits that only count `assert` keyword statements will undercount mock-heavy test files. Our cache purge tests were flagged at 0.44 density but were actually 4.44 once mock assertions were included.
+
+**PBT gaps follow module boundaries.** The existing `test_properties.py` had excellent coverage for core modules (auth, models, search) but missed utility modules (`utils.py`, `xml_sanitizer.py`, `instance_config.py`, `content_processor.py`, `templates.py`). These are exactly the kind of pure functions where "never crashes on arbitrary input", "idempotent", and "conservation" properties catch real bugs. PBT coverage should be audited per-module, not per-file.
+
+**How to prevent this:**
+- Track assertion density as a periodic audit metric, not just coverage percentage
+- When adding a new test, check both directions: "does it work?" and "does it fail correctly?"
+- When adding PBT for a new module, add at minimum: never-crashes, idempotent (if normalization), conservation (if filtering), roundtrip (if serialization)
