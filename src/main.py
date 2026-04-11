@@ -120,6 +120,8 @@ from wrappers import (
     feed_bind_values,
     feed_row_from_js,
     feed_rows_from_d1,
+    purge_edge_cache,
+    purge_edge_cache_global,
     safe_http_fetch,
 )
 from xml_sanitizer import strip_xml_control_chars
@@ -285,6 +287,14 @@ def is_safe_url(url: str) -> bool:
     ]
     return not any(hostname == h or hostname.endswith("." + h) for h in metadata_hosts)
 
+
+# =============================================================================
+# Cache Purge Paths
+# =============================================================================
+
+#: Public paths to purge from edge cache after content-modifying admin actions.
+#: Must match the paths pre-warmed by the cron scheduler.
+CACHEABLE_PATHS = ("/", "/titles", "/feed.atom", "/feed.rss")
 
 # =============================================================================
 # Main Worker Class
@@ -615,6 +625,45 @@ class Default(WorkerEntrypoint):
             log_error("schema_drift_check_error", e)
 
     # =========================================================================
+    # Edge Cache Purging
+    # =========================================================================
+
+    async def _purge_edge_cache(self) -> None:
+        """Purge cached responses for public pages from Cloudflare's edge cache.
+
+        Called after content-modifying admin actions (add/remove feed, OPML
+        import, regenerate, fetch-now) so visitors see updated content
+        immediately instead of waiting for the hourly TTL to expire.
+
+        Dual-layer strategy:
+        - Layer 1: Global purge via Cloudflare REST API (if zone secrets configured)
+        - Layer 2: Local PoP purge via Cache API (always, as defense-in-depth)
+
+        Both layers are best-effort: failures are logged but do not propagate.
+        Instances without secrets (e.g. workers.dev) gracefully skip Layer 1.
+        """
+        base_url = (getattr(self.env, "PLANET_URL", None) or "").rstrip("/")
+        if not base_url:
+            return
+
+        urls = [f"{base_url}{path}" for path in CACHEABLE_PATHS]
+
+        # Layer 1: Global purge (all PoPs) — requires zone secrets
+        zone_id = getattr(self.env, "CLOUDFLARE_ZONE_ID", None) or ""
+        api_token = getattr(self.env, "CLOUDFLARE_API_TOKEN", None) or ""
+        if zone_id and api_token:
+            try:
+                await purge_edge_cache_global(zone_id, api_token, urls)
+            except Exception:
+                log_op("global_cache_purge_failed")
+
+        # Layer 2: Local PoP purge (always, as defense-in-depth)
+        try:
+            await purge_edge_cache(base_url, CACHEABLE_PATHS)
+        except Exception:
+            log_op("cache_purge_failed")
+
+    # =========================================================================
     # Cron Handler - Scheduler
     # =========================================================================
 
@@ -821,7 +870,7 @@ class Default(WorkerEntrypoint):
                     base_url = (getattr(self.env, "PLANET_URL", None) or "").rstrip("/")
                     if base_url:
                         warm_headers = {"User-Agent": self._get_user_agent()}
-                        for path in ("/", "/titles", "/feed.atom", "/feed.rss"):
+                        for path in CACHEABLE_PATHS:
                             await safe_http_fetch(f"{base_url}{path}", headers=warm_headers)
                 except Exception:
                     log_op("cache_prewarm_failed")
@@ -3138,6 +3187,7 @@ class Default(WorkerEntrypoint):
                     )
 
                 ctx.set_success()
+                await self._purge_edge_cache()
 
                 # Redirect back to admin
                 return redirect_response("/admin")
@@ -3190,6 +3240,7 @@ class Default(WorkerEntrypoint):
                 )
 
                 ctx.set_success()
+                await self._purge_edge_cache()
 
                 # Redirect back to admin
                 return redirect_response("/admin")
@@ -3346,6 +3397,8 @@ class Default(WorkerEntrypoint):
                     {"imported": imported, "skipped": skipped, "errors": errors[:10]},
                 )
 
+                await self._purge_edge_cache()
+
                 # Redirect back to admin
                 return redirect_response("/admin")
 
@@ -3359,12 +3412,13 @@ class Default(WorkerEntrypoint):
                 )
 
     async def _trigger_regenerate(self, admin: dict[str, Any]) -> Response:
-        """Force regeneration by clearing edge cache (not really possible, but log the action)."""
-        # In practice, edge cache expires on its own. This is more of a manual trigger to re-fetch.
+        """Force regeneration: purge edge cache and re-queue all feeds."""
         await self._log_admin_action(admin["id"], "manual_refresh", None, None, {})
 
         # Queue all active feeds for immediate fetch
         await self._run_scheduler()
+
+        await self._purge_edge_cache()
 
         return redirect_response("/admin")
 
@@ -3493,6 +3547,8 @@ class Default(WorkerEntrypoint):
             await self._log_admin_action(
                 admin["id"], "fetch_now", "feed", feed_id, {"result": result}
             )
+
+            await self._purge_edge_cache()
 
             return json_response(
                 {

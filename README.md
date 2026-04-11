@@ -97,6 +97,19 @@ Use your exact GitHub login name (e.g., `adewale`, not `@adewale`).
 npx wrangler deploy
 ```
 
+### 8. Custom domain (optional)
+
+Workers on `*.workers.dev` don't benefit from Cloudflare's edge cache — every request runs the Worker. If you add a [custom domain](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/), Cloudflare caches responses at the edge and serves them in ~20-50ms.
+
+To enable global cache purging after admin actions (so changes appear immediately worldwide instead of waiting up to 1 hour):
+
+```bash
+npx wrangler secret put CLOUDFLARE_ZONE_ID    # from your domain's Cloudflare dashboard
+npx wrangler secret put CLOUDFLARE_API_TOKEN   # API token with Cache Purge permission
+```
+
+Without these secrets, cache purging still works but only clears the local edge location. See [docs/CACHING.md](docs/CACHING.md) for details.
+
 ## Public Routes
 
 | URL | Description |

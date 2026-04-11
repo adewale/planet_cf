@@ -47,6 +47,11 @@
   // - SESSION_SECRET: HMAC key for signed cookies (generate with: openssl rand -hex 32)
   // - OAUTH_REDIRECT_URI: Full OAuth callback URL for production (e.g., https://www.planetcloudflare.dev/auth/github/callback)
   //   This is a security best practice to prevent open redirect attacks. If not set, falls back to request origin.
+  //
+  // Optional (for global cache purging after admin actions):
+  // - CLOUDFLARE_ZONE_ID: Zone ID for the custom domain (find in Cloudflare dashboard)
+  // - CLOUDFLARE_API_TOKEN: API token with Cache Purge permission (scoped to this zone)
+  //   Without these, cache purging falls back to local-PoP only via the Cache API.
 
   // Workers Observability
   "observability": {

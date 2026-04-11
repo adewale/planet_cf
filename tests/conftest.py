@@ -436,6 +436,8 @@ class MockEnv:
     SESSION_SECRET: str = "test-secret-key-for-testing-only-32chars"
     GITHUB_CLIENT_ID: str = "test-client-id"
     GITHUB_CLIENT_SECRET: str = "test-client-secret"
+    CLOUDFLARE_ZONE_ID: str = ""
+    CLOUDFLARE_API_TOKEN: str = ""
 
     def __post_init__(self):
         """Initialize ASSETS if not provided."""

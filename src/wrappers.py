@@ -553,6 +553,83 @@ async def safe_http_fetch(
             )
 
 
+async def purge_edge_cache(base_url: str, paths: tuple[str, ...]) -> int:
+    """Purge cached responses from Cloudflare's edge cache.
+
+    Uses the Cache API (caches.default.delete) to remove cached responses
+    for the given paths. This is a best-effort operation — callers should
+    not rely on purge success for correctness.
+
+    Args:
+        base_url: The base URL of the Worker (e.g. "https://example.com")
+        paths: Tuple of URL paths to purge (e.g. ("/", "/titles"))
+
+    Returns:
+        Number of paths successfully purged (0 in test environment).
+    """
+    if not HAS_PYODIDE:
+        # Test environment: no cache to purge
+        return 0
+
+    purged = 0
+    cache = js.caches.default
+    for path in paths:
+        try:
+            url = f"{base_url.rstrip('/')}{path}"
+            deleted = await cache.delete(url)
+            if deleted:
+                purged += 1
+        except Exception:
+            # Best-effort: log but don't fail
+            logger.info("cache_purge_error", extra={"path": path})
+    return purged
+
+
+_CLOUDFLARE_PURGE_API = "https://api.cloudflare.com/client/v4/zones/{zone_id}/purge_cache"
+
+
+async def purge_edge_cache_global(zone_id: str, api_token: str, urls: list[str]) -> bool:
+    """Purge URLs from all Cloudflare edge PoPs via the REST API.
+
+    Calls POST /zones/{zone_id}/purge_cache with {"files": urls}.
+    Requires a Cloudflare API token with Cache Purge permission.
+
+    Does NOT catch exceptions — the caller is responsible for try/except
+    so that a failure here doesn't prevent the local-PoP fallback.
+
+    Args:
+        zone_id: Cloudflare zone ID for the custom domain
+        api_token: Cloudflare API token with Cache:Purge permission
+        urls: Full URLs to purge (e.g. ["https://example.com/", ...])
+
+    Returns:
+        True if the API returned 2xx, False otherwise.
+    """
+    api_url = _CLOUDFLARE_PURGE_API.format(zone_id=zone_id)
+    headers = {
+        "Authorization": f"Bearer {api_token}",
+        "Content-Type": "application/json",
+    }
+    body = {"files": urls}
+
+    if HAS_PYODIDE:
+        import json as _json
+
+        fetch_options = _to_js_value(
+            {
+                "method": "POST",
+                "headers": headers,
+                "body": _json.dumps(body),
+            }
+        )
+        response = await js_fetch(api_url, fetch_options)
+        return int(response.status) < 300
+    else:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(api_url, headers=headers, json=body)
+            return response.status_code < 300
+
+
 class SafeEnv:
     """Wrapper for Worker environment bindings with automatic JsProxy conversion.
 
@@ -962,5 +1039,7 @@ __all__ = [
     "SafeQueue",
     "HttpResponse",
     "safe_http_fetch",
+    "purge_edge_cache",
+    "purge_edge_cache_global",
     "SafeEnv",
 ]

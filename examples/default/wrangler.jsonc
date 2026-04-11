@@ -45,6 +45,12 @@
 //   Run: npx wrangler deploy --config examples/default/wrangler.jsonc
 //
 // No secrets required for lite mode!
+//
+// Step 5 (optional): Enable global cache purging for custom domains
+//   Run: npx wrangler secret put CLOUDFLARE_ZONE_ID
+//   Run: npx wrangler secret put CLOUDFLARE_API_TOKEN
+//   Without these, cache purging only clears the local edge location.
+//   See docs/CACHING.md for details.
 // =============================================================================
 
 {
