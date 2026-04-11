@@ -57,3 +57,4 @@ visual_comparison_output/
 
 # Generated outputs
 lighthouse-results/
+tests/e2e/screenshots/*.png

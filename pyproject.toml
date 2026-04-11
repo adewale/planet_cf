@@ -126,6 +126,8 @@ ignore = [
     "S101",  # Allow assert statements in tests
     "S105",  # Allow hardcoded test secrets
     "S106",  # Allow hardcoded test passwords
+    "S603",  # Allow subprocess calls in browser E2E tests
+    "S607",  # Allow partial executable paths (agent-browser CLI)
     "E501",  # Allow long lines in test data
     "E402",  # Allow imports after sys.path manipulation in conftest
 ]
