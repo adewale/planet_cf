@@ -40,6 +40,9 @@ class TestFullContentFetchRemoved:
     def test_no_fetch_full_content_method(self):
         """Default class should not have _fetch_full_content method."""
         assert not hasattr(Default, "_fetch_full_content")
+        # Also verify no variant naming like fetch_content or _get_full_content
+        assert not hasattr(Default, "fetch_content")
+        assert not hasattr(Default, "_get_full_content")
 
     @pytest.mark.asyncio
     async def test_upsert_entry_does_not_call_fetch_full_content(self):
@@ -60,18 +63,28 @@ class TestFullContentFetchRemoved:
 
         # Verify there is no _fetch_full_content method at all
         assert not hasattr(worker, "_fetch_full_content")
+        # The worker should still have _sanitize_html (content processing without fetching)
+        assert hasattr(worker, "_sanitize_html")
+        # And _upsert_entry itself should exist
+        assert hasattr(worker, "_upsert_entry")
 
     def test_no_fetch_full_content_config_getter(self):
         """config module should not have get_fetch_full_content_enabled."""
         import src.config as config_module
 
         assert not hasattr(config_module, "get_fetch_full_content_enabled")
+        # The config module should still have legitimate config getters
+        assert hasattr(config_module, "get_config_value")
+        assert hasattr(config_module, "get_planet_config")
 
     def test_no_fetch_full_content_config_constant(self):
         """config module should not have DEFAULT_FETCH_FULL_CONTENT_ENABLED."""
         import src.config as config_module
 
         assert not hasattr(config_module, "DEFAULT_FETCH_FULL_CONTENT_ENABLED")
+        # No FETCH_FULL_CONTENT anywhere in the module's public names
+        public_names = [n for n in dir(config_module) if not n.startswith("_")]
+        assert not any("FETCH_FULL_CONTENT" in name for name in public_names)
 
 
 # =============================================================================
@@ -102,8 +115,11 @@ class TestUpsertEntryWithoutFullContentFetch:
             await worker._upsert_entry(feed_id=1, entry=entry)
 
         # Sanitizer receives the original short content directly
+        mock_sanitize.assert_called_once()
         call_arg = mock_sanitize.call_args[0][0]
         assert "Short content under 500 chars" in call_arg
+        # The content came from the entry's content field, not from a fetch
+        assert "<p>" in call_arg
 
     @pytest.mark.asyncio
     async def test_long_content_passed_through(self):
@@ -125,8 +141,11 @@ class TestUpsertEntryWithoutFullContentFetch:
         ) as mock_sanitize:
             await worker._upsert_entry(feed_id=1, entry=entry)
 
+        mock_sanitize.assert_called_once()
         call_arg = mock_sanitize.call_args[0][0]
         assert long_text in call_arg
+        # Content was passed through in full, not truncated by a fetch replacement
+        assert len(call_arg) >= 1000
 
     @pytest.mark.asyncio
     async def test_no_outbound_http_during_upsert(self):
@@ -145,6 +164,10 @@ class TestUpsertEntryWithoutFullContentFetch:
             await worker._upsert_entry(feed_id=1, entry=entry)
 
         mock_fetch.assert_not_called()
+        # The entry was processed (no exception raised), confirming no fetch needed
+        assert not hasattr(worker, "_fetch_full_content")
+        # safe_http_fetch was available but never invoked
+        assert mock_fetch.call_count == 0
 
     @pytest.mark.asyncio
     async def test_content_still_sanitized(self):
@@ -159,8 +182,15 @@ class TestUpsertEntryWithoutFullContentFetch:
             "content": [{"value": '<p>Safe</p><script>alert("xss")</script>'}],
         }
 
-        with unittest.mock.patch.object(worker, "_sanitize_html", wraps=worker._sanitize_html):
+        with unittest.mock.patch.object(
+            worker, "_sanitize_html", wraps=worker._sanitize_html
+        ) as mock_sanitize:
             await worker._upsert_entry(feed_id=1, entry=entry)
+
+        # Sanitizer was called with the XSS content
+        mock_sanitize.assert_called_once()
+        call_arg = mock_sanitize.call_args[0][0]
+        assert "alert" in call_arg or "Safe" in call_arg
 
     @pytest.mark.asyncio
     async def test_entry_with_no_link_still_works(self):
@@ -176,6 +206,10 @@ class TestUpsertEntryWithoutFullContentFetch:
 
         # Should not raise
         await worker._upsert_entry(feed_id=1, entry=entry)
+        # The entry was processed without needing a link for fetching
+        assert "link" not in entry
+        # No fetch method exists to try to fetch the missing link
+        assert not hasattr(worker, "_fetch_full_content")
 
     @pytest.mark.asyncio
     async def test_summary_only_entry_uses_summary(self):
@@ -195,8 +229,11 @@ class TestUpsertEntryWithoutFullContentFetch:
         ) as mock_sanitize:
             await worker._upsert_entry(feed_id=1, entry=entry)
 
+        mock_sanitize.assert_called_once()
         call_arg = mock_sanitize.call_args[0][0]
         assert "only provides a summary" in call_arg
+        # The summary text was used directly, not fetched from the link
+        assert "content" not in entry  # entry had no content field
 
 
 # =============================================================================
@@ -240,9 +277,12 @@ class TestUpsertRefreshesPermalink:
         # The ON CONFLICT clause must update url and summary
         assert "url = excluded.url" in upsert_stmt.sql
         assert "summary = excluded.summary" in upsert_stmt.sql
+        assert "INSERT INTO entries" in upsert_stmt.sql
 
         # The new URL should be in the bound args
         assert "https://example.com/new-permalink/post" in upsert_stmt.bound_args
+        # The title should also be in the bound args
+        assert "My Post" in upsert_stmt.bound_args
 
     @pytest.mark.asyncio
     async def test_upsert_updates_summary_on_conflict(self):
@@ -268,3 +308,6 @@ class TestUpsertRefreshesPermalink:
         upsert_stmt = next(s for s in db.statements if "INSERT INTO entries" in s.sql)
         assert "summary = excluded.summary" in upsert_stmt.sql
         assert "A new summary after the author revised it" in upsert_stmt.bound_args
+        # The ON CONFLICT also updates title, content, author, url
+        assert "title = excluded.title" in upsert_stmt.sql
+        assert "content = excluded.content" in upsert_stmt.sql

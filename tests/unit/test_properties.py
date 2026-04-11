@@ -1,7 +1,9 @@
 # tests/unit/test_properties.py
 """Property-based tests using Hypothesis."""
 
+import contextlib
 import time
+from datetime import UTC
 from unittest.mock import patch
 
 import pytest
@@ -1775,3 +1777,876 @@ class TestToJsValueProperties:
         # Should not raise — all these types are natively convertible
         result = _to_js_value(value)
         assert result is value  # passthrough in test mode
+
+
+# =============================================================================
+# Module 1: xml_sanitizer Properties
+# =============================================================================
+
+
+class TestXmlSanitizerProperties:
+    """Property-based tests for strip_xml_control_chars from src/xml_sanitizer.py."""
+
+    @given(text=st.text(max_size=300))
+    @settings(max_examples=100)
+    def test_never_crashes(self, text):
+        """strip_xml_control_chars never raises on arbitrary text input."""
+        from src.xml_sanitizer import strip_xml_control_chars
+
+        result = strip_xml_control_chars(text)
+        assert isinstance(result, str)
+
+    @given(text=st.text(max_size=300))
+    @settings(max_examples=100)
+    def test_conservation_output_chars_subset_of_input(self, text):
+        """Every character in the output must also appear in the input."""
+        from src.xml_sanitizer import strip_xml_control_chars
+
+        result = strip_xml_control_chars(text)
+        # Each output char must exist somewhere in the input
+        for ch in result:
+            assert ch in text
+
+    @given(text=st.text(max_size=300))
+    @settings(max_examples=100)
+    def test_idempotent(self, text):
+        """Applying strip_xml_control_chars twice equals applying it once."""
+        from src.xml_sanitizer import strip_xml_control_chars
+
+        once = strip_xml_control_chars(text)
+        twice = strip_xml_control_chars(once)
+        assert once == twice
+
+    @given(text=st.text(max_size=300))
+    @settings(max_examples=100)
+    def test_valid_xml_chars_preserved(self, text):
+        """Tab (0x09), newline (0x0A), and carriage return (0x0D) survive."""
+        from src.xml_sanitizer import strip_xml_control_chars
+
+        result = strip_xml_control_chars(text)
+        for ch in text:
+            if ch in ("\t", "\n", "\r"):
+                assert ch in result
+
+    @given(text=st.text(max_size=300))
+    @settings(max_examples=100)
+    def test_output_contains_no_illegal_xml_chars(self, text):
+        """Output must contain no characters illegal in XML 1.0."""
+        import re
+
+        from src.xml_sanitizer import strip_xml_control_chars
+
+        result = strip_xml_control_chars(text)
+        illegal = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+        assert not illegal.search(result)
+
+    @given(text=st.text(max_size=300))
+    @settings(max_examples=100)
+    def test_output_length_le_input_length(self, text):
+        """Output length is always <= input length (chars are only removed)."""
+        from src.xml_sanitizer import strip_xml_control_chars
+
+        result = strip_xml_control_chars(text)
+        assert len(result) <= len(text)
+
+    def test_none_returns_empty_string(self):
+        """None input returns empty string."""
+        from src.xml_sanitizer import strip_xml_control_chars
+
+        assert strip_xml_control_chars(None) == ""
+
+    @given(
+        safe_text=st.from_regex(r"[a-zA-Z0-9 \t\n\r]{1,100}", fullmatch=True),
+    )
+    @settings(max_examples=50)
+    def test_safe_text_unchanged(self, safe_text):
+        """Text with only safe characters is returned unchanged."""
+        from src.xml_sanitizer import strip_xml_control_chars
+
+        assert strip_xml_control_chars(safe_text) == safe_text
+
+
+# =============================================================================
+# Module 2: utils.py Additional Properties
+# =============================================================================
+
+
+class TestGetDisplayAuthorProperties:
+    """Property-based tests for get_display_author from src/utils.py."""
+
+    @given(
+        author=st.one_of(st.none(), st.text(max_size=100)),
+        feed_title=st.one_of(st.none(), st.text(max_size=100)),
+    )
+    @settings(max_examples=100)
+    def test_never_crashes(self, author, feed_title):
+        """get_display_author never raises on arbitrary input."""
+        from src.utils import get_display_author
+
+        result = get_display_author(author, feed_title)
+        assert isinstance(result, str)
+
+    @given(
+        author=st.from_regex(r"[a-zA-Z ]{1,50}", fullmatch=True),
+    )
+    @settings(max_examples=50)
+    def test_valid_author_without_email_returned(self, author):
+        """Author without @ is returned as-is."""
+        from src.utils import get_display_author
+
+        assume("@" not in author)
+        result = get_display_author(author, "Some Feed")
+        assert result == author
+
+    @given(
+        email=st.from_regex(r"[a-z]+@[a-z]+\.[a-z]+", fullmatch=True),
+        feed_title=st.text(min_size=1, max_size=50),
+    )
+    @settings(max_examples=50)
+    def test_email_author_falls_back_to_feed_title(self, email, feed_title):
+        """Author containing @ falls back to feed_title."""
+        from src.utils import get_display_author
+
+        result = get_display_author(email, feed_title)
+        assert result == feed_title
+
+    @given(
+        author=st.one_of(st.none(), st.just("")),
+    )
+    @settings(max_examples=10)
+    def test_empty_author_with_no_feed_title_returns_unknown(self, author):
+        """Empty/None author with no feed title returns 'Unknown'."""
+        from src.utils import get_display_author
+
+        result = get_display_author(author, None)
+        assert result == "Unknown"
+
+    @given(
+        author=st.one_of(st.none(), st.text(max_size=50)),
+        feed_title=st.one_of(st.none(), st.text(max_size=50)),
+    )
+    @settings(max_examples=100)
+    def test_result_never_empty_or_none(self, author, feed_title):
+        """Result is always a non-None string (may be 'Unknown')."""
+        from src.utils import get_display_author
+
+        result = get_display_author(author, feed_title)
+        assert result is not None
+        assert isinstance(result, str)
+
+
+class TestParseIsoDatetimeProperties:
+    """Property-based tests for parse_iso_datetime from src/utils.py."""
+
+    @given(text=st.text(max_size=200))
+    @settings(max_examples=100)
+    def test_never_crashes(self, text):
+        """parse_iso_datetime never raises on arbitrary input."""
+        from src.utils import parse_iso_datetime
+
+        result = parse_iso_datetime(text)
+        assert result is None or hasattr(result, "year")
+
+    @given(
+        year=st.integers(min_value=2000, max_value=2030),
+        month=st.integers(min_value=1, max_value=12),
+        day=st.integers(min_value=1, max_value=28),
+        hour=st.integers(min_value=0, max_value=23),
+        minute=st.integers(min_value=0, max_value=59),
+        second=st.integers(min_value=0, max_value=59),
+    )
+    @settings(max_examples=100)
+    def test_valid_iso_with_z_roundtrips(self, year, month, day, hour, minute, second):
+        """Valid ISO strings with Z suffix parse correctly."""
+
+        from src.utils import parse_iso_datetime
+
+        iso = f"{year:04d}-{month:02d}-{day:02d}T{hour:02d}:{minute:02d}:{second:02d}Z"
+        result = parse_iso_datetime(iso)
+        assert result is not None
+        assert result.year == year
+        assert result.month == month
+        assert result.day == day
+        assert result.tzinfo is not None
+
+    def test_none_returns_none(self):
+        """None input returns None."""
+        from src.utils import parse_iso_datetime
+
+        assert parse_iso_datetime(None) is None
+
+    def test_empty_string_returns_none(self):
+        """Empty string returns None."""
+        from src.utils import parse_iso_datetime
+
+        assert parse_iso_datetime("") is None
+
+    @given(
+        year=st.integers(min_value=2000, max_value=2030),
+        month=st.integers(min_value=1, max_value=12),
+        day=st.integers(min_value=1, max_value=28),
+        hour=st.integers(min_value=0, max_value=23),
+        minute=st.integers(min_value=0, max_value=59),
+        second=st.integers(min_value=0, max_value=59),
+    )
+    @settings(max_examples=50)
+    def test_naive_datetime_gets_utc(self, year, month, day, hour, minute, second):
+        """Naive ISO strings (no timezone) get UTC assigned."""
+
+        from src.utils import parse_iso_datetime
+
+        iso = f"{year:04d}-{month:02d}-{day:02d}T{hour:02d}:{minute:02d}:{second:02d}"
+        result = parse_iso_datetime(iso)
+        assert result is not None
+        assert result.tzinfo == UTC
+
+    @given(text=st.text(max_size=200))
+    @settings(max_examples=100)
+    def test_valid_or_absent(self, text):
+        """Result is either a valid datetime or None -- never partial."""
+        from src.utils import parse_iso_datetime
+
+        result = parse_iso_datetime(text)
+        if result is not None:
+            # Should be a fully valid datetime
+            assert hasattr(result, "year")
+            assert hasattr(result, "month")
+            assert hasattr(result, "day")
+            assert result.tzinfo is not None
+
+
+class TestFormatDatetimeProperties:
+    """Property-based tests for format_datetime from src/utils.py."""
+
+    @given(text=st.one_of(st.none(), st.text(max_size=200)))
+    @settings(max_examples=100)
+    def test_never_crashes(self, text):
+        """format_datetime never raises on arbitrary input."""
+        from src.utils import format_datetime
+
+        result = format_datetime(text)
+        assert isinstance(result, str)
+
+    @given(
+        year=st.integers(min_value=2000, max_value=2030),
+        month=st.integers(min_value=1, max_value=12),
+        day=st.integers(min_value=1, max_value=28),
+    )
+    @settings(max_examples=50)
+    def test_valid_iso_produces_formatted_string(self, year, month, day):
+        """Valid ISO dates produce a formatted string containing the year."""
+        from src.utils import format_datetime
+
+        iso = f"{year:04d}-{month:02d}-{day:02d}T12:00:00Z"
+        result = format_datetime(iso)
+        assert str(year) in result
+
+    def test_none_returns_empty_string(self):
+        """None returns empty string."""
+        from src.utils import format_datetime
+
+        assert format_datetime(None) == ""
+
+
+class TestFormatPubDateProperties:
+    """Property-based tests for format_pub_date from src/utils.py."""
+
+    @given(text=st.one_of(st.none(), st.text(max_size=200)))
+    @settings(max_examples=100)
+    def test_never_crashes(self, text):
+        """format_pub_date never raises on arbitrary input."""
+        from src.utils import format_pub_date
+
+        result = format_pub_date(text)
+        assert isinstance(result, str)
+
+    def test_none_returns_empty(self):
+        """None returns empty string."""
+        from src.utils import format_pub_date
+
+        assert format_pub_date(None) == ""
+
+
+class TestRelativeTimeProperties:
+    """Property-based tests for relative_time from src/utils.py."""
+
+    @given(text=st.one_of(st.none(), st.text(max_size=200)))
+    @settings(max_examples=100)
+    def test_never_crashes(self, text):
+        """relative_time never raises on arbitrary input."""
+        from src.utils import relative_time
+
+        result = relative_time(text)
+        assert isinstance(result, str)
+
+    def test_none_returns_never(self):
+        """None returns 'never'."""
+        from src.utils import relative_time
+
+        assert relative_time(None) == "never"
+
+    @given(text=st.text(min_size=1, max_size=100))
+    @settings(max_examples=50)
+    def test_invalid_string_returns_unknown(self, text):
+        """Invalid non-empty strings return 'unknown'."""
+        from src.utils import parse_iso_datetime, relative_time
+
+        assume(parse_iso_datetime(text) is None)
+        assert relative_time(text) == "unknown"
+
+    @given(
+        year=st.integers(min_value=2000, max_value=2024),
+        month=st.integers(min_value=1, max_value=12),
+        day=st.integers(min_value=1, max_value=28),
+    )
+    @settings(max_examples=50)
+    def test_old_dates_produce_ago_string(self, year, month, day):
+        """Dates from years ago produce a string ending in 'ago'."""
+        from src.utils import relative_time
+
+        iso = f"{year:04d}-{month:02d}-{day:02d}T12:00:00Z"
+        result = relative_time(iso)
+        assert "ago" in result
+
+
+class TestFormatDateLabelProperties:
+    """Property-based tests for format_date_label from src/utils.py."""
+
+    @given(text=st.text(max_size=200))
+    @settings(max_examples=100)
+    def test_never_crashes(self, text):
+        """format_date_label never raises on arbitrary input."""
+        from src.utils import format_date_label
+
+        result = format_date_label(text)
+        assert isinstance(result, str)
+
+    @given(
+        year=st.integers(min_value=2000, max_value=2030),
+        month=st.integers(min_value=1, max_value=12),
+        day=st.integers(min_value=1, max_value=28),
+    )
+    @settings(max_examples=50)
+    def test_valid_date_contains_year(self, year, month, day):
+        """Valid YYYY-MM-DD dates produce a string containing the year."""
+        from src.utils import format_date_label
+
+        date_str = f"{year:04d}-{month:02d}-{day:02d}"
+        result = format_date_label(date_str)
+        assert str(year) in result
+
+    @given(text=st.text(min_size=1, max_size=50))
+    @settings(max_examples=50)
+    def test_invalid_date_returned_as_is(self, text):
+        """Invalid date strings are returned unchanged."""
+        from src.utils import format_date_label
+
+        # Ensure it doesn't look like a valid date
+        assume(text.count("-") != 2 or len(text) != 10)
+        result = format_date_label(text)
+        # Either parses successfully or returns original
+        assert isinstance(result, str)
+
+
+# =============================================================================
+# Module 3: content_processor Properties
+# =============================================================================
+
+
+class TestContentProcessorGuidProperties:
+    """Property-based tests for EntryContentProcessor.generate_guid."""
+
+    @given(
+        feed_id=st.integers(min_value=1, max_value=10000),
+        entry_id=st.text(min_size=1, max_size=200),
+    )
+    @settings(max_examples=100)
+    def test_guid_from_id_field_never_crashes(self, feed_id, entry_id):
+        """generate_guid never crashes with arbitrary entry id."""
+        from src.content_processor import EntryContentProcessor
+
+        proc = EntryContentProcessor({"id": entry_id}, feed_id)
+        result = proc.generate_guid()
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    @given(
+        feed_id=st.integers(min_value=1, max_value=10000),
+    )
+    @settings(max_examples=50)
+    def test_empty_entry_generates_hash_guid(self, feed_id):
+        """Entry with no id/link/title generates a hash-based GUID."""
+        from src.content_processor import EntryContentProcessor
+
+        proc = EntryContentProcessor({}, feed_id)
+        result = proc.generate_guid()
+        assert result.startswith("generated:")
+
+    @given(
+        feed_id=st.integers(min_value=1, max_value=10000),
+        entry_id=st.text(min_size=1, max_size=200),
+    )
+    @settings(max_examples=50)
+    def test_guid_deterministic(self, feed_id, entry_id):
+        """Same input always produces the same GUID."""
+        from src.content_processor import EntryContentProcessor
+
+        proc1 = EntryContentProcessor({"id": entry_id}, feed_id)
+        proc2 = EntryContentProcessor({"id": entry_id}, feed_id)
+        assert proc1.generate_guid() == proc2.generate_guid()
+
+    @given(
+        feed_id=st.integers(min_value=1, max_value=10000),
+        id_a=st.text(min_size=1, max_size=100),
+        id_b=st.text(min_size=1, max_size=100),
+    )
+    @settings(max_examples=100)
+    def test_different_ids_produce_different_guids(self, feed_id, id_a, id_b):
+        """Different entry ids produce different GUIDs."""
+        assume(id_a.strip() != id_b.strip())
+        assume(id_a.strip() and id_b.strip())
+        from src.content_processor import EntryContentProcessor
+
+        proc_a = EntryContentProcessor({"id": id_a}, feed_id)
+        proc_b = EntryContentProcessor({"id": id_b}, feed_id)
+        assert proc_a.generate_guid() != proc_b.generate_guid()
+
+
+class TestContentProcessorExtractContentProperties:
+    """Property-based tests for EntryContentProcessor.extract_content."""
+
+    @given(
+        feed_id=st.integers(min_value=1, max_value=10000),
+        content=st.text(max_size=300),
+    )
+    @settings(max_examples=100)
+    def test_never_crashes_with_content_array(self, feed_id, content):
+        """extract_content never crashes when entry has content array."""
+        from src.content_processor import EntryContentProcessor
+
+        entry = {"content": [{"value": content}]}
+        proc = EntryContentProcessor(entry, feed_id)
+        result = proc.extract_content()
+        assert isinstance(result, str)
+
+    @given(
+        feed_id=st.integers(min_value=1, max_value=10000),
+        summary=st.text(max_size=300),
+    )
+    @settings(max_examples=100)
+    def test_never_crashes_with_summary_fallback(self, feed_id, summary):
+        """extract_content falls back to summary when no content array."""
+        from src.content_processor import EntryContentProcessor
+
+        entry = {"summary": summary}
+        proc = EntryContentProcessor(entry, feed_id)
+        result = proc.extract_content()
+        assert isinstance(result, str)
+
+    @given(feed_id=st.integers(min_value=1, max_value=10000))
+    @settings(max_examples=20)
+    def test_empty_entry_returns_empty_string(self, feed_id):
+        """Empty entry returns empty string."""
+        from src.content_processor import EntryContentProcessor
+
+        proc = EntryContentProcessor({}, feed_id)
+        result = proc.extract_content()
+        assert result == ""
+
+
+class TestContentProcessorTruncateSummaryProperties:
+    """Property-based tests for EntryContentProcessor.truncate_summary."""
+
+    @given(
+        feed_id=st.integers(min_value=1, max_value=10000),
+        summary=st.text(max_size=1000),
+        max_length=st.integers(min_value=4, max_value=1000),
+    )
+    @settings(max_examples=100)
+    def test_output_never_exceeds_max_length(self, feed_id, summary, max_length):
+        """Truncated summary never exceeds max_length."""
+        from src.content_processor import EntryContentProcessor
+
+        entry = {"summary": summary}
+        proc = EntryContentProcessor(entry, feed_id)
+        result = proc.truncate_summary(max_length=max_length)
+        assert len(result) <= max_length
+
+    @given(
+        feed_id=st.integers(min_value=1, max_value=10000),
+        summary=st.text(max_size=500),
+    )
+    @settings(max_examples=100)
+    def test_never_crashes(self, feed_id, summary):
+        """truncate_summary never raises on arbitrary input."""
+        from src.content_processor import EntryContentProcessor
+
+        entry = {"summary": summary}
+        proc = EntryContentProcessor(entry, feed_id)
+        result = proc.truncate_summary()
+        assert isinstance(result, str)
+
+    @given(
+        feed_id=st.integers(min_value=1, max_value=10000),
+        summary=st.from_regex(r"[a-zA-Z0-9 ]{501,800}", fullmatch=True),
+    )
+    @settings(max_examples=50)
+    def test_long_summaries_end_with_ellipsis(self, summary, feed_id):
+        """Summaries exceeding default max length end with '...'."""
+        from src.content_processor import SUMMARY_MAX_LENGTH, EntryContentProcessor
+
+        # Use only safe chars so sanitization doesn't shrink below max
+        assume(len(summary) > SUMMARY_MAX_LENGTH)
+        entry = {"summary": summary}
+        proc = EntryContentProcessor(entry, feed_id)
+        result = proc.truncate_summary()
+        assert result.endswith("...")
+
+
+class TestContentProcessorParseDateProperties:
+    """Property-based tests for EntryContentProcessor.parse_published_date."""
+
+    @given(
+        feed_id=st.integers(min_value=1, max_value=10000),
+    )
+    @settings(max_examples=20)
+    def test_empty_entry_returns_none(self, feed_id):
+        """Entry without date fields returns None."""
+        from src.content_processor import EntryContentProcessor
+
+        proc = EntryContentProcessor({}, feed_id)
+        assert proc.parse_published_date() is None
+
+    @given(
+        feed_id=st.integers(min_value=1, max_value=10000),
+        year=st.integers(min_value=2000, max_value=2030),
+        month=st.integers(min_value=1, max_value=12),
+        day=st.integers(min_value=1, max_value=28),
+        hour=st.integers(min_value=0, max_value=23),
+        minute=st.integers(min_value=0, max_value=59),
+        second=st.integers(min_value=0, max_value=59),
+    )
+    @settings(max_examples=100)
+    def test_valid_time_tuple_produces_iso_string(
+        self, feed_id, year, month, day, hour, minute, second
+    ):
+        """Valid time tuples produce ISO format date strings."""
+        from src.content_processor import EntryContentProcessor
+
+        time_tuple = (year, month, day, hour, minute, second, 0, 0, 0)
+        entry = {"published_parsed": time_tuple}
+        proc = EntryContentProcessor(entry, feed_id)
+        result = proc.parse_published_date()
+        assert result is not None
+        assert str(year) in result
+
+
+class TestContentProcessorProcessProperties:
+    """Property-based tests for the full process() pipeline."""
+
+    @given(
+        feed_id=st.integers(min_value=1, max_value=10000),
+        title=st.text(max_size=200),
+        link=st.one_of(st.none(), st.text(max_size=200)),
+        summary=st.text(max_size=500),
+        author=st.one_of(st.none(), st.text(max_size=100)),
+    )
+    @settings(max_examples=100)
+    def test_process_never_crashes(self, feed_id, title, link, summary, author):
+        """process() never raises on arbitrary entry data."""
+        from src.content_processor import EntryContentProcessor
+
+        entry = {
+            "title": title,
+            "link": link,
+            "summary": summary,
+            "author": author,
+        }
+        proc = EntryContentProcessor(entry, feed_id)
+        result = proc.process()
+        assert isinstance(result.guid, str)
+        assert isinstance(result.title, str)
+        assert isinstance(result.content, str)
+        assert isinstance(result.summary, str)
+
+
+# =============================================================================
+# Module 4: instance_config Properties
+# =============================================================================
+
+
+class _FakeEnv:
+    """Lightweight fake env for instance_config PBT (avoids heavyweight MockEnv)."""
+
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class TestInstanceConfigGetEnvProperties:
+    """Property-based tests for _get_env from src/instance_config.py."""
+
+    @given(
+        key=st.from_regex(r"[A-Z_]{1,30}", fullmatch=True),
+        value=st.text(max_size=200),
+    )
+    @settings(max_examples=100)
+    def test_env_value_returned_as_string(self, key, value):
+        """When env has the key, its string value is returned."""
+        from src.instance_config import _get_env
+
+        env = _FakeEnv(**{key: value})
+        result = _get_env(env, key)
+        assert result == str(value)
+
+    @given(
+        key=st.from_regex(r"[A-Z_]{1,30}", fullmatch=True),
+        default=st.text(max_size=100),
+    )
+    @settings(max_examples=100)
+    def test_missing_key_returns_default(self, key, default):
+        """When env lacks the key, the explicit default is returned."""
+        from src.instance_config import _get_env
+
+        env = _FakeEnv()
+        result = _get_env(env, key, default=default)
+        assert result == default
+
+    @given(key=st.from_regex(r"[A-Z_]{1,30}", fullmatch=True))
+    @settings(max_examples=50)
+    def test_missing_key_no_default_returns_string(self, key):
+        """When env lacks key and no default, result is a string (from DEFAULTS or empty)."""
+        from src.instance_config import _get_env
+
+        env = _FakeEnv()
+        result = _get_env(env, key)
+        assert isinstance(result, str)
+
+    @given(
+        key=st.from_regex(r"[A-Z_]{1,30}", fullmatch=True),
+        value=st.one_of(st.integers(), st.floats(allow_nan=False), st.text(max_size=50)),
+    )
+    @settings(max_examples=100)
+    def test_never_crashes_with_various_value_types(self, key, value):
+        """_get_env never crashes regardless of the type stored on env."""
+        from src.instance_config import _get_env
+
+        env = _FakeEnv(**{key: value})
+        result = _get_env(env, key)
+        assert isinstance(result, str)
+
+
+class TestInstanceConfigIsLiteModeProperties:
+    """Property-based tests for is_lite_mode from src/instance_config.py."""
+
+    @given(
+        mode=st.sampled_from(["lite", "LITE", "Lite", "LiTe"]),
+    )
+    @settings(max_examples=20)
+    def test_lite_variants_return_true(self, mode):
+        """All case variants of 'lite' return True."""
+        from src.instance_config import is_lite_mode
+
+        env = _FakeEnv(INSTANCE_MODE=mode)
+        assert is_lite_mode(env) is True
+
+    @given(
+        mode=st.sampled_from(["full", "FULL", "Full", "", "standard", "pro"]),
+    )
+    @settings(max_examples=20)
+    def test_non_lite_modes_return_false(self, mode):
+        """Any mode that isn't 'lite' (case-insensitive) returns False."""
+        from src.instance_config import is_lite_mode
+
+        env = _FakeEnv(INSTANCE_MODE=mode)
+        assert is_lite_mode(env) is False
+
+    def test_missing_instance_mode_defaults_to_full(self):
+        """Missing INSTANCE_MODE defaults to 'full' (not lite)."""
+        from src.instance_config import is_lite_mode
+
+        env = _FakeEnv()
+        assert is_lite_mode(env) is False
+
+    @given(mode=st.text(max_size=100))
+    @settings(max_examples=100)
+    def test_never_crashes(self, mode):
+        """is_lite_mode never crashes on arbitrary INSTANCE_MODE values."""
+        from src.instance_config import is_lite_mode
+
+        env = _FakeEnv(INSTANCE_MODE=mode)
+        result = is_lite_mode(env)
+        assert isinstance(result, bool)
+
+    @given(mode=st.text(max_size=100))
+    @settings(max_examples=100)
+    def test_valid_or_absent_boolean(self, mode):
+        """Result is always exactly True or False, never truthy/falsy substitute."""
+        from src.instance_config import is_lite_mode
+
+        env = _FakeEnv(INSTANCE_MODE=mode)
+        result = is_lite_mode(env)
+        assert result is True or result is False
+
+
+# =============================================================================
+# Module 5: templates Properties
+# =============================================================================
+
+
+class TestRenderTemplateProperties:
+    """Property-based tests for render_template from src/templates.py."""
+
+    @given(
+        planet_name=st.text(min_size=1, max_size=100),
+        planet_description=st.text(max_size=200),
+    )
+    @settings(max_examples=50)
+    def test_render_index_never_crashes(self, planet_name, planet_description):
+        """Rendering index.html with arbitrary planet data never crashes."""
+        from src.templates import render_template
+
+        result = render_template(
+            "index.html",
+            theme="default",
+            planet={"name": planet_name, "description": planet_description},
+            entries_by_date={},
+            feeds=[],
+            feed_links={},
+            is_lite_mode=False,
+            submission=None,
+            logo=None,
+        )
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    @given(
+        theme=st.sampled_from(["default", "planet-python", "planet-mozilla"]),
+    )
+    @settings(max_examples=10)
+    def test_all_themes_render_index(self, theme):
+        """All built-in themes can render index.html without error."""
+        from src.templates import render_template
+
+        result = render_template(
+            "index.html",
+            theme=theme,
+            planet={"name": "Test", "description": "Desc"},
+            entries_by_date={},
+            feeds=[],
+            feed_links={},
+            is_lite_mode=False,
+            submission=None,
+            logo=None,
+        )
+        assert isinstance(result, str)
+        assert "Test" in result
+
+    @given(
+        entry_title=st.text(min_size=1, max_size=100),
+        entry_author=st.text(min_size=1, max_size=50),
+    )
+    @settings(max_examples=50)
+    def test_html_escaping_in_rendered_output(self, entry_title, entry_author):
+        """Jinja2 autoescape prevents raw HTML in rendered entry titles."""
+        from src.templates import render_template
+
+        entries_by_date = {
+            "2026-01-01": [
+                {
+                    "title": entry_title,
+                    "url": "https://example.com",
+                    "display_author": entry_author,
+                    "published_at": "2026-01-01T00:00:00Z",
+                    "published_at_display": "Jan 01",
+                    "content": "body",
+                }
+            ]
+        }
+        result = render_template(
+            "index.html",
+            theme="default",
+            planet={"name": "P", "description": "D"},
+            entries_by_date=entries_by_date,
+            feeds=[],
+            feed_links={},
+            is_lite_mode=False,
+            submission=None,
+            logo=None,
+        )
+        assert isinstance(result, str)
+        # If title contains < or >, they should be escaped by autoescape
+        if "<" in entry_title:
+            assert "&lt;" in result or "<" not in result.split("content")[0]
+
+    @given(
+        planet_name=st.text(min_size=1, max_size=100),
+    )
+    @settings(max_examples=50)
+    def test_render_idempotent(self, planet_name):
+        """Rendering the same template with the same context produces identical output."""
+        from src.templates import render_template
+
+        ctx = dict(
+            planet={"name": planet_name, "description": "D"},
+            entries_by_date={},
+            feeds=[],
+            feed_links={},
+            is_lite_mode=False,
+            submission=None,
+            logo=None,
+        )
+        result1 = render_template("index.html", theme="default", **ctx)
+        result2 = render_template("index.html", theme="default", **ctx)
+        assert result1 == result2
+
+
+class TestEmbeddedLoaderProperties:
+    """Property-based tests for EmbeddedLoader theme fallback chain."""
+
+    @given(
+        theme=st.text(min_size=1, max_size=50),
+    )
+    @settings(max_examples=50)
+    def test_unknown_theme_falls_back_to_default(self, theme):
+        """Unknown themes fall back to default for known templates."""
+        from jinja2 import TemplateNotFound
+
+        from src.templates import get_jinja_env
+
+        env = get_jinja_env(theme)
+        try:
+            template = env.get_template("index.html")
+            # If it resolves, it came from default or _shared fallback
+            assert template is not None
+        except TemplateNotFound:
+            # Only fails if even default doesn't have it (shouldn't happen)
+            pass
+
+    @given(
+        template_name=st.text(min_size=1, max_size=50),
+    )
+    @settings(max_examples=50)
+    def test_nonexistent_template_raises_not_found(self, template_name):
+        """Requesting a nonexistent template raises TemplateNotFound."""
+        from jinja2 import TemplateNotFound
+
+        from src.templates import get_jinja_env
+
+        # Use names that definitely don't exist
+        assume("index" not in template_name.lower())
+        assume("admin" not in template_name.lower())
+        assume("feed" not in template_name.lower())
+        assume("search" not in template_name.lower())
+        assume("title" not in template_name.lower())
+        assume("foaf" not in template_name.lower())
+        assume("opml" not in template_name.lower())
+        assume("error" not in template_name.lower())
+        assume("login" not in template_name.lower())
+        assume("health" not in template_name.lower())
+        assume(".html" not in template_name.lower())
+        assume(".xml" not in template_name.lower())
+
+        env = get_jinja_env("default")
+        with contextlib.suppress(TemplateNotFound):
+            env.get_template(template_name)

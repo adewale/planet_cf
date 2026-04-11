@@ -34,6 +34,8 @@ class TestOAuthError:
         error = OAuthError(error_type="Test", message="Test")
 
         assert error.status_code == 400
+        assert error.error_type == "Test"
+        assert error.message == "Test"
 
 
 class TestTokenExchangeResult:
@@ -55,6 +57,8 @@ class TestTokenExchangeResult:
         assert result.success is False
         assert result.access_token is None
         assert result.error == error
+        assert result.error.error_type == "Test"
+        assert result.error.message == "Failed"
 
 
 class TestUserInfoResult:
@@ -73,6 +77,8 @@ class TestUserInfoResult:
         assert result.username == "testuser"
         assert result.user_id == 12345
         assert result.error is None
+        assert result.avatar_url == "https://example.com/avatar.png"
+        assert result.user_data == {"login": "testuser", "id": 12345}
 
     def test_error_result(self):
         """Error result has error info."""
@@ -81,6 +87,10 @@ class TestUserInfoResult:
 
         assert result.success is False
         assert result.username is None
+        assert result.user_id is None
+        assert result.avatar_url is None
+        assert result.user_data is None
+        assert result.error == error
 
 
 class TestExtractOAuthStateFromCookies:
@@ -99,6 +109,7 @@ class TestExtractOAuthStateFromCookies:
         result = extract_oauth_state_from_cookies(cookies)
 
         assert result == "state123"
+        assert isinstance(result, str)
 
     def test_returns_none_when_missing(self):
         """Returns None when oauth_state not present."""
@@ -106,12 +117,16 @@ class TestExtractOAuthStateFromCookies:
         result = extract_oauth_state_from_cookies(cookies)
 
         assert result is None
+        # Ensure it doesn't match similar-but-different cookie names
+        assert extract_oauth_state_from_cookies("not_oauth_state=xyz") is None
 
     def test_handles_empty_string(self):
         """Handles empty cookie string."""
         result = extract_oauth_state_from_cookies("")
 
         assert result is None
+        # Also returns None for whitespace-only string
+        assert extract_oauth_state_from_cookies("   ") is None
 
     def test_handles_whitespace(self):
         """Handles whitespace in cookie header."""
@@ -119,6 +134,9 @@ class TestExtractOAuthStateFromCookies:
         result = extract_oauth_state_from_cookies(cookies)
 
         assert result == "state123"
+        # Verify no leading/trailing whitespace leaked into the value
+        assert not result.startswith(" ")
+        assert not result.endswith(" ")
 
 
 class TestGitHubOAuthHandlerStateVerification:
@@ -130,6 +148,9 @@ class TestGitHubOAuthHandlerStateVerification:
         result = handler.verify_state("state123", "state123")
 
         assert result is None
+        # Verify handler properties were initialized correctly
+        assert handler.client_id == "client_id"
+        assert handler.client_secret == "client_secret"  # pragma: allowlist secret
 
     def test_verify_state_mismatch(self):
         """State verification fails when values don't match."""
@@ -139,6 +160,7 @@ class TestGitHubOAuthHandlerStateVerification:
         assert result is not None
         assert result.error_type == "CSRFError"
         assert result.status_code == 400
+        assert "try signing in" in result.message.lower()
 
     def test_verify_state_missing_state(self):
         """State verification fails when state is missing."""
@@ -147,6 +169,8 @@ class TestGitHubOAuthHandlerStateVerification:
 
         assert result is not None
         assert result.error_type == "CSRFError"
+        assert result.status_code == 400
+        assert isinstance(result, OAuthError)
 
     def test_verify_state_missing_expected(self):
         """State verification fails when expected is missing."""
@@ -155,6 +179,8 @@ class TestGitHubOAuthHandlerStateVerification:
 
         assert result is not None
         assert result.error_type == "CSRFError"
+        assert result.status_code == 400
+        assert result.message  # error message should not be empty
 
 
 class TestGitHubOAuthHandlerTokenExchange:
@@ -169,6 +195,8 @@ class TestGitHubOAuthHandlerTokenExchange:
         assert result.success is False
         assert result.error.error_type == "ValidationError"
         assert "Missing authorization code" in result.error.message
+        assert result.error.status_code == 400
+        assert result.access_token is None
 
     @pytest.mark.asyncio
     async def test_exchange_code_state_verification_fails(self):
@@ -178,6 +206,8 @@ class TestGitHubOAuthHandlerTokenExchange:
 
         assert result.success is False
         assert result.error.error_type == "CSRFError"
+        assert result.error.status_code == 400
+        assert result.access_token is None
 
     @pytest.mark.asyncio
     async def test_exchange_code_success(self):
@@ -194,7 +224,13 @@ class TestGitHubOAuthHandlerTokenExchange:
 
         assert result.success is True
         assert result.access_token == "token123"
+        assert result.error is None
         mock_fetch.assert_called_once()
+        # Verify fetch was called with correct GitHub token URL
+        call_args = mock_fetch.call_args
+        assert call_args[0][0] == GitHubOAuthHandler.GITHUB_TOKEN_URL
+        # Verify Accept header requests JSON
+        assert call_args[1]["headers"]["Accept"] == "application/json"
 
     @pytest.mark.asyncio
     async def test_exchange_code_github_error(self):
@@ -211,6 +247,8 @@ class TestGitHubOAuthHandlerTokenExchange:
         assert result.success is False
         assert result.error.error_type == "TokenExchangeError"
         assert result.error.status_code == 502
+        assert result.access_token is None
+        assert "500" in result.error.message
 
     @pytest.mark.asyncio
     async def test_exchange_code_no_access_token(self):
@@ -231,6 +269,8 @@ class TestGitHubOAuthHandlerTokenExchange:
         assert result.success is False
         assert result.error.error_type == "OAuthError"
         assert "Code has expired" in result.error.message
+        assert result.error.status_code == 400
+        assert result.access_token is None
 
     @pytest.mark.asyncio
     async def test_exchange_code_network_error(self):
@@ -244,6 +284,8 @@ class TestGitHubOAuthHandlerTokenExchange:
         assert result.success is False
         assert result.error.error_type == "NetworkError"
         assert result.error.status_code == 502
+        assert "Connection refused" in result.error.message
+        assert result.access_token is None
 
 
 class TestGitHubOAuthHandlerUserInfo:
@@ -257,6 +299,9 @@ class TestGitHubOAuthHandlerUserInfo:
 
         assert result.success is False
         assert result.error.error_type == "ValidationError"
+        assert result.error.status_code == 400
+        assert "Missing access token" in result.error.message
+        assert result.username is None
 
     @pytest.mark.asyncio
     async def test_get_user_info_success(self):
@@ -279,6 +324,12 @@ class TestGitHubOAuthHandlerUserInfo:
         assert result.username == "testuser"
         assert result.user_id == 12345
         assert result.avatar_url == "https://example.com/avatar.png"
+        assert result.error is None
+        assert result.user_data is not None
+        # Verify fetch was called with Bearer token and correct GitHub API URL
+        call_args = mock_fetch.call_args
+        assert call_args[0][0] == GitHubOAuthHandler.GITHUB_USER_URL
+        assert call_args[1]["headers"]["Authorization"] == "Bearer token123"
 
     @pytest.mark.asyncio
     async def test_get_user_info_github_error(self):
@@ -295,6 +346,9 @@ class TestGitHubOAuthHandlerUserInfo:
         assert result.success is False
         assert result.error.error_type == "GitHubAPIError"
         assert result.error.status_code == 502
+        assert "401" in result.error.message
+        assert result.username is None
+        assert result.user_data is None
 
     @pytest.mark.asyncio
     async def test_get_user_info_network_error(self):
@@ -307,6 +361,9 @@ class TestGitHubOAuthHandlerUserInfo:
 
         assert result.success is False
         assert result.error.error_type == "NetworkError"
+        assert result.error.status_code == 502
+        assert "Connection refused" in result.error.message
+        assert result.username is None
 
 
 class TestGitHubOAuthHandlerAuthenticate:
@@ -336,8 +393,14 @@ class TestGitHubOAuthHandlerAuthenticate:
             )
 
         assert token_result.success is True
+        assert token_result.access_token == "token123"
+        assert token_result.error is None
         assert user_result.success is True
         assert user_result.username == "testuser"
+        assert user_result.user_id == 12345
+        assert user_result.error is None
+        # Two fetches: token exchange + user info
+        assert mock_fetch.call_count == 2
 
     @pytest.mark.asyncio
     async def test_authenticate_token_exchange_fails(self):
@@ -354,8 +417,12 @@ class TestGitHubOAuthHandlerAuthenticate:
             )
 
         assert token_result.success is False
+        assert token_result.error.error_type == "TokenExchangeError"
         assert user_result.success is False
         assert user_result.error == token_result.error
+        assert user_result.username is None
+        # Only one fetch (token exchange) should have been attempted since it failed
+        assert mock_fetch.call_count == 1
 
     @pytest.mark.asyncio
     async def test_authenticate_state_mismatch(self):
@@ -368,3 +435,6 @@ class TestGitHubOAuthHandlerAuthenticate:
 
         assert token_result.success is False
         assert token_result.error.error_type == "CSRFError"
+        assert token_result.error.status_code == 400
+        assert user_result.success is False
+        assert user_result.error == token_result.error

@@ -40,6 +40,12 @@ class TestPurgeEdgeCacheGlobal:
 
             result = await purge_edge_cache_global("zone123", "token456", ["https://example.com/"])
             assert result is True
+            assert isinstance(result, bool)
+            mock_client.post.assert_called_once()
+            # Verify Content-Type header is set for JSON payload
+            call_args = mock_client.post.call_args
+            headers = call_args[1].get("headers", {})
+            assert headers.get("Content-Type") == "application/json"
 
     @pytest.mark.asyncio
     async def test_returns_false_on_403(self):
@@ -55,6 +61,9 @@ class TestPurgeEdgeCacheGlobal:
 
             result = await purge_edge_cache_global("zone123", "token456", ["https://example.com/"])
             assert result is False
+            assert isinstance(result, bool)
+            # Verify the API was still called (failure is based on response, not lack of call)
+            mock_client.post.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_returns_false_on_500(self):
@@ -70,6 +79,8 @@ class TestPurgeEdgeCacheGlobal:
 
             result = await purge_edge_cache_global("zone123", "token456", ["https://example.com/"])
             assert result is False
+            assert isinstance(result, bool)
+            mock_client.post.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_sends_correct_api_url(self):
@@ -85,9 +96,14 @@ class TestPurgeEdgeCacheGlobal:
 
             await purge_edge_cache_global("my-zone-id", "my-token", ["https://example.com/"])
 
+            mock_client.post.assert_called_once()
             call_args = mock_client.post.call_args
             url = call_args[0][0] if call_args[0] else call_args[1].get("url")
             assert url == "https://api.cloudflare.com/client/v4/zones/my-zone-id/purge_cache"
+            # Verify zone_id is embedded in the URL, not sent as a separate parameter
+            assert "my-zone-id" in url
+            assert url.startswith("https://api.cloudflare.com/client/v4/zones/")
+            assert url.endswith("/purge_cache")
 
     @pytest.mark.asyncio
     async def test_sends_bearer_auth(self):
@@ -103,9 +119,14 @@ class TestPurgeEdgeCacheGlobal:
 
             await purge_edge_cache_global("zone123", "my-secret-token", ["https://example.com/"])
 
+            mock_client.post.assert_called_once()
             call_args = mock_client.post.call_args
             headers = call_args[1].get("headers", {})
             assert headers.get("Authorization") == "Bearer my-secret-token"
+            # Verify the token is in Bearer format, not raw
+            assert headers["Authorization"].startswith("Bearer ")
+            # Verify Content-Type is set for JSON
+            assert headers.get("Content-Type") == "application/json"
 
     @pytest.mark.asyncio
     async def test_sends_files_in_json_body(self):
@@ -122,9 +143,16 @@ class TestPurgeEdgeCacheGlobal:
             urls = ["https://example.com/", "https://example.com/titles"]
             await purge_edge_cache_global("zone123", "token456", urls)
 
+            mock_client.post.assert_called_once()
             call_args = mock_client.post.call_args
             json_body = call_args[1].get("json", {})
             assert json_body == {"files": urls}
+            # Verify the body key is "files" (Cloudflare API requirement), not "urls" or "paths"
+            assert "files" in json_body
+            assert len(json_body["files"]) == 2
+            # Verify URLs are full URLs, not bare paths
+            for url in json_body["files"]:
+                assert url.startswith("https://"), f"URL must be absolute: {url}"
 
     @pytest.mark.asyncio
     async def test_raises_on_network_error(self):
@@ -138,8 +166,10 @@ class TestPurgeEdgeCacheGlobal:
             mock_client.post = AsyncMock(side_effect=ConnectionError("DNS failed"))
             mock_client_cls.return_value = mock_client
 
-            with pytest.raises(ConnectionError):
+            with pytest.raises(ConnectionError, match="DNS failed"):
                 await purge_edge_cache_global("zone123", "token456", ["https://example.com/"])
+            # Verify the post was attempted (error came from the call, not before it)
+            mock_client.post.assert_called_once()
 
 
 # ============================================================================
@@ -162,10 +192,25 @@ class TestPurgeOrchestrator:
             patch("src.main.purge_edge_cache", new_callable=AsyncMock) as mock_local,
         ):
             mock_global.return_value = True
-            await worker._purge_edge_cache()
+            result = await worker._purge_edge_cache()
 
+            # Method returns None (void)
+            assert result is None
             mock_global.assert_awaited_once()
             mock_local.assert_awaited_once()
+            # Verify global purge received correct zone_id and api_token
+            global_args = mock_global.call_args[0]
+            assert global_args[0] == "zone123"
+            assert global_args[1] == "token456"
+            # Verify global purge received a list of URLs
+            assert isinstance(global_args[2], list)
+            assert len(global_args[2]) > 0
+            # Verify local purge received the base URL and CACHEABLE_PATHS
+            local_args = mock_local.call_args[0]
+            assert local_args[0] == "https://test.example.com"
+            from src.main import CACHEABLE_PATHS
+
+            assert local_args[1] == CACHEABLE_PATHS
 
     @pytest.mark.asyncio
     async def test_no_zone_id_skips_global(self):
@@ -178,10 +223,14 @@ class TestPurgeOrchestrator:
             patch("src.main.purge_edge_cache_global", new_callable=AsyncMock) as mock_global,
             patch("src.main.purge_edge_cache", new_callable=AsyncMock) as mock_local,
         ):
-            await worker._purge_edge_cache()
+            result = await worker._purge_edge_cache()
 
+            assert result is None
             mock_global.assert_not_awaited()
             mock_local.assert_awaited_once()
+            # Verify local purge still gets correct base URL
+            assert mock_local.call_args[0][0] == "https://test.example.com"
+            assert mock_global.call_count == 0
 
     @pytest.mark.asyncio
     async def test_no_api_token_skips_global(self):
@@ -194,10 +243,13 @@ class TestPurgeOrchestrator:
             patch("src.main.purge_edge_cache_global", new_callable=AsyncMock) as mock_global,
             patch("src.main.purge_edge_cache", new_callable=AsyncMock) as mock_local,
         ):
-            await worker._purge_edge_cache()
+            result = await worker._purge_edge_cache()
 
+            assert result is None
             mock_global.assert_not_awaited()
             mock_local.assert_awaited_once()
+            assert mock_local.call_args[0][0] == "https://test.example.com"
+            assert mock_global.call_count == 0
 
     @pytest.mark.asyncio
     async def test_global_failure_still_runs_local(self):
@@ -214,8 +266,12 @@ class TestPurgeOrchestrator:
             ),
             patch("src.main.purge_edge_cache", new_callable=AsyncMock) as mock_local,
         ):
-            await worker._purge_edge_cache()
+            # Should not raise despite global exception
+            result = await worker._purge_edge_cache()
+            assert result is None
             mock_local.assert_awaited_once()
+            # Verify local purge is called even after global exception
+            assert mock_local.call_args[0][0] == "https://test.example.com"
 
     @pytest.mark.asyncio
     async def test_global_returns_false_still_runs_local(self):
@@ -232,8 +288,10 @@ class TestPurgeOrchestrator:
             ),
             patch("src.main.purge_edge_cache", new_callable=AsyncMock) as mock_local,
         ):
-            await worker._purge_edge_cache()
+            result = await worker._purge_edge_cache()
+            assert result is None
             mock_local.assert_awaited_once()
+            assert mock_local.call_args[0][0] == "https://test.example.com"
 
 
 # ============================================================================
@@ -261,10 +319,18 @@ class TestInstanceTypeDegradation:
             patch("src.main.purge_edge_cache", new_callable=AsyncMock) as mock_local,
         ):
             mock_global.return_value = True
-            await worker._purge_edge_cache()
+            result = await worker._purge_edge_cache()
 
+            assert result is None
             mock_global.assert_awaited_once()
             mock_local.assert_awaited_once()
+            # Verify global purge receives the production zone and token
+            global_args = mock_global.call_args[0]
+            assert global_args[0] == "abc123"
+            assert global_args[1] == "token789"
+            # Verify URLs are built from the production PLANET_URL
+            global_urls = global_args[2]
+            assert all(u.startswith("https://www.planetcloudflare.dev") for u in global_urls)
 
     @pytest.mark.asyncio
     async def test_production_without_secrets(self):
@@ -277,10 +343,14 @@ class TestInstanceTypeDegradation:
             patch("src.main.purge_edge_cache_global", new_callable=AsyncMock) as mock_global,
             patch("src.main.purge_edge_cache", new_callable=AsyncMock) as mock_local,
         ):
-            await worker._purge_edge_cache()
+            result = await worker._purge_edge_cache()
 
+            assert result is None
             mock_global.assert_not_awaited()
             mock_local.assert_awaited_once()
+            # Local purge still gets the production URL
+            assert mock_local.call_args[0][0] == "https://www.planetcloudflare.dev"
+            assert mock_global.call_count == 0
 
     @pytest.mark.asyncio
     async def test_workers_dev_instance(self):
@@ -293,11 +363,15 @@ class TestInstanceTypeDegradation:
             patch("src.main.purge_edge_cache_global", new_callable=AsyncMock) as mock_global,
             patch("src.main.purge_edge_cache", new_callable=AsyncMock) as mock_local,
         ):
-            await worker._purge_edge_cache()
+            result = await worker._purge_edge_cache()
 
+            assert result is None
             mock_global.assert_not_awaited()
+            assert mock_global.call_count == 0
             # Local purge runs but is a no-op on workers.dev
             mock_local.assert_awaited_once()
+            # Verify the workers.dev URL is passed to local purge
+            assert mock_local.call_args[0][0] == "https://test-planet.adewale-883.workers.dev"
 
     @pytest.mark.asyncio
     async def test_no_planet_url(self):
@@ -309,10 +383,14 @@ class TestInstanceTypeDegradation:
             patch("src.main.purge_edge_cache_global", new_callable=AsyncMock) as mock_global,
             patch("src.main.purge_edge_cache", new_callable=AsyncMock) as mock_local,
         ):
-            await worker._purge_edge_cache()
+            result = await worker._purge_edge_cache()
 
+            assert result is None
             mock_global.assert_not_awaited()
             mock_local.assert_not_awaited()
+            # Verify neither function received any calls at all
+            assert mock_global.call_count == 0
+            assert mock_local.call_count == 0
 
     @pytest.mark.asyncio
     async def test_lite_mode_instance(self):
@@ -325,10 +403,14 @@ class TestInstanceTypeDegradation:
             patch("src.main.purge_edge_cache_global", new_callable=AsyncMock) as mock_global,
             patch("src.main.purge_edge_cache", new_callable=AsyncMock) as mock_local,
         ):
-            await worker._purge_edge_cache()
+            result = await worker._purge_edge_cache()
 
+            assert result is None
             mock_global.assert_not_awaited()
+            assert mock_global.call_count == 0
             mock_local.assert_awaited_once()
+            # Verify lite-mode URL is passed correctly
+            assert mock_local.call_args[0][0] == "https://planetpython.org"
 
     @pytest.mark.asyncio
     async def test_global_urls_include_all_cacheable_paths(self):
@@ -351,3 +433,11 @@ class TestInstanceTypeDegradation:
             urls = call_args[0][2]  # Third positional arg: urls list
             expected = [f"https://www.planetcloudflare.dev{p}" for p in CACHEABLE_PATHS]
             assert urls == expected
+            # Verify all four expected paths are present
+            assert len(urls) == len(CACHEABLE_PATHS)
+            # Verify each URL is absolute and has the correct base
+            for url in urls:
+                assert (
+                    url.startswith("https://www.planetcloudflare.dev/")
+                    or url == "https://www.planetcloudflare.dev/"
+                )

@@ -112,6 +112,14 @@ class TestAdminEndpoints:
         # 200 = authorized, 403 = admin not in DB (need to seed)
         assert response.status_code in (200, 403)
 
+    def test_admin_health_shows_feed_health(self):
+        """Admin health page should show feed health status."""
+        response = self.client.get("/admin/health")
+        # 200 = authorized, 403 = admin not in DB (need to seed)
+        assert response.status_code in (200, 403)
+        if response.status_code == 200:
+            assert "text/html" in response.headers.get("content-type", "")
+
     def test_add_feed_with_valid_url(self):
         """Should be able to add a feed with valid URL."""
         response = self.client.post(
@@ -157,54 +165,3 @@ class TestOAuthFlow:
         assert response.status_code == 302
         location = response.headers.get("location", "")
         assert "github.com" in location or "authorize" in location
-
-
-# =============================================================================
-# Error Replay Test Generator
-# =============================================================================
-
-
-def generate_test_from_error(error_log: dict) -> str:
-    """
-    Generate a test case from a production error log.
-
-    This is used to turn production errors into reproducible test cases.
-    The error log should contain:
-    - path: The request path
-    - method: HTTP method
-    - error_type: The exception type
-    - error_message: The exception message
-    """
-    test_name = f"test_replay_{error_log.get('error_type', 'unknown')}"
-    path = error_log.get("path", "/")
-    method = error_log.get("method", "GET")
-
-    return f'''
-@pytest.mark.skip(reason="Generated from production error - needs review")
-def {test_name}():
-    """Replay test generated from production error.
-
-    Original error: {error_log.get("error_type")}: {error_log.get("error_message")}
-    """
-    client = httpx.Client(base_url="{E2E_BASE_URL}")
-    response = client.{method.lower()}("{path}")
-    # Add assertions based on expected behavior
-    assert response.status_code != 500  # Should not error
-    client.close()
-'''
-
-
-if __name__ == "__main__":
-    # Quick connectivity test
-    import sys
-
-    try:
-        client = httpx.Client(base_url=E2E_BASE_URL, timeout=5.0)
-        response = client.get("/")
-        print(f"Connected to {E2E_BASE_URL}: {response.status_code}")
-        client.close()
-    except Exception as e:
-        print(f"Failed to connect to {E2E_BASE_URL}: {e}")
-        print("\nMake sure wrangler dev is running:")
-        print("  npx wrangler dev --remote --config examples/test-planet/wrangler.jsonc")
-        sys.exit(1)

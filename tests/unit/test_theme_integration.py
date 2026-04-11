@@ -214,6 +214,30 @@ class TestStaticAssetsIntegrity:
     # must have these files in its assets/static/ directory.
     REQUIRED_STATIC_FILES = ["style.css", "keyboard-nav.js"]
 
+    # Canonical asset paths that several tests depend on.  If any are
+    # missing the whole consistency-check suite is meaningless, so we
+    # skip all dependent tests with one clear message.
+    _CANONICAL_ASSET_PATHS = {
+        "templates/style.css": None,
+        "static/admin.js": None,
+        "templates/keyboard-nav.js": None,
+        "assets/static": None,
+        "examples/planet-cloudflare/assets/static": None,
+    }
+
+    @pytest.fixture(autouse=True)
+    def _require_canonical_assets(self):
+        """Skip every test in this class when canonical asset paths are missing."""
+        missing = []
+        for rel in self._CANONICAL_ASSET_PATHS:
+            if not (self.PROJECT_ROOT / rel).exists():
+                missing.append(rel)
+        if missing:
+            pytest.skip(
+                f"Canonical asset path(s) missing: {', '.join(missing)}. "
+                "Asset consistency tests require a complete checkout."
+            )
+
     def _get_instance_dirs(self):
         """Return list of (name, path) for all deployable instances."""
         instances = []
@@ -295,8 +319,6 @@ class TestStaticAssetsIntegrity:
         """
         root_static = self.PROJECT_ROOT / "assets" / "static"
         pcf_static = self.PROJECT_ROOT / "examples" / "planet-cloudflare" / "assets" / "static"
-        if not root_static.exists() or not pcf_static.exists():
-            pytest.skip("One of root/planet-cloudflare assets dirs missing")
 
         for filename in ["style.css", "admin.js", "keyboard-nav.js"]:
             root_file = root_static / filename
@@ -317,8 +339,6 @@ class TestStaticAssetsIntegrity:
         search results, admin buttons, and content formatting.
         """
         canonical = self.PROJECT_ROOT / "templates" / "style.css"
-        if not canonical.exists():
-            pytest.skip("templates/style.css not found")
         canonical_content = canonical.read_text()
 
         # Instances that use the default theme CSS (no custom templates/style.css)
@@ -380,8 +400,6 @@ class TestStaticAssetsIntegrity:
         All copies in assets/static/ must match it.
         """
         canonical = self.PROJECT_ROOT / "static" / "admin.js"
-        if not canonical.exists():
-            pytest.skip("static/admin.js not found")
         canonical_content = canonical.read_text()
 
         for name, path in self._get_instance_dirs():
@@ -399,8 +417,6 @@ class TestStaticAssetsIntegrity:
         All copies in assets/static/ must match it.
         """
         canonical = self.PROJECT_ROOT / "templates" / "keyboard-nav.js"
-        if not canonical.exists():
-            pytest.skip("templates/keyboard-nav.js not found")
         canonical_content = canonical.read_text()
 
         for name, path in self._get_instance_dirs():

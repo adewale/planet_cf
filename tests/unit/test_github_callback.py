@@ -144,6 +144,15 @@ class TestHandleGitHubCallback:
 
         assert "/admin" in str(headers_dict.get("Location", ""))
 
+        # Verify Set-Cookie headers are present (session + clear oauth_state)
+        set_cookies = headers_dict.get("Set-Cookie", [])
+        assert len(set_cookies) == 2
+        cookie_str = " ".join(set_cookies)
+        # Session cookie should be set
+        assert "session=" in cookie_str
+        # OAuth state cookie should be cleared
+        assert "oauth_state=" in cookie_str
+
     @pytest.mark.asyncio
     async def test_missing_state_returns_error(self):
         """Missing state parameter returns error response."""
@@ -176,6 +185,9 @@ class TestHandleGitHubCallback:
 
         # admin_error_response now returns proper status codes
         assert response.status == 400
+        # Error responses should be HTML with no-store caching
+        assert response.headers.get("Content-Type") == "text/html; charset=utf-8"
+        assert response.headers.get("Cache-Control") == "no-store"
 
     @pytest.mark.asyncio
     async def test_reused_state_replay_attack_returns_error(self):
@@ -208,6 +220,9 @@ class TestHandleGitHubCallback:
 
         # admin_error_response now returns proper status codes
         assert response.status == 400
+        # Error responses should be HTML with no-store caching
+        assert response.headers.get("Content-Type") == "text/html; charset=utf-8"
+        assert response.headers.get("Cache-Control") == "no-store"
 
     @pytest.mark.asyncio
     async def test_github_api_error_returns_error(self):
@@ -239,6 +254,9 @@ class TestHandleGitHubCallback:
 
         # admin_error_response now returns proper status codes
         assert response.status == 502
+        # Error responses should be HTML with no-store caching
+        assert response.headers.get("Content-Type") == "text/html; charset=utf-8"
+        assert response.headers.get("Cache-Control") == "no-store"
 
     @pytest.mark.asyncio
     async def test_non_admin_user_returns_access_denied(self):
@@ -271,6 +289,9 @@ class TestHandleGitHubCallback:
 
         # admin_error_response now returns proper status codes
         assert response.status == 403
+        # Error responses should be HTML with no-store caching
+        assert response.headers.get("Content-Type") == "text/html; charset=utf-8"
+        assert response.headers.get("Cache-Control") == "no-store"
 
     @pytest.mark.asyncio
     async def test_exception_during_callback_returns_error_page(self):
@@ -294,3 +315,6 @@ class TestHandleGitHubCallback:
 
         # admin_error_response now returns proper status codes
         assert response.status == 500
+        # Error responses should be HTML with no-store caching
+        assert response.headers.get("Content-Type") == "text/html; charset=utf-8"
+        assert response.headers.get("Cache-Control") == "no-store"

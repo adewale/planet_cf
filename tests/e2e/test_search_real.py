@@ -21,11 +21,14 @@ The test will skip if wrangler dev is not running.
 """
 
 import asyncio
+import logging
 import re
 import uuid
 
 import httpx
 import pytest
+
+logger = logging.getLogger(__name__)
 
 from tests.e2e.conftest import E2E_BASE_URL, create_test_session, requires_server
 
@@ -67,7 +70,7 @@ class TestSearchWithRealInfrastructure:
         """
         async with httpx.AsyncClient(timeout=60.0) as client:
             # Step 1: Trigger reindex to ensure entries are indexed
-            print("\n1. Triggering reindex...")
+            logger.info("Triggering reindex...")
             reindex_response = await client.post(
                 f"{E2E_BASE_URL}/admin/reindex",
                 cookies=admin_session,
@@ -84,7 +87,7 @@ class TestSearchWithRealInfrastructure:
             response_text = reindex_response.text.lower()
             reindex_failed = "error" in response_text and "reindex" in response_text
             assert not reindex_failed, f"Reindex failed: {reindex_response.text[:500]}"
-            print("   Reindex completed")
+            logger.info("Reindex completed")
 
             # Step 2: Wait a moment for Vectorize to process
             await asyncio.sleep(2)
@@ -94,7 +97,7 @@ class TestSearchWithRealInfrastructure:
             search_terms = ["cloudflare", "workers", "the", "code"]
 
             for term in search_terms:
-                print(f"\n2. Searching for '{term}'...")
+                logger.info("Searching for '%s'...", term)
                 search_response = await client.get(
                     f"{E2E_BASE_URL}/search",
                     params={"q": term},
@@ -104,12 +107,12 @@ class TestSearchWithRealInfrastructure:
 
                 # Check if we got results
                 if "No results found" not in search_response.text:
-                    print(f"   Found results for '{term}'!")
+                    logger.info("Found results for '%s'", term)
                     # Verify it's HTML with results
                     assert "search" in search_response.text.lower()
                     return  # Success - at least one search worked
                 else:
-                    print(f"   No results for '{term}'")
+                    logger.info("No results for '%s'", term)
 
             # If we get here, no searches returned results
             pytest.skip("No search results found for common terms - entries may not be indexed yet")
@@ -129,7 +132,7 @@ class TestSearchWithRealInfrastructure:
         """
         # Generate truly unique identifier
         unique_word = f"testxyzzy{uuid.uuid4().hex[:12]}"
-        print(f"\n=== Testing with unique word: {unique_word} ===")
+        logger.info("Testing with unique word: %s", unique_word)
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             # First, check what entries exist
@@ -137,23 +140,23 @@ class TestSearchWithRealInfrastructure:
             assert homepage.status_code == 200
 
             # Trigger reindex to ensure current entries are indexed
-            print("\n1. Triggering reindex...")
+            logger.info("Triggering reindex...")
             reindex_response = await client.post(
                 f"{E2E_BASE_URL}/admin/reindex",
                 cookies=admin_session,
             )
 
             if reindex_response.status_code == 200:
-                print("   Reindex completed")
+                logger.info("Reindex completed")
             else:
-                print(f"   Reindex returned {reindex_response.status_code}")
+                logger.info("Reindex returned %d", reindex_response.status_code)
 
             # Wait for Vectorize
             await asyncio.sleep(2)
 
             # Search for the unique word - should NOT find it
             # (unless by cosmic coincidence it exists)
-            print(f"\n2. Searching for unique word '{unique_word}'...")
+            logger.info("Searching for unique word '%s'...", unique_word)
             search_response = await client.get(
                 f"{E2E_BASE_URL}/search",
                 params={"q": unique_word},
@@ -163,9 +166,9 @@ class TestSearchWithRealInfrastructure:
 
             # The unique word should not exist
             if unique_word in search_response.text:
-                print(f"   Unexpectedly found '{unique_word}' - very unlikely!")
+                logger.info("Unexpectedly found '%s' - very unlikely!", unique_word)
             else:
-                print(f"   Correctly did not find '{unique_word}' (expected)")
+                logger.info("Correctly did not find '%s' (expected)", unique_word)
 
             # For now, we can't easily inject an entry with the unique word
             # without a direct DB access or test endpoint.
@@ -174,14 +177,14 @@ class TestSearchWithRealInfrastructure:
             # 2. Search returns proper response
             # 3. The pipeline is functional
 
-            print("\n3. Verifying search infrastructure is working...")
+            logger.info("Verifying search infrastructure is working...")
             # Try a semantic search - "hello" should work even if no exact match
             hello_response = await client.get(
                 f"{E2E_BASE_URL}/search",
                 params={"q": "hello world"},
             )
             assert hello_response.status_code == 200
-            print("   Search endpoint is functional")
+            logger.info("Search endpoint is functional")
 
     @pytest.mark.asyncio
     async def test_vectorize_embedding_pipeline(self, admin_session):
@@ -196,13 +199,13 @@ class TestSearchWithRealInfrastructure:
         We verify this by checking if reindex succeeds without errors.
         """
         async with httpx.AsyncClient(timeout=120.0) as client:
-            print("\n=== Testing Vectorize/AI Pipeline ===")
+            logger.info("Testing Vectorize/AI Pipeline")
 
             # Trigger reindex which exercises the full pipeline:
             # 1. Fetch entries from D1
             # 2. Generate embeddings via Workers AI
             # 3. Upsert vectors to Vectorize
-            print("\n1. Triggering full reindex...")
+            logger.info("Triggering full reindex...")
 
             reindex_response = await client.post(
                 f"{E2E_BASE_URL}/admin/reindex",
@@ -222,10 +225,10 @@ class TestSearchWithRealInfrastructure:
             has_error = "error" in response_text and "failed" in response_text
             assert not has_error, f"Reindex reported failure: {reindex_response.text[:500]}"
 
-            print("   Reindex completed successfully")
+            logger.info("Reindex completed successfully")
 
             # Step 2: Verify search works after reindex
-            print("\n2. Verifying search works after reindex...")
+            logger.info("Verifying search works after reindex...")
             await asyncio.sleep(2)
 
             search_response = await client.get(
@@ -233,9 +236,9 @@ class TestSearchWithRealInfrastructure:
                 params={"q": "cloudflare"},
             )
             assert search_response.status_code == 200
-            print("   Search endpoint responding correctly")
+            logger.info("Search endpoint responding correctly")
 
-            print("\n3. Pipeline verification complete!")
+            logger.info("Pipeline verification complete!")
 
 
 class TestSearchWithDataCreation:
@@ -263,10 +266,10 @@ class TestSearchWithDataCreation:
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             try:
-                print("\n=== Full E2E Test with Cleanup ===")
+                logger.info("Full E2E Test with Cleanup")
 
                 # Step 1: Add the test feed
-                print("\n1. Adding test feed...")
+                logger.info("Adding test feed...")
                 add_response = await client.post(
                     f"{E2E_BASE_URL}/admin/feeds",
                     data={"url": test_feed_url},
@@ -289,10 +292,10 @@ class TestSearchWithDataCreation:
                     match = re.search(pattern, feeds_response.text, re.DOTALL)
                     if match:
                         created_feed_id = int(match.group(1))
-                        print(f"   Found feed ID: {created_feed_id}")
+                        logger.info("Found feed ID: %d", created_feed_id)
 
                 # Step 2: Fetch feed synchronously (no queue, no sleep)
-                print("\n2. Fetching feed synchronously...")
+                logger.info("Fetching feed synchronously...")
                 if created_feed_id:
                     fetch_response = await client.post(
                         f"{E2E_BASE_URL}/admin/feeds/{created_feed_id}/fetch-now",
@@ -300,14 +303,15 @@ class TestSearchWithDataCreation:
                     )
                     if fetch_response.status_code == 200:
                         fetch_result = fetch_response.json()
-                        print(
-                            f"   Fetched: {fetch_result.get('entries_added', 0)} entries added, "
-                            f"{fetch_result.get('entries_found', 0)} found"
+                        logger.info(
+                            "Fetched: %d entries added, %d found",
+                            fetch_result.get("entries_added", 0),
+                            fetch_result.get("entries_found", 0),
                         )
                     else:
-                        print(
-                            f"   fetch-now returned {fetch_response.status_code}, "
-                            f"falling back to queue..."
+                        logger.info(
+                            "fetch-now returned %d, falling back to queue...",
+                            fetch_response.status_code,
                         )
                         await client.post(
                             f"{E2E_BASE_URL}/admin/regenerate",
@@ -325,37 +329,37 @@ class TestSearchWithDataCreation:
                     await asyncio.sleep(5)
 
                 # Step 3: Reindex for search
-                print("\n3. Reindexing entries...")
+                logger.info("Reindexing entries...")
                 reindex_response = await client.post(
                     f"{E2E_BASE_URL}/admin/reindex",
                     cookies=admin_session,
                 )
 
                 if reindex_response.status_code == 200:
-                    print("   Reindex completed")
+                    logger.info("Reindex completed")
 
                 # Wait for Vectorize
                 await asyncio.sleep(2)
 
                 # Step 4: Search for content
-                print("\n4. Searching for 'cloudflare'...")
+                logger.info("Searching for 'cloudflare'...")
                 search_response = await client.get(
                     f"{E2E_BASE_URL}/search",
                     params={"q": "cloudflare"},
                 )
 
                 assert search_response.status_code == 200
-                print(f"   Search returned {search_response.status_code}")
+                logger.info("Search returned %d", search_response.status_code)
 
                 # Check results (may or may not find depending on feed content)
                 if "No results found" not in search_response.text:
-                    print("   Found search results!")
+                    logger.info("Found search results!")
                 else:
-                    print("   No results yet (feed may not have processed)")
+                    logger.info("No results yet (feed may not have processed)")
 
             finally:
                 # Step 5: ALWAYS clean up - delete the test feed
-                print("\n5. Cleaning up - deleting test feed...")
+                logger.info("Cleaning up - deleting test feed...")
                 if created_feed_id:
                     delete_response = await client.post(
                         f"{E2E_BASE_URL}/admin/feeds/{created_feed_id}",
@@ -364,9 +368,9 @@ class TestSearchWithDataCreation:
                         follow_redirects=False,
                     )
                     if delete_response.status_code in [200, 302]:
-                        print(f"   Deleted feed {created_feed_id}")
+                        logger.info("Deleted feed %d", created_feed_id)
                     else:
-                        print(f"   Warning: Could not delete feed: {delete_response.status_code}")
+                        logger.warning("Could not delete feed: %d", delete_response.status_code)
                 else:
                     # Try to find and delete by URL from admin HTML
                     feeds_response = await client.get(
@@ -384,9 +388,9 @@ class TestSearchWithDataCreation:
                                 cookies=admin_session,
                                 follow_redirects=False,
                             )
-                            print(f"   Deleted feed {feed_id} by URL match")
+                            logger.info("Deleted feed %d by URL match", feed_id)
 
-                print("\n=== Cleanup complete ===")
+                logger.info("Cleanup complete")
 
 
 class TestSearchEdgeCases:

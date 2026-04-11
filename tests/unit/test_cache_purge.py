@@ -51,11 +51,17 @@ class TestPurgeEdgeCacheMethod:
         worker, env, _ = make_authenticated_worker()
 
         with patch("src.main.purge_edge_cache", new_callable=AsyncMock) as mock_purge:
-            await worker._purge_edge_cache()
+            result = await worker._purge_edge_cache()
+            assert result is None  # void method
             mock_purge.assert_called_once()
             call_args = mock_purge.call_args
             # Should pass the base URL from PLANET_URL
             assert "https://test.example.com" in str(call_args)
+            # Verify the first arg is the base URL string (not a tuple or other type)
+            assert isinstance(call_args[0][0], str)
+            assert call_args[0][0] == "https://test.example.com"
+            # Verify the second arg is the CACHEABLE_PATHS tuple
+            assert call_args[0][1] == EXPECTED_PURGE_PATHS
 
     @pytest.mark.asyncio
     async def test_purge_uses_cacheable_paths(self):
@@ -69,6 +75,11 @@ class TestPurgeEdgeCacheMethod:
             paths = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("paths")
             for path in EXPECTED_PURGE_PATHS:
                 assert path in paths
+            # Verify exact count — no extra paths snuck in
+            assert len(paths) == len(EXPECTED_PURGE_PATHS)
+            # Verify each path starts with /
+            for path in paths:
+                assert path.startswith("/"), f"Path must be relative: {path}"
 
     @pytest.mark.asyncio
     async def test_purge_no_planet_url_is_noop(self):
@@ -77,8 +88,10 @@ class TestPurgeEdgeCacheMethod:
         env.PLANET_URL = ""
 
         with patch("src.main.purge_edge_cache", new_callable=AsyncMock) as mock_purge:
-            await worker._purge_edge_cache()
+            result = await worker._purge_edge_cache()
+            assert result is None
             mock_purge.assert_not_called()
+            assert mock_purge.call_count == 0
 
     @pytest.mark.asyncio
     async def test_purge_failure_does_not_raise(self):
@@ -90,8 +103,10 @@ class TestPurgeEdgeCacheMethod:
             new_callable=AsyncMock,
             side_effect=Exception("Cache API unavailable"),
         ):
-            # Should not raise
-            await worker._purge_edge_cache()
+            # Should not raise — verify method completes successfully
+            result = await worker._purge_edge_cache()
+            # Method returns None (no error propagation)
+            assert result is None
 
 
 # ============================================================================
@@ -129,7 +144,12 @@ class TestAdminActionsPurgeCache:
         response = await worker.fetch(request)
 
         assert response.status in (200, 302)
+        assert response is not None
         worker._purge_edge_cache.assert_awaited_once()
+        # Purge called exactly once, not multiple times per action
+        assert worker._purge_edge_cache.await_count == 1
+        # Feed validation should have been called with the submitted URL
+        worker._validate_feed_url.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_remove_feed_purges_cache(self):
@@ -156,7 +176,9 @@ class TestAdminActionsPurgeCache:
         response = await worker.fetch(request)
 
         assert response.status in (200, 302)
+        assert response is not None
         worker._purge_edge_cache.assert_awaited_once()
+        assert worker._purge_edge_cache.await_count == 1
 
     @pytest.mark.asyncio
     async def test_regenerate_purges_cache(self):
@@ -175,7 +197,11 @@ class TestAdminActionsPurgeCache:
         response = await worker.fetch(request)
 
         assert response.status in (200, 302)
+        assert response is not None
         worker._purge_edge_cache.assert_awaited_once()
+        assert worker._purge_edge_cache.await_count == 1
+        # Verify scheduler was also invoked (regenerate triggers both)
+        worker._run_scheduler.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_import_opml_purges_cache(self):
@@ -210,7 +236,9 @@ class TestAdminActionsPurgeCache:
         response = await worker.fetch(request)
 
         assert response.status in (200, 302)
+        assert response is not None
         worker._purge_edge_cache.assert_awaited_once()
+        assert worker._purge_edge_cache.await_count == 1
 
     @pytest.mark.asyncio
     async def test_fetch_now_purges_cache(self):
@@ -243,7 +271,11 @@ class TestAdminActionsPurgeCache:
         response = await worker.fetch(request)
 
         assert response.status == 200
+        assert response is not None
         worker._purge_edge_cache.assert_awaited_once()
+        assert worker._purge_edge_cache.await_count == 1
+        # Verify the feed processing mock was called with feed ID 1
+        worker._process_single_feed.assert_awaited_once()
 
 
 class TestNonMutatingActionsSkipPurge:
@@ -264,7 +296,9 @@ class TestNonMutatingActionsSkipPurge:
         response = await worker.fetch(request)
 
         assert response.status == 200
+        assert response is not None
         worker._purge_edge_cache.assert_not_awaited()
+        assert worker._purge_edge_cache.await_count == 0
 
     @pytest.mark.asyncio
     async def test_list_feeds_no_purge(self):
@@ -281,7 +315,9 @@ class TestNonMutatingActionsSkipPurge:
         response = await worker.fetch(request)
 
         assert response.status == 200
+        assert response is not None
         worker._purge_edge_cache.assert_not_awaited()
+        assert worker._purge_edge_cache.await_count == 0
 
     @pytest.mark.asyncio
     async def test_view_dlq_no_purge(self):
@@ -298,7 +334,9 @@ class TestNonMutatingActionsSkipPurge:
         response = await worker.fetch(request)
 
         assert response.status == 200
+        assert response is not None
         worker._purge_edge_cache.assert_not_awaited()
+        assert worker._purge_edge_cache.await_count == 0
 
 
 # ============================================================================
@@ -317,6 +355,7 @@ class TestPurgeEdgeCacheBoundary:
         # Should not raise
         result = await purge_edge_cache("https://test.example.com", EXPECTED_PURGE_PATHS)
         assert result == 0  # 0 paths purged in test env
+        assert isinstance(result, int)
 
     @pytest.mark.asyncio
     async def test_purge_returns_count(self):
@@ -327,6 +366,7 @@ class TestPurgeEdgeCacheBoundary:
         # In test env, returns 0 (no actual cache to purge)
         assert isinstance(result, int)
         assert result >= 0
+        assert result <= 2  # Can't purge more paths than requested
 
 
 # ============================================================================
@@ -353,6 +393,7 @@ class TestPurgeEdgeCacheProperties:
 
         result = await purge_edge_cache(base_url, paths)
         assert result == 0  # Test env always returns 0
+        assert isinstance(result, int)
 
     @given(base_url=base_urls, paths=path_tuples)
     @settings(max_examples=100)
@@ -362,6 +403,7 @@ class TestPurgeEdgeCacheProperties:
         from wrappers import purge_edge_cache
 
         result = await purge_edge_cache(base_url, paths)
+        assert isinstance(result, int)
         assert 0 <= result <= len(paths)
 
     @given(base_url=base_urls)
@@ -373,6 +415,7 @@ class TestPurgeEdgeCacheProperties:
 
         result = await purge_edge_cache(base_url, ())
         assert result == 0
+        assert isinstance(result, int)
 
     @given(data=st.data())
     @settings(max_examples=50)
@@ -387,6 +430,8 @@ class TestPurgeEdgeCacheProperties:
         result1 = await purge_edge_cache(base_url, paths)
         result2 = await purge_edge_cache(base_url, paths)
         assert result1 == result2
+        assert isinstance(result1, int)
+        assert isinstance(result2, int)
 
     @pytest.mark.asyncio
     async def test_cacheable_paths_constant_matches_prewarm(self):
@@ -403,6 +448,10 @@ class TestPurgeEdgeCacheProperties:
         # update the other.
         PREWARM_PATHS = ("/", "/titles", "/feed.atom", "/feed.rss")
         assert set(CACHEABLE_PATHS) == set(PREWARM_PATHS)
+        # Verify exact count — no silent additions or removals
+        assert len(CACHEABLE_PATHS) == len(PREWARM_PATHS)
+        # Verify the test constant matches too
+        assert set(CACHEABLE_PATHS) == set(EXPECTED_PURGE_PATHS)
 
     @given(
         base_url=st.just(""),
