@@ -574,3 +574,75 @@ class TestAddFeedDuplicateDetection:
 
         assert response.status == 409
         assert "example.com/feed.xml" in response.body
+
+    @pytest.mark.asyncio
+    async def test_duplicate_does_not_queue_feed(self):
+        """Duplicate detection must short-circuit before queuing a fetch."""
+        db = PerQueryTrackingD1(
+            {
+                "SELECT id, title, is_active": [
+                    {"id": 10, "title": "Existing Feed", "is_active": 1}
+                ],
+            }
+        )
+        env = _make_env(db=db)
+        worker = _make_worker(env)
+        admin = _mock_admin()
+
+        request = MockRequest(form_data={"url": "https://example.com/feed.xml"})
+
+        with patch("src.main.safe_http_fetch", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = HttpResponse(
+                status_code=200,
+                text=VALID_RSS_FEED,
+                headers={"content-type": "application/rss+xml"},
+                final_url="https://example.com/feed.xml",
+            )
+            response = await worker._add_feed(request, admin)
+
+        assert response.status == 409
+        # Queuing a duplicate would cause redundant fetches on every re-add attempt.
+        assert env.FEED_QUEUE.messages == []
+
+    @pytest.mark.asyncio
+    async def test_duplicate_records_admin_audit_event_as_error(self):
+        """Duplicate attempt is recorded as an error outcome in the admin audit event."""
+        from dataclasses import asdict
+
+        db = PerQueryTrackingD1(
+            {
+                "SELECT id, title, is_active": [
+                    {"id": 10, "title": "Existing Feed", "is_active": 1}
+                ],
+            }
+        )
+        env = _make_env(db=db)
+        worker = _make_worker(env)
+        admin = _mock_admin()
+
+        request = MockRequest(form_data={"url": "https://example.com/feed.xml"})
+
+        emitted: list[dict] = []
+
+        def _capture_emit(event, *args, **kwargs):
+            emitted.append(event if isinstance(event, dict) else asdict(event))
+            return True
+
+        with (
+            patch("src.main.safe_http_fetch", new_callable=AsyncMock) as mock_fetch,
+            patch("admin_context.emit_event", side_effect=_capture_emit),
+        ):
+            mock_fetch.return_value = HttpResponse(
+                status_code=200,
+                text=VALID_RSS_FEED,
+                headers={"content-type": "application/rss+xml"},
+                final_url="https://example.com/feed.xml",
+            )
+            await worker._add_feed(request, admin)
+
+        admin_events = [e for e in emitted if e.get("event_type") == "admin_action"]
+        assert len(admin_events) == 1, f"Expected one admin_action event, got {emitted}"
+        event = admin_events[0]
+        assert event["outcome"] == "error"
+        assert event["error_type"] == "DuplicateFeed"
+        assert "already exists" in event["error_message"]
