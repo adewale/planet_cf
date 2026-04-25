@@ -15,7 +15,10 @@ import logging
 from typing import Any
 from urllib.parse import urlencode
 
-import httpx
+try:
+    import httpx
+except ImportError:  # keep importable in minimal tool environments; real projects depend on httpx
+    httpx = None  # type: ignore[assignment]
 
 logger = logging.getLogger("src.main")
 
@@ -543,6 +546,8 @@ async def safe_http_fetch(
         return HttpResponse(status_code, text, response_headers, final_url)
     else:
         # Test environment: Use httpx
+        if httpx is None:
+            raise RuntimeError("httpx is required for safe_http_fetch outside Pyodide")
         async with httpx.AsyncClient(follow_redirects=True, timeout=timeout_seconds) as client:
             response = await client.request(method, url, headers=headers, data=data)
             return HttpResponse(
@@ -625,6 +630,8 @@ async def purge_edge_cache_global(zone_id: str, api_token: str, urls: list[str])
         response = await js_fetch(api_url, fetch_options)
         return int(response.status) < 300
     else:
+        if httpx is None:
+            raise RuntimeError("httpx is required for purge_edge_cache_global outside Pyodide")
         async with httpx.AsyncClient(timeout=10) as client:
             response = await client.post(api_url, headers=headers, json=body)
             return response.status_code < 300
