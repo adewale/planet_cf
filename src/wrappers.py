@@ -10,15 +10,16 @@ converted at the boundary layer before reaching business logic.
 """
 
 import asyncio
+import importlib
 import json
 import logging
 from typing import Any
 from urllib.parse import urlencode
 
 try:
-    import httpx
+    httpx: Any = importlib.import_module("httpx")
 except ImportError:  # keep importable in minimal tool environments; real projects depend on httpx
-    httpx = None  # type: ignore[assignment]
+    httpx = None
 
 import cfboundary.ffi.safe_env as cf_boundary
 
