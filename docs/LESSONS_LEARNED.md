@@ -658,7 +658,7 @@ assert result["entries_added"] > 0
 **Solution:** Adopt a two-tier test structure (pattern from [tasche](https://github.com/adewale/tasche)):
 
 1. **`test_safe_wrappers.py`** — CPython tests with Python mocks. Fast, test logic.
-2. **`test_wrappers_ffi.py`** — Pyodide fake tests. Monkeypatch `HAS_PYODIDE=True` and inject fake JS types.
+2. **`test_wrappers_ffi.py`** — Pyodide fake tests. Install a fake CFBoundary Pyodide runtime and inject fake JS types.
 
 **The fake JS types:**
 ```python
@@ -1041,9 +1041,7 @@ js_vectors = to_js(vectors, dict_converter=js.Object.fromEntries)
 
 ```python
 def _to_js_value(value):
-    if not HAS_PYODIDE or to_js is None:
-        return value
-    return to_js(value, dict_converter=js.Object.fromEntries)
+    return cf_boundary.to_js(value)
 ```
 
 No `isinstance` check. `dict_converter` applies recursively to all nested dicts regardless of the top-level type. This eliminates the entire class of bugs — any future caller of `_to_js_value()` gets correct Object conversion automatically. And there should be no direct calls to `to_js()` outside of `_to_js_value()`.
