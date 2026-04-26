@@ -53,6 +53,6 @@ it, verify:
    the runtime change
 4. Update lesson 29 in `docs/LESSONS_LEARNED.md`
 
-**Location:** `src/wrappers.py` — `_to_js_value()`
+**Location:** `src/boundary/__init__.py` — `_to_js_value()`
 
 **Tracking:** [workerd python_metadata.bzl](https://github.com/cloudflare/workerd/blob/main/build/python_metadata.bzl)

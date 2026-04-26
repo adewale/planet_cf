@@ -217,9 +217,9 @@ These are low priority -- the existing property tests cover the highest-risk are
 
    **Recommendation:** Replace all source-inspection tests with behavioral tests. For example, instead of checking that `_record_feed_error` source contains "return True", call the function with a feed that exceeds the deactivation threshold and assert it returns `True`.
 
-2. **`test_main_helpers.py` duplicates `test_utils.py`:** Both files test `truncate_error`, `log_op`, `_is_js_undefined`, `_safe_str`, etc. The `test_main_helpers.py` file imports from `src.main` (private re-exports) while `test_utils.py` imports from `src.utils` and `src.wrappers` directly. This creates confusion about which is canonical.
+2. **`test_main_helpers.py` duplicates `test_utils.py`:** Both files test `truncate_error`, `log_op`, `_is_js_undefined`, `_safe_str`, etc. The `test_main_helpers.py` file imports from `src.main` (private re-exports) while `test_utils.py` imports from `src.utils` and `src.boundary` directly. This creates confusion about which is canonical.
 
-   **Recommendation:** Delete the duplicated tests in `test_main_helpers.py` and keep only `test_utils.py` and `test_safe_wrappers.py` as the canonical sources.
+   **Recommendation:** Delete the duplicated tests in `test_main_helpers.py` and keep only `test_utils.py` and `test_safe_boundary` as the canonical sources.
 
 3. **`test_feed_parsing.py` tests feedparser, not project code:** These tests parse RSS/Atom XML through `feedparser` and assert on feedparser's output. They don't test any `src/` code -- they test a third-party library's behavior. While useful as documentation of feedparser's behavior, they inflate the test count without testing the project.
 
@@ -238,7 +238,7 @@ The shared mocks in `tests/conftest.py` are well-designed:
 
 ### One Concern: Duplicate Mocks
 
-`test_safe_wrappers.py`, `test_github_callback.py`, `test_queue_processing.py`, and `test_config.py` each define their own `MockD1`, `MockD1Statement`, `MockEnv` classes instead of using the shared ones from `conftest.py`. This is documented in MEMORY.md as intentional (specialized local mocks), but it means changes to the real D1 interface could be caught by conftest mocks but missed by local mocks (or vice versa).
+`test_safe_boundary`, `test_github_callback.py`, `test_queue_processing.py`, and `test_config.py` each define their own `MockD1`, `MockD1Statement`, `MockEnv` classes instead of using the shared ones from `conftest.py`. This is documented in MEMORY.md as intentional (specialized local mocks), but it means changes to the real D1 interface could be caught by conftest mocks but missed by local mocks (or vice versa).
 
 ---
 

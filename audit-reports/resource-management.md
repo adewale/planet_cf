@@ -10,7 +10,7 @@
 
 The codebase has strong resource management overall. The `src/` modules are clean -- the
 Cloudflare Workers runtime has no filesystem, and all HTTP, database, queue, and AI
-operations are delegated through well-structured wrapper classes in `wrappers.py`. The
+operations are delegated through well-structured wrapper classes in `boundary`. The
 `scripts/` directory has four actionable findings, all low severity, concentrated in
 CLI seeding tools.
 
@@ -101,9 +101,9 @@ open/close per call (minor perf cost).
 
 ---
 
-### 4. [LOW] `src/wrappers.py` -- timeout_seconds parameter ignored in Pyodide path
+### 4. [LOW] `src/boundary/__init__.py` -- timeout_seconds parameter ignored in Pyodide path
 
-**Location:** `src/wrappers.py`, lines 400-438
+**Location:** `src/boundary/__init__.py`, lines 400-438
 
 ```python
 async def safe_http_fetch(
@@ -146,8 +146,8 @@ independently.
 
 ### Network Connections (src/)
 
-- **`wrappers.py` test path:** Uses `async with httpx.AsyncClient(...)` -- proper cleanup.
-- **`wrappers.py` Pyodide path:** Uses `js_fetch` which returns a JS Response object.
+- **`boundary` test path:** Uses `async with httpx.AsyncClient(...)` -- proper cleanup.
+- **`boundary` Pyodide path:** Uses `js_fetch` which returns a JS Response object.
   The Workers runtime manages the underlying connection.
 - **SafeD1, SafeAI, SafeVectorize, SafeQueue:** Thin wrappers around JS bindings. The
   Workers runtime owns connection lifecycle.
@@ -193,4 +193,4 @@ independently.
 | Medium | Use `with httpx.Client(...) as client:` context manager | `scripts/seed_test_data.py:181` |
 | Medium | Add `close()` or context manager to `PlanetConverter` | `scripts/convert_planet.py:127` |
 | Low | Consider `atexit` cleanup for module-level SQLite connections | 3 seed scripts |
-| Low | Document that `timeout_seconds` is test-only in Pyodide path | `src/wrappers.py:400` |
+| Low | Document that `timeout_seconds` is test-only in Pyodide path | `src/boundary/__init__.py:400` |

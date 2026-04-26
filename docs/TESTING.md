@@ -26,9 +26,9 @@ Pure unit tests using mock Cloudflare bindings. No server needed.
 - Simulates JsProxy behavior to catch conversion issues
 - Covers: rendering, search, config, auth, feeds, entries, observability
 - Includes **two-tier wrapper tests**:
-  - `test_safe_wrappers.py` -- CPython tests with Python mocks
+  - `test_safe_boundary` -- CPython tests with Python mocks
   - `test_wrappers_ffi.py` -- Pyodide FFI boundary tests with fake JS types
-  - Run `uv run pytest tests/unit/test_safe_wrappers.py tests/unit/test_wrappers_ffi.py --co -q` for current counts
+  - Run `uv run pytest tests/unit/test_safe_boundary tests/unit/test_wrappers_ffi.py --co -q` for current counts
 
 ### Integration Tests (tests/integration/)
 

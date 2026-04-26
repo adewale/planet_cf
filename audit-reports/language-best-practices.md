@@ -38,7 +38,7 @@ finally:
 
 #### P2. `D1Result` class defined inside a method body (re-created on every call)
 
-**File:** `/Users/ade/Documents/projects/planet_cf/src/wrappers.py`, lines 289-292
+**File:** `/Users/ade/Documents/projects/planet_cf/src/boundary/__init__.py`, lines 289-292
 
 ```python
 async def all(self) -> Any:
@@ -60,7 +60,7 @@ async def all(self) -> Any:
 - `/Users/ade/Documents/projects/planet_cf/src/utils.py`, line 217: `def json_response(data: dict, ...)`
 - `/Users/ade/Documents/projects/planet_cf/src/models.py`, line 47: `def to_dict(self) -> dict:`
 - `/Users/ade/Documents/projects/planet_cf/src/models.py`, line 52: `def from_dict(cls, data: dict)`
-- `/Users/ade/Documents/projects/planet_cf/src/wrappers.py`, line 393: `def json(self) -> dict:`
+- `/Users/ade/Documents/projects/planet_cf/src/boundary/__init__.py`, line 393: `def json(self) -> dict:`
 
 **Problem:** Bare `dict` without type parameters loses information that `dict[str, Any]` would provide. Tools like mypy/pyright/ty treat `dict` as `dict[Unknown, Unknown]`, which can mask type errors.
 
@@ -70,7 +70,7 @@ async def all(self) -> Any:
 
 #### P4. `HttpResponse` is a plain class; should be a dataclass or frozen dataclass
 
-**File:** `/Users/ade/Documents/projects/planet_cf/src/wrappers.py`, lines 373-397
+**File:** `/Users/ade/Documents/projects/planet_cf/src/boundary/__init__.py`, lines 373-397
 
 The rest of the codebase consistently uses `@dataclass` for data-carrying classes (`OAuthError`, `TokenExchangeResult`, `ProcessedEntry`, etc.), but `HttpResponse` uses a manual `__init__`. This inconsistency makes it harder to serialize/compare and breaks the pattern.
 
@@ -78,9 +78,9 @@ The rest of the codebase consistently uses `@dataclass` for data-carrying classe
 
 ---
 
-#### P5. Broad `except Exception:` without logging in `wrappers.py`
+#### P5. Broad `except Exception:` without logging in `boundary`
 
-**File:** `/Users/ade/Documents/projects/planet_cf/src/wrappers.py`, lines 156, 195, 223
+**File:** `/Users/ade/Documents/projects/planet_cf/src/boundary/__init__.py`, lines 156, 195, 223
 
 Three `except Exception:` blocks silently swallow errors:
 - `_to_py_safe` line 156: returns `None`
@@ -189,7 +189,7 @@ These are noted for awareness but do not require action.
 
 ### Python
 
-- **`import json` inside method body** (`wrappers.py:395`): Deferred import in `HttpResponse.json()`. This is intentional to avoid import overhead when `json()` is not called, though the savings are negligible for a stdlib module.
+- **`import json` inside method body** (`boundary:395`): Deferred import in `HttpResponse.json()`. This is intentional to avoid import overhead when `json()` is not called, though the savings are negligible for a stdlib module.
 
 - **Aliased imports with underscore prefix** (`main.py` lines 91-135): Functions like `_html_response`, `_log_op` etc. are imported with underscore prefixes from `utils`. This is unconventional but serves to distinguish Worker method names from imported utility functions, preventing name collisions with the `Default` class methods.
 

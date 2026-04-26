@@ -1,4 +1,4 @@
-# src/wrappers.py
+# src/boundary/__init__.py
 """JavaScript/Python Boundary Layer for Cloudflare Workers.
 
 This module provides a clean boundary between JavaScript (Pyodide/JsProxy)

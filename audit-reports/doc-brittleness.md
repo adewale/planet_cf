@@ -62,7 +62,7 @@ If you want to preserve navigability, use a single "Code Map" section at the bot
 ### 1.3 ARCHITECTURE.md: Function-to-file binding
 
 **File:** `docs/ARCHITECTURE.md`, lines 289, 392
-- `(defined in src/wrappers.py)` -- correct today
+- `(defined in src/boundary/__init__.py)` -- correct today
 - `Feed formats are controlled by theme-based frozensets in src/main.py` -- correct today
 
 These are less fragile because they reference modules, not line numbers. But moving wrappers or themes to dedicated modules would break them. Keep these but remove any if they reference specific functions.
@@ -347,7 +347,7 @@ This is a 700+ line proposal for a `planet` CLI tool that does not exist. The do
 **File:** `docs/TESTING.md`, lines 29-30
 
 ```
-- `test_safe_wrappers.py` -- CPython tests with Python mocks (88 tests)
+- `test_safe_boundary` -- CPython tests with Python mocks (88 tests)
 - `test_wrappers_ffi.py` -- Pyodide FFI boundary tests with fake JS types (82 tests)
 ```
 
@@ -356,7 +356,7 @@ The test counts (88 and 82) are currently correct but will drift with any test a
 **Recommended rewrite:**
 
 ```markdown
-- `test_safe_wrappers.py` -- CPython tests with Python mocks
+- `test_safe_boundary` -- CPython tests with Python mocks
 - `test_wrappers_ffi.py` -- Pyodide FFI boundary tests with fake JS types
 ```
 

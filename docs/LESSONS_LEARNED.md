@@ -657,7 +657,7 @@ assert result["entries_added"] > 0
 
 **Solution:** Adopt a two-tier test structure (pattern from [tasche](https://github.com/adewale/tasche)):
 
-1. **`test_safe_wrappers.py`** — CPython tests with Python mocks. Fast, test logic.
+1. **`test_safe_boundary`** — CPython tests with Python mocks. Fast, test logic.
 2. **`test_wrappers_ffi.py`** — Pyodide fake tests. Install a fake CFBoundary Pyodide runtime and inject fake JS types.
 
 **The fake JS types:**
@@ -735,7 +735,7 @@ if value is None or _is_js_undefined(value):
     return default_value
 ```
 
-**Rule of thumb:** Any function in `wrappers.py` that has `if x is None` should also check `_is_js_undefined(x)`. When writing new boundary code, always ask: "What happens when this receives JsNull instead of None?"
+**Rule of thumb:** Any function in `boundary` that has `if x is None` should also check `_is_js_undefined(x)`. When writing new boundary code, always ask: "What happens when this receives JsNull instead of None?"
 
 ---
 

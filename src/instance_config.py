@@ -14,7 +14,7 @@ For local development, you can use config/instance.yaml with the
 create_instance.py script to generate wrangler.jsonc.
 """
 
-from wrappers import SafeEnv
+from src.boundary import SafeEnv
 
 # =============================================================================
 # Configuration Defaults

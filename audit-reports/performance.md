@@ -156,7 +156,7 @@ With 500 entries to delete, that is 10 sequential D1 calls. The Vectorize deleti
 
 ### 10. `D1Result` Class Created on Every `.all()` Call
 
-**File:** `src/wrappers.py`, lines 289-297
+**File:** `src/boundary/__init__.py`, lines 289-297
 **Impact:** Minor memory/GC pressure -- a new class definition is created inside the method body on every call.
 
 `SafeD1Statement.all()` defines a `D1Result` class inside the method on every invocation. In CPython this would be cached, but in Pyodide the class object is recreated each time.
@@ -186,7 +186,7 @@ This is standard practice and the overhead is minimal. No action needed.
 
 ### 12. `_to_py_safe` Recursion is Bounded
 
-**File:** `src/wrappers.py`, line 115
+**File:** `src/boundary/__init__.py`, line 115
 **Impact:** None -- `_MAX_CONVERSION_DEPTH = 50` provides an explicit recursion guard. Good defensive coding.
 
 ### 13. `xml_sanitizer.py` Pre-compiles Its Regex

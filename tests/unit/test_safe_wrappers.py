@@ -1,9 +1,9 @@
-# tests/unit/test_safe_wrappers.py
+# tests/unit/test_safe_boundary
 """Unit tests for Safe wrapper classes that handle JS/Python boundary."""
 
 import pytest
 
-from src.wrappers import (
+from src.boundary import (
     SafeAI,
     SafeD1,
     SafeD1Statement,
@@ -908,7 +908,7 @@ class TestJsNullMock:
 
 
 # =============================================================================
-# Branch Coverage Tests for wrappers.py
+# Branch Coverage Tests for boundary
 # =============================================================================
 
 
@@ -917,7 +917,7 @@ class TestToPyListFallbackBranches:
 
     def test_to_py_list_fallback_iteration_with_items(self):
         """_to_py_list falls back to iteration when input is not list and has no to_py()."""
-        from src.wrappers import _to_py_list
+        from src.boundary import _to_py_list
 
         # Create an iterable that is NOT a list and has no to_py()
         # FakeRow must be a proper mapping (keys() + __getitem__) for dict() to work
@@ -944,7 +944,7 @@ class TestToPyListFallbackBranches:
 
     def test_to_py_list_exception_falls_back_to_list(self):
         """_to_py_list returns list(js_array) when iteration raises in comprehension."""
-        from src.wrappers import _to_py_list
+        from src.boundary import _to_py_list
 
         # Create an iterable where the comprehension body fails
         # (no .items() and no .to_py()), but list() works
@@ -969,7 +969,7 @@ class TestExtractFormValueException:
 
     def test_extract_form_value_exception_returns_none(self):
         """_extract_form_value returns None when form.get() raises."""
-        from src.wrappers import _extract_form_value
+        from src.boundary import _extract_form_value
 
         class BrokenForm:
             def get(self, key):
@@ -984,7 +984,7 @@ class TestToPySafeEdgeCases:
 
     def test_numeric_string_object_converted_to_int(self):
         """Object whose str() is all digits gets converted to int (line 153-154)."""
-        from src.wrappers import _to_py_safe
+        from src.boundary import _to_py_safe
 
         class NumericThing:
             def __str__(self):
@@ -996,7 +996,7 @@ class TestToPySafeEdgeCases:
 
     def test_non_numeric_string_object_returned_as_str(self):
         """Object whose str() is not all digits is returned as string (line 155)."""
-        from src.wrappers import _to_py_safe
+        from src.boundary import _to_py_safe
 
         class StringThing:
             def __str__(self):
@@ -1007,7 +1007,7 @@ class TestToPySafeEdgeCases:
 
     def test_string_123_passes_through_as_string(self):
         """Python string '123' passes through as string, not converted to int."""
-        from src.wrappers import _to_py_safe
+        from src.boundary import _to_py_safe
 
         # Strings hit the isinstance(value, str) branch early
         result = _to_py_safe("123")
@@ -1016,7 +1016,7 @@ class TestToPySafeEdgeCases:
 
     def test_js_undefined_converts_to_none(self):
         """JsUndefined-like object converts to None."""
-        from src.wrappers import _to_py_safe
+        from src.boundary import _to_py_safe
 
         class FakeJsUndefined:
             pass
@@ -1029,7 +1029,7 @@ class TestToPySafeEdgeCases:
 
     def test_max_depth_returns_value_unchanged(self):
         """Exceeding max conversion depth returns value as-is."""
-        from src.wrappers import _MAX_CONVERSION_DEPTH, _to_py_safe
+        from src.boundary import _MAX_CONVERSION_DEPTH, _to_py_safe
 
         result = _to_py_safe({"key": "val"}, _depth=_MAX_CONVERSION_DEPTH)
         assert result == {"key": "val"}

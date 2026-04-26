@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from auth import parse_cookie_value
-from wrappers import safe_http_fetch
+from src.boundary import safe_http_fetch
 
 
 @dataclass

@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from src.boundary import HttpResponse
 from src.main import Default
-from src.wrappers import HttpResponse
 from tests.conftest import MockEnv, MockQueue, TrackingD1
 
 # =============================================================================

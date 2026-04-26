@@ -116,7 +116,7 @@ Actual file count:
 __init__.py, admin_context.py, admin.py, auth.py, config.py,
 content_processor.py, instance_config.py, main.py, models.py,
 oauth_handler.py, observability.py, route_dispatcher.py,
-search_query.py, templates.py, utils.py, wrappers.py, xml_sanitizer.py
+search_query.py, templates.py, utils.py, boundary, xml_sanitizer.py
 ```
 
 **Recommendation:** Update "15 other modules" to "16 other modules" (or

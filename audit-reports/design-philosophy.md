@@ -50,7 +50,7 @@ Scoring: FULL (no violations found), HIGH (minor or cosmetic issues), PARTIAL (s
 ### Compliance: HIGH (minor leakage into main.py)
 
 **Strengths:**
-- `src/wrappers.py` implements the full boundary layer: `SafeD1`, `SafeAI`, `SafeVectorize`, `SafeQueue`, `SafeEnv`, `SafeHeaders`, `SafeFormData`, `SafeFeedInfo`.
+- `src/boundary/__init__.py` implements the full boundary layer: `SafeD1`, `SafeAI`, `SafeVectorize`, `SafeQueue`, `SafeEnv`, `SafeHeaders`, `SafeFormData`, `SafeFeedInfo`.
 - `SafeEnv` wraps the raw environment on first access via a property override on the Worker class (line 308-321 of main.py).
 - Row factory functions (`feed_row_from_js`, `entry_row_from_js`, `admin_row_from_js`, `audit_row_from_js`) handle all D1 result conversion.
 - `safe_http_fetch()` normalizes HTTP responses across Pyodide and test environments.
@@ -229,7 +229,7 @@ These are not correctness bugs (the conversion is happening), but they violate t
 
 ## Principle 13: Two-Tier Testing Strategy (LESSONS_LEARNED.md 20, TESTING.md)
 
-> "test_safe_wrappers.py -- CPython tests with Python mocks. test_wrappers_ffi.py -- Pyodide FFI boundary tests with fake JS types."
+> "test_safe_boundary -- CPython tests with Python mocks. test_wrappers_ffi.py -- Pyodide FFI boundary tests with fake JS types."
 
 ### Compliance: FULL (verified by documentation and test structure)
 

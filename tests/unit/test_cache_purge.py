@@ -345,12 +345,12 @@ class TestNonMutatingActionsSkipPurge:
 
 
 class TestPurgeEdgeCacheBoundary:
-    """Test the purge_edge_cache boundary-layer function in wrappers.py."""
+    """Test the purge_edge_cache boundary-layer function in boundary."""
 
     @pytest.mark.asyncio
     async def test_purge_in_test_env_is_noop(self):
         """In test env (no Pyodide), purge_edge_cache succeeds silently."""
-        from wrappers import purge_edge_cache
+        from src.boundary import purge_edge_cache
 
         # Should not raise
         result = await purge_edge_cache("https://test.example.com", EXPECTED_PURGE_PATHS)
@@ -360,7 +360,7 @@ class TestPurgeEdgeCacheBoundary:
     @pytest.mark.asyncio
     async def test_purge_returns_count(self):
         """purge_edge_cache returns the number of paths purged."""
-        from wrappers import purge_edge_cache
+        from src.boundary import purge_edge_cache
 
         result = await purge_edge_cache("https://test.example.com", ("/", "/titles"))
         # In test env, returns 0 (no actual cache to purge)
@@ -389,7 +389,7 @@ class TestPurgeEdgeCacheProperties:
     @pytest.mark.asyncio
     async def test_purge_never_raises_in_test_env(self, base_url, paths):
         """purge_edge_cache never raises for any valid URL/path combination."""
-        from wrappers import purge_edge_cache
+        from src.boundary import purge_edge_cache
 
         result = await purge_edge_cache(base_url, paths)
         assert result == 0  # Test env always returns 0
@@ -400,7 +400,7 @@ class TestPurgeEdgeCacheProperties:
     @pytest.mark.asyncio
     async def test_purge_return_bounded_by_path_count(self, base_url, paths):
         """Purge count can never exceed the number of paths requested."""
-        from wrappers import purge_edge_cache
+        from src.boundary import purge_edge_cache
 
         result = await purge_edge_cache(base_url, paths)
         assert isinstance(result, int)
@@ -411,7 +411,7 @@ class TestPurgeEdgeCacheProperties:
     @pytest.mark.asyncio
     async def test_purge_empty_paths_returns_zero(self, base_url):
         """Purging with no paths always returns 0."""
-        from wrappers import purge_edge_cache
+        from src.boundary import purge_edge_cache
 
         result = await purge_edge_cache(base_url, ())
         assert result == 0
@@ -422,7 +422,7 @@ class TestPurgeEdgeCacheProperties:
     @pytest.mark.asyncio
     async def test_purge_idempotent(self, data):
         """Calling purge twice with the same args gives the same result."""
-        from wrappers import purge_edge_cache
+        from src.boundary import purge_edge_cache
 
         base_url = data.draw(base_urls)
         paths = data.draw(path_tuples)

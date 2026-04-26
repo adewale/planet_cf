@@ -2,13 +2,13 @@
 """Tests for data conversion integrity between SQL queries and row factories.
 
 These tests ensure that fields returned from SQL queries are preserved through
-the conversion functions in src/wrappers.py and reach templates correctly.
+the conversion functions in src/boundary/__init__.py and reach templates correctly.
 
 This file was created after discovering a bug where `is_healthy` was computed
 in SQL but dropped in `feed_row_from_js()`, causing all feeds to appear unhealthy.
 """
 
-from src.wrappers import (
+from src.boundary import (
     admin_row_from_js,
     audit_row_from_js,
     audit_rows_from_d1,

@@ -1,5 +1,5 @@
 # tests/unit/test_wrappers_ffi.py
-"""FFI boundary tests for wrappers.py — exercises Pyodide code paths.
+"""FFI boundary tests for boundary — exercises Pyodide code paths.
 
 These tests install a fake CFBoundary Pyodide runtime and inject JavaScript-type
 fakes (JsNull, JsUndefined, FakeJsProxy, FakeObject, FakeJSON) to verify the
@@ -11,7 +11,7 @@ Pattern borrowed from https://github.com/adewale/tasche/blob/main/tests/unit/tes
 import pytest
 from cfboundary.testing import patch_pyodide_runtime
 
-import src.wrappers as W
+import src.boundary as W
 
 # =============================================================================
 # Fake JS types — simulate Pyodide's FFI objects in CPython
