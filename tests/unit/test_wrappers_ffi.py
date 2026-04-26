@@ -117,13 +117,35 @@ def fake_to_js(value, *, dict_converter=None, create_pyproxies=True):
 
 
 @pytest.fixture
-def pyodide_fakes(monkeypatch):
-    """Patch wrappers module to simulate Pyodide runtime."""
-    monkeypatch.setattr(W, "HAS_PYODIDE", True)
-    monkeypatch.setattr(W, "js", FakeJsModule())
-    monkeypatch.setattr(W, "to_js", fake_to_js)
-    monkeypatch.setattr(W, "JS_NULL", JsNull())
-    yield
+def pyodide_fakes():
+    """Configure CFBoundary to simulate Pyodide runtime."""
+    import cfboundary.ffi.safe_env as safe_env
+
+    fake_js = FakeJsModule()
+    original = (
+        safe_env.HAS_PYODIDE,
+        safe_env.js,
+        safe_env.JsProxy,
+        safe_env.jsnull,
+        safe_env._pyodide_to_js,
+    )
+    W.cf_boundary.configure_runtime(
+        has_pyodide=True,
+        js_module=fake_js,
+        js_proxy_type=FakeJsProxy,
+        js_null_value=JsNull(),
+        to_js_func=fake_to_js,
+    )
+    try:
+        yield fake_js
+    finally:
+        W.cf_boundary.configure_runtime(
+            has_pyodide=original[0],
+            js_module=original[1],
+            js_proxy_type=original[2],
+            js_null_value=original[3],
+            to_js_func=original[4],
+        )
 
 
 # =============================================================================

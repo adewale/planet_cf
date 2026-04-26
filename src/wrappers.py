@@ -66,16 +66,6 @@ except ModuleNotFoundError as exc:
     HAS_PYODIDE = False
 
 
-def _sync_cfboundary_runtime() -> None:
-    """Mirror Planet CF's runtime/fake globals into CFBoundary before delegation."""
-    cf_boundary.configure_runtime(
-        has_pyodide=HAS_PYODIDE,
-        js_module=js,
-        js_null_value=JS_NULL,
-        to_js_func=to_js,
-    )
-
-
 # =============================================================================
 # Python→JavaScript Conversion
 # =============================================================================
@@ -97,7 +87,6 @@ def _to_js_value(value: Any) -> Any:
 
     Returns value unchanged in test environment (not Pyodide).
     """
-    _sync_cfboundary_runtime()
     return cf_boundary.to_js(value)
 
 
@@ -110,7 +99,6 @@ def _is_js_undefined(value: Any) -> bool:
     """Check if a value is JavaScript undefined (wrapped as JsProxy in Pyodide)."""
     if value is None:
         return False
-    _sync_cfboundary_runtime()
     if cf_boundary.is_js_missing(value):
         return True
     try:
@@ -136,8 +124,6 @@ def _to_py_safe(value: Any, *, _depth: int = 0) -> Any:
     if value is None:
         return None
 
-    _sync_cfboundary_runtime()
-
     # Guard against unbounded recursion
     if _depth >= _MAX_CONVERSION_DEPTH:
         return value
@@ -151,7 +137,7 @@ def _to_py_safe(value: Any, *, _depth: int = 0) -> Any:
         return value
 
     # Handle JsProxy with to_py() - try multiple approaches
-    if HAS_PYODIDE and hasattr(value, "to_py"):
+    if hasattr(value, "to_py"):
         try:
             converted = value.to_py()
             # to_py() might return a dict with JsProxy values, recurse
@@ -257,8 +243,8 @@ def _to_py_list(js_array: Any) -> list[dict[str, Any]]:
     if isinstance(js_array, list):
         return js_array
 
-    # In Pyodide, convert JsProxy array to Python list
-    if HAS_PYODIDE and hasattr(js_array, "to_py"):
+    # Convert JsProxy-like arrays to Python lists.
+    if hasattr(js_array, "to_py"):
         return js_array.to_py()
 
     # Try iteration as fallback
@@ -290,7 +276,6 @@ def _to_d1_value(value: Any) -> Any:
     # Convert None to JS null (required by D1 in Pyodide)
     # Python None -> JS undefined (wrong), JS_NULL -> JS null (correct)
     if py_value is None:
-        _sync_cfboundary_runtime()
         return cf_boundary.d1_null(py_value)
 
     return py_value

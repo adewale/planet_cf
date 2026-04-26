@@ -898,12 +898,10 @@ class TestJsNullMock:
         assert isinstance(result, JsNullMock)
         assert type(result).__name__ == "JsNull"
 
-    def test_feed_row_handles_jsnull_field(self, monkeypatch):
+    def test_feed_row_handles_jsnull_field(self):
         """Row factories handle JsNull values in fields gracefully."""
-        import src.wrappers as wrappers_mod
         from tests.mocks.jsproxy import JsNullMock
 
-        monkeypatch.setattr(wrappers_mod, "HAS_PYODIDE", True)
         row = {"id": 1, "url": "https://example.com/feed.xml", "title": JsNullMock()}
         result = feed_row_from_js(row)
         assert result["title"] is None
@@ -1016,12 +1014,9 @@ class TestToPySafeEdgeCases:
         assert result == "123"
         assert isinstance(result, str)
 
-    def test_js_undefined_converts_to_none(self, monkeypatch):
+    def test_js_undefined_converts_to_none(self):
         """JsUndefined-like object converts to None."""
-        import src.wrappers as wrappers_mod
         from src.wrappers import _to_py_safe
-
-        monkeypatch.setattr(wrappers_mod, "HAS_PYODIDE", True)
 
         class FakeJsUndefined:
             pass
