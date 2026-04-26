@@ -20,6 +20,8 @@ try:
 except ImportError:  # keep importable in minimal tool environments; real projects depend on httpx
     httpx = None  # type: ignore[assignment]
 
+import cfboundary.ffi.safe_env as cf_boundary
+
 logger = logging.getLogger("src.main")
 
 # =============================================================================
@@ -77,8 +79,10 @@ def _to_js_value(value: Any) -> Any:
 
     Returns value unchanged in test environment (not Pyodide).
     """
+    if HAS_PYODIDE and cf_boundary.HAS_PYODIDE:
+        return cf_boundary.to_js(value)
     if not HAS_PYODIDE or to_js is None:
-        return value
+        return cf_boundary.to_js(value)
     return to_js(
         value,
         dict_converter=js.Object.fromEntries,
@@ -127,6 +131,8 @@ def _to_py_safe(value: Any, *, _depth: int = 0) -> Any:
     """
     if value is None:
         return None
+    if HAS_PYODIDE and cf_boundary.HAS_PYODIDE:
+        return cf_boundary.to_py(value)
 
     # Guard against unbounded recursion
     if _depth >= _MAX_CONVERSION_DEPTH:
@@ -279,6 +285,8 @@ def _to_d1_value(value: Any) -> Any:
 
     # Convert None to JS null (required by D1 in Pyodide)
     # Python None -> JS undefined (wrong), JS_NULL -> JS null (correct)
+    if py_value is None and HAS_PYODIDE and cf_boundary.HAS_PYODIDE:
+        return cf_boundary.d1_null(py_value)
     if py_value is None and HAS_PYODIDE:
         return JS_NULL
 
