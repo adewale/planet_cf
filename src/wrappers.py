@@ -59,6 +59,16 @@ except ImportError:
     HAS_PYODIDE = False
 
 
+def _sync_cfboundary_runtime() -> None:
+    """Mirror Planet CF's runtime/fake globals into CFBoundary before delegation."""
+    cf_boundary.configure_runtime(
+        has_pyodide=HAS_PYODIDE,
+        js_module=js,
+        js_null_value=JS_NULL,
+        to_js_func=to_js,
+    )
+
+
 # =============================================================================
 # Python→JavaScript Conversion
 # =============================================================================
@@ -80,15 +90,8 @@ def _to_js_value(value: Any) -> Any:
 
     Returns value unchanged in test environment (not Pyodide).
     """
-    if HAS_PYODIDE and cf_boundary.HAS_PYODIDE:
-        return cf_boundary.to_js(value)
-    if not HAS_PYODIDE or to_js is None:
-        return cf_boundary.to_js(value)
-    return to_js(
-        value,
-        dict_converter=js.Object.fromEntries,
-        create_pyproxies=False,
-    )
+    _sync_cfboundary_runtime()
+    return cf_boundary.to_js(value)
 
 
 # =============================================================================
@@ -100,20 +103,13 @@ def _is_js_undefined(value: Any) -> bool:
     """Check if a value is JavaScript undefined (wrapped as JsProxy in Pyodide)."""
     if value is None:
         return False
-    if not HAS_PYODIDE:
-        return False
-    # In Pyodide, JavaScript undefined has typeof == "undefined"
+    _sync_cfboundary_runtime()
+    if cf_boundary.is_js_missing(value):
+        return True
     try:
-        if hasattr(value, "typeof") and value.typeof == "undefined":
-            return True
-        # Also check for JsUndefined type from pyodide.ffi
-        type_name = type(value).__name__
-        if type_name in ("JsUndefined", "JsNull"):
-            return True
-    except (AttributeError, TypeError):
-        # Ignore type check errors
-        pass
-    return False
+        return type(value).__name__ in ("JsUndefined", "JsNull")
+    except TypeError:
+        return False
 
 
 def _to_py_safe(value: Any, *, _depth: int = 0) -> Any:
@@ -132,8 +128,8 @@ def _to_py_safe(value: Any, *, _depth: int = 0) -> Any:
     """
     if value is None:
         return None
-    if HAS_PYODIDE and cf_boundary.HAS_PYODIDE:
-        return cf_boundary.to_py(value)
+
+    _sync_cfboundary_runtime()
 
     # Guard against unbounded recursion
     if _depth >= _MAX_CONVERSION_DEPTH:
@@ -286,10 +282,9 @@ def _to_d1_value(value: Any) -> Any:
 
     # Convert None to JS null (required by D1 in Pyodide)
     # Python None -> JS undefined (wrong), JS_NULL -> JS null (correct)
-    if py_value is None and HAS_PYODIDE and cf_boundary.HAS_PYODIDE:
+    if py_value is None:
+        _sync_cfboundary_runtime()
         return cf_boundary.d1_null(py_value)
-    if py_value is None and HAS_PYODIDE:
-        return JS_NULL
 
     return py_value
 
