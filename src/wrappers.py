@@ -10,18 +10,23 @@ converted at the boundary layer before reaching business logic.
 """
 
 import asyncio
-import importlib
 import json
 import logging
 from typing import Any
 from urllib.parse import urlencode
 
-try:
-    httpx: Any = importlib.import_module("httpx")
-except ImportError:  # keep importable in minimal tool environments; real projects depend on httpx
-    httpx = None
-
 import cfboundary.ffi as cf_boundary
+
+httpx: Any
+try:
+    import httpx as _httpx  # type: ignore[import-not-found]
+except ModuleNotFoundError as exc:
+    # Keep importable in minimal tool environments; real projects depend on httpx.
+    if exc.name != "httpx":
+        raise
+    httpx = None
+else:
+    httpx = _httpx
 
 logger = logging.getLogger("src.main")
 
@@ -50,7 +55,9 @@ try:
     # Python None -> JS undefined, but D1 needs JS null for SQL NULL
     # Note: js.eval() is disallowed in Workers, so use JSON.parse instead
     JS_NULL = js.JSON.parse("null")
-except ImportError:
+except ModuleNotFoundError as exc:
+    if exc.name not in {"js", "pyodide"}:
+        raise
     # Test environment - these will not be used
     js = None
     js_fetch = None
