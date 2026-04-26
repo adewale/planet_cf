@@ -21,7 +21,7 @@ try:
 except ImportError:  # keep importable in minimal tool environments; real projects depend on httpx
     httpx = None
 
-import cfboundary.ffi.safe_env as cf_boundary
+import cfboundary.ffi as cf_boundary
 
 logger = logging.getLogger("src.main")
 
