@@ -48,22 +48,17 @@ _DEFAULT_HTTP_TIMEOUT_SECONDS = 30
 try:
     import js
     from js import fetch as js_fetch
-    from pyodide.ffi import to_js
 
     HAS_PYODIDE = True
-    # Create a proper JavaScript null value for D1 bindings
-    # Python None -> JS undefined, but D1 needs JS null for SQL NULL
-    # Note: js.eval() is disallowed in Workers, so use JSON.parse instead
-    JS_NULL = js.JSON.parse("null")
 except ModuleNotFoundError as exc:
-    if exc.name not in {"js", "pyodide"}:
+    if exc.name != "js":
         raise
     # Test environment - these will not be used
     js = None
     js_fetch = None
-    to_js = None
-    JS_NULL = None
     HAS_PYODIDE = False
+
+JS_NULL = cf_boundary.js_null()
 
 
 # =============================================================================
@@ -273,8 +268,7 @@ def _to_d1_value(value: Any) -> Any:
     # Force convert to Python (catches all JsProxy/undefined)
     py_value = _to_py_safe(value)
 
-    # Convert None to JS null (required by D1 in Pyodide)
-    # Python None -> JS undefined (wrong), JS_NULL -> JS null (correct)
+    # Convert None to JS null (required by D1 in Pyodide).
     if py_value is None:
         return cf_boundary.d1_null(py_value)
 
