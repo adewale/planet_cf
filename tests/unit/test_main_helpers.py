@@ -46,22 +46,18 @@ class TestIsJsUndefined:
         """Empty string is not undefined."""
         assert _is_js_undefined("") is False
 
-    def test_detects_jsnull_mock_in_pyodide_mode(self, monkeypatch):
-        """JsNull objects are detected as undefined/null when HAS_PYODIDE is True."""
-        import src.wrappers as wrappers_mod
+    def test_detects_jsnull_mock(self):
+        """JsNull objects are detected as undefined/null."""
         from tests.mocks.jsproxy import JsNullMock
 
-        monkeypatch.setattr(wrappers_mod, "HAS_PYODIDE", True)
         js_null = JsNullMock()
         assert type(js_null).__name__ == "JsNull"
         assert _is_js_undefined(js_null) is True
 
-    def test_to_py_safe_converts_jsnull_to_none(self, monkeypatch):
+    def test_to_py_safe_converts_jsnull_to_none(self):
         """_to_py_safe should convert JsNull to Python None."""
-        import src.wrappers as wrappers_mod
         from tests.mocks.jsproxy import JsNullMock
 
-        monkeypatch.setattr(wrappers_mod, "HAS_PYODIDE", True)
         assert _to_py_safe(JsNullMock()) is None
 
 

@@ -685,7 +685,7 @@ _Undefined.__name__ = "JsUndefined"
 ```python
 @pytest.fixture
 def pyodide_fakes(monkeypatch):
-    monkeypatch.setattr(W, "HAS_PYODIDE", True)
+    with patch_pyodide_runtime(...):
     monkeypatch.setattr(W, "js", FakeJsModule())
     monkeypatch.setattr(W, "to_js", fake_to_js)
     monkeypatch.setattr(W, "JS_NULL", JsNull())

@@ -49,7 +49,7 @@ Tests against real Cloudflare infrastructure (D1, Vectorize, Workers AI).
 
 Unit tests with Python mocks verify business logic but completely miss FFI boundary bugs. JsNull, JsUndefined, and JsProxy types don't exist in CPython, so mock-based tests pass even when production code crashes on these types.
 
-`test_wrappers_ffi.py` solves this by monkeypatching `HAS_PYODIDE=True` and injecting fake JS types (JsNull, JsUndefined, FakeJsProxy) that replicate Pyodide's actual behavior. This caught a real bug in `_to_py_list()` where `if js_array is None` missed JsNull input (because JsNull `is not None`).
+`test_wrappers_ffi.py` solves this by installing a fake CFBoundary Pyodide runtime and injecting fake JS types (JsNull, JsUndefined, FakeJsProxy) that replicate Pyodide's actual behavior. This caught a real bug in `_to_py_list()` where `if js_array is None` missed JsNull input (because JsNull `is not None`).
 
 See [Lesson 20 in LESSONS_LEARNED.md](LESSONS_LEARNED.md#20-two-tier-ffi-testing-cpython-tests--pyodide-fakes) for full details.
 

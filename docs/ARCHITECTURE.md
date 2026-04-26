@@ -302,7 +302,7 @@ Business logic code should NEVER import or use JsProxy types directly.
 
 **Critical gotcha**: `if x is None` misses JsNull and JsUndefined — always also check `_is_js_undefined(x)` at the boundary. See [Lesson 21](LESSONS_LEARNED.md#21-is-none-is-never-enough-at-the-ffi-boundary).
 
-**Testing**: Wrappers have two-tier tests -- CPython mocks (`test_safe_wrappers.py`) and FFI fakes (`test_wrappers_ffi.py`) that monkeypatch `HAS_PYODIDE=True` with fake JS types. Run `uv run pytest tests/unit/test_safe_wrappers.py tests/unit/test_wrappers_ffi.py --co -q` for current counts. See [Lesson 20](LESSONS_LEARNED.md#20-two-tier-ffi-testing-cpython-tests--pyodide-fakes).
+**Testing**: Wrappers have two-tier tests -- CPython mocks (`test_safe_wrappers.py`) and FFI fakes (`test_wrappers_ffi.py`) that install a fake CFBoundary Pyodide runtime with fake JS types. Run `uv run pytest tests/unit/test_safe_wrappers.py tests/unit/test_wrappers_ffi.py --co -q` for current counts. See [Lesson 20](LESSONS_LEARNED.md#20-two-tier-ffi-testing-cpython-tests--pyodide-fakes).
 
 ### Python None vs JavaScript undefined
 
