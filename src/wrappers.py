@@ -45,6 +45,9 @@ _DEFAULT_HTTP_TIMEOUT_SECONDS = 30
 # Pyodide-specific imports (only available in Cloudflare Workers environment)
 # =============================================================================
 
+# App-local JS runtime flag used only for Planet CF-specific JS APIs such as
+# fetch/Response/cache helpers. Generic FFI conversion runtime state lives in
+# CFBoundary.
 try:
     import js
     from js import fetch as js_fetch
