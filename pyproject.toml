@@ -156,7 +156,7 @@ ignore = [
     "S608",  # SQL uses bind() parameters, not string formatting
     "UP017",  # Keep timezone.utc for consistency across the codebase
 ]
-"src/wrappers.py" = [
+"src/boundary/__init__.py" = [
     "ANN401",  # JS/Python boundary layer - Any is intentional for JsProxy types
 ]
 "vulture_whitelist.py" = [
