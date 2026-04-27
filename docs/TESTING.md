@@ -27,8 +27,8 @@ Pure unit tests using mock Cloudflare bindings. No server needed.
 - Covers: rendering, search, config, auth, feeds, entries, observability
 - Includes **two-tier wrapper tests**:
   - `test_safe_boundary` -- CPython tests with Python mocks
-  - `test_wrappers_ffi.py` -- Pyodide FFI boundary tests with fake JS types
-  - Run `uv run pytest tests/unit/test_safe_boundary tests/unit/test_wrappers_ffi.py --co -q` for current counts
+  - `test_boundary_ffi.py` -- Pyodide FFI boundary tests with fake JS types
+  - Run `uv run pytest tests/unit/test_safe_boundary tests/unit/test_boundary_ffi.py --co -q` for current counts
 
 ### Integration Tests (tests/integration/)
 
@@ -49,7 +49,7 @@ Tests against real Cloudflare infrastructure (D1, Vectorize, Workers AI).
 
 Unit tests with Python mocks verify business logic but completely miss FFI boundary bugs. JsNull, JsUndefined, and JsProxy types don't exist in CPython, so mock-based tests pass even when production code crashes on these types.
 
-`test_wrappers_ffi.py` solves this by installing a fake CFBoundary Pyodide runtime and injecting fake JS types (JsNull, JsUndefined, FakeJsProxy) that replicate Pyodide's actual behavior. This caught a real bug in `_to_py_list()` where `if js_array is None` missed JsNull input (because JsNull `is not None`).
+`test_boundary_ffi.py` solves this by installing a fake CFBoundary Pyodide runtime and injecting fake JS types (JsNull, JsUndefined, FakeJsProxy) that replicate Pyodide's actual behavior. This caught a real bug in `_to_py_list()` where `if js_array is None` missed JsNull input (because JsNull `is not None`).
 
 See [Lesson 20 in LESSONS_LEARNED.md](LESSONS_LEARNED.md#20-two-tier-ffi-testing-cpython-tests--pyodide-fakes) for full details.
 

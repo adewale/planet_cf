@@ -1,11 +1,11 @@
-# tests/unit/test_wrappers_ffi.py
+# tests/unit/test_boundary_ffi.py
 """FFI boundary tests for boundary — exercises Pyodide code paths.
 
 These tests install a fake CFBoundary Pyodide runtime and inject JavaScript-type
 fakes (JsNull, JsUndefined, FakeJsProxy, FakeObject, FakeJSON) to verify the
 actual conversion logic that runs in production Workers.
 
-Pattern borrowed from https://github.com/adewale/tasche/blob/main/tests/unit/test_wrappers_ffi.py
+Pattern borrowed from https://github.com/adewale/tasche/blob/main/tests/unit/test_boundary_ffi.py
 """
 
 import pytest

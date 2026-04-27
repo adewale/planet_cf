@@ -55,8 +55,8 @@ wheels = [
 
 [[package]]
 name = "cfboundary"
-version = "0.1.9"
-source = { git = "https://github.com/adewale/cfboundary?rev=v0.1.9#878f135dc2b23b1efa658c5f50142f8d433dc18a" }
+version = "0.1.10"
+source = { git = "https://github.com/adewale/cfboundary?rev=v0.1.10#6defd2046f22e9ae37129ad5e7af2f92d9d4cae9" }
 
 [[package]]
 name = "charset-normalizer"
@@ -560,7 +560,7 @@ workers = [
 requires-dist = [
     { name = "beautifulsoup4", marker = "extra == 'tools'", specifier = ">=4.12.0" },
     { name = "bleach", specifier = ">=6.0.0" },
-    { name = "cfboundary", git = "https://github.com/adewale/cfboundary?rev=v0.1.9" },
+    { name = "cfboundary", git = "https://github.com/adewale/cfboundary?rev=v0.1.10" },
     { name = "feedparser", specifier = ">=6.0.0" },
     { name = "freezegun", marker = "extra == 'test'", specifier = ">=1.2.0" },
     { name = "httpx", specifier = ">=0.27.0" },

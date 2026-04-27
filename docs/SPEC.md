@@ -2613,7 +2613,7 @@ tests/
 │   ├── test_security.py     # URL validation, SSRF tests
 │   ├── test_session.py      # Signed cookie tests
 │   ├── test_safe_boundary # CPython wrapper tests (88 tests)
-│   └── test_wrappers_ffi.py  # Pyodide FFI boundary tests (82 tests)
+│   └── test_boundary_ffi.py  # Pyodide FFI boundary tests (82 tests)
 ├── integration/
 │   ├── test_scheduler.py    # Cron → Queue flow
 │   ├── test_fetcher.py      # Queue → D1 flow

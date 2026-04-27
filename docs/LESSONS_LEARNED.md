@@ -658,7 +658,7 @@ assert result["entries_added"] > 0
 **Solution:** Adopt a two-tier test structure (pattern from [tasche](https://github.com/adewale/tasche)):
 
 1. **`test_safe_boundary`** — CPython tests with Python mocks. Fast, test logic.
-2. **`test_wrappers_ffi.py`** — Pyodide fake tests. Install a fake CFBoundary Pyodide runtime and inject fake JS types.
+2. **`test_boundary_ffi.py`** — Pyodide fake tests. Install a fake CFBoundary Pyodide runtime and inject fake JS types.
 
 **The fake JS types:**
 ```python
