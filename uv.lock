@@ -55,8 +55,8 @@ wheels = [
 
 [[package]]
 name = "cfboundary"
-version = "0.1.7"
-source = { git = "https://github.com/adewale/cfboundary?rev=v0.1.7#fdb00f5cd52df2ee674e710f5b3501641044aa20" }
+version = "0.1.8"
+source = { git = "https://github.com/adewale/cfboundary?rev=v0.1.8#d12ab9cdaf4b59c4a2b3dfab8ce8acfe4b60e1c0" }
 dependencies = [
     { name = "httpx" },
 ]
@@ -563,7 +563,7 @@ workers = [
 requires-dist = [
     { name = "beautifulsoup4", marker = "extra == 'tools'", specifier = ">=4.12.0" },
     { name = "bleach", specifier = ">=6.0.0" },
-    { name = "cfboundary", git = "https://github.com/adewale/cfboundary?rev=v0.1.7" },
+    { name = "cfboundary", git = "https://github.com/adewale/cfboundary?rev=v0.1.8" },
     { name = "feedparser", specifier = ">=6.0.0" },
     { name = "freezegun", marker = "extra == 'test'", specifier = ">=1.2.0" },
     { name = "httpx", specifier = ">=0.27.0" },
