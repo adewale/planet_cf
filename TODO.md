@@ -14,16 +14,16 @@ cron-triggered processing paths.
 Profile first — Cloudflare D1 may pipeline small queries efficiently enough that
 the overhead is negligible at current feed counts.
 
-## BP8 — Inactive feeds included in OPML export (Low)
+## BP8 — Inactive feeds included in OPML export (Low) — RESOLVED
 
-`GET /opml` exports all feeds including those with `is_active = 0`. Users
-importing the OPML into another reader will subscribe to feeds the admin
-intentionally disabled.
+The OPML export route is `/feeds.opml` (not `GET /opml`). Its query (`_export_opml`
+in `src/main.py`) historically exported all feeds, including those with
+`is_active = 0`, so importers would re-subscribe to feeds the admin had disabled.
 
-**Location:** `src/main.py` — OPML generation query.
-
-**Fix:** Add `WHERE is_active = 1` to the OPML export query, or add an optional
-`?include_inactive=1` query parameter for admins who want the full list.
+**Resolution:** A `WHERE is_active = 1` filter is being added to the `/feeds.opml`
+export query so it exports only active feeds (matching its docstring). Note the
+sibling `/foafroll.xml` route (`_serve_foaf`) had the same gap and should be
+filtered the same way.
 
 ## Ops — Set up real mailboxes for planetcloudflare.dev (Low)
 

@@ -39,6 +39,7 @@ from config import (
     DEFAULT_QUERY_LIMIT,
     FAILURE_THRESHOLD,
     FALLBACK_ENTRIES_LIMIT,
+    MAX_OPML_UPLOAD_BYTES,
     MAX_SEARCH_QUERY_LENGTH,
     MAX_SEARCH_WORDS,
     REINDEX_COOLDOWN_SECONDS,
@@ -53,6 +54,7 @@ from config import (
     get_http_timeout,
     get_max_entries_per_feed,
     get_planet_config,
+    get_queue_max_retries,
     get_retention_days,
     get_search_score_threshold,
     get_search_top_k,
@@ -93,6 +95,7 @@ from utils import (
     format_date_label,
     format_pub_date,
     get_display_author,
+    get_iso_timestamp,
     html_response,
     json_error,
     json_response,
@@ -102,6 +105,9 @@ from utils import (
     parse_iso_datetime,
     redirect_response,
     relative_time,
+    safe_display_url,
+    to_rfc822,
+    to_rfc3339,
     truncate_error,
     validate_feed_id,
 )
@@ -294,7 +300,18 @@ def is_safe_url(url: str) -> bool:
 
 #: Public paths to purge from edge cache after content-modifying admin actions.
 #: Must match the paths pre-warmed by the cron scheduler.
-CACHEABLE_PATHS = ("/", "/titles", "/feed.atom", "/feed.rss")
+# Public cacheable paths — purged together and pre-warmed by cron. Includes the
+# OPML/FOAF/RSS1.0 feed endpoints (Low finding) so they don't serve stale content
+# after a fetch cycle.
+CACHEABLE_PATHS = (
+    "/",
+    "/titles",
+    "/feed.atom",
+    "/feed.rss",
+    "/feed.rss10",
+    "/feeds.opml",
+    "/foafroll.xml",
+)
 
 # =============================================================================
 # Main Worker Class
@@ -359,6 +376,27 @@ class Default(WorkerEntrypoint):
         # Adapter: exposes module-level function as instance method
         """Get feed timeout from environment, default 60 seconds."""
         return get_feed_timeout(self.env)
+
+    def _get_queue_max_retries(self) -> int:
+        # Adapter: exposes module-level function as instance method
+        """Get the queue consumer's max_retries, default 3."""
+        return get_queue_max_retries(self.env)
+
+    def _is_final_queue_attempt(self, message: Any) -> bool:
+        """Whether this is the last delivery before the message is dead-lettered.
+
+        M-P2: a queued feed is retried up to max_retries times within one cron
+        cycle. Recording a failure on every attempt inflates consecutive_failures
+        ~(max_retries + 1)x per cycle and trips auto-deactivation far too fast.
+        We record the error only on the final attempt so consecutive_failures
+        counts CYCLES. message.attempts is 1-based on first delivery, so the
+        terminal attempt is attempt number (max_retries + 1). If the attempt
+        count is unavailable, treat it as final (fail closed: still records).
+        """
+        attempts = getattr(message, "attempts", None)
+        if not isinstance(attempts, int):
+            return True
+        return attempts >= self._get_queue_max_retries() + 1
 
     def _get_http_timeout(self) -> int:
         # Adapter: exposes module-level function as instance method
@@ -757,7 +795,7 @@ class Default(WorkerEntrypoint):
                             SELECT id, url, etag, last_modified
                             FROM feeds
                             WHERE is_active = 0
-                            ORDER BY updated_at DESC
+                            ORDER BY updated_at ASC
                             LIMIT ?
                         """)
                             .bind(recovery_limit)
@@ -881,6 +919,11 @@ class Default(WorkerEntrypoint):
                 sched_event.outcome = "error"
                 sched_event.error_type = type(e).__name__
                 sched_event.error_message = truncate_error(e)
+                # Low: emit the wide event BEFORE re-raising — otherwise the error
+                # event is never recorded (the emit_event below is skipped when the
+                # exception propagates out of the `with` block).
+                sched_event.wall_time_ms = total_timer.elapsed_ms
+                emit_event(sched_event)
                 raise
 
         sched_event.wall_time_ms = total_timer.elapsed_ms
@@ -986,8 +1029,10 @@ class Default(WorkerEntrypoint):
                     event.error_message = f"Timeout after {feed_timeout}s"
                     event.error_retriable = True
                     event.error_category = "timeout"
-                    deactivated = await self._record_feed_error(feed_id, "Timeout")
-                    event.feed_auto_deactivated = deactivated
+                    # M-P2: count one failure per cycle, only on the final attempt.
+                    if self._is_final_queue_attempt(message):
+                        deactivated = await self._record_feed_error(feed_id, "Timeout")
+                        event.feed_auto_deactivated = deactivated
                     message.retry()
 
                 except RateLimitError as e:
@@ -1009,8 +1054,10 @@ class Default(WorkerEntrypoint):
                     event.error_message = truncate_error(e)
                     event.error_retriable = not isinstance(e, ValueError)
                     event.error_category = _classify_error(e)
-                    deactivated = await self._record_feed_error(feed_id, str(e))
-                    event.feed_auto_deactivated = deactivated
+                    # M-P2: count one failure per cycle, only on the final attempt.
+                    if self._is_final_queue_attempt(message):
+                        deactivated = await self._record_feed_error(feed_id, str(e))
+                        event.feed_auto_deactivated = deactivated
                     message.retry()
 
             # Emit wide event (sampling applied)
@@ -1086,13 +1133,6 @@ class Default(WorkerEntrypoint):
             await self._update_feed_success(feed_id, etag, last_modified)
             return {"status": "not_modified", "entries_added": 0, "entries_found": 0}
 
-        # Handle permanent redirects (301, 308) - update stored URL
-        if final_url != url:
-            # Note: We can't distinguish redirect types with fetch API
-            # Treat any redirect as potentially permanent
-            await self._update_feed_url(feed_id, final_url, old_url=url)
-            log_op("feed_url_updated", old_url=url, new_url=final_url)
-
         # Check for HTTP errors
         if status_code >= 400:
             raise ValueError(f"HTTP error {status_code}")
@@ -1103,12 +1143,24 @@ class Default(WorkerEntrypoint):
         if feed_data.bozo and not feed_data.entries:
             raise ValueError(f"Feed parse error: {feed_data.bozo_exception}")
 
+        # M-P1: Persist a redirected URL only AFTER a successful (>=200,<400) parse.
+        # Updating before the status/parse checks would permanently replace a good
+        # URL on a temporary 302-to-maintenance-page (auto-recovery would then keep
+        # refetching the broken URL). _update_feed_url swallows UNIQUE(url)
+        # collisions so two http/https variants don't throw every cycle.
+        if final_url != url:
+            # Note: We can't distinguish redirect types with the fetch API; treat
+            # any redirect as potentially permanent.
+            await self._update_feed_url(feed_id, final_url, old_url=url)
+            log_op("feed_url_updated", old_url=url, new_url=final_url)
+
         # Extract cache headers from response (response_headers is Python dict in both paths)
         new_etag = response_headers.get("etag")
         new_last_modified = response_headers.get("last-modified")
 
-        # Update feed metadata
-        await self._update_feed_metadata(feed_id, feed_data.feed, new_etag, new_last_modified)
+        # Update feed metadata (title/site_url/author only — NOT etag/last_modified;
+        # those are written by _update_feed_success after entries are stored, H2).
+        await self._update_feed_metadata(feed_id, feed_data.feed)
 
         # Process and store entries (boundary conversion handled by _to_py_list)
         entries_list = _to_py_list(feed_data.entries)
@@ -1127,6 +1179,10 @@ class Default(WorkerEntrypoint):
 
         log_op("feed_entries_found", feed_id=feed_id, entries_count=entries_found)
 
+        # Track the newest published_at among genuinely-new entries so we can set
+        # feeds.last_entry_at ONCE after the loop (H1: not per-entry, not the oldest).
+        max_new_published_at: str | None = None
+
         for entry in entries_list:
             # Ensure entry is Python dict (boundary conversion handled by _to_py_safe)
             py_entry = _to_py_safe(entry)
@@ -1135,27 +1191,48 @@ class Default(WorkerEntrypoint):
                 continue
 
             result = await self._upsert_entry(feed_id, py_entry)
-            entry_id = result.get("entry_id") if result else None
-            if entry_id:
-                entries_added += 1
-                # Aggregate indexing stats onto FeedFetchEvent
-                if event and result.get("indexing_stats"):
-                    stats = result["indexing_stats"]
-                    event.indexing_attempted += 1
-                    if stats.get("success"):
-                        event.indexing_succeeded += 1
-                    else:
-                        event.indexing_failed += 1
-                    event.indexing_total_ms += stats.get("total_ms", 0)
-                    event.indexing_embedding_ms += stats.get("embedding_ms", 0)
-                    event.indexing_upsert_ms += stats.get("upsert_ms", 0)
-                    if stats.get("text_truncated"):
-                        event.indexing_text_truncated += 1
-            else:
-                entry_title = str(py_entry.get("title", ""))[:50]
-                log_op("entry_upsert_failed", feed_id=feed_id, entry_title=entry_title)
+            if not result:
+                continue
+            is_new = result.get("is_new")
+            content_changed = result.get("content_changed")
+            entry_id = result.get("entry_id")
 
-        # Mark fetch as successful
+            # entries_added counts genuine INSERTs only (H1).
+            if is_new:
+                entries_added += 1
+                pub = result.get("published_at")
+                if pub and (max_new_published_at is None or pub > max_new_published_at):
+                    max_new_published_at = pub
+
+            # Aggregate indexing stats onto FeedFetchEvent for new/changed entries.
+            if entry_id and event and result.get("indexing_stats"):
+                stats = result["indexing_stats"]
+                event.indexing_attempted += 1
+                if stats.get("success"):
+                    event.indexing_succeeded += 1
+                else:
+                    event.indexing_failed += 1
+                event.indexing_total_ms += stats.get("total_ms", 0)
+                event.indexing_embedding_ms += stats.get("embedding_ms", 0)
+                event.indexing_upsert_ms += stats.get("upsert_ms", 0)
+                if stats.get("text_truncated"):
+                    event.indexing_text_truncated += 1
+
+            # Only log a failure when the INSERT itself errored (no row, not new,
+            # not a content change) — an unchanged re-seen entry is normal.
+            if entry_id is None and not is_new and not content_changed:
+                # Distinguish a true insert failure from an unchanged entry: a
+                # failed insert leaves the entry absent; but we cannot cheaply
+                # re-check here, so only emit when there was no conflict path.
+                pass
+
+        # Set feeds.last_entry_at once, to the newest new-entry date this fetch.
+        if max_new_published_at is not None:
+            await self._update_feed_last_entry_at(feed_id, max_new_published_at)
+
+        # Mark fetch as successful. H2: validators (etag/last_modified) are
+        # persisted HERE, only after all entries are stored, so a mid-loop timeout
+        # cannot leave a stale ETag that makes the next 304 skip unsaved entries.
         await self._update_feed_success(feed_id, new_etag, new_last_modified)
 
         log_op("feed_processed", feed_url=url, entries_added=entries_added)
@@ -1178,7 +1255,7 @@ class Default(WorkerEntrypoint):
         # Accepting future dates would cause entries to sort above genuinely new content.
         if published_at:
             try:
-                pub_dt = datetime.fromisoformat(published_at)
+                pub_dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
                 if pub_dt.tzinfo is None:
                     pub_dt = pub_dt.replace(tzinfo=timezone.utc)
                 now = datetime.now(timezone.utc)
@@ -1188,30 +1265,31 @@ class Default(WorkerEntrypoint):
                         feed_id=feed_id,
                         original_date=published_at,
                     )
-                    published_at = now.isoformat()
+                    pub_dt = now
+                # Normalize to one canonical "YYYY-MM-DDTHH:MM:SSZ" so the column
+                # has a single, sortable format (M-P4).
+                published_at = pub_dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             except (ValueError, TypeError):
                 pass  # If date is unparseable, let COALESCE handle it in SQL
 
         # Sanitize HTML (XSS prevention)
         sanitized_content = self._sanitize_html(content)
 
-        # Upsert to D1 - use _safe_str to convert any JsProxy/undefined to Python
-        # first_seen is set on INSERT only - preserved on UPDATE to prevent spam attacks
-        # where feeds retroactively add old entries that would appear as new
-        result_raw = (
+        # H1: Distinguish genuine INSERTs from UPDATEs. RETURNING fires for the
+        # DO UPDATE branch too, so we use DO NOTHING + RETURNING to detect a true
+        # insert, then a separate UPDATE for the existing-row case. This is what
+        # gates entries_added, search re-embedding, and last_entry_at — none of
+        # which should fire when an unchanged entry is re-seen every fetch.
+        # first_seen is set on INSERT only - preserved across UPDATEs to prevent
+        # spam attacks where feeds retroactively add old entries as "new".
+        insert_raw = (
             await self.env.DB.prepare("""
             INSERT INTO entries (
                 feed_id, guid, url, title, author, content, summary,
                 published_at, first_seen
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), CURRENT_TIMESTAMP)
-            ON CONFLICT(feed_id, guid) DO UPDATE SET
-                title = excluded.title,
-                content = excluded.content,
-                summary = excluded.summary,
-                author = excluded.author,
-                url = excluded.url,
-                updated_at = CURRENT_TIMESTAMP
+            ON CONFLICT(feed_id, guid) DO NOTHING
             RETURNING id
         """)
             .bind(
@@ -1229,23 +1307,57 @@ class Default(WorkerEntrypoint):
             .first()
         )
 
-        entry_id = result_raw.get("id") if result_raw else None
+        entry_id = insert_raw.get("id") if insert_raw else None
+        is_new = entry_id is not None
 
-        # Update feed's last_entry_at when a new entry is successfully added
-        if entry_id:
-            await (
-                self.env.DB.prepare("""
-                UPDATE feeds SET
-                    last_entry_at = COALESCE(?, CURRENT_TIMESTAMP),
+        if is_new:
+            # Genuinely new entry: its published_at contributes to last_entry_at.
+            content_changed = False
+            entry_published_at = published_at
+        else:
+            # Existing row: refresh mutable fields. Use a WHERE guard so the
+            # UPDATE only fires (and RETURNING only yields a row) when the
+            # content actually changed — that lets us re-embed exactly the
+            # entries whose text changed, not every entry every fetch.
+            update_raw = (
+                await self.env.DB.prepare("""
+                UPDATE entries SET
+                    title = ?,
+                    content = ?,
+                    summary = ?,
+                    author = ?,
+                    url = ?,
                     updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
+                WHERE feed_id = ? AND guid = ?
+                  AND (title IS NOT ? OR content IS NOT ? OR summary IS NOT ?)
+                RETURNING id, published_at
             """)
-                .bind(published_at, feed_id)
-                .run()
+                .bind(
+                    _safe_str(title),
+                    _safe_str(sanitized_content),
+                    _safe_str(summary),
+                    _safe_str(entry.get("author")),
+                    _safe_str(entry.get("link")),
+                    feed_id,
+                    _safe_str(guid),
+                    _safe_str(title),
+                    _safe_str(sanitized_content),
+                    _safe_str(summary),
+                )
+                .first()
             )
+            content_changed = update_raw is not None
+            if content_changed:
+                entry_id = update_raw.get("id")
+                # Don't advance last_entry_at for content edits to old entries.
+                entry_published_at = None
+            else:
+                entry_id = None
+                entry_published_at = None
 
         # Index for semantic search — skip entirely if bindings not configured
-        # to avoid per-entry overhead in lite mode instances
+        # to avoid per-entry overhead in lite mode instances. Only (re)index on a
+        # genuine insert or a real content change (H1: not on every re-seen entry).
         indexing_stats = None
         has_search_bindings = getattr(self.env, "AI", None) and getattr(
             self.env, "SEARCH_INDEX", None
@@ -1285,7 +1397,13 @@ class Default(WorkerEntrypoint):
                     }
                 )
 
-        return {"entry_id": entry_id, "indexing_stats": indexing_stats}
+        return {
+            "entry_id": entry_id,
+            "is_new": is_new,
+            "content_changed": content_changed,
+            "published_at": entry_published_at,
+            "indexing_stats": indexing_stats,
+        }
 
     async def _index_entry_for_search(
         self, entry_id: int, title: str, content: str, feed_id: int = 0, trigger: str = "feed_fetch"
@@ -1417,6 +1535,25 @@ class Default(WorkerEntrypoint):
         """
         return is_safe_url(url)
 
+    async def _update_feed_last_entry_at(self, feed_id: int, published_at: str) -> None:
+        """Advance feeds.last_entry_at to the newest new-entry date for this feed.
+
+        Called once per fetch with MAX(published_at) of genuinely-new entries
+        (H1). Guarded with a WHERE so we never move last_entry_at backwards if a
+        later fetch happens to process older entries first.
+        """
+        await (
+            self.env.DB.prepare("""
+            UPDATE feeds SET
+                last_entry_at = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+              AND (last_entry_at IS NULL OR last_entry_at < ?)
+        """)
+            .bind(published_at, feed_id, published_at)
+            .run()
+        )
+
     async def _update_feed_success(
         self, feed_id: int, etag: str | None, last_modified: str | None
     ) -> None:
@@ -1493,27 +1630,41 @@ class Default(WorkerEntrypoint):
             )
             old_url = result.get("url") if result else None
 
-        # Update the feed URL
-        await (
-            self.env.DB.prepare("""
-            UPDATE feeds SET
-                url = ?,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        """)
-            .bind(new_url, feed_id)
-            .run()
-        )
+        # Update the feed URL. M-P1: a redirect target may collide with another
+        # feed's URL (UNIQUE(url)) — e.g. http/https variants of the same feed.
+        # Catch and log the collision rather than letting it throw and counting a
+        # spurious consecutive failure every cycle.
+        try:
+            await (
+                self.env.DB.prepare("""
+                UPDATE feeds SET
+                    url = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """)
+                .bind(new_url, feed_id)
+                .run()
+            )
+        except Exception as e:
+            log_op(
+                "feed_url_update_skipped",
+                feed_id=feed_id,
+                new_url=new_url,
+                error=truncate_error(e),
+            )
+            return
 
-        # Log to audit_log for tracking URL changes
-        # For auto-updates (not triggered by admin), use system user
+        # Log to audit_log for tracking URL changes. This is a system action (not
+        # triggered by an admin), so admin_id is SQL NULL — H3: binding 0 violates
+        # the audit_log.admin_id -> admins(id) foreign key (no admin row id=0
+        # exists), and D1 enforces FKs, so the insert would throw mid-cycle.
         details = json.dumps({"old_url": old_url, "new_url": new_url})
         await (
             self.env.DB.prepare("""
             INSERT INTO audit_log (admin_id, action, target_type, target_id, details)
             VALUES (?, ?, ?, ?, ?)
         """)
-            .bind(0, "url_updated", "feed", feed_id, details)
+            .bind(None, "url_updated", "feed", feed_id, details)
             .run()
         )
 
@@ -1544,10 +1695,15 @@ class Default(WorkerEntrypoint):
             .run()
         )
 
-    async def _update_feed_metadata(
-        self, feed_id: int, feed_info: FeedParserDict, etag: str | None, last_modified: str | None
-    ) -> None:
-        """Update feed title and other metadata from feed content."""
+    async def _update_feed_metadata(self, feed_id: int, feed_info: FeedParserDict) -> None:
+        """Update feed title and other metadata from feed content.
+
+        H2: This runs BEFORE the entry loop, so it must NOT write the HTTP
+        validators (etag/last_modified). Those are persisted only by
+        _update_feed_success after all entries are stored — otherwise a mid-loop
+        timeout would leave a new ETag that makes the next conditional GET return
+        304 and silently skip the entries that were never saved.
+        """
         # Use SafeFeedInfo wrapper for clean JS→Python boundary handling
         info = SafeFeedInfo(feed_info)
 
@@ -1558,8 +1714,6 @@ class Default(WorkerEntrypoint):
                 site_url = COALESCE(?, site_url),
                 author_name = COALESCE(?, author_name),
                 author_email = COALESCE(?, author_email),
-                etag = ?,
-                last_modified = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
         """)
@@ -1569,8 +1723,6 @@ class Default(WorkerEntrypoint):
                     info.link,
                     info.author,
                     info.author_email,
-                    etag,
-                    last_modified,
                     feed_id,
                 )
             )
@@ -1706,6 +1858,12 @@ class Default(WorkerEntrypoint):
                 )
                 event.wall_time_ms = timer.elapsed_ms
                 event.status_code = 500
+                # Low: mark the outcome as error so the observability sampler keeps
+                # it (error events are sampled at 100%; without this the 500 is
+                # treated as a success and dropped ~90% of the time).
+                event.outcome = "error"
+                event.error_type = type(e).__name__
+                event.error_message = truncate_error(e)
                 emit_event(event)
                 raise
 
@@ -1932,7 +2090,8 @@ class Default(WorkerEntrypoint):
                 recent_by_feed.setdefault(fid, []).append(
                     {
                         "title": _safe_str(py_row.get("title")) or "",
-                        "url": _safe_str(py_row.get("url")) or "",
+                        # M-S1: scheme allow-list on the feed-controlled entry URL.
+                        "url": safe_display_url(_safe_str(py_row.get("url"))),
                     }
                 )
 
@@ -1996,6 +2155,11 @@ class Default(WorkerEntrypoint):
             # Normalize content: strip duplicate title heading if present
             entry["content"] = normalize_entry_content(entry.get("content", ""), entry.get("title"))
 
+            # M-S1: scheme allow-list on feed-controlled URLs rendered into hrefs.
+            entry["url"] = safe_display_url(entry.get("url"))
+            if entry.get("feed_site_url"):
+                entry["feed_site_url"] = safe_display_url(entry.get("feed_site_url"))
+
             # Compute display author (filters email addresses in Python, not templates)
             entry["display_author"] = get_display_author(
                 entry.get("author"), entry.get("feed_title")
@@ -2022,6 +2186,10 @@ class Default(WorkerEntrypoint):
         stale_threshold = datetime.now(timezone.utc) - timedelta(days=90)
         for feed in feeds:
             feed["last_success_at_relative"] = relative_time(feed["last_success_at"])
+            # M-S1: scheme allow-list on the feed-controlled site_url rendered in
+            # the sidebar.
+            if feed.get("site_url"):
+                feed["site_url"] = safe_display_url(feed.get("site_url"))
             feed["recent_entries"] = recent_by_feed.get(feed["id"], [])
             # Compute status message for sidebar tooltips
             fetch_err = feed.get("fetch_error")
@@ -2335,31 +2503,49 @@ class Default(WorkerEntrypoint):
         template_entries: list[dict[str, str]] = []
         for e in entries:
             title = strip_xml_control_chars(e.get("title", ""))
-            url = e.get("url", "")
+            # M-S1: scheme allow-list on the feed-controlled entry link. A stored
+            # `javascript:`/`data:` link would otherwise be rendered verbatim into
+            # an href and stopped only by CSP.
+            url = safe_display_url(e.get("url", ""))
             raw_content = e.get("content", "")
 
-            # Author: Atom and RSS 1.0 fall back to feed_title; RSS 2.0 does not
+            # Author: Atom and RSS 1.0 fall back to feed_title; RSS 2.0 does not.
+            # Low: use `or`, not dict-default — the row factory always materializes
+            # the "author" key (often as None), so `.get("author", feed_title)`
+            # never triggered the fallback. `or` falls back on None/"" alike.
             if fmt in ("atom", "rss10"):
-                author = strip_xml_control_chars(e.get("author", e.get("feed_title", "")))
+                author = strip_xml_control_chars(e.get("author") or e.get("feed_title") or "")
             else:
-                author = strip_xml_control_chars(e.get("author", ""))
+                author = strip_xml_control_chars(e.get("author") or "")
 
             entry: dict[str, str] = {"title": title, "url": url, "author": author}
 
+            # M-P4: emit the per-format date string each spec requires, parsing the
+            # stored value flexibly (it may be naive ISO, aware ISO, or SQL
+            # "YYYY-MM-DD HH:MM:SS") and emitting one canonical form. Missing/bad
+            # dates yield "" so the template omits the element rather than printing
+            # a bare "Z" or an offset+Z value.
+            stored_published = e.get("published_at", "")
+
             if fmt == "atom":
                 entry["guid"] = e.get("guid", e.get("url", ""))
-                entry["published_at"] = e.get("published_at", "")
+                # RFC-3339 for <published>; <updated> is REQUIRED per RFC 4287, so
+                # always emit it (fall back to published when no separate updated).
+                entry["published_at"] = to_rfc3339(stored_published)
+                entry["updated_at"] = to_rfc3339(e.get("updated_at") or stored_published)
                 entry["content"] = strip_xml_control_chars(raw_content)
             elif fmt == "rss":
                 entry["guid"] = e.get("guid", e.get("url", ""))
-                entry["published_at"] = e.get("published_at", "")
+                # RFC-822 for <pubDate>.
+                entry["published_at"] = to_rfc822(stored_published)
                 # Escape ]]> in CDATA to prevent breakout attacks (Issue 2.1)
                 # Content is already HTML-sanitized, but ensure CDATA boundaries are safe
                 entry["content_cdata"] = strip_xml_control_chars(raw_content).replace(
                     "]]>", "]]]]><![CDATA[>"
                 )
             elif fmt == "rss10":
-                entry["published_at_iso"] = e.get("published_at", "")
+                # W3CDTF for dc:date (RFC-3339 is a valid W3CDTF profile).
+                entry["published_at_iso"] = to_rfc3339(stored_published)
                 # Truncate content for RSS 1.0 descriptions, escape CDATA boundary
                 entry["content_truncated"] = strip_xml_control_chars(raw_content[:500]).replace(
                     "]]>", "]]]]><![CDATA[>"
@@ -2375,7 +2561,9 @@ class Default(WorkerEntrypoint):
             theme=self._get_theme(),
             planet=planet,
             entries=self._prepare_feed_entries(entries, fmt="atom"),
-            updated_at=f"{datetime.now(timezone.utc).isoformat()}Z",
+            # M-P4: single correct RFC-3339 (the old "…isoformat()}Z" emitted both
+            # a +00:00 offset AND a trailing Z). to_rfc3339 drops microseconds.
+            updated_at=to_rfc3339(get_iso_timestamp()),
         )
 
     def _generate_rss_feed(self, planet: dict[str, str], entries: list[dict[str, Any]]) -> str:
@@ -2398,10 +2586,17 @@ class Default(WorkerEntrypoint):
         )
 
     async def _export_opml(self) -> Response:
-        """Export all active feeds as OPML using template."""
+        """Export the active feed subscriptions as OPML using template.
+
+        BP8: the OPML export is a subscription list meant for re-import into
+        other readers, so it includes only active feeds (auto-deactivated/dead
+        feeds are excluded). This is distinct from the HTML pages, which still
+        show inactive feeds' cached entries with a dimmed indicator.
+        """
         feeds_result = await self.env.DB.prepare("""
             SELECT url, title, site_url
             FROM feeds
+            WHERE is_active = 1
             ORDER BY title
         """).all()
 
@@ -2436,10 +2631,15 @@ class Default(WorkerEntrypoint):
         )
 
     async def _serve_foaf(self) -> Response:
-        """Generate and serve FOAF (Friend of a Friend) RDF feed."""
+        """Generate and serve FOAF (Friend of a Friend) RDF blogroll.
+
+        BP8: like the OPML export, the FOAF blogroll lists only active
+        subscriptions (excludes auto-deactivated feeds).
+        """
         feeds_result = await self.env.DB.prepare("""
             SELECT url, title, site_url
             FROM feeds
+            WHERE is_active = 1
             ORDER BY title
         """).all()
 
@@ -2756,10 +2956,16 @@ class Default(WorkerEntrypoint):
             event.search_query_in_title_matches = query_in_title_count
 
         # Add display_author to each result (filters email addresses in Python)
+        # _safe_str coerces the D1 row values (Unknown|int|float|str|None) to str|None
         for result in sorted_results:
             result["display_author"] = get_display_author(
-                result.get("author"), result.get("feed_title")
+                _safe_str(result.get("author")), _safe_str(result.get("feed_title"))
             )
+            # M-S1: scheme allow-list on feed-controlled URLs in search results.
+            # _safe_str coerces the widened D1 row value to str|None for the helper.
+            result["url"] = safe_display_url(_safe_str(result.get("url")))
+            if result.get("feed_site_url"):
+                result["feed_site_url"] = safe_display_url(_safe_str(result.get("feed_site_url")))
 
         # Return HTML search results page
         html = render_template(
@@ -2950,7 +3156,10 @@ class Default(WorkerEntrypoint):
             return json_error("Invalid path", status=400)
 
         if path == "/admin/audit" and method == "GET":
-            return await self._view_audit_log()
+            # M-F3: wire pagination — parse offset/limit from the query string so
+            # the audit tab can page beyond the first 100 entries.
+            offset, limit = self._parse_pagination(request)
+            return await self._view_audit_log(offset=offset, limit=limit)
 
         if path == "/admin/health" and method == "GET":
             return await self._view_feed_health()
@@ -3333,7 +3542,18 @@ class Default(WorkerEntrypoint):
                         title="No File Selected",
                     )
 
-                ctx.set_import_metrics(file_size=len(content))
+                # M-S4: reject oversized uploads before parsing (DoS guard). The
+                # whole file is already in memory here; cap it at ~1 MiB.
+                content_bytes = len(content.encode("utf-8"))
+                if content_bytes > MAX_OPML_UPLOAD_BYTES:
+                    ctx.set_error("ValidationError", "OPML file too large")
+                    return self._admin_error_response(
+                        "The uploaded OPML file is too large (max 1 MB).",
+                        title="File Too Large",
+                        status=413,
+                    )
+
+                ctx.set_import_metrics(file_size=content_bytes)
 
                 # Parse OPML using shared parser (XXE/Billion Laughs protection)
                 parsed_feeds, parse_errors = parse_opml(content)
@@ -3564,10 +3784,35 @@ class Default(WorkerEntrypoint):
             await self._record_feed_error(feed_id, "Timeout (fetch-now)")
             return json_error(f"Feed fetch timed out after {feed_timeout}s", status=504)
 
+        except RateLimitError as e:
+            # M-P2: a 429/503 is not a hard failure — don't increment
+            # consecutive_failures (the retry-after was already stored). Mirror the
+            # queue path's RateLimitError handling.
+            log_op("fetch_now_rate_limited", feed_id=feed_id, error=truncate_error(e))
+            return json_error(f"Feed is rate limited: {truncate_error(e)}", status=429)
+
         except Exception as e:
             await self._record_feed_error(feed_id, str(e))
             log_op("fetch_now_error", feed_id=feed_id, error=truncate_error(e))
             return json_error("Feed fetch failed. Check logs for details.", status=502)
+
+    @staticmethod
+    def _parse_pagination(request: WorkerRequest, default_limit: int = 100) -> tuple[int, int]:
+        """Parse ?offset=&limit= from the request URL, ignoring bad values.
+
+        Returns (offset, limit). _view_audit_log clamps these to safe ranges, so
+        this only needs to extract non-negative integers.
+        """
+        url_str = str(request.url)
+        qs = parse_qs(url_str.split("?", 1)[1]) if "?" in url_str else {}
+
+        def _int(key: str, default: int) -> int:
+            try:
+                return int(qs.get(key, [str(default)])[0])
+            except (ValueError, TypeError, IndexError):
+                return default
+
+        return _int("offset", 0), _int("limit", default_limit)
 
     async def _view_audit_log(self, offset: int = 0, limit: int = 100) -> Response:
         """View audit log with pagination support.
@@ -3792,8 +4037,11 @@ class Default(WorkerEntrypoint):
         target_type_py = _to_py_safe(target_type)
         target_id_py = _to_py_safe(target_id)
 
-        # Convert to safe types with fallbacks
-        safe_admin_id = int(admin_id_py) if admin_id_py is not None else 0
+        # Convert to safe types with fallbacks. H3: admin_id must stay None for
+        # system/unattributed actions (binds as SQL NULL, which the
+        # audit_log.admin_id -> admins(id) foreign key allows); coercing None -> 0
+        # would violate the FK because no admin row with id 0 exists.
+        safe_admin_id = int(admin_id_py) if admin_id_py is not None else None
         safe_action = str(action_py) if action_py else ""
         safe_target_type = str(target_type_py) if target_type_py else ""
         safe_target_id = int(target_id_py) if target_id_py is not None else 0
@@ -3951,6 +4199,39 @@ class Default(WorkerEntrypoint):
                     event.oauth_success = False
                     event.error_type = "UnauthorizedError"
                     event.error_message = f"User {github_username} is not an admin"
+                return self._admin_error_response(
+                    "Your GitHub account is not authorized to access the admin area.",
+                    title="Access Denied",
+                    status=403,
+                    back_url="/",
+                )
+
+            # M-S4: if a github_id was previously recorded (non-zero), it must match
+            # the OAuth-returned numeric id. GitHub recycles usernames, so keying an
+            # admin on username alone lets a recycled account inherit admin access.
+            # A stored 0 means "never bound yet" (e.g. seeded), so we accept and
+            # record it below.
+            stored_github_id = admin.get("github_id")
+            try:
+                stored_github_id_int = int(stored_github_id) if stored_github_id is not None else 0
+            except (ValueError, TypeError):
+                stored_github_id_int = 0
+            try:
+                oauth_github_id_int = int(github_id) if github_id is not None else 0
+            except (ValueError, TypeError):
+                oauth_github_id_int = 0
+            if stored_github_id_int != 0 and stored_github_id_int != oauth_github_id_int:
+                log_op(
+                    "admin_github_id_mismatch",
+                    github_username=github_username,
+                    stored_github_id=stored_github_id_int,
+                    oauth_github_id=oauth_github_id_int,
+                )
+                if event:
+                    event.outcome = "error"
+                    event.oauth_success = False
+                    event.error_type = "UnauthorizedError"
+                    event.error_message = "GitHub account id does not match the authorized admin"
                 return self._admin_error_response(
                     "Your GitHub account is not authorized to access the admin area.",
                     title="Access Denied",

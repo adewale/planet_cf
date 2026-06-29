@@ -30,11 +30,21 @@ def sql_quote(value: str) -> str:
     return cursor.fetchone()[0]
 
 
-def seed_admins(local: bool = False):
+def seed_admins(
+    local: bool = False,
+    db_name: str = "planetcf",
+    config: str | None = None,
+):
     """Seed admin users from configuration file.
 
     Args:
         local: If True, seed to local D1 database and include test_only admins.
+        db_name: D1 database name to seed (default: planetcf). Override for other
+            instances, e.g. --db-name planet-python-db (M-D4: this used to be
+            hardcoded to ``planetcf``, so the documented multi-instance admin
+            seeding could not target any other database).
+        config: Optional path to a wrangler config (passed as --config) so the
+            correct binding/account is used for non-default instances.
     """
     config_path = Path("config/admins.json")
 
@@ -77,9 +87,13 @@ def seed_admins(local: bool = False):
                 is_active = 1;
         """
 
-        cmd = ["npx", "wrangler", "d1", "execute", "planetcf", "--command", sql]
+        cmd = ["npx", "wrangler", "d1", "execute", db_name, "--command", sql]
         if local:
             cmd.append("--local")
+        else:
+            cmd.append("--remote")
+        if config:
+            cmd.extend(["--config", config])
 
         result = subprocess.run(
             cmd,
@@ -108,10 +122,19 @@ def main():
         action="store_true",
         help="Seed to local D1 database (includes test_only admins)",
     )
+    parser.add_argument(
+        "--db-name",
+        default="planetcf",
+        help="D1 database name to seed (default: planetcf, the production DB)",
+    )
+    parser.add_argument(
+        "--config",
+        help="Path to a wrangler config file (e.g. examples/<id>/wrangler.jsonc)",
+    )
     args = parser.parse_args()
 
     try:
-        seed_admins(local=args.local)
+        seed_admins(local=args.local, db_name=args.db_name, config=args.config)
     except FileNotFoundError:
         print("Error: wrangler command not found. Please install wrangler:", file=sys.stderr)
         print("  npm install -g wrangler", file=sys.stderr)

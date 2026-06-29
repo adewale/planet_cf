@@ -531,7 +531,7 @@ class TestAuditRowFromJs:
     """Tests for audit_row_from_js conversion function."""
 
     def test_converts_complete_row(self):
-        """Converts a complete audit log row."""
+        """Converts a complete audit log row (M-P5: joins github_username/display_name)."""
         row = {
             "id": 500,
             "admin_id": 1,
@@ -540,7 +540,8 @@ class TestAuditRowFromJs:
             "target_id": 42,
             "details": '{"url": "https://example.com"}',
             "created_at": "2025-01-17T12:00:00Z",
-            "admin_username": "testuser",
+            "github_username": "testuser",
+            "display_name": "Test User",
         }
         result = audit_row_from_js(row)
         assert result["id"] == 500
@@ -548,7 +549,17 @@ class TestAuditRowFromJs:
         assert result["action"] == "add_feed"
         assert result["target_type"] == "feed"
         assert result["target_id"] == 42
-        assert result["admin_username"] == "testuser"
+        # M-P5: the joined admin identity is now surfaced (was a bogus
+        # admin_username key that the SELECT never produced).
+        assert result["github_username"] == "testuser"
+        assert result["display_name"] == "Test User"
+        assert "admin_username" not in result
+
+    def test_system_action_admin_id_is_none(self):
+        """H3/M-P5: a system audit row has admin_id NULL → None (not int 0)."""
+        row = {"id": 1, "admin_id": None, "action": "url_updated", "target_type": "feed"}
+        result = audit_row_from_js(row)
+        assert result["admin_id"] is None
 
     def test_returns_empty_dict_for_none(self):
         """Returns empty dict for None input."""
@@ -821,40 +832,34 @@ class TestFeedBindValues:
     """Tests for feed_bind_values helper function."""
 
     def test_returns_tuple_of_correct_length(self):
-        """Returns tuple with 7 elements."""
+        """Returns tuple with 5 elements (etag/last_modified excluded — H2)."""
         result = feed_bind_values(
             title="Feed Title",
             site_url="https://example.com",
             author_name="Author",
             author_email="author@example.com",
-            etag='"abc123"',
-            last_modified="Wed, 01 Jan 2025 00:00:00 GMT",
             feed_id=42,
         )
         assert isinstance(result, tuple)
-        assert len(result) == 7
+        assert len(result) == 5
 
     def test_feed_id_is_last_element(self):
         """feed_id is the last element (for WHERE clause)."""
-        result = feed_bind_values("t", "s", "a", "e", "et", "lm", 99)
+        result = feed_bind_values("t", "s", "a", "e", 99)
         assert result[-1] == 99
         assert isinstance(result[-1], int)
 
     def test_converts_all_string_fields(self):
         """All string fields are converted through _safe_str."""
-        result = feed_bind_values(
-            "Title", "https://site.com", "Author", "email@x.com", "etag", "lastmod", 1
-        )
+        result = feed_bind_values("Title", "https://site.com", "Author", "email@x.com", 1)
         assert result[0] == "Title"
         assert result[1] == "https://site.com"
         assert result[2] == "Author"
         assert result[3] == "email@x.com"
-        assert result[4] == "etag"
-        assert result[5] == "lastmod"
 
     def test_handles_none_values(self):
         """None values are passed through."""
-        result = feed_bind_values(None, None, None, None, None, None, 1)
+        result = feed_bind_values(None, None, None, None, 1)
         assert result[0] is None
         assert result[1] is None
 

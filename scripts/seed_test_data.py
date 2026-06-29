@@ -29,6 +29,7 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 import sqlite3
 import subprocess
 import sys
@@ -43,8 +44,13 @@ atexit.register(_quote_conn.close)
 # Default database name (overridden by --db-name)
 DEFAULT_DB_NAME = "test-planet-db"
 
-# Default session secret for test-planet (matches E2E_SESSION_SECRET in tests)
-DEFAULT_SESSION_SECRET = "test-session-secret-for-e2e-testing-only"
+
+# H12: NO committed session secret. The signing key for the admin cookie used by
+# --reindex must come from the environment (SESSION_SECRET, or E2E_SESSION_SECRET
+# as a fallback) so it matches the deployed worker's secret without a default
+# baked into the repo. Resolved lazily and required only when --reindex is used.
+def _session_secret_from_env() -> str | None:
+    return os.environ.get("SESSION_SECRET") or os.environ.get("E2E_SESSION_SECRET")
 
 
 def sql_quote(value: str) -> str:
@@ -74,7 +80,15 @@ def run_sql(db_name: str, sql: str, *, local: bool = False, config: str | None =
 
 
 def seed_admins(db_name: str, *, local: bool = False, config: str | None = None) -> int:
-    """Seed test admin users. Returns count of successfully seeded admins."""
+    """Seed test admin users. Returns count of successfully seeded admins.
+
+    NOTE (admin-source drift): there are three places that name admins —
+    config/admins.json (consumed by scripts/seed_admins.py for real instances),
+    migration 002 (which now seeds NObody after re-audit H11), and this list. This
+    list is intentionally TEST-ONLY: it seeds the dedicated test-planet instance
+    for E2E tests and is never applied to production or third-party deployments.
+    Keep these admins limited to test accounts.
+    """
     admins = [
         {"username": "adewale", "display_name": "Adewale Oshineye", "github_id": 0},
         {"username": "testadmin", "display_name": "Test Admin", "github_id": 12345},
@@ -241,8 +255,12 @@ Examples:
     )
     parser.add_argument(
         "--session-secret",
-        default=DEFAULT_SESSION_SECRET,
-        help="Session secret for creating auth cookie (for --reindex)",
+        default=None,
+        help=(
+            "Session secret for creating the auth cookie (for --reindex). "
+            "If omitted, falls back to the SESSION_SECRET / E2E_SESSION_SECRET "
+            "environment variable. There is no committed default (H12)."
+        ),
     )
     args = parser.parse_args()
 
@@ -295,7 +313,18 @@ Examples:
 
     # Step 4: Optional reindex
     if args.reindex:
-        if not trigger_reindex(args.base_url, args.session_secret):
+        session_secret = args.session_secret or _session_secret_from_env()
+        if not session_secret:
+            print(
+                "Error: --reindex needs a session secret to sign the admin cookie, "
+                "but none was provided.\n"
+                "  Pass --session-secret, or set SESSION_SECRET / E2E_SESSION_SECRET "
+                "in the environment.\n"
+                "  (There is no committed default secret — re-audit H12.)",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        if not trigger_reindex(args.base_url, session_secret):
             failed = True
         print()
 

@@ -10,7 +10,7 @@ from typing import Any
 
 from config import MAX_OPML_FEEDS
 from templates import TEMPLATE_ADMIN_ERROR, render_template
-from utils import log_op, truncate_error
+from utils import SECURITY_HEADERS, log_op, truncate_error
 
 # =============================================================================
 # Admin Response Helpers
@@ -51,9 +51,12 @@ def admin_error_response(
     return Response(
         html,
         status=status,
+        # M-S4: apply the standard security headers (nosniff, X-Frame-Options:
+        # DENY, etc.) so admin error pages aren't framable or MIME-sniffable.
         headers={
             "Content-Type": "text/html; charset=utf-8",
             "Cache-Control": "no-store",
+            **SECURITY_HEADERS,
         },
     )
 
@@ -79,13 +82,18 @@ def parse_opml(opml_content: str) -> tuple[list[dict[str, str]], list[str]]:
     feeds = []
     errors = []
 
-    try:
-        # Security: Strip DOCTYPE declarations to prevent XXE/entity expansion.
-        # forbid_dtd=True was added in CPython 3.13.3 but is unavailable in
-        # Pyodide (Workers runtime), so we strip DTDs manually for portability.
-        import re
+    # M-S3: Reject any DTD outright instead of trying to strip it. forbid_dtd=True
+    # is unavailable in Pyodide (Workers runtime), and the previous regex strip
+    # (`<!DOCTYPE[^>]*>`) breaks on internal subsets containing ">". A legitimate
+    # OPML subscription list never needs a DOCTYPE or entity declarations, so any
+    # presence of one is treated as a parse error (defends against XXE / billion
+    # laughs). Case-insensitive to catch `<!doctype`.
+    lowered = opml_content.lower()
+    if "<!doctype" in lowered or "<!entity" in lowered:
+        log_op("opml_dtd_rejected")
+        return [], ["Invalid OPML format: DOCTYPE/ENTITY declarations are not allowed"]
 
-        opml_content = re.sub(r"<!DOCTYPE[^>]*>", "", opml_content, count=1)
+    try:
         root = ET.fromstring(opml_content)  # noqa: S314
     except ET.ParseError as e:
         log_op("opml_parse_error", error=truncate_error(e))

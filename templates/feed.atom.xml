@@ -11,7 +11,8 @@
     <title>{{ entry.title | e }}</title>
     <link href="{{ entry.url | e }}" rel="alternate"/>
     <id>{{ entry.guid | e }}</id>
-    <published>{{ entry.published_at }}Z</published>
+{% if entry.published_at %}    <published>{{ entry.published_at }}</published>
+{% endif %}    <updated>{{ entry.updated_at or entry.published_at or updated_at }}</updated>
     <author><name>{{ entry.author | e }}</name></author>
     <content type="html">{{ entry.content | e }}</content>
   </entry>

@@ -153,6 +153,47 @@ class TestImportOpml:
         assert "No File" in response.body or "OPML" in response.body
 
     @pytest.mark.asyncio
+    async def test_import_rejects_oversized_upload(self):
+        """M-S4: an upload larger than ~1 MiB is rejected before parsing (413)."""
+        db = TrackingD1()
+        env = _make_env(db=db)
+        worker = Default()
+        worker.env = env
+        admin = admin_row()
+
+        # >1 MiB of content.
+        oversized = "<opml><body>" + ("x" * (1_048_576 + 10)) + "</body></opml>"
+        request = OpmlRequest(opml_content=oversized)
+
+        response = await worker._import_opml(request, admin)
+
+        assert response.status == 413
+        # Nothing should be parsed/inserted.
+        assert not [s for s in db.statements if "INSERT INTO feeds" in s.sql]
+
+    @pytest.mark.asyncio
+    async def test_import_rejects_doctype(self):
+        """M-S3: an OPML upload containing a DOCTYPE is rejected as invalid."""
+        env = _make_env()
+        worker = Default()
+        worker.env = env
+        admin = admin_row()
+
+        doctype_opml = (
+            '<?xml version="1.0"?>'
+            '<!DOCTYPE opml SYSTEM "opml.dtd">'
+            '<opml version="2.0"><body>'
+            '<outline xmlUrl="https://example.com/feed.xml" />'
+            "</body></opml>"
+        )
+        request = OpmlRequest(opml_content=doctype_opml)
+
+        response = await worker._import_opml(request, admin)
+
+        assert response.status == 400
+        assert "OPML" in response.body or "Invalid" in response.body
+
+    @pytest.mark.asyncio
     async def test_import_with_empty_opml(self):
         """Empty OPML (no feeds) completes without inserting feeds."""
         db = TrackingD1()

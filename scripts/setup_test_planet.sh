@@ -31,8 +31,25 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 INSTANCE_ID="test-planet"
 CONFIG_FILE="$PROJECT_ROOT/examples/${INSTANCE_ID}/wrangler.jsonc"
 
-# Deterministic test secret - MUST match E2E_SESSION_SECRET default in tests/e2e/conftest.py
-TEST_SESSION_SECRET="test-session-secret-for-e2e-testing-only"
+# H12: the test session secret is NO LONGER committed. It must be supplied via the
+# environment so the same value protects the deployed test worker AND is used to
+# mint the signed admin cookies the E2E tests / seeder send. Set it before running:
+#
+#   export SESSION_SECRET="$(openssl rand -hex 32)"
+#   ./scripts/setup_test_planet.sh
+#
+# and pass the SAME value to the tests as E2E_SESSION_SECRET. (SESSION_SECRET is
+# preferred; E2E_SESSION_SECRET is accepted as a fallback for symmetry with CI.)
+TEST_SESSION_SECRET="${SESSION_SECRET:-${E2E_SESSION_SECRET:-}}"
+if [[ -z "$TEST_SESSION_SECRET" ]]; then
+    echo -e "${RED}Error: SESSION_SECRET is not set.${NC}" >&2
+    echo "  This script no longer ships a default test secret (re-audit H12)." >&2
+    echo "  Generate one and re-run, e.g.:" >&2
+    echo "    export SESSION_SECRET=\"\$(openssl rand -hex 32)\"" >&2
+    echo "    ./scripts/setup_test_planet.sh" >&2
+    echo "  Use the SAME value as E2E_SESSION_SECRET when running the tests." >&2
+    exit 1
+fi
 
 # Parse arguments
 SEED_ONLY=false
@@ -166,9 +183,6 @@ else
     echo "  npx wrangler dev --remote --config examples/test-planet/wrangler.jsonc"
 fi
 echo ""
-echo "Run E2E tests:"
-echo "  RUN_E2E_TESTS=1 uv run pytest tests/e2e/ -v"
-echo ""
-echo "Session secret for E2E tests:"
-echo "  E2E_SESSION_SECRET=\"$TEST_SESSION_SECRET\""
+echo "Run E2E tests (use the SAME SESSION_SECRET you set above):"
+echo "  E2E_SESSION_SECRET=\"\$SESSION_SECRET\" RUN_E2E_TESTS=1 uv run pytest tests/e2e/ -v"
 echo ""

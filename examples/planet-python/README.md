@@ -9,12 +9,15 @@ A faithful clone of [Planet Python](https://planetpython.org/), the Python commu
 - Left sidebar layout with Python blue color scheme
 - Georgia serif headings, classic blog aggregator style
 
+> **This example runs in lite mode** (`INSTANCE_MODE: "lite"`): no semantic search, no admin dashboard, no OAuth. Its `wrangler.jsonc` has **no** Vectorize or AI bindings, so do not create a Vectorize index or set OAuth secrets for it.
+
 ## Included Files
 
-- `config.yaml` - Full instance configuration with 561 feeds
-- `wrangler.jsonc` - Cloudflare Workers configuration
-- `theme/style.css` - Planet Python theme CSS
-- `static/python-logo.svg` - Python logo for header
+- `config.yaml` - Documentation-only description of the instance and its feed list (nothing reads it at deploy or runtime)
+- `wrangler.jsonc` - Cloudflare Workers configuration (lite mode)
+- `assets/static/style.css` - Planet Python theme CSS
+- `assets/static/python-logo.svg` - Python logo for header
+- `assets/feeds.opml` - the feed list, applied to D1 via `scripts/seed_feeds_from_opml.py`
 
 ## Quick Start
 
@@ -24,6 +27,12 @@ A faithful clone of [Planet Python](https://planetpython.org/), the Python commu
 ./scripts/deploy_instance.sh planet-python
 ```
 
+Then seed the feeds (a fresh deploy starts with an empty page):
+
+```bash
+uv run python scripts/seed_feeds_from_opml.py --config examples/planet-python/wrangler.jsonc
+```
+
 ### Or deploy manually
 
 ```bash
@@ -31,23 +40,20 @@ A faithful clone of [Planet Python](https://planetpython.org/), the Python commu
 npx wrangler d1 create planet-python-db
 # Update database_id in wrangler.jsonc
 
-# Create Vectorize index
-npx wrangler vectorize create planet-python-entries --dimensions 768 --metric cosine
-
 # Create queues
 npx wrangler queues create planet-python-feed-queue
 npx wrangler queues create planet-python-feed-dlq
 
-# Set secrets
-npx wrangler secret put GITHUB_CLIENT_ID --config examples/planet-python/wrangler.jsonc
-npx wrangler secret put GITHUB_CLIENT_SECRET --config examples/planet-python/wrangler.jsonc
-npx wrangler secret put SESSION_SECRET --config examples/planet-python/wrangler.jsonc
-
-# Run migrations
-npx wrangler d1 execute planet-python-db --remote --file migrations/001_initial.sql
+# Run ALL migrations in order (not just 001)
+for f in migrations/*.sql; do
+  npx wrangler d1 execute planet-python-db --remote --file="$f"
+done
 
 # Deploy
 npx wrangler deploy --config examples/planet-python/wrangler.jsonc
+
+# Seed feeds into D1 (lite mode reads assets/feeds.opml)
+uv run python scripts/seed_feeds_from_opml.py --config examples/planet-python/wrangler.jsonc
 ```
 
 ## Theme Details
@@ -61,13 +67,16 @@ The Planet Python theme recreates the classic planetpython.org design:
 
 ## Feed List
 
-The config includes 561 Python community feeds sourced from the original [Planet Python config](https://github.com/python/planet/blob/main/config/config.ini).
+`assets/feeds.opml` contains 561 Python community feeds sourced from the original [Planet Python config](https://github.com/python/planet/blob/main/config/config.ini). Seed them into D1 with `scripts/seed_feeds_from_opml.py` (see Quick Start).
 
 ## Customization
 
 To customize:
 
-1. Edit `theme/style.css` for visual changes
-2. Edit `config.yaml` to modify feeds or branding
-3. Rebuild templates: `python scripts/build_templates.py --example planet-python`
-4. Redeploy: `npx wrangler deploy --config examples/planet-python/wrangler.jsonc`
+1. Edit `assets/static/style.css` for visual changes, then redeploy — CSS is served straight from there.
+2. To change the feed list, edit `assets/feeds.opml` and re-run `scripts/seed_feeds_from_opml.py` (editing `config.yaml` has no effect — it is documentation only).
+3. To change branding (name, URL, footer, theme), edit the `vars` in `wrangler.jsonc` and redeploy.
+
+```bash
+npx wrangler deploy --config examples/planet-python/wrangler.jsonc
+```

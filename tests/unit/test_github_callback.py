@@ -294,6 +294,90 @@ class TestHandleGitHubCallback:
         assert response.headers.get("Cache-Control") == "no-store"
 
     @pytest.mark.asyncio
+    async def test_github_id_mismatch_returns_access_denied(self):
+        """M-S4: a stored non-zero github_id that differs from the OAuth id is rejected.
+
+        Defends against GitHub username recycling: the username matches an admin
+        row, but the numeric account id does not.
+        """
+        admin = {
+            "id": 1,
+            "github_username": "testadmin",
+            "github_id": 12345,  # previously bound id
+            "display_name": "Test Admin",
+            "is_active": 1,
+            "last_login_at": None,
+            "created_at": "2026-01-01T00:00:00Z",
+        }
+        env = MockOAuthEnv(admin=admin)
+        worker = Default()
+        worker.env = env
+
+        request = MockRequest(
+            url="https://example.com/auth/callback?code=validcode&state=abc123",
+            cookies="oauth_state=abc123",
+        )
+        # Same username, DIFFERENT numeric id (recycled account).
+        user_result = UserInfoResult(
+            username="testadmin",
+            user_id=99999,
+            avatar_url="https://github.com/testadmin.png",
+            user_data={"login": "testadmin", "id": 99999},
+        )
+        token_result = TokenExchangeResult(access_token="token123")
+
+        with patch(
+            "src.main.GitHubOAuthHandler.authenticate",
+            new_callable=AsyncMock,
+            return_value=(user_result, token_result),
+        ):
+            response = await worker._handle_github_callback(request)
+
+        assert response.status == 403
+        # No session cookie should be issued on a rejected login.
+        if isinstance(response.headers, list):
+            cookie_keys = [k for k, _ in response.headers]
+            assert "Set-Cookie" not in cookie_keys
+
+    @pytest.mark.asyncio
+    async def test_unbound_github_id_zero_is_accepted(self):
+        """M-S4: a stored github_id of 0 means 'never bound' and is accepted/recorded."""
+        admin = {
+            "id": 1,
+            "github_username": "testadmin",
+            "github_id": 0,  # seeded, not yet bound to a real account
+            "display_name": "Test Admin",
+            "is_active": 1,
+            "last_login_at": None,
+            "created_at": "2026-01-01T00:00:00Z",
+        }
+        env = MockOAuthEnv(admin=admin)
+        worker = Default()
+        worker.env = env
+
+        request = MockRequest(
+            url="https://example.com/auth/callback?code=validcode&state=abc123",
+            cookies="oauth_state=abc123",
+        )
+        user_result = UserInfoResult(
+            username="testadmin",
+            user_id=12345,
+            avatar_url="https://github.com/testadmin.png",
+            user_data={"login": "testadmin", "id": 12345},
+        )
+        token_result = TokenExchangeResult(access_token="token123")
+
+        with patch(
+            "src.main.GitHubOAuthHandler.authenticate",
+            new_callable=AsyncMock,
+            return_value=(user_result, token_result),
+        ):
+            response = await worker._handle_github_callback(request)
+
+        # Login succeeds (redirect with a session cookie).
+        assert response.status == 302
+
+    @pytest.mark.asyncio
     async def test_exception_during_callback_returns_error_page(self):
         """Unexpected exception during callback returns error page."""
         env = MockOAuthEnv()

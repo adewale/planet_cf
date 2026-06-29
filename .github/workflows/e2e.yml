@@ -31,6 +31,8 @@ jobs:
     if: github.repository == 'adewale/planet_cf' || github.event_name == 'workflow_dispatch'
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      # Job-level so it's visible to step `if:` conditions (M-T2 reachability guard).
+      E2E_BASE_URL: ${{ secrets.TEST_PLANET_URL }}
 
     steps:
       - name: Check credentials
@@ -53,20 +55,58 @@ jobs:
         if: env.CLOUDFLARE_API_TOKEN != ''
         run: |
           uv sync --extra test
-          npm install wrangler
+          npm install wrangler@4.58.0  # Pin so `npx wrangler` is reproducible (M-T6)
+
+      # Generate a fresh, random SESSION_SECRET once per run and reuse the SAME
+      # value for (a) the deployed test worker and (b) the seeding/test steps that
+      # mint signed admin cookies. This replaces the deterministic committed secret
+      # "test-session-secret-for-e2e-testing-only" that previously protected a live,
+      # publicly routable full-mode worker (H12). The value lives only in this job's
+      # environment and is masked in logs via ::add-mask::.
+      - name: Generate test session secret
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        id: gen_secret
+        run: |
+          secret="$(openssl rand -hex 32)"
+          echo "::add-mask::$secret"
+          echo "E2E_SESSION_SECRET=$secret" >> "$GITHUB_ENV"
+
+      - name: Set worker SESSION_SECRET
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        run: |
+          printf '%s' "$E2E_SESSION_SECRET" | npx wrangler secret put SESSION_SECRET \
+            --config examples/test-planet/wrangler.jsonc
 
       - name: Seed test data
         if: env.CLOUDFLARE_API_TOKEN != '' && github.event.inputs.seed_data != 'false'
+        env:
+          SESSION_SECRET: ${{ env.E2E_SESSION_SECRET }}
         run: |
           uv run python scripts/seed_test_data.py \
             --db-name test-planet-db \
             --config examples/test-planet/wrangler.jsonc
 
+      # M-T2: the e2e tier silently skips every test when no live worker answers,
+      # so the job can be green while testing nothing. Fail if the target health
+      # endpoint is unreachable. TEST_PLANET_URL (-> E2E_BASE_URL) may be empty in
+      # forks; only enforce when it's set, so this never fails a legitimately
+      # unconfigured run. E2E_BASE_URL is job-level so it's visible here in `if:`.
+      - name: Verify test worker is reachable
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.E2E_BASE_URL != ''
+        run: |
+          echo "Probing ${E2E_BASE_URL%/}/health ..."
+          if ! curl -sSf --max-time 30 "${E2E_BASE_URL%/}/health" >/dev/null; then
+            echo "::error::E2E target ${E2E_BASE_URL%/}/health is unreachable —"
+            echo "::error::refusing to report a green run against a worker that isn't up."
+            exit 1
+          fi
+          echo "Health endpoint reachable."
+
       - name: Run E2E tests
         if: env.CLOUDFLARE_API_TOKEN != ''
         env:
-          E2E_BASE_URL: ${{ secrets.TEST_PLANET_URL }}
-          E2E_SESSION_SECRET: "test-session-secret-for-e2e-testing-only"
+          # E2E_BASE_URL comes from job-level env; E2E_SESSION_SECRET is provided
+          # via $GITHUB_ENV by the "Generate test session secret" step above.
           E2E_ADMIN_USERNAME: "testadmin"
           RUN_E2E_TESTS: "1"
         run: |
@@ -99,7 +139,7 @@ jobs:
         if: env.CLOUDFLARE_API_TOKEN != ''
         run: |
           uv sync --extra test
-          npm install -g agent-browser
+          npm install -g agent-browser@0.27.3  # Pin so browser tooling doesn't drift (M-T6)
           agent-browser install
 
       - name: Run browser E2E tests

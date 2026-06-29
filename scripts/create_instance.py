@@ -113,6 +113,46 @@ def slugify(text: str) -> str:
     return text
 
 
+def _rewrite_instance_identifiers(content: str, old_id: str, new_id: str) -> str:
+    """Rewrite ONLY instance-identifier fields when copying an example.
+
+    M-D4: a blind global replace of the example name corrupts non-identifier
+    occurrences — most importantly the THEME value (e.g. THEME "planet-python"
+    becomes a theme that doesn't exist, silently falling back to default) and any
+    asset path / URL that contains the name.
+
+    We rewrite:
+      * the resource names, which all carry a distinctive suffix the THEME value
+        never has: ``<id>-db``, ``<id>-entries``, ``<id>-feed-queue``,
+        ``<id>-feed-dlq`` (covers database_name, index_name, both queue producers,
+        the consumer ``queue`` and ``dead_letter_queue``);
+      * the worker ``name`` field specifically (wrangler ``"name": "<id>"`` and
+        YAML ``id: <id>``), matched by key so the bare-name THEME value is left
+        untouched.
+    """
+    old = re.escape(old_id)
+
+    # Resource names (suffix-bearing — safe to replace anywhere they appear).
+    for suffix in ("-db", "-entries", "-feed-queue", "-feed-dlq"):
+        content = re.sub(rf"\b{old}{re.escape(suffix)}\b", f"{new_id}{suffix}", content)
+
+    # Worker name, matched by key so we don't touch THEME or other bare values.
+    # wrangler.jsonc: "name": "<old>"
+    content = re.sub(
+        rf'("name"\s*:\s*")({old})(")',
+        rf"\g<1>{new_id}\g<3>",
+        content,
+    )
+    # config.yaml: id: <old>   (the planet identifier line)
+    content = re.sub(
+        rf"(^\s*id:\s*){old}(\s*$)",
+        rf"\g<1>{new_id}\g<2>",
+        content,
+        flags=re.MULTILINE,
+    )
+    return content
+
+
 def create_instance_config(
     instance_id: str,
     name: str,
@@ -350,7 +390,15 @@ def generate_wrangler_config(
                     "max_retries": 3,
                     "dead_letter_queue": f"{instance_id}-feed-dlq",
                     "retry_delay": 300,
-                }
+                },
+                # M-D5: also consume the DLQ. Without a consumer, dead-lettered
+                # messages accumulate and silently vanish. The src queue handler
+                # treats any queue whose name contains "dlq" as the DLQ.
+                {
+                    "queue": f"{instance_id}-feed-dlq",
+                    "max_batch_size": 10,
+                    "max_batch_timeout": 60,
+                },
             ],
         },
         "triggers": {"crons": ["0 * * * *"]},
@@ -809,20 +857,26 @@ Modes:
         print(f"📋 Copying from examples/{args.from_example}/ to examples/{args.id}/...")
         shutil.copytree(source_dir, target_dir)
 
-        # Update the wrangler.jsonc with new instance ID
+        # Update the wrangler.jsonc with new instance ID.
+        #
+        # M-D4: the old code did a blind `content.replace(from_example, id)`, which
+        # also rewrote the THEME value (e.g. THEME "planet-python" -> a nonexistent
+        # theme) and any asset path / URL that happened to contain the example
+        # name. Replace ONLY the instance-identifier fields: the worker `name` and
+        # the resource names (which all carry a distinctive -db / -entries /
+        # -feed-queue / -feed-dlq suffix that THEME never has).
         wrangler_path = target_dir / "wrangler.jsonc"
         if wrangler_path.exists():
             content = wrangler_path.read_text()
-            # Replace the example name with new instance ID
-            content = content.replace(args.from_example, args.id)
+            content = _rewrite_instance_identifiers(content, args.from_example, args.id)
             wrangler_path.write_text(content)
             print(f"  Updated wrangler.jsonc with instance ID: {args.id}")
 
-        # Update the config.yaml with new instance ID
+        # Update the config.yaml with new instance ID (same identifier-only rule).
         config_path = target_dir / "config.yaml"
         if config_path.exists():
             content = config_path.read_text()
-            content = content.replace(args.from_example, args.id)
+            content = _rewrite_instance_identifiers(content, args.from_example, args.id)
             config_path.write_text(content)
             print(f"  Updated config.yaml with instance ID: {args.id}")
 

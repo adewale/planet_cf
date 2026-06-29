@@ -28,11 +28,13 @@ import pytest
 #: Base URL of the test server
 E2E_BASE_URL = os.environ.get("E2E_BASE_URL", "http://localhost:8787")
 
-#: Session secret - MUST match the deployed test-planet's SESSION_SECRET
-E2E_SESSION_SECRET = os.environ.get(
-    "E2E_SESSION_SECRET",
-    "test-session-secret-for-e2e-testing-only",
-)
+#: Session secret for signing test admin cookies. MUST be supplied via the
+#: E2E_SESSION_SECRET env var and match the deployed test instance's
+#: SESSION_SECRET. No default is committed on purpose: a shared, predictable
+#: default is a forgeable session secret on any instance that reused it. When
+#: unset, cookie signing yields tokens that won't validate, so auth-dependent
+#: e2e tests fail loudly rather than silently using a known key.
+E2E_SESSION_SECRET = os.environ.get("E2E_SESSION_SECRET", "")
 
 #: Test admin username - MUST be seeded in the test-planet database
 E2E_ADMIN_USERNAME = os.environ.get("E2E_ADMIN_USERNAME", "testadmin")

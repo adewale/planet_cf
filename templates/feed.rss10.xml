@@ -18,9 +18,9 @@
   <item rdf:about="{{ entry.url | e }}">
     <title>{{ entry.title | e }}</title>
     <link>{{ entry.url | e }}</link>
-    <dc:date>{{ entry.published_at_iso }}</dc:date>
-    <dc:creator>{{ entry.author | e }}</dc:creator>
-    <description><![CDATA[{{ entry.content_truncated }}]]></description>
+{% if entry.published_at_iso %}    <dc:date>{{ entry.published_at_iso }}</dc:date>
+{% endif %}    <dc:creator>{{ entry.author | e }}</dc:creator>
+    <description><![CDATA[{{ entry.content_truncated | safe }}]]></description>
   </item>
 {% endfor %}
 </rdf:RDF>

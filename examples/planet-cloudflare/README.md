@@ -12,10 +12,10 @@ This is the full-featured Planet CF deployment example. It includes all features
 
 ## Included Files
 
-- `config.yaml` - Instance configuration
+- `config.yaml` - Documentation-only instance description (nothing reads it at deploy or runtime; the Worker reads `wrangler.jsonc` "vars")
 - `wrangler.jsonc` - Cloudflare Workers configuration
-- `theme/style.css` - Default theme CSS
-- `static/` - Static assets (favicon, admin.js, etc.)
+- `assets/static/style.css` - Theme CSS (served at `/static/style.css`)
+- `assets/static/` - Other static assets (favicons, `admin.js`, images)
 
 ## Quick Start
 
@@ -62,26 +62,26 @@ npx wrangler secret put GITHUB_CLIENT_ID --config examples/my-planet/wrangler.js
 npx wrangler secret put GITHUB_CLIENT_SECRET --config examples/my-planet/wrangler.jsonc
 npx wrangler secret put SESSION_SECRET --config examples/my-planet/wrangler.jsonc
 
-# Run migrations
-npx wrangler d1 execute my-planet-db --remote --file migrations/001_initial.sql
+# Run ALL migrations in order (not just 001)
+for f in migrations/*.sql; do
+  npx wrangler d1 execute my-planet-db --remote --file="$f"
+done
 
 # Deploy
 npx wrangler deploy --config examples/my-planet/wrangler.jsonc
 ```
 
+After deploying, the `feeds` table is empty until you seed it. Add feeds via the admin dashboard, or seed in bulk from an OPML file with `scripts/seed_feeds_from_opml.py`.
+
 ## Customization
 
 ### Theme
 
-To use a custom theme:
-
-1. Edit `theme/style.css` with your styles
-2. Rebuild templates: `python scripts/build_templates.py --example my-planet`
-3. Redeploy
+CSS is served straight from `assets/static/style.css` — edit that file and redeploy. There is no separate `theme/` directory and no build step for CSS (only the HTML templates are compiled into `src/templates.py`, and that is done from the canonical `templates/` sources, not per-example).
 
 ### Static Assets
 
-Add custom static assets to the `static/` directory:
+Add custom static assets to the `assets/static/` directory:
 - `favicon.ico` - Browser favicon
 - `apple-touch-icon.png` - iOS home screen icon
 - Custom images or scripts

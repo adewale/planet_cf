@@ -13,6 +13,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: astral-sh/setup-uv@v5
+        with:
+          # Pin uv so the toolchain doesn't drift between CI runs (M-T6).
+          version: "0.5.18"
 
       - uses: actions/setup-node@v4
         with:
@@ -21,26 +24,29 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra test
 
+      # Tool versions below are pinned (M-T6) so CI doesn't drift when a new
+      # release of ty/ruff/vulture/detect-secrets/jscpd lands upstream. Keep
+      # these in sync with .pre-commit-config.yaml.
       - name: Type check
-        run: uvx ty check src/
+        run: uvx ty@0.0.49 check src/
 
       - name: Lint
-        run: uvx ruff check src/ tests/
+        run: uvx ruff@0.9.2 check src/ tests/
 
       - name: Format check
-        run: uvx ruff format --check src/ tests/
+        run: uvx ruff@0.9.2 format --check src/ tests/
 
       - name: Dead code detection
-        run: uvx --python 3.12 vulture src/ vulture_whitelist.py
+        run: uvx --python 3.12 vulture@2.14 src/ vulture_whitelist.py
 
       - name: Secrets scan
-        run: uvx detect-secrets scan --baseline .secrets.baseline
+        run: uvx detect-secrets@1.5.0 scan --baseline .secrets.baseline
 
       - name: Dependency audit
         run: uvx pip-audit --strict --desc || true  # Advisory — don't block on upstream CVEs
 
       - name: Duplicate code detection
-        run: npx jscpd src/ --min-lines 10 --min-tokens 50 --threshold 5
+        run: npx jscpd@4.0.5 src/ --min-lines 10 --min-tokens 50 --threshold 5
 
       - name: Validate migrations against SQLite
         run: uv run pytest tests/unit/test_migration_schema.py -v --tb=short
@@ -50,6 +56,9 @@ jobs:
 
       - name: Integration tests
         run: uv run pytest tests/integration -v --tb=short
+
+      - name: JS tests (vitest)
+        run: npm test
 
       - name: "Coverage report (floor: 80%)"
         run: uv run pytest tests/unit tests/integration --cov=src --cov-report=xml --cov-fail-under=80
@@ -65,14 +74,26 @@ jobs:
         run: |
           if [ -n "$CLOUDFLARE_API_TOKEN" ]; then
             for migration in migrations/*.sql; do
-              echo "Running: $(basename $migration)"
-              npx wrangler d1 execute planetcf --remote --file "$migration" 2>&1 || {
-                if echo "$?" | grep -qi "already exists"; then
-                  echo "  Already applied"
+              echo "Running: $(basename "$migration")"
+              # Capture wrangler's OUTPUT (not the exit code) so we can tell an
+              # "already applied" no-op from a real failure. The old code grepped
+              # "$?" (the numeric exit code) for "already exists", which never
+              # matched, so EVERY failure was swallowed and the deploy below ran
+              # against a possibly un-migrated schema (H8a). We also pin the
+              # config to wrangler.production.jsonc so migrations target the same
+              # database_id the deploy step uses.
+              if ! output="$(npx wrangler d1 execute planetcf --remote \
+                  --file "$migration" -c wrangler.production.jsonc 2>&1)"; then
+                if echo "$output" | grep -qiE "already exists|duplicate column"; then
+                  echo "  Already applied (tolerated)"
                 else
-                  echo "  Warning: migration may have already been applied"
+                  echo "  FAILED: $(basename "$migration")"
+                  echo "$output"
+                  exit 1
                 fi
-              }
+              else
+                echo "  Applied"
+              fi
             done
           fi
         env:
@@ -82,6 +103,24 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: |
           if [ -n "$CLOUDFLARE_API_TOKEN" ]; then
+            # H8c: deploy_instance.sh and the README treat the vendored
+            # `python_modules/` bundle as REQUIRED for Python Workers, but this
+            # job never builds it. Building it needs the pyodide venv
+            # (.venv-workers/pyodide-venv) from the `workers` dependency group,
+            # which isn't provisioned here and can't be vendored without extra
+            # tooling — so a full build step isn't feasible in this CI job today.
+            #
+            # We surface the gap loudly instead of silently shipping a worker that
+            # may be missing its dependencies. This is a WARNING (not a hard fail)
+            # because production is currently deployed and we must not break a
+            # deploy path that works; if/when CI gains the pyodide build (or a
+            # pre-built bundle is cached/committed), promote this to a hard guard
+            # and run the build before `wrangler deploy`.
+            if [ ! -d "python_modules" ]; then
+              echo "::warning::python_modules/ not present in CI — deploying without"
+              echo "::warning::a freshly-built vendored dependency bundle. See H8c:"
+              echo "::warning::build with 'make python-modules' (needs the pyodide venv)."
+            fi
             npx wrangler deploy -c wrangler.production.jsonc
           else
             echo "Skipping deploy: CLOUDFLARE_API_TOKEN not set"

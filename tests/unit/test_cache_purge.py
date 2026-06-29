@@ -22,7 +22,15 @@ from tests.conftest import (
 # Constants — must match the production CACHEABLE_PATHS
 # ============================================================================
 
-EXPECTED_PURGE_PATHS = ("/", "/titles", "/feed.atom", "/feed.rss")
+EXPECTED_PURGE_PATHS = (
+    "/",
+    "/titles",
+    "/feed.atom",
+    "/feed.rss",
+    "/feed.rss10",
+    "/feeds.opml",
+    "/foafroll.xml",
+)
 
 
 # ============================================================================
@@ -446,7 +454,15 @@ class TestPurgeEdgeCacheProperties:
         # These are the paths pre-warmed in scheduled() — kept in sync
         # by this test. If someone changes one, this test forces them to
         # update the other.
-        PREWARM_PATHS = ("/", "/titles", "/feed.atom", "/feed.rss")
+        PREWARM_PATHS = (
+            "/",
+            "/titles",
+            "/feed.atom",
+            "/feed.rss",
+            "/feed.rss10",
+            "/feeds.opml",
+            "/foafroll.xml",
+        )
         assert set(CACHEABLE_PATHS) == set(PREWARM_PATHS)
         # Verify exact count — no silent additions or removals
         assert len(CACHEABLE_PATHS) == len(PREWARM_PATHS)

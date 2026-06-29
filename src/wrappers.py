@@ -437,7 +437,11 @@ class SafeVectorize:
 
     async def deleteByIds(self, ids: list[str]) -> Any:
         """Delete vectors by their IDs."""
-        return await self._index.deleteByIds(ids)
+        # M-P3: convert the Python list through _to_js_value before crossing the
+        # FFI, exactly like upsert/query — a raw Python list may be rejected by
+        # the binding as a PyProxy, which would silently orphan vectors.
+        js_ids = _to_js_value(ids)
+        return await self._index.deleteByIds(js_ids)
 
 
 class SafeQueue:
@@ -700,6 +704,12 @@ def feed_row_from_js(row: Any) -> dict[str, Any]:
         "last_fetch_at": _safe_str(py_row.get("last_fetch_at")),
         "fetch_error": _safe_str(py_row.get("fetch_error")),
         "fetch_error_count": py_row.get("fetch_error_count"),
+        # M-P5: SQL-computed/health columns. Without these the /admin/health page
+        # always renders "Last Entry: Never" / "Entries: 0", and the DLQ view loses
+        # its `last_error` alias.
+        "last_entry_at": _safe_str(py_row.get("last_entry_at")),
+        "entry_count": py_row.get("entry_count"),
+        "last_error": _safe_str(py_row.get("last_error")),
     }
 
 
@@ -785,16 +795,23 @@ def audit_row_from_js(row: Any) -> dict[str, Any]:
     py_row = _to_py_safe(row)
     if not py_row:
         return {}
+    # M-P5: admin_id may be SQL NULL for system actions (H3), so default to None
+    # rather than coercing to int(0). The audit SELECT joins admins for
+    # github_username/display_name — the old factory mapped a nonexistent
+    # "admin_username" column and dropped both, so the audit API could never
+    # attribute actions.
+    admin_id_raw = py_row.get("admin_id")
     return {
         "id": int(py_row.get("id", 0)),
-        "admin_id": int(py_row.get("admin_id", 0)),
+        "admin_id": int(admin_id_raw) if admin_id_raw is not None else None,
         "action": _safe_str(py_row.get("action")) or "",
         "target_type": _safe_str(py_row.get("target_type")),
         "target_id": py_row.get("target_id"),
         "details": _safe_str(py_row.get("details")),
         "created_at": _safe_str(py_row.get("created_at")) or "",
-        # Joined fields
-        "admin_username": _safe_str(py_row.get("admin_username")),
+        # Joined fields from the admins table.
+        "github_username": _safe_str(py_row.get("github_username")),
+        "display_name": _safe_str(py_row.get("display_name")),
     }
 
 
@@ -988,22 +1005,22 @@ def feed_bind_values(
     site_url: Any,
     author_name: Any,
     author_email: Any,
-    etag: Any,
-    last_modified: Any,
     feed_id: int,
 ) -> tuple:
     """Create a tuple of D1-safe values for feed metadata UPDATE.
 
     Converts all values through _safe_str to ensure clean Python strings.
     Returns tuple ready for .bind(*feed_bind_values(...)).
+
+    Note: etag/last_modified are intentionally NOT part of this tuple — the
+    feed-metadata UPDATE runs before the entry loop and must not persist HTTP
+    validators (H2); _update_feed_success writes those after entries are stored.
     """
     return (
         _safe_str(title),
         _safe_str(site_url),
         _safe_str(author_name),
         _safe_str(author_email),
-        _safe_str(etag),
-        _safe_str(last_modified),
         feed_id,
     )
 

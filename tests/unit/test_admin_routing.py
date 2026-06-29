@@ -282,6 +282,172 @@ class TestHandleAdminRouting:
         assert "Sign in" in response.body or "login" in response.body.lower()
 
     @pytest.mark.asyncio
+    async def test_post_logout_clears_session_cookie(self):
+        """POST /admin/logout redirects to / and clears the session cookie."""
+        worker, env, cookie = make_authenticated_worker()
+        request = MockRequest(
+            url="https://www.planetcloudflare.dev/admin/logout",
+            method="POST",
+            cookies=cookie,
+        )
+
+        response = await worker._handle_admin(request, "/admin/logout")
+
+        assert response.status == 302
+        # Collect Set-Cookie header(s) regardless of list/dict header shape.
+        if isinstance(response.headers, list):
+            headers = {}
+            for k, v in response.headers:
+                headers.setdefault(k, []).append(v)
+        else:
+            headers = response.headers
+        assert "/" in str(headers.get("Location", ""))
+        set_cookie = str(headers.get("Set-Cookie", ""))
+        # Clearing sets the session cookie to empty and/or an expiry in the past.
+        assert "session=" in set_cookie
+        assert ("Max-Age=0" in set_cookie) or ("expires=" in set_cookie.lower())
+
+    @pytest.mark.asyncio
+    async def test_post_feeds_method_delete_override_removes_feed(self):
+        """POST /admin/feeds/{id} with _method=DELETE dispatches to _remove_feed."""
+        feeds = [
+            {"id": 1, "url": "https://example.com/feed.xml", "title": "Example", "is_active": 1}
+        ]
+        worker, env, cookie = make_authenticated_worker(feeds=feeds)
+        request = MockRequest(
+            url="https://www.planetcloudflare.dev/admin/feeds/1",
+            method="POST",
+            cookies=cookie,
+            form_data={"_method": "DELETE"},
+        )
+
+        response = await worker._handle_admin(request, "/admin/feeds/1")
+
+        # The form-override path reaches _remove_feed, which redirects on success.
+        assert response.status == 302
+
+    @pytest.mark.asyncio
+    async def test_post_feeds_without_method_override_returns_405(self):
+        """POST /admin/feeds/{id} without a recognized _method returns 405."""
+        feeds = [
+            {"id": 1, "url": "https://example.com/feed.xml", "title": "Example", "is_active": 1}
+        ]
+        worker, env, cookie = make_authenticated_worker(feeds=feeds)
+        request = MockRequest(
+            url="https://www.planetcloudflare.dev/admin/feeds/1",
+            method="POST",
+            cookies=cookie,
+            form_data={},  # no _method override
+        )
+
+        response = await worker._handle_admin(request, "/admin/feeds/1")
+
+        assert response.status == 405
+
+    @pytest.mark.asyncio
+    async def test_missing_auth_secrets_returns_error(self):
+        """_check_auth_secrets: a missing SESSION_SECRET short-circuits admin routing."""
+        # Build an env whose SESSION_SECRET is unset.
+        env = _admin_env(admins=[admin_row()])
+        env.SESSION_SECRET = ""
+        worker = Default()
+        worker.env = env
+
+        request = MockRequest(
+            url="https://www.planetcloudflare.dev/admin",
+            method="GET",
+            cookies="",
+        )
+
+        response = await worker._handle_admin(request, "/admin")
+
+        # Missing secrets produce a configuration error page (not a normal login).
+        assert response.status >= 400
+
+
+class TestHomepageRetentionFallback:
+    """Tests for the smart content-display fallback in _generate_html."""
+
+    @pytest.mark.asyncio
+    async def test_fallback_used_when_date_range_empty(self):
+        """When the retention-window query is empty, the fallback shows recent entries.
+
+        Uses a DB mock that returns no rows for the date-filtered CTE (which
+        contains 'published_at, e.first_seen) >= ?') but returns a recent entry
+        for the unfiltered fallback CTE.
+        """
+
+        class _FallbackResult:
+            def __init__(self, rows):
+                self.results = rows
+
+        class _Stmt:
+            def __init__(self, rows):
+                self._rows = rows
+
+            def bind(self, *args):
+                return self
+
+            async def all(self):
+                return _FallbackResult(self._rows)
+
+            async def first(self):
+                return self._rows[0] if self._rows else None
+
+            async def run(self):
+                return _FallbackResult([])
+
+        recent_entry = {
+            "id": 1,
+            "feed_id": 1,
+            "guid": "g1",
+            "url": "https://example.com/post",
+            "title": "Old But Recent",
+            "content": "<p>Body</p>",
+            "summary": "",
+            "published_at": "2020-01-01T00:00:00Z",
+            "first_seen": "2020-01-01T00:00:00Z",
+            "feed_title": "Example",
+            "feed_site_url": "https://example.com",
+        }
+        feed_row = {
+            "id": 1,
+            "url": "https://example.com/feed.xml",
+            "title": "Example",
+            "site_url": "https://example.com",
+            "is_active": 1,
+            "consecutive_failures": 0,
+            "last_success_at": None,
+            "fetch_error": None,
+        }
+
+        class _FallbackDB:
+            def prepare(self, sql):
+                s = sql
+                # Main entries CTE is date-filtered and has a per-day window
+                # (rn_per_day) → return empty to force the fallback.
+                if "rn_per_day" in s:
+                    return _Stmt([])
+                # Unfiltered fallback CTE (rn_total but no rn_per_day) → one entry.
+                if "rn_total <= ?" in s:
+                    return _Stmt([recent_entry])
+                # Sidebar feeds query.
+                if "FROM feeds" in s:
+                    return _Stmt([feed_row])
+                # Recent-entries-per-feed sidebar query.
+                if "FROM entries" in s:
+                    return _Stmt([])
+                return _Stmt([])
+
+        worker, env, _cookie = make_authenticated_worker(feeds=[feed_row])
+        env.DB = _FallbackDB()
+
+        html = await worker._generate_html()
+
+        # The fallback entry is rendered on the page.
+        assert "Old But Recent" in html
+
+    @pytest.mark.asyncio
     async def test_invalid_session_shows_login(self):
         """Invalid session cookie shows login page."""
         env = _admin_env(admins=[admin_row()])

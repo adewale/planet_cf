@@ -1,8 +1,16 @@
 -- migrations/002_seed_admins.sql
--- Seed initial admin users
--- NOTE: This is generated from config/admins.json during deployment
--- The github_id is populated on first OAuth login
-
-INSERT INTO admins (github_username, github_id, display_name, is_active)
-VALUES ('adewale', 0, 'Adewale Oshineye', 1)
-ON CONFLICT(github_username) DO NOTHING;
+-- (Intentionally seeds NO admins.)
+--
+-- This migration is applied to EVERY instance by scripts/deploy_instance.sh and
+-- by CI. It previously hardcoded an INSERT for the upstream maintainer
+-- ('adewale'), which silently granted that GitHub account active admin access on
+-- every third-party deployment (re-audit H11). That INSERT has been removed.
+--
+-- Admins are seeded PER INSTANCE, not by this migration:
+--   * uv run python scripts/seed_admins.py   (reads config/admins.json), or
+--   * the first-login OAuth bootstrap (the first GitHub user to sign in becomes
+--     the initial admin).
+--
+-- The migration file is kept (rather than deleted) so the migration sequence and
+-- the applied_migrations ledger stay stable for databases that already recorded
+-- 002 as applied. Existing databases that were already seeded are unaffected.

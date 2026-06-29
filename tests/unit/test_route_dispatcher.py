@@ -154,13 +154,15 @@ class TestRouteDispatcherPrefixMatch:
     """Tests for prefix path matching."""
 
     def test_prefix_match(self):
-        """Matches paths starting with prefix."""
+        """Matches paths starting with prefix, returning the /admin route."""
         routes = [Route(path="/admin", prefix=True)]
         dispatcher = RouteDispatcher(routes)
 
-        assert dispatcher.match("/admin") is not None
-        assert dispatcher.match("/admin/feeds") is not None
-        assert dispatcher.match("/admin/feeds/123") is not None
+        # M-T4: assert WHICH route matched, not merely "not None".
+        for p in ("/admin", "/admin/feeds", "/admin/feeds/123"):
+            match = dispatcher.match(p)
+            assert match is not None
+            assert match.route.path == "/admin"
 
     def test_prefix_no_match(self):
         """Doesn't match paths not starting with prefix."""
@@ -226,12 +228,14 @@ class TestRouteDispatcherMethodFiltering:
     """Tests for HTTP method filtering."""
 
     def test_method_filtering_matches(self):
-        """Matches when method is allowed."""
+        """Matches when method is allowed, returning the /api/feeds route."""
         routes = [Route(path="/api/feeds", methods=["GET", "POST"])]
         dispatcher = RouteDispatcher(routes)
 
-        assert dispatcher.match("/api/feeds", "GET") is not None
-        assert dispatcher.match("/api/feeds", "POST") is not None
+        for method in ("GET", "POST"):
+            match = dispatcher.match("/api/feeds", method)
+            assert match is not None
+            assert match.route.path == "/api/feeds"
 
     def test_method_filtering_rejects(self):
         """Rejects when method not allowed."""
@@ -242,21 +246,24 @@ class TestRouteDispatcherMethodFiltering:
         assert dispatcher.match("/api/feeds", "DELETE") is None
 
     def test_no_method_filter_allows_all(self):
-        """No method filter allows all methods."""
+        """No method filter allows all methods, returning the same route each time."""
         routes = [Route(path="/api/feeds")]
         dispatcher = RouteDispatcher(routes)
 
-        assert dispatcher.match("/api/feeds", "GET") is not None
-        assert dispatcher.match("/api/feeds", "POST") is not None
-        assert dispatcher.match("/api/feeds", "DELETE") is not None
+        for method in ("GET", "POST", "DELETE"):
+            match = dispatcher.match("/api/feeds", method)
+            assert match is not None
+            assert match.route.path == "/api/feeds"
 
     def test_method_case_insensitive(self):
         """Method matching is case insensitive on input."""
         routes = [Route(path="/api/feeds", methods=["GET"])]
         dispatcher = RouteDispatcher(routes)
 
-        assert dispatcher.match("/api/feeds", "get") is not None
-        assert dispatcher.match("/api/feeds", "Get") is not None
+        for method in ("get", "Get"):
+            match = dispatcher.match("/api/feeds", method)
+            assert match is not None
+            assert match.route.path == "/api/feeds"
 
 
 class TestRouteDispatcherGetRouteName:
@@ -281,20 +288,24 @@ class TestRouteDispatcherAddRoute:
     """Tests for adding routes dynamically."""
 
     def test_add_route(self):
-        """Can add routes dynamically."""
+        """Can add routes dynamically and match the added route."""
         dispatcher = RouteDispatcher()
         dispatcher.add_route(Route(path="/new"))
 
-        assert dispatcher.match("/new") is not None
+        match = dispatcher.match("/new")
+        assert match is not None
+        assert match.route.path == "/new"
 
     def test_add_multiple_routes(self):
-        """Can add multiple routes."""
+        """Can add multiple routes; each matches its own path."""
         dispatcher = RouteDispatcher()
         dispatcher.add_route(Route(path="/one"))
         dispatcher.add_route(Route(path="/two"))
 
-        assert dispatcher.match("/one") is not None
-        assert dispatcher.match("/two") is not None
+        m_one = dispatcher.match("/one")
+        m_two = dispatcher.match("/two")
+        assert m_one is not None and m_one.path == "/one"
+        assert m_two is not None and m_two.path == "/two"
 
 
 class TestCreateDefaultRoutes:

@@ -39,6 +39,47 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
+
+def strip_jsonc_comments(content: str) -> str:
+    """Strip // line comments from JSONC, preserving // inside string values.
+
+    M-D2: the previous `re.sub(r"//.*$", "", ...)` truncated every URL inside a
+    string (e.g. "https://...") down to "https:", so json.loads raised and every
+    example config was silently skipped. This scans character by character and
+    only treats `//` as the start of a comment when it is OUTSIDE a double-quoted
+    string (respecting backslash escapes). Block comments are not used in these
+    configs, so only `//` line comments are handled.
+    """
+    out = []
+    in_string = False
+    escaped = False
+    i = 0
+    n = len(content)
+    while i < n:
+        ch = content[i]
+        if in_string:
+            out.append(ch)
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            i += 1
+            continue
+        if ch == '"':
+            in_string = True
+            out.append(ch)
+            i += 1
+            continue
+        if ch == "/" and i + 1 < n and content[i + 1] == "/":
+            while i < n and content[i] != "\n":
+                i += 1
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
 # Feed types and their expected content signatures
 FEED_VALIDATORS: dict[str, tuple[str, str]] = {
     "atom": ("Atom", "<feed"),
@@ -273,8 +314,8 @@ def get_deployed_urls_from_examples() -> list[str]:
 
     for wrangler_file in examples_dir.glob("*/wrangler.jsonc"):
         content = wrangler_file.read_text()
-        # Remove comments
-        content_no_comments = re.sub(r"//.*$", "", content, flags=re.MULTILINE)
+        # Remove comments for JSON parsing (string-safe; see strip_jsonc_comments).
+        content_no_comments = strip_jsonc_comments(content)
 
         try:
             config = json.loads(content_no_comments)

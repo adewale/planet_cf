@@ -48,6 +48,29 @@ function enterEditMode(titleDiv) {
 }
 
 // =============================================================================
+// Timestamp parsing
+// =============================================================================
+
+// SQLite stores audit timestamps as "YYYY-MM-DD HH:MM:SS" in UTC, but
+// `new Date("YYYY-MM-DD HH:MM:SS")` is implementation-defined and most engines
+// parse it as *local* time (or Invalid Date). Normalize to ISO 8601 with an
+// explicit UTC designator before parsing. ISO strings that already carry a
+// timezone (e.g. "...Z" or "...+00:00") are passed through unchanged.
+function parseTimestamp(value) {
+    if (!value) return new Date(NaN);
+    var s = String(value);
+    // "YYYY-MM-DD HH:MM:SS" -> "YYYY-MM-DDTHH:MM:SS"
+    if (s.indexOf('T') === -1 && s.indexOf(' ') !== -1) {
+        s = s.replace(' ', 'T');
+    }
+    // Append Z only when no timezone designator is present.
+    if (!/[Zz]$|[+-]\d{2}:?\d{2}$/.test(s)) {
+        s += 'Z';
+    }
+    return new Date(s);
+}
+
+// =============================================================================
 // DLQ and Audit Log Loading
 // =============================================================================
 
@@ -68,7 +91,7 @@ function loadDLQ() {
                     '<strong>' + escapeHtml(f.title || 'Untitled') + '</strong><br>' +
                     '<small>' + escapeHtml(f.url) + '</small><br>' +
                     '<small>Failures: ' + f.consecutive_failures + '</small>' +
-                    '<form action="/admin/feeds/' + f.id + '/retry" method="POST" class="dlq-retry-form">' +
+                    '<form action="/admin/dlq/' + f.id + '/retry" method="POST" class="dlq-retry-form">' +
                     '<button type="submit" class="btn btn-sm btn-warning">Retry</button></form>' +
                     '</div>';
             }).join('');
@@ -93,7 +116,7 @@ function loadAuditLog() {
             list.innerHTML = data.entries.map(function(e) {
                 return '<div class="audit-item">' +
                     '<span class="audit-action">' + escapeHtml(e.action) + '</span> ' +
-                    '<span class="audit-time">' + new Date(e.created_at).toLocaleString() + '</span>' +
+                    '<span class="audit-time">' + parseTimestamp(e.created_at).toLocaleString() + '</span>' +
                     '<div class="audit-details">' + escapeHtml(e.details || '') + '</div>' +
                     '</div>';
             }).join('');
@@ -124,17 +147,26 @@ function rebuildSearchIndex() {
         method: 'POST'
     })
     .then(function(r) {
-        if (!r.ok) throw new Error('Server error: ' + r.status);
-        return r.json();
+        // Surface the server's message (e.g. the 429 cooldown text) instead of
+        // a generic failure. Parse the JSON body regardless of status, then
+        // decide what to show.
+        return r.json().then(function(data) {
+            return { ok: r.ok, status: r.status, data: data };
+        }).catch(function() {
+            return { ok: r.ok, status: r.status, data: {} };
+        });
     })
-    .then(function(data) {
+    .then(function(result) {
         btn.disabled = false;
         btn.style.opacity = '1';
-        if (data.success) {
+        var data = result.data || {};
+        if (result.ok && data.success) {
             btn.textContent = 'Done! (' + data.indexed + ' indexed)';
             setTimeout(function() { btn.textContent = originalText; }, 3000);
         } else {
-            btn.textContent = 'Error: ' + (data.error || 'Unknown');
+            // Prefer the server-supplied error (covers the 429 cooldown message).
+            var msg = data.error || ('Error: ' + result.status);
+            btn.textContent = msg;
             setTimeout(function() { btn.textContent = originalText; }, 3000);
         }
     })
@@ -164,11 +196,12 @@ function initAdminDashboard() {
         });
     });
 
-    // Feed toggles
+    // Feed toggles (dashboard checkbox switches)
     document.querySelectorAll('.feed-toggle').forEach(function(toggle) {
         toggle.addEventListener('change', function() {
-            var feedId = this.dataset.feedId;
-            var isActive = this.checked;
+            var checkbox = this;
+            var feedId = checkbox.dataset.feedId;
+            var isActive = checkbox.checked;
             fetch('/admin/feeds/' + feedId + '/toggle', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -178,7 +211,81 @@ function initAdminDashboard() {
                 if (!r.ok) throw new Error('Server error: ' + r.status);
             })
             .catch(function(err) {
+                // Revert the visual state so the checkbox reflects reality.
+                checkbox.checked = !isActive;
                 alert('Failed to toggle feed: ' + (err.message || 'Network error'));
+            });
+        });
+    });
+
+    // Reindex button (H4: inline onclick removed; bind here so CSP 'self' allows it)
+    var reindexBtn = document.getElementById('reindex-btn');
+    if (reindexBtn) {
+        reindexBtn.addEventListener('click', rebuildSearchIndex);
+    }
+
+    initConfirmHandlers();
+    initFeedToggleButtons();
+}
+
+// H4: delegated confirmation handler. Elements carrying `js-confirm` and a
+// `data-confirm="..."` message replace the old inline
+// `onclick="return confirm(...)"`. For a submit button this must gate the
+// form's submission, so we listen on submit (the canonical cancellable event)
+// and also on click as a fallback for non-submit activations.
+function initConfirmHandlers() {
+    document.addEventListener('submit', function(e) {
+        var form = e.target;
+        // A js-confirm submit button (or the form itself) inside this form.
+        var trigger = form.querySelector('.js-confirm[data-confirm]');
+        if (form.classList && form.classList.contains('js-confirm') && form.dataset.confirm) {
+            trigger = form;
+        }
+        if (trigger && !confirm(trigger.dataset.confirm)) {
+            e.preventDefault();
+        }
+    });
+
+    // Fallback for js-confirm elements that are not inside a form (e.g. links
+    // or buttons that act directly). Submit-button clicks are handled by the
+    // submit listener above; intercepting them here too would double-prompt.
+    document.addEventListener('click', function(e) {
+        var el = e.target.closest ? e.target.closest('.js-confirm[data-confirm]') : null;
+        if (!el) return;
+        // If this element will trigger a form submit, let the submit handler
+        // own the confirmation to avoid prompting twice.
+        if (el.form || (el.type === 'submit') || el.closest('form')) return;
+        if (!confirm(el.dataset.confirm)) {
+            e.preventDefault();
+        }
+    });
+}
+
+// H6: health-page Activate/Deactivate buttons. Replaces the broken
+// `_method=PUT` form by POSTing to the existing /toggle JSON endpoint and
+// refreshing the page to reflect the new state.
+function initFeedToggleButtons() {
+    document.querySelectorAll('.js-feed-toggle').forEach(function(el) {
+        el.addEventListener('click', function(e) {
+            e.preventDefault();
+            var feedId = el.dataset.feedId;
+            // data-active is the feed's CURRENT state; we flip it.
+            var currentlyActive = el.dataset.active === '1' || el.dataset.active === 'true';
+            var nextActive = !currentlyActive;
+            el.disabled = true;
+            fetch('/admin/feeds/' + feedId + '/toggle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_active: nextActive })
+            })
+            .then(function(r) {
+                if (!r.ok) throw new Error('Server error: ' + r.status);
+                // Refresh so the row/page reflects the new state.
+                window.location.reload();
+            })
+            .catch(function(err) {
+                el.disabled = false;
+                alert('Failed to update feed: ' + (err.message || 'Network error'));
             });
         });
     });
@@ -238,11 +345,14 @@ if (typeof module !== 'undefined' && module.exports) {
         saveFeedTitle,
         cancelEditTitle,
         enterEditMode,
+        parseTimestamp,
         loadDLQ,
         loadAuditLog,
         escapeHtml,
         rebuildSearchIndex,
         initAdminDashboard,
+        initConfirmHandlers,
+        initFeedToggleButtons,
         initTitleEditing
     };
 }

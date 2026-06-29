@@ -11,9 +11,9 @@
       <title>{{ entry.title | e }}</title>
       <link>{{ entry.url | e }}</link>
       <guid>{{ entry.guid | e }}</guid>
-      <pubDate>{{ entry.published_at }}</pubDate>
-      <author>{{ entry.author | e }}</author>
-      <description><![CDATA[{{ entry.content_cdata }}]]></description>
+{% if entry.published_at %}      <pubDate>{{ entry.published_at }}</pubDate>
+{% endif %}      <author>{{ entry.author | e }}</author>
+      <description><![CDATA[{{ entry.content_cdata | safe }}]]></description>
     </item>
 {% endfor %}
   </channel>

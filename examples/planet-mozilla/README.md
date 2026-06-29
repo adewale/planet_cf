@@ -2,19 +2,23 @@
 
 A comprehensive clone of [Planet Mozilla](https://planet.mozilla.org/), aggregating Mozilla community blogs and news.
 
+> **This example runs in lite mode** (`INSTANCE_MODE: "lite"`): no semantic search, no admin dashboard, no OAuth. Its `wrangler.jsonc` has **no** Vectorize or AI bindings, so do not create a Vectorize index or set OAuth secrets for it.
+
 ## Features
 
-- 190 Mozilla community feeds (from the original Planet Mozilla)
+- 207 Mozilla community feeds (from the original Planet Mozilla)
 - Custom theme matching the classic planet.mozilla.org design
 - Dark header, teal links, red accents
 - Responsive design with dark mode support
 
 ## Included Files
 
-- `config.yaml` - Full instance configuration with 190 feeds
-- `wrangler.jsonc` - Cloudflare Workers configuration
-- `theme/style.css` - Planet Mozilla theme CSS
-- `static/mozilla-logo.svg` - Mozilla logo for header
+- `config.yaml` - Documentation-only description of the instance and its feed list (nothing reads it at deploy or runtime)
+- `wrangler.jsonc` - Cloudflare Workers configuration (lite mode)
+- `assets/static/style.css` - Planet Mozilla theme CSS
+- `assets/static/mozilla-logo.svg` - Mozilla logo for header
+- `assets/static/fonts/` - Self-hosted Mozilla WOFF2 fonts used by the theme
+- `assets/feeds.opml` - the feed list, applied to D1 via `scripts/seed_feeds_from_opml.py`
 
 ## Quick Start
 
@@ -24,6 +28,12 @@ A comprehensive clone of [Planet Mozilla](https://planet.mozilla.org/), aggregat
 ./scripts/deploy_instance.sh planet-mozilla
 ```
 
+Then seed the feeds (a fresh deploy starts with an empty page):
+
+```bash
+uv run python scripts/seed_feeds_from_opml.py --config examples/planet-mozilla/wrangler.jsonc
+```
+
 ### Or deploy manually
 
 ```bash
@@ -31,23 +41,20 @@ A comprehensive clone of [Planet Mozilla](https://planet.mozilla.org/), aggregat
 npx wrangler d1 create planet-mozilla-db
 # Update database_id in wrangler.jsonc
 
-# Create Vectorize index
-npx wrangler vectorize create planet-mozilla-entries --dimensions 768 --metric cosine
-
 # Create queues
 npx wrangler queues create planet-mozilla-feed-queue
 npx wrangler queues create planet-mozilla-feed-dlq
 
-# Set secrets
-npx wrangler secret put GITHUB_CLIENT_ID --config examples/planet-mozilla/wrangler.jsonc
-npx wrangler secret put GITHUB_CLIENT_SECRET --config examples/planet-mozilla/wrangler.jsonc
-npx wrangler secret put SESSION_SECRET --config examples/planet-mozilla/wrangler.jsonc
-
-# Run migrations
-npx wrangler d1 execute planet-mozilla-db --remote --file migrations/001_initial.sql
+# Run ALL migrations in order (not just 001)
+for f in migrations/*.sql; do
+  npx wrangler d1 execute planet-mozilla-db --remote --file="$f"
+done
 
 # Deploy
 npx wrangler deploy --config examples/planet-mozilla/wrangler.jsonc
+
+# Seed feeds into D1 (lite mode reads assets/feeds.opml)
+uv run python scripts/seed_feeds_from_opml.py --config examples/planet-mozilla/wrangler.jsonc
 ```
 
 ## Theme Details
@@ -61,7 +68,7 @@ The Planet Mozilla theme recreates the classic planet.mozilla.org design:
 
 ## Feed List
 
-The config includes 190 Mozilla community feeds sourced from the original [Planet Mozilla config](https://github.com/mozilla-it/planet.mozilla.org/blob/master/configs/mozilla.ini), including:
+`assets/feeds.opml` contains 207 Mozilla community feeds sourced from the original [Planet Mozilla config](https://github.com/mozilla-it/planet.mozilla.org/blob/master/configs/mozilla.ini), including:
 
 - Official Mozilla blogs (Hacks, Security, Add-ons, etc.)
 - Mozilla project blogs (Servo, Rust, SpiderMonkey, etc.)
@@ -71,7 +78,10 @@ The config includes 190 Mozilla community feeds sourced from the original [Plane
 
 To customize:
 
-1. Edit `theme/style.css` for visual changes
-2. Edit `config.yaml` to modify feeds or branding
-3. Rebuild templates: `python scripts/build_templates.py --example planet-mozilla`
-4. Redeploy: `npx wrangler deploy --config examples/planet-mozilla/wrangler.jsonc`
+1. Edit `assets/static/style.css` for visual changes, then redeploy — CSS is served straight from there.
+2. To change the feed list, edit `assets/feeds.opml` and re-run `scripts/seed_feeds_from_opml.py` (editing `config.yaml` has no effect — it is documentation only).
+3. To change branding (name, URL, footer, theme), edit the `vars` in `wrangler.jsonc` and redeploy.
+
+```bash
+npx wrangler deploy --config examples/planet-mozilla/wrangler.jsonc
+```

@@ -87,11 +87,12 @@ class TestParseOpml:
         assert "Invalid OPML format" in errors[0]
 
     def test_xxe_attack_rejected(self):
-        """DTD/XXE payloads are rejected.
+        """M-S3: DTD/XXE payloads are rejected outright (not stripped).
 
-        parse_opml strips DOCTYPE declarations before parsing to prevent XXE
-        attacks portably (Pyodide lacks forbid_dtd support). This test verifies
-        that no usable feed data can be extracted from malicious XXE payloads.
+        forbid_dtd is unavailable in Pyodide, and the old regex strip broke on
+        internal subsets containing ">". A legitimate OPML never needs a DOCTYPE,
+        so any DOCTYPE/ENTITY presence is a hard parse error — no feed data is
+        ever extracted from a malicious XXE payload.
         """
         xxe_payload = """<?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE foo [
@@ -104,21 +105,16 @@ class TestParseOpml:
         </opml>"""
         feeds, errors = parse_opml(xxe_payload)
 
-        # DOCTYPE is stripped, so &xxe; is an undefined entity reference.
-        # The parser should either reject it entirely or produce no valid feed URL.
-        if feeds:
-            for feed in feeds:
-                assert "file:///" not in feed["url"]
-                assert "/etc/passwd" not in feed["url"]
+        assert feeds == []
+        assert len(errors) == 1
+        assert "DOCTYPE/ENTITY" in errors[0]
 
-    def test_doctype_stripped_from_opml(self):
-        """DOCTYPE declarations are stripped before parsing.
+    def test_doctype_rejected_even_when_innocuous(self):
+        """M-S3: any DOCTYPE is rejected, even a benign SYSTEM reference.
 
-        This is critical for Pyodide compatibility — CPython 3.13.3+ has
-        forbid_dtd=True, but Pyodide's bundled Python does not. We strip
-        DOCTYPE manually to ensure portability across all runtimes.
+        The previous behavior stripped DOCTYPE and parsed; that regex was the
+        regression. Rejecting outright is the safe, portable choice.
         """
-        # Valid OPML with an innocuous DOCTYPE — should parse fine after stripping
         opml_with_doctype = """<?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE opml SYSTEM "opml.dtd">
         <opml version="2.0">
@@ -128,8 +124,25 @@ class TestParseOpml:
         </opml>"""
         feeds, errors = parse_opml(opml_with_doctype)
 
-        assert len(feeds) == 1
-        assert feeds[0]["url"] == "https://example.com/feed.xml"
+        assert feeds == []
+        assert len(errors) == 1
+        assert "DOCTYPE/ENTITY" in errors[0]
+
+    def test_doctype_with_internal_subset_containing_gt(self):
+        """M-S3 regression: an internal subset containing '>' must still be rejected.
+
+        This is the exact case the old `<!DOCTYPE[^>]*>` regex strip failed on.
+        """
+        payload = """<?xml version="1.0"?>
+        <!DOCTYPE opml [<!ENTITY x "a > b">]>
+        <opml version="2.0"><body>
+            <outline xmlUrl="https://example.com/feed.xml" />
+        </body></opml>"""
+        feeds, errors = parse_opml(payload)
+
+        assert feeds == []
+        assert len(errors) == 1
+        assert "DOCTYPE/ENTITY" in errors[0]
 
     def test_exceeds_max_feeds_limit(self):
         """Truncates feeds exceeding MAX_OPML_FEEDS and adds warning."""
@@ -217,3 +230,11 @@ class TestAdminErrorResponse:
 
         cache_control = response.headers.get("Cache-Control", "")
         assert "no-store" in cache_control
+
+    def test_security_headers_applied(self):
+        """M-S4: admin error pages carry the standard security headers."""
+        planet = {"name": "Test", "description": "", "link": ""}
+        response = admin_error_response(planet, "Error")
+
+        assert response.headers.get("X-Content-Type-Options") == "nosniff"
+        assert response.headers.get("X-Frame-Options") == "DENY"

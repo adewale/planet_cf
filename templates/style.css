@@ -5,6 +5,12 @@
     --accent-dark: #e5731a;
     --accent-light: #fff7ed;
     --accent-subtle: #fed7aa;
+    /* Darker accent for text/labels that must meet WCAG AA contrast (>=4.5:1).
+       #a8530a measures 5.38:1 on white and 5.14:1 on --bg-secondary; white text
+       on it (for .btn-warning) is 5.38:1. The bright --accent (2.58:1 as text)
+       is retained only for borders, focus rings, and large decorative accents
+       where >=3:1 suffices. */
+    --accent-text: #a8530a;
 
     /* Neutral tones */
     --text-primary: #111827;
@@ -19,7 +25,6 @@
     /* Borders */
     --border-light: #e5e7eb;
     --border-medium: #d1d5db;
-    --border-accent: var(--accent);
 
     /* Code blocks */
     --code-bg: #1f2937;
@@ -80,7 +85,7 @@ header h1 {
     font-weight: 700;
     font-size: 1.35rem;
     letter-spacing: -0.01em;
-    color: var(--accent);
+    color: var(--accent-text);
     line-height: 1.2;
 }
 
@@ -92,12 +97,12 @@ header p {
 }
 
 header a {
-    color: var(--accent);
+    color: var(--accent-text);
     text-decoration: none;
 }
 
 header a:hover {
-    color: var(--accent-dark);
+    color: var(--accent-text);
 }
 
 .search-form {
@@ -317,7 +322,7 @@ article header {
 }
 
 .content a {
-    color: var(--accent);
+    color: var(--accent-text);
     text-decoration: none;
     border-bottom: 1px solid transparent;
     transition: border-color 0.15s ease;
@@ -451,12 +456,12 @@ footer p:first-child {
 }
 
 footer a {
-    color: var(--accent);
+    color: var(--accent-text);
     text-decoration: none;
     transition: color 0.15s ease;
 }
 
-footer a:hover { color: var(--accent-dark); }
+footer a:hover { color: var(--accent-text); }
 
 /* Override inline color: #999 on admin link for WCAG AA contrast (4.5:1 min) */
 footer a[href="/admin"] {
@@ -464,7 +469,7 @@ footer a[href="/admin"] {
 }
 
 footer a[href="/admin"]:hover {
-    color: var(--accent) !important;
+    color: var(--accent-text) !important;
 }
 
 footer .hint {
@@ -579,7 +584,8 @@ button:hover, .btn:hover {
 .btn-success:hover { opacity: 0.9; }
 .btn-danger { background: var(--error); color: white; border-color: var(--error); }
 .btn-danger:hover { opacity: 0.9; }
-.btn-warning { background: #f59e0b; color: white; border-color: #f59e0b; }
+/* Warning button: darker accent so white label text meets WCAG AA (5.38:1). */
+.btn-warning { background: var(--accent-text); color: white; border-color: var(--accent-text); }
 .btn-warning:hover { opacity: 0.9; }
 
 /* Keyboard navigation */
@@ -743,13 +749,13 @@ article.selected {
 }
 
 .sidebar-links a {
-    color: var(--accent);
+    color: var(--accent-text);
     text-decoration: none;
     transition: color 0.15s ease;
 }
 
 .sidebar-links a:hover {
-    color: var(--accent-dark);
+    color: var(--accent-text);
 }
 
 /* Search form label */
@@ -768,13 +774,13 @@ article.selected {
 }
 
 .submission-link a {
-    color: var(--accent);
+    color: var(--accent-text);
     text-decoration: none;
     transition: color 0.15s ease;
 }
 
 .submission-link a:hover {
-    color: var(--accent-dark);
+    color: var(--accent-text);
 }
 
 /* Related sites navigation in sidebar */
@@ -1187,44 +1193,8 @@ article.selected {
 
 .table-responsive { overflow-x: auto; }
 
-/* Login page */
-.login-card {
-    background: white;
-    padding: 3rem;
-    border-radius: 12px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-    text-align: center;
-    max-width: 400px;
-    width: 90%;
-}
-
-.github-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.75rem;
-    background: #24292e;
-    color: white;
-    padding: 0.875rem 1.5rem;
-    border-radius: var(--radius-md);
-    text-decoration: none;
-    font-weight: 500;
-    font-size: 1rem;
-    transition: background 0.2s;
-}
-
-.github-btn:hover { background: #1b1f23; }
-.github-btn svg { width: 20px; height: 20px; fill: currentColor; }
-
-/* Error page */
-.error-card {
-    background: white;
-    padding: 3rem;
-    border-radius: 12px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-    text-align: center;
-    max-width: 500px;
-    width: 90%;
-}
+/* NOTE: .login-card / .github-btn / .error-card removed — admin/login.html and
+   admin/error.html define those styles inline and do not link style.css. */
 
 .hidden {
     display: none !important;
@@ -1245,8 +1215,7 @@ article.selected {
    ============================================================================= */
 
 button:focus-visible,
-.btn:focus-visible,
-.github-btn:focus-visible {
+.btn:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
 }

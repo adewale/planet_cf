@@ -4,11 +4,13 @@
 #
 # This script automates all the steps needed to deploy a planet instance:
 # 1. Creates D1 database and extracts database_id
-# 2. Creates Vectorize index
+# 2. Creates Vectorize index (full mode only)
 # 3. Creates queues (feed queue and dead letter queue)
-# 4. Prompts for secrets (GitHub OAuth, session secret)
+# 4. Prompts for secrets (GitHub OAuth, session secret; full mode only)
 # 5. Runs database migrations
-# 6. Deploys the worker
+# 6. Sets up the python_modules dependency bundle
+# 7. Deploys the worker
+# 8. Verifies the deployment
 #
 # Usage:
 #   ./scripts/deploy_instance.sh <instance-id>
@@ -17,7 +19,7 @@
 #
 # Prerequisites:
 #   - wrangler CLI installed and authenticated
-#   - Instance config created (wrangler.<instance-id>.jsonc)
+#   - Instance config created at examples/<instance-id>/wrangler.jsonc
 #   - GitHub OAuth app created (for GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET)
 
 set -euo pipefail
@@ -145,7 +147,7 @@ update_database_id() {
 }
 
 # Step 1: Create D1 database
-echo -e "${YELLOW}Step 1/7: Creating D1 database...${NC}"
+echo -e "${YELLOW}Step 1/8: Creating D1 database...${NC}"
 DB_NAME="${INSTANCE_ID}-db"
 
 # Check if database already exists
@@ -176,7 +178,7 @@ fi
 echo ""
 
 # Step 2: Create Vectorize index (skip in lite mode)
-echo -e "${YELLOW}Step 2/7: Creating Vectorize index...${NC}"
+echo -e "${YELLOW}Step 2/8: Creating Vectorize index...${NC}"
 if [[ "$LITE_MODE" == "true" ]]; then
     echo -e "  ${YELLOW}Skipping Vectorize index (lite mode)${NC}"
 else
@@ -195,7 +197,7 @@ fi
 echo ""
 
 # Step 3: Create queues
-echo -e "${YELLOW}Step 3/7: Creating queues...${NC}"
+echo -e "${YELLOW}Step 3/8: Creating queues...${NC}"
 FEED_QUEUE="${INSTANCE_ID}-feed-queue"
 DLQ="${INSTANCE_ID}-feed-dlq"
 
@@ -212,7 +214,7 @@ done
 echo ""
 
 # Step 4: Set secrets (skip in lite mode)
-echo -e "${YELLOW}Step 4/7: Configuring secrets...${NC}"
+echo -e "${YELLOW}Step 4/8: Configuring secrets...${NC}"
 if [[ "$LITE_MODE" == "true" ]]; then
     echo -e "  ${YELLOW}Skipping secrets (lite mode - no auth required)${NC}"
 elif [[ "$SKIP_SECRETS" == "true" ]]; then
@@ -261,7 +263,7 @@ fi
 echo ""
 
 # Step 5: Run migrations
-echo -e "${YELLOW}Step 5/7: Running database migrations...${NC}"
+echo -e "${YELLOW}Step 5/8: Running database migrations...${NC}"
 MIGRATIONS_DIR="$PROJECT_ROOT/migrations"
 
 FAILED_MIGRATIONS=()
@@ -270,18 +272,24 @@ if [[ -d "$MIGRATIONS_DIR" ]]; then
         if [[ -f "$MIGRATION" ]]; then
             MIGRATION_NAME=$(basename "$MIGRATION")
             echo -e "  Running: ${MIGRATION_NAME}"
-            OUTPUT=$(npx wrangler d1 execute "$DB_NAME" --remote --file "$MIGRATION" --config "$CONFIG_FILE" 2>&1)
-            EXIT_CODE=$?
-            if [[ $EXIT_CODE -ne 0 ]]; then
-                if echo "$OUTPUT" | grep -qi "already exists\|duplicate column"; then
+            # H10: under `set -euo pipefail`, `OUTPUT=$(cmd)` on its own line aborts
+            # the whole script the instant wrangler exits non-zero — so the
+            # `EXIT_CODE=$?` check below it never ran and the "already applied"
+            # tolerance was dead code (every re-run died silently). Capturing
+            # inside `if ! OUTPUT=$(...)` keeps `set -e` from firing and lets us
+            # inspect the output. Migrations 003/004 are non-idempotent bare
+            # ALTERs, so D1 returns "duplicate column" on re-run — we tolerate
+            # exactly that (and "already exists") and fail on anything else.
+            if OUTPUT=$(npx wrangler d1 execute "$DB_NAME" --remote --file "$MIGRATION" --config "$CONFIG_FILE" 2>&1); then
+                echo -e "  ${GREEN}Applied: ${MIGRATION_NAME}${NC}"
+            else
+                if echo "$OUTPUT" | grep -qiE "already exists|duplicate column"; then
                     echo -e "  ${YELLOW}Already applied: ${MIGRATION_NAME}${NC}"
                 else
                     echo -e "  ${RED}FAILED: ${MIGRATION_NAME}${NC}"
                     echo "$OUTPUT"
                     FAILED_MIGRATIONS+=("$MIGRATION_NAME")
                 fi
-            else
-                echo -e "  ${GREEN}Applied: ${MIGRATION_NAME}${NC}"
             fi
         fi
     done
@@ -295,13 +303,22 @@ if [[ -d "$MIGRATIONS_DIR" ]]; then
         exit 1
     fi
     echo -e "  ${GREEN}Migrations complete${NC}"
+    # H11: migration 002 no longer seeds any admin (it would have granted the
+    # upstream maintainer admin on every third-party deploy). Full-mode instances
+    # must seed their own admin explicitly.
+    if [[ "$LITE_MODE" != "true" ]]; then
+        echo -e "  ${YELLOW}Reminder: no admin is seeded by migrations. Add one with:${NC}"
+        echo -e "    ${BLUE}uv run python scripts/seed_admins.py --db-name ${DB_NAME} --config ${CONFIG_FILE}${NC}"
+        echo -e "    ${YELLOW}(edit config/admins.json first), or sign in once via GitHub OAuth${NC}"
+        echo -e "    ${YELLOW}to bootstrap the first admin.${NC}"
+    fi
 else
     echo -e "  ${YELLOW}No migrations directory found${NC}"
 fi
 echo ""
 
 # Step 6: Ensure python_modules symlink exists and is valid
-echo -e "${YELLOW}Step 6/7: Setting up python_modules...${NC}"
+echo -e "${YELLOW}Step 6/8: Setting up python_modules...${NC}"
 INSTANCE_DIR="$PROJECT_ROOT/examples/${INSTANCE_ID}"
 SYMLINK_PATH="$INSTANCE_DIR/python_modules"
 TARGET_PATH="../../python_modules"

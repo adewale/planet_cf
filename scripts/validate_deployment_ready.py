@@ -23,6 +23,51 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
+
+def strip_jsonc_comments(content: str) -> str:
+    """Strip // line comments from JSONC, preserving // inside string values.
+
+    M-D2: the previous `re.sub(r"//.*$", "", ...)` truncated every URL inside a
+    string (e.g. "https://...") down to "https:", so json.loads raised and every
+    example config was silently skipped. This scans character by character and
+    only treats `//` as the start of a comment when it is OUTSIDE a double-quoted
+    string (respecting backslash escapes). Block comments are not used in these
+    configs, so only `//` line comments are handled.
+    """
+    out = []
+    in_string = False
+    escaped = False
+    i = 0
+    n = len(content)
+    while i < n:
+        ch = content[i]
+        if in_string:
+            out.append(ch)
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            i += 1
+            continue
+        # Not in a string.
+        if ch == '"':
+            in_string = True
+            out.append(ch)
+            i += 1
+            continue
+        if ch == "/" and i + 1 < n and content[i + 1] == "/":
+            # Skip to end of line (but keep the newline so line numbers/JSON
+            # structure are preserved).
+            while i < n and content[i] != "\n":
+                i += 1
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
 # Required packages for Cloudflare Python Workers
 REQUIRED_PACKAGES = ["feedparser", "jinja2", "bleach", "markupsafe"]
 
@@ -101,8 +146,8 @@ def check_wrangler_themes() -> list[str]:
 
     for wrangler_file in examples_dir.glob("*/wrangler.jsonc"):
         content = wrangler_file.read_text()
-        # Remove comments for JSON parsing
-        content_no_comments = re.sub(r"//.*$", "", content, flags=re.MULTILINE)
+        # Remove comments for JSON parsing (string-safe; see strip_jsonc_comments).
+        content_no_comments = strip_jsonc_comments(content)
 
         try:
             config = json.loads(content_no_comments)

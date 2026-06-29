@@ -1,6 +1,6 @@
 # Lite Mode Guide
 
-PlanetCF has two deployment modes: **Full** and **Lite**. Lite mode is a read-only feed aggregator that runs entirely on Cloudflare's Free Plan. Full mode adds semantic search, an admin dashboard, and OAuth authentication, but requires paid Cloudflare services.
+Planet CF has two deployment modes: **Full** and **Lite**. Lite mode is a read-only feed aggregator that runs entirely on Cloudflare's Free Plan. Full mode adds semantic search, an admin dashboard, and OAuth authentication, but requires paid Cloudflare services.
 
 ## Cloudflare Resources: Free vs Paid
 
@@ -11,7 +11,7 @@ PlanetCF has two deployment modes: **Full** and **Lite**. Lite mode is a read-on
 | **Workers** | Required | Required | Yes (100k req/day) | Application runtime |
 | **Vectorize** | Not used | Required | No | Semantic search embeddings |
 | **Workers AI** | Not used | Required | Limited (10k/day free) | Generates text embeddings |
-| **OAuth Secrets** | Not needed | Required | N/A | GitHub/Google auth credentials |
+| **OAuth Secrets** | Not needed | Required | N/A | GitHub OAuth credentials (only GitHub is implemented) |
 
 Lite mode removes Vectorize and Workers AI bindings entirely from the wrangler config, so these services are never called. Route guards at the application layer return 404 for `/search`, `/auth/*`, and `/admin/*` routes, ensuring no paid-tier code paths execute.
 
@@ -36,11 +36,13 @@ Lite mode removes Vectorize and Workers AI bindings entirely from the wrangler c
 
 ## Admin Tasks in Lite Mode
 
-In lite mode there is no admin dashboard. All management is done by editing configuration files and redeploying. This is the same workflow used by static site generators like Planet Venus and Rogue Planet.
+In lite mode there is no admin dashboard. Feeds live as rows in the D1 `feeds` table, exactly as in full mode — there is **no** deploy-time or cron-time import of feeds from any file. Deploying a fresh lite instance yields an empty planet until you seed feeds into D1.
+
+The supported way to manage the feed list under version control is to keep an OPML file at `assets/feeds.opml` in your instance directory and run **`scripts/seed_feeds_from_opml.py`** whenever it changes. The script reads your `wrangler.jsonc`, detects `INSTANCE_MODE: "lite"`, loads `assets/feeds.opml` from the same directory, and upserts each feed into D1 (`ON CONFLICT(url) DO UPDATE`). This is an explicit step you run — redeploying the worker does **not** trigger it.
 
 ### Adding Feeds
 
-Edit `assets/feeds.opml` in your instance directory and redeploy:
+1. Edit `assets/feeds.opml` in your instance directory:
 
 ```xml
 <!-- examples/my-planet/assets/feeds.opml -->
@@ -59,29 +61,24 @@ Edit `assets/feeds.opml` in your instance directory and redeploy:
 </opml>
 ```
 
-Then redeploy:
+2. Seed the feeds into D1 (preview first with `--dry-run`):
 
 ```bash
-npx wrangler deploy --config examples/my-planet/wrangler.jsonc
+# Reads INSTANCE_MODE/database name from the config; loads assets/feeds.opml in lite mode
+uv run python scripts/seed_feeds_from_opml.py \
+  --config examples/my-planet/wrangler.jsonc --dry-run
+
+uv run python scripts/seed_feeds_from_opml.py \
+  --config examples/my-planet/wrangler.jsonc
 ```
 
-Alternatively, add feeds to `config.yaml`:
-
-```yaml
-initial_feeds:
-  - url: https://blog.cloudflare.com/rss/
-    title: Cloudflare Blog
-  - url: https://github.blog/feed/
-    title: GitHub Blog
-```
-
-New feeds are picked up on the next cron trigger (hourly) or on the next deployment.
+You only need to redeploy the worker when the **code or config** changes — not when the feed list changes. New feeds start being fetched on the next hourly cron after they are inserted (requires a cron-enabled config; see the deployment guide).
 
 ### Removing Feeds
 
-Remove the `<outline>` element from `assets/feeds.opml` (or the entry from `initial_feeds` in `config.yaml`) and redeploy. Existing entries from the removed feed remain in the database until the retention policy deletes them.
+The seeding script only adds/updates feeds; it never deletes. Re-running it after removing an `<outline>` from `assets/feeds.opml` leaves the old feed in D1. To remove a feed, deactivate or delete it directly with SQL (below). Existing entries from a removed feed remain until the retention policy deletes them.
 
-To immediately purge a feed's entries, run SQL directly:
+To deactivate or purge a feed's entries, run SQL directly:
 
 ```bash
 # Find the feed ID
@@ -99,11 +96,18 @@ npx wrangler d1 execute my-planet-db --remote \
 
 ### Bulk Import from OPML
 
-If you have an OPML file from another aggregator, use it directly as your `assets/feeds.opml`:
+If you have an OPML file from another aggregator, drop it in as your `assets/feeds.opml` and seed it into D1:
 
 ```bash
 cp exported-feeds.opml examples/my-planet/assets/feeds.opml
-npx wrangler deploy --config examples/my-planet/wrangler.jsonc
+uv run python scripts/seed_feeds_from_opml.py --config examples/my-planet/wrangler.jsonc
+```
+
+You can also point the script straight at a URL or file without touching `assets/feeds.opml`:
+
+```bash
+uv run python scripts/seed_feeds_from_opml.py \
+  --url https://planetpython.org/opml.xml --db my-planet-db
 ```
 
 ### Changing Display Settings
@@ -129,11 +133,11 @@ Set the `THEME` variable in `wrangler.jsonc`:
 
 ```json
 "vars": {
-  "THEME": "dark"
+  "THEME": "planet-python"
 }
 ```
 
-Available built-in themes: `default`, `planet-python`, `planet-mozilla`. You can also create a custom theme in `examples/my-planet/theme/style.css`.
+Available built-in themes: `default`, `planet-python`, `planet-mozilla` (an unknown value falls back to `default`). To customize the look, edit your instance's stylesheet at `examples/my-planet/assets/static/style.css` — that is the file Cloudflare's Static Assets serves at `/static/style.css`. There is no separate `theme/` directory.
 
 ### Checking Feed Health
 

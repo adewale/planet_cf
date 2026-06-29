@@ -1,8 +1,16 @@
 # Testing Guide
 
-PlanetCF has three test tiers: unit, integration, and end-to-end (E2E).
+Planet CF has four test tiers: Python unit, Python integration, Python end-to-end (E2E), and a JavaScript tier (vitest) for the admin dashboard script.
 
 ## Quick Start
+
+The Python test dependencies (pytest, pytest-asyncio, hypothesis, etc.) live in the **`test` extra**. A plain `uv sync` does not install them, so install it first — otherwise `uv run pytest` falls back to a system interpreter and fails to collect:
+
+```bash
+uv sync --extra test
+```
+
+Then:
 
 ```bash
 # Run unit tests (fast, no dependencies)
@@ -15,13 +23,22 @@ uv run pytest tests/integration -v
 uv run pytest tests/unit tests/integration -v
 ```
 
+### JavaScript tests (admin dashboard)
+
+The admin dashboard JavaScript (`assets/static/admin.js`) has a vitest suite under `tests/js/`. Install the JS dev dependencies and run it with:
+
+```bash
+npm install
+npx vitest run
+```
+
 ## Test Tiers
 
 ### Unit Tests (tests/unit/)
 
 Pure unit tests using mock Cloudflare bindings. No server needed.
 
-- Run `uv run pytest tests/unit --co -q | tail -1` for the current count; typically runs in ~2 seconds
+- Run `uv run pytest tests/unit --co -q | tail -1` for the current count. The unit tier is the bulk of the suite and takes roughly ~20-25s on a typical machine (not "a couple of seconds" — property-based and FFI tests dominate the runtime)
 - Uses `MockD1`, `MockVectorize`, `MockAI`, `MockQueue` from `tests/conftest.py`
 - Simulates JsProxy behavior to catch conversion issues
 - Covers: rendering, search, config, auth, feeds, entries, observability
@@ -34,7 +51,7 @@ Pure unit tests using mock Cloudflare bindings. No server needed.
 
 Tests that verify end-to-end flows using mock bindings. No external services needed.
 
-- Run `uv run pytest tests/integration --co -q | tail -1` for the current count; typically runs in ~2 seconds
+- Run `uv run pytest tests/integration --co -q | tail -1` for the current count
 - Covers: HTTP endpoints, feed processing, search, admin UI, scheduler
 - Uses factory fixtures (`FeedFactory`, `EntryFactory`, `SessionFactory`)
 

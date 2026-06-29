@@ -2,20 +2,25 @@
 # Copy this file to config/instance.yaml and customize for your planet
 #
 # =============================================================================
-# IMPORTANT: Instance Creation vs Runtime Configuration
+# IMPORTANT: This file is ILLUSTRATIVE / NOT YET WIRED
 # =============================================================================
-# This YAML file is used ONLY for initial instance creation and provisioning.
-# At runtime, all configuration is read from environment variables.
+# This YAML is a design reference for how an instance might be described in one
+# place. No tool currently READS this file: there is no
+# `scripts/generate_wrangler_config.py`, and nothing parses this YAML at deploy
+# or runtime. The Worker reads ALL of its configuration from environment
+# variables defined in `wrangler.jsonc` ("vars") and from secrets set via
+# `wrangler secret put`.
 #
-# Workflow:
-# 1. Create/edit this YAML file with your instance settings
-# 2. Run `python scripts/generate_wrangler_config.py` to generate wrangler.jsonc
-# 3. Deploy with `wrangler deploy` - settings become environment variables
-# 4. At runtime, the Worker reads from env vars (not this YAML file)
+# The real workflow to create an instance is:
+# 1. `python scripts/create_instance.py --id <id> --name "<name>" [--mode lite|full]`
+#    This builds a `wrangler.jsonc` (with a "vars" block) from the CLI arguments
+#    you pass — NOT from this YAML file.
+# 2. Edit the generated `examples/<id>/wrangler.jsonc` "vars" to taste.
+# 3. Deploy with `wrangler deploy --config examples/<id>/wrangler.jsonc` (or
+#    `./scripts/deploy_instance.sh <id>`); "vars" become runtime env vars.
 #
-# To change settings after deployment, either:
-# - Update this YAML and re-run generate_wrangler_config.py + deploy
-# - Or set environment variables directly in Cloudflare dashboard
+# Treat the keys below as a map of which env vars exist, not as inputs to a
+# generator.
 #
 # =============================================================================
 # Configuration Schema: Required vs Optional Keys
@@ -83,8 +88,9 @@ planet:
 # Branding & Theme
 # =============================================================================
 branding:
-  # Theme to use: default, classic, elegant, dark, minimal
-  # Or path to custom theme directory
+  # Theme to use: default, planet-python, planet-mozilla
+  # (an unknown value falls back to "default"). Customize a theme by editing
+  # the instance's assets/static/style.css, not a separate theme directory.
   theme: default
 
   # User-Agent string for feed fetching
@@ -152,25 +158,26 @@ feeds:
 # Authentication
 # =============================================================================
 auth:
-  # OAuth provider: github, google, or oidc
+  # OAuth provider. Only GitHub is implemented; this key is informational.
   provider: github
 
-  # Provider-specific configuration
-  # Secrets (client_id, client_secret) should be set via environment variables:
-  # - OAUTH_CLIENT_ID
-  # - OAUTH_CLIENT_SECRET
+  # Secrets are set via `wrangler secret put` (never committed). The env var
+  # names the Worker actually reads are:
+  # - GITHUB_CLIENT_ID
+  # - GITHUB_CLIENT_SECRET
   # - SESSION_SECRET
 
-  # OAuth scopes (provider-dependent)
+  # OAuth scopes requested from GitHub
   scopes:
     - user:email
 
   # Session TTL in seconds (default: 7 days)
   session_ttl_seconds: 604800
 
-  # Optional: explicit redirect URI (security best practice)
-  # If not set, uses request origin
-  # redirect_uri: https://www.planetcloudflare.dev/auth/callback
+  # Optional: explicit redirect URI (recommended for production). Set the
+  # OAUTH_REDIRECT_URI env var to your callback URL. If unset, the OAuth flow
+  # falls back to the request origin.
+  # redirect_uri: https://www.planetcloudflare.dev/auth/github/callback
 
 # =============================================================================
 # Cloudflare Resources
@@ -191,8 +198,10 @@ cloudflare:
 # =============================================================================
 # Admin Users
 # =============================================================================
-# Initial admin users to seed into the database
-# Additional admins can be added via the admin dashboard
+# Initial admin users to seed into the database.
+# There is no admin-management UI: additional admins are added via
+# `scripts/seed_admins.py` (which reads config/admins.json) or by INSERTing
+# directly into the D1 `admins` table.
 admins:
   - username: adewale
     display_name: Adewale Oshineye

@@ -360,7 +360,7 @@ class TestAuditRowPreservesAllFields:
     """Tests that audit_row_from_js preserves all fields."""
 
     def test_preserves_all_audit_fields(self):
-        """Preserves all audit_log table columns plus joined admin_username."""
+        """Preserves all audit_log columns plus the joined github_username/display_name (M-P5)."""
         row = {
             "id": 500,
             "admin_id": 1,
@@ -369,8 +369,9 @@ class TestAuditRowPreservesAllFields:
             "target_id": 42,
             "details": '{"url": "https://example.com"}',
             "created_at": "2025-01-17T12:00:00Z",
-            # Joined field
-            "admin_username": "testuser",
+            # Joined fields from the admins table (the SELECT joins these).
+            "github_username": "testuser",
+            "display_name": "Test User",
         }
         result = audit_row_from_js(row)
 
@@ -381,23 +382,24 @@ class TestAuditRowPreservesAllFields:
         assert result["target_id"] == 42
         assert result["details"] == '{"url": "https://example.com"}'
         assert result["created_at"] == "2025-01-17T12:00:00Z"
-        assert result["admin_username"] == "testuser"
+        assert result["github_username"] == "testuser"
+        assert result["display_name"] == "Test User"
 
 
 class TestAuditRowsFromD1PreservesFields:
     """Tests that audit_rows_from_d1 preserves all fields through batch conversion."""
 
     def test_preserves_joined_fields_in_batch(self):
-        """audit_rows_from_d1 preserves admin_username for all audit entries."""
+        """audit_rows_from_d1 preserves github_username for all audit entries (M-P5)."""
         results = [
-            {"id": 1, "admin_id": 1, "action": "add_feed", "admin_username": "user1"},
-            {"id": 2, "admin_id": 2, "action": "remove_feed", "admin_username": "user2"},
+            {"id": 1, "admin_id": 1, "action": "add_feed", "github_username": "user1"},
+            {"id": 2, "admin_id": 2, "action": "remove_feed", "github_username": "user2"},
         ]
         rows = audit_rows_from_d1(results)
 
         assert len(rows) == 2
-        assert rows[0]["admin_username"] == "user1"
-        assert rows[1]["admin_username"] == "user2"
+        assert rows[0]["github_username"] == "user1"
+        assert rows[1]["github_username"] == "user2"
 
 
 # =============================================================================

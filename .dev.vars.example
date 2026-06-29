@@ -24,3 +24,18 @@ GITHUB_CLIENT_SECRET=your_github_client_secret_here
 #   openssl rand -hex 32
 # or use: python -c "import secrets; print(secrets.token_hex(32))"
 SESSION_SECRET=your_random_session_secret_here
+
+# ---------------------------------------------------------------------------
+# Optional settings (leave unset unless you need them)
+# ---------------------------------------------------------------------------
+
+# Explicit OAuth callback URL (recommended for production). If unset, the OAuth
+# flow falls back to the request origin.
+# OAUTH_REDIRECT_URI=http://localhost:8787/auth/github/callback
+
+# Global edge cache purging after admin actions (custom-domain deployments only).
+# Both must be set together: a Cloudflare zone ID and an API token with the
+# "Cache Purge" permission scoped to that zone. If unset, purging falls back to
+# the local PoP only. See docs/CACHING.md.
+# CLOUDFLARE_ZONE_ID=your_zone_id_here
+# CLOUDFLARE_API_TOKEN=your_cache_purge_token_here

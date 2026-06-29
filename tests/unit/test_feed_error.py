@@ -229,8 +229,12 @@ class TestUpdateFeedUrl:
         assert len(select_stmts) == 1
 
     @pytest.mark.asyncio
-    async def test_uses_system_admin_id_for_auto_updates(self):
-        """Auto URL updates (not triggered by admin) use admin_id=0."""
+    async def test_uses_null_admin_id_for_auto_updates(self):
+        """H3: auto URL updates (not triggered by admin) bind admin_id NULL.
+
+        Binding 0 would violate the audit_log.admin_id -> admins(id) foreign key
+        (no admin row with id 0 exists), which D1 enforces, throwing mid-cycle.
+        """
         db = TrackingD1([])
         env = MockEnv(DB=db, FEED_QUEUE=None, DEAD_LETTER_QUEUE=None, SEARCH_INDEX=None, AI=None)
         worker = Default()
@@ -242,7 +246,60 @@ class TestUpdateFeedUrl:
             old_url="https://old.example.com/feed.xml",
         )
 
-        # The audit log should use admin_id=0 (system user)
+        # The audit log should bind admin_id = None (SQL NULL), not 0.
         audit_stmts = [s for s in db.statements if "INSERT INTO audit_log" in s.sql]
         assert len(audit_stmts) == 1
-        assert audit_stmts[0].bound_args[0] == 0  # admin_id
+        assert audit_stmts[0].bound_args[0] is None  # admin_id (system action)
+
+
+class TestUpdateFeedMetadataExcludesValidators:
+    """H2: _update_feed_metadata (pre-loop) must NOT persist etag/last_modified."""
+
+    @pytest.mark.asyncio
+    async def test_metadata_update_has_no_etag_or_last_modified(self):
+        db = TrackingD1([])
+        env = MockEnv(DB=db, FEED_QUEUE=None, DEAD_LETTER_QUEUE=None, SEARCH_INDEX=None, AI=None)
+        worker = Default()
+        worker.env = env
+
+        feed_info = {"title": "T", "link": "https://x.dev", "author": "A"}
+        await worker._update_feed_metadata(1, feed_info)
+
+        update_stmts = [s for s in db.statements if "UPDATE feeds" in s.sql]
+        assert len(update_stmts) == 1
+        sql = update_stmts[0].sql
+        # Validators are written only by _update_feed_success, after entries store.
+        assert "etag" not in sql
+        assert "last_modified" not in sql
+        # Title/site_url/author are still refreshed.
+        assert "title = COALESCE(?, title)" in sql
+        assert "site_url = COALESCE(?, site_url)" in sql
+
+
+class TestMockD1BindArity:
+    """M-T3: the mock D1 validates bind arity against `?` placeholders, like real D1."""
+
+    def test_correct_arity_accepted(self):
+        db = TrackingD1([])
+        stmt = db.prepare("SELECT * FROM feeds WHERE id = ? AND is_active = ?")
+        stmt.bind(1, 1)  # 2 placeholders, 2 args — OK
+        assert stmt.bound_args == [1, 1]
+
+    def test_too_few_args_raises(self):
+        db = TrackingD1([])
+        stmt = db.prepare("INSERT INTO audit_log (admin_id, action) VALUES (?, ?)")
+        with pytest.raises(ValueError, match="placeholder"):
+            stmt.bind(0)  # 2 placeholders, 1 arg
+
+    def test_too_many_args_raises(self):
+        db = TrackingD1([])
+        stmt = db.prepare("SELECT * FROM feeds WHERE id = ?")
+        with pytest.raises(ValueError, match="placeholder"):
+            stmt.bind(1, 2)  # 1 placeholder, 2 args
+
+    def test_question_mark_in_string_literal_not_counted(self):
+        db = TrackingD1([])
+        # The literal "?" inside the quoted string must not count as a placeholder.
+        stmt = db.prepare("UPDATE feeds SET fetch_error = 'why?' WHERE id = ?")
+        stmt.bind(7)  # only one real placeholder
+        assert stmt.bound_args == [7]
