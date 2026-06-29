@@ -64,8 +64,13 @@ class TestInactiveFeedDisplayQueries:
         query = match.group()
         assert "is_active" not in query, "_get_recent_entries must NOT filter by is_active."
 
-    def test_opml_export_includes_all_feeds(self):
-        """OPML export must include inactive feeds."""
+    def test_opml_export_filters_inactive_feeds(self):
+        """BP8: OPML export is a subscription list — only active feeds.
+
+        Unlike the HTML display (which keeps showing inactive feeds' cached
+        entries), the exported OPML is meant for re-import elsewhere, so dead /
+        auto-deactivated feeds are excluded.
+        """
         source = self._get_main_source()
         match = re.search(
             r"async def _export_opml.*?\.all\(\)",
@@ -74,7 +79,19 @@ class TestInactiveFeedDisplayQueries:
         )
         assert match, "Could not find _export_opml method"
         query = match.group()
-        assert "is_active" not in query, "OPML export must NOT filter by is_active."
+        assert "WHERE is_active = 1" in query, "OPML export MUST filter by is_active = 1 (BP8)."
+
+    def test_foaf_export_filters_inactive_feeds(self):
+        """BP8: FOAF blogroll lists only active subscriptions."""
+        source = self._get_main_source()
+        match = re.search(
+            r"async def _serve_foaf.*?\.all\(\)",
+            source,
+            re.DOTALL,
+        )
+        assert match, "Could not find _serve_foaf method"
+        query = match.group()
+        assert "WHERE is_active = 1" in query, "FOAF export MUST filter by is_active = 1 (BP8)."
 
     def test_scheduler_still_filters_by_is_active(self):
         """Regression: scheduler enqueue query MUST keep WHERE is_active = 1."""

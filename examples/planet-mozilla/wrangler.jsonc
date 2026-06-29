@@ -105,6 +105,13 @@
         "max_retries": 3,
         "dead_letter_queue": "planet-mozilla-feed-dlq",
         "retry_delay": 300
+      },
+      {
+        // M-D5: consume the DLQ so dead letters don't accumulate and vanish.
+        // The src queue handler treats any queue whose name contains "dlq" as the DLQ.
+        "queue": "planet-mozilla-feed-dlq",
+        "max_batch_size": 10,
+        "max_batch_timeout": 60
       }
     ]
   },

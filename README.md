@@ -42,30 +42,46 @@ uv sync
 npm install
 ```
 
+> **Note on wrangler:** `npm install` only installs the JS test tooling (jsdom, vitest); it does **not** install wrangler. Every `npx wrangler ...` command below downloads wrangler on first use (an unpinned version). There is nothing to install separately.
+
 ### 2. Bundle Python dependencies
 
-Cloudflare Python Workers require bundled pip dependencies:
+Cloudflare Python Workers require their pip dependencies vendored into a `python_modules/` directory:
 
 ```bash
 make python-modules
 ```
 
+`make python-modules` copies packages out of a pre-built Pyodide virtualenv at `.venv-workers/pyodide-venv/`. That venv is produced by the Cloudflare Workers tooling (`workers-py`, `workers-runtime-sdk`) declared in the `workers` dependency group, **not** by a plain `uv sync`. If `make python-modules` reports that `.venv-workers/pyodide-venv` is missing, you do not yet have that venv.
+
+The simplest supported path is to let **`./scripts/deploy_instance.sh`** drive the deploy: it validates `python_modules/`, runs every migration in order, and tells you exactly what to fix if a step is missing. The manual steps below are provided for understanding, but the deploy script is the recommended route. See [docs/MULTI_INSTANCE.md](docs/MULTI_INSTANCE.md).
+
 ### 3. Create Cloudflare resources
 
+The committed root `wrangler.jsonc` is the **test-planet** config — it is named `test-planet` and binds resources called `test-planet-db`, `test-planet-entries`, `test-planet-feed-queue`, and `test-planet-feed-dlq`. It does **not** match the resource names below, and you should not deploy it as-is for your own planet.
+
+Create your own resources (use any names you like — these are examples), then put the resulting IDs/names into your own config:
+
 ```bash
-npx wrangler d1 create planetcf
-npx wrangler vectorize create planetcf-entries --dimensions=768 --metric=cosine
-npx wrangler queues create planetcf-feed-queue
-npx wrangler queues create planetcf-feed-dlq
+npx wrangler d1 create my-planet-db
+npx wrangler vectorize create my-planet-entries --dimensions=768 --metric=cosine
+npx wrangler queues create my-planet-feed-queue
+npx wrangler queues create my-planet-feed-dlq
 ```
 
-Update `wrangler.jsonc` with your database ID from the output above.
+Copy one of the `examples/*/wrangler.jsonc` files (or generate one with `python scripts/create_instance.py`), and edit it so the worker `name`, the D1 `database_name` + `database_id`, the Vectorize `index_name`, and the queue names all match the resources you just created. The `database_id` printed by `wrangler d1 create` must be pasted into your config — wrangler cannot infer it.
 
 ### 4. Apply database migrations
 
+Apply **all** migrations, in order — not just `001_initial.sql`. Migrations 003/004 add columns (`entries.first_seen`, `feeds.last_entry_at`) that the code writes on every fetch; with only `001` applied, a fresh instance can never store an entry.
+
 ```bash
-npx wrangler d1 execute planetcf --remote --file=migrations/001_initial.sql
+for f in migrations/*.sql; do
+  npx wrangler d1 execute my-planet-db --remote --file="$f"
+done
 ```
+
+(Or just run `./scripts/deploy_instance.sh <id>`, which applies every migration for you.)
 
 ### 5. Set up GitHub OAuth
 
@@ -82,10 +98,12 @@ openssl rand -hex 32
 npx wrangler secret put SESSION_SECRET
 ```
 
+For production, also set `OAUTH_REDIRECT_URI` (in your config `vars`) to your exact callback URL — e.g. `https://your-worker.workers.dev/auth/github/callback`. If it is unset, the OAuth flow falls back to the request origin, which is less safe behind proxies.
+
 ### 6. Add yourself as admin
 
 ```bash
-npx wrangler d1 execute planetcf --remote --command \
+npx wrangler d1 execute my-planet-db --remote --command \
   "INSERT INTO admins (github_username, display_name, is_active) VALUES ('YOUR_GITHUB_USERNAME', 'Your Name', 1);"
 ```
 
@@ -94,8 +112,10 @@ Use your exact GitHub login name (e.g., `adewale`, not `@adewale`).
 ### 7. Deploy
 
 ```bash
-npx wrangler deploy
+npx wrangler deploy --config <your-config>.jsonc
 ```
+
+> **Automatic hourly fetching needs a cron.** The committed root `wrangler.jsonc` has `"crons": []`, so a worker deployed from it never fetches feeds on a schedule. Use a config with a cron trigger configured (the `examples/*/wrangler.jsonc` and `wrangler.production.jsonc` include one), or add `"triggers": { "crons": ["0 * * * *"] }` to your own config. You can still fetch on demand from the admin dashboard.
 
 ### 8. Custom domain (optional)
 
@@ -133,7 +153,7 @@ All settings have sensible defaults. Override them via environment variables in 
 {
   "vars": {
     "PLANET_NAME": "My Custom Planet",
-    "CONTENT_DAYS": "14",
+    "RETENTION_DAYS": "60",
     "INSTANCE_MODE": "lite",
     "THEME": "planet-python"
   }
@@ -153,18 +173,23 @@ All settings have sensible defaults. Override them via environment variables in 
 | Instance mode | `full` | `INSTANCE_MODE` — `full` enables search; `lite` disables it |
 | Footer text | "Powered by Planet CF" | `FOOTER_TEXT` |
 | Planet URL | `https://www.planetcloudflare.dev` | `PLANET_URL` |
-| Show admin link | true | `SHOW_ADMIN_LINK` |
+| Show admin link | mode-dependent (shown in full mode, hidden in lite) | `SHOW_ADMIN_LINK` — set `true`/`false` to override |
 | Hide sidebar links | false | `HIDE_SIDEBAR_LINKS` |
+| Planet owner name | "Planet CF" | `PLANET_OWNER_NAME` (used in OPML/FOAF/User-Agent) |
+| Planet owner email | (unset) | `PLANET_OWNER_EMAIL` (used in the User-Agent string) |
+| User-Agent template | built-in | `USER_AGENT_TEMPLATE` (supports `{name}`, `{url}`, `{email}`) |
+| Enable RSS 1.0 link | theme-dependent | `ENABLE_RSS10` — `true` to advertise `/feed.rss10` |
+| Enable FOAF link | theme-dependent | `ENABLE_FOAF` — `true` to advertise `/foafroll.xml` |
 
 ### Feed processing
 
 | Setting | Default | Env var |
 |---------|---------|---------|
-| Display range | 7 days | `CONTENT_DAYS` |
+| Homepage display window | 90 days | `RETENTION_DAYS` (entries older than this are not shown — and are pruned from D1) |
+| Sidebar "recent" window | 7 days | `CONTENT_DAYS` (controls only the per-feed recent list in the sidebar, not the main page) |
 | HTTP timeout | 30 seconds | `HTTP_TIMEOUT_SECONDS` |
 | Feed processing timeout | 60 seconds | `FEED_TIMEOUT_SECONDS` |
 | Max entries per feed | 100 | `RETENTION_MAX_ENTRIES_PER_FEED` |
-| Retention period | 90 days | `RETENTION_DAYS` |
 | Unhealthy threshold | 3 failures | `FEED_FAILURE_THRESHOLD` |
 | Auto-deactivate after | 10 failures | `FEED_AUTO_DEACTIVATE_THRESHOLD` |
 | Feed recovery | enabled | `FEED_RECOVERY_ENABLED` |
@@ -180,7 +205,7 @@ All settings have sensible defaults. Override them via environment variables in 
 
 ### Smart defaults
 
-- **Fallback content**: When no entries exist in the configured display range, the homepage shows the 50 most recent entries instead of an empty page
+- **Fallback content**: When no entries exist within the homepage display window (`RETENTION_DAYS`), the homepage shows the 50 most recent entries instead of an empty page
 - **Theme fallback**: If a specified theme doesn't exist, the build falls back to `default` instead of erroring
 - **Auto-initialization**: Database tables are created automatically on first request
 
@@ -195,7 +220,7 @@ Planet CF supports deploying multiple independent instances from a single codeba
 | `examples/default/` | Minimal lite-mode starting point |
 | `examples/planet-cloudflare/` | Full-featured configuration |
 | `examples/planet-python/` | Planet Python clone (500+ feeds) |
-| `examples/planet-mozilla/` | Planet Mozilla clone (190 feeds) |
+| `examples/planet-mozilla/` | Planet Mozilla clone (207 feeds) |
 
 ```bash
 # Deploy an example
@@ -232,13 +257,20 @@ graph LR
 ## Development
 
 ```bash
+# Install the test dependencies (pytest et al. live in the "test" extra).
+# A plain `uv sync` does NOT install them, and the suite will fail to collect.
+uv sync --extra test
+
 # Start local dev server
 npx wrangler dev
 
-# Apply local migrations (in another terminal)
-npx wrangler d1 execute planetcf --local --file=migrations/001_initial.sql
+# Apply ALL local migrations (in another terminal), not just 001
+for f in migrations/*.sql; do
+  npx wrangler d1 execute my-planet-db --local --file="$f"
+done
 
-# Run tests (~1200 tests, ~1.4s)
+# Run tests (unit + integration). Run `uv run pytest tests/unit tests/integration --co -q | tail -1`
+# for the current count; the suite is ~1,400 tests and takes ~30s.
 uv run pytest tests/unit tests/integration -x -q
 
 # Lint and type check
@@ -257,8 +289,12 @@ uvx --python 3.12 vulture src/ vulture_whitelist.py
 | `deploy_instance.sh` | Deploy an instance (D1, Vectorize, Queues, secrets, migrations) |
 | `validate_deployment_ready.py` | Pre-deploy check for common issues |
 | `verify_deployment.py` | Post-deploy smoke tests |
-| `convert_planet.py` | Convert a Planet/Venus site into a PlanetCF instance |
+| `convert_planet.py` | Convert a Planet/Venus site into a Planet CF instance |
 | `seed_feeds_from_opml.py` | Import feeds from an OPML file into D1 |
+| `seed_admins.py` | Seed admin users from `config/admins.json` into D1 |
+| `seed_test_data.py` | Load fixture feeds/entries (and a test admin) for E2E testing |
+| `setup_test_planet.sh` | One-command bootstrap of a personal test-planet instance |
+| `visual_compare.py` | Screenshot/visual-diff helper for theme work |
 
 ## Documentation
 

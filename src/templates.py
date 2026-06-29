@@ -303,6 +303,7 @@ _EMBEDDED_TEMPLATES = {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
     <title>Admin - {{ planet.name }}</title>
     <link rel="icon" href="/static/favicon.ico" sizes="32x32">
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
@@ -363,6 +364,9 @@ _EMBEDDED_TEMPLATES = {
         .audit-details { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem; }
         .empty-state { color: var(--text-muted); font-style: italic; padding: 1rem; text-align: center; }
         #dlq-list, #audit-list { max-height: 400px; overflow-y: auto; }
+        .health-warnings { margin-bottom: 1.5rem; }
+        .health-warning { padding: 0.625rem 0.875rem; background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; border-radius: 6px; margin-bottom: 0.5rem; font-size: 0.875rem; }
+        .health-warning a { color: #92400e; font-weight: 600; }
     </style>
 </head>
 <body>
@@ -370,12 +374,15 @@ _EMBEDDED_TEMPLATES = {
         <h1><a href="/">{{ planet.name }}</a> <span style="color: var(--text-muted); font-weight: normal; font-size: 0.875rem;">Admin</span></h1>
         <div class="header-actions">
             <form action="/admin/regenerate" method="POST" style="margin: 0;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit" class="btn" title="Re-fetch all feeds now">Refresh Feeds</button>
             </form>
-            <button id="reindex-btn" class="btn" title="Rebuild search index" onclick="rebuildSearchIndex()">Reindex</button>
+            <button id="reindex-btn" class="btn" title="Rebuild search index">Reindex</button>
+            <a href="/admin/health" class="btn" title="View feed health">Health</a>
             <div class="user-info">
                 <span>{{ admin.display_name or admin.github_username }}</span>
                 <form action="/admin/logout" method="POST" style="margin: 0;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button type="submit" class="btn btn-danger btn-sm">Logout</button>
                 </form>
             </div>
@@ -383,6 +390,14 @@ _EMBEDDED_TEMPLATES = {
     </header>
 
     <div class="admin-content">
+
+    {% if health_warnings %}
+    <div class="health-warnings" role="alert">
+        {% for warning in health_warnings %}
+        <div class="health-warning">&#9888; {{ warning }} &mdash; <a href="/admin/health">view health</a></div>
+        {% endfor %}
+    </div>
+    {% endif %}
 
     <div class="tabs">
         <button class="tab active" data-tab="feeds">Feeds</button>
@@ -395,6 +410,7 @@ _EMBEDDED_TEMPLATES = {
         <div class="section">
             <h2>Add Feed</h2>
             <form action="/admin/feeds" method="POST" class="add-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="url" name="url" placeholder="https://example.com/feed.xml" required>
                 <input type="text" name="title" placeholder="Feed title (optional)">
                 <button type="submit" class="btn btn-success">Add Feed</button>
@@ -433,8 +449,9 @@ _EMBEDDED_TEMPLATES = {
                             <span class="toggle-slider"></span>
                         </label>
                         <form action="/admin/feeds/{{ feed.id }}" method="POST" style="margin: 0;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <input type="hidden" name="_method" value="DELETE">
-                            <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete this feed?')">Delete</button>
+                            <button type="submit" class="btn btn-danger btn-sm js-confirm" data-confirm="Delete this feed?">Delete</button>
                         </form>
                     </div>
                 </li>
@@ -451,6 +468,7 @@ _EMBEDDED_TEMPLATES = {
             <h2>Import OPML</h2>
             <p style="margin-bottom: 1rem; color: #666;">Upload an OPML file to import multiple feeds at once.</p>
             <form action="/admin/import-opml" method="POST" enctype="multipart/form-data" class="add-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="file" name="opml" accept=".opml,.xml" required>
                 <button type="submit" class="btn btn-success">Import Feeds</button>
             </form>
@@ -575,6 +593,7 @@ _EMBEDDED_TEMPLATES = {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
     <title>Feed Health - {{ planet.name }}</title>
     <link rel="icon" href="/static/favicon.ico" sizes="32x32">
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
@@ -684,22 +703,11 @@ _EMBEDDED_TEMPLATES = {
                         <td class="actions-cell">
                             {% if feed.health_status == 'failing' %}
                             <form action="/admin/dlq/{{ feed.id }}/retry" method="POST" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                 <button type="submit" class="btn btn-sm">Retry</button>
                             </form>
                             {% endif %}
-                            {% if feed.is_active %}
-                            <form action="/admin/feeds/{{ feed.id }}" method="POST" style="display: inline;">
-                                <input type="hidden" name="_method" value="PUT">
-                                <input type="hidden" name="is_active" value="0">
-                                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Deactivate this feed?')">Deactivate</button>
-                            </form>
-                            {% else %}
-                            <form action="/admin/feeds/{{ feed.id }}" method="POST" style="display: inline;">
-                                <input type="hidden" name="_method" value="PUT">
-                                <input type="hidden" name="is_active" value="1">
-                                <button type="submit" class="btn btn-sm btn-success">Activate</button>
-                            </form>
-                            {% endif %}
+                            <button class="btn btn-sm js-feed-toggle" data-feed-id="{{ feed.id }}" data-active="{{ 1 if feed.is_active else 0 }}"{% if feed.is_active %} data-confirm="Deactivate this feed?"{% endif %}>{{ 'Deactivate' if feed.is_active else 'Activate' }}</button>
                         </td>
                     </tr>
                     {% else %}
@@ -713,6 +721,7 @@ _EMBEDDED_TEMPLATES = {
             </table>
         </div>
     </div>
+    <script src="/static/admin.js"></script>
 </body>
 </html>
 """,
@@ -1428,7 +1437,8 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
     <title>{{ entry.title | e }}</title>
     <link href="{{ entry.url | e }}" rel="alternate"/>
     <id>{{ entry.guid | e }}</id>
-    <published>{{ entry.published_at }}Z</published>
+{% if entry.published_at %}    <published>{{ entry.published_at }}</published>
+{% endif %}    <updated>{{ entry.updated_at or entry.published_at or updated_at }}</updated>
     <author><name>{{ entry.author | e }}</name></author>
     <content type="html">{{ entry.content | e }}</content>
   </entry>
@@ -1448,9 +1458,9 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
       <title>{{ entry.title | e }}</title>
       <link>{{ entry.url | e }}</link>
       <guid>{{ entry.guid | e }}</guid>
-      <pubDate>{{ entry.published_at }}</pubDate>
-      <author>{{ entry.author | e }}</author>
-      <description><![CDATA[{{ entry.content_cdata }}]]></description>
+{% if entry.published_at %}      <pubDate>{{ entry.published_at }}</pubDate>
+{% endif %}      <author>{{ entry.author | e }}</author>
+      <description><![CDATA[{{ entry.content_cdata | safe }}]]></description>
     </item>
 {% endfor %}
   </channel>
@@ -1476,9 +1486,9 @@ src="{{ logo.url or '/static/images/python-logo.gif' }}" alt="{{ logo.alt or 'ho
   <item rdf:about="{{ entry.url | e }}">
     <title>{{ entry.title | e }}</title>
     <link>{{ entry.url | e }}</link>
-    <dc:date>{{ entry.published_at_iso }}</dc:date>
-    <dc:creator>{{ entry.author | e }}</dc:creator>
-    <description><![CDATA[{{ entry.content_truncated }}]]></description>
+{% if entry.published_at_iso %}    <dc:date>{{ entry.published_at_iso }}</dc:date>
+{% endif %}    <dc:creator>{{ entry.author | e }}</dc:creator>
+    <description><![CDATA[{{ entry.content_truncated | safe }}]]></description>
   </item>
 {% endfor %}
 </rdf:RDF>

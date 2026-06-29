@@ -252,9 +252,20 @@ class TestUpsertRefreshesPermalink:
 
     @pytest.mark.asyncio
     async def test_upsert_updates_url_on_conflict(self):
-        """ON CONFLICT clause includes url = excluded.url."""
+        """On a GUID conflict the separate UPDATE refreshes url/title (H1).
+
+        H1 changed the INSERT to ON CONFLICT DO NOTHING; the existing-row refresh
+        now happens in a separate UPDATE that fires when the INSERT inserts no
+        row. Simulate that: the INSERT returns no id (conflict), the UPDATE
+        returns a row (content changed).
+        """
         worker = Default()
-        db = TrackingD1([{"id": 1}])
+        db = TrackingD1(
+            results_by_sql=[
+                ("INSERT INTO entries", []),  # conflict → DO NOTHING, no row
+                ("UPDATE entries", [{"id": 1, "published_at": "2026-01-01T00:00:00Z"}]),
+            ]
+        )
         worker.env = MagicMock()
         worker.env.DB = db
         worker.env.SEARCH_INDEX = None
@@ -269,26 +280,32 @@ class TestUpsertRefreshesPermalink:
         }
 
         with unittest.mock.patch.object(worker, "_sanitize_html", side_effect=lambda x: x):
-            await worker._upsert_entry(feed_id=1, entry=entry)
+            result = await worker._upsert_entry(feed_id=1, entry=entry)
 
-        # Find the INSERT statement
-        upsert_stmt = next(s for s in db.statements if "INSERT INTO entries" in s.sql)
+        # The INSERT is DO NOTHING (no excluded.* refresh); the UPDATE does the refresh.
+        insert_stmt = next(s for s in db.statements if "INSERT INTO entries" in s.sql)
+        assert "ON CONFLICT(feed_id, guid) DO NOTHING" in insert_stmt.sql
 
-        # The ON CONFLICT clause must update url and summary
-        assert "url = excluded.url" in upsert_stmt.sql
-        assert "summary = excluded.summary" in upsert_stmt.sql
-        assert "INSERT INTO entries" in upsert_stmt.sql
-
-        # The new URL should be in the bound args
-        assert "https://example.com/new-permalink/post" in upsert_stmt.bound_args
-        # The title should also be in the bound args
-        assert "My Post" in upsert_stmt.bound_args
+        update_stmt = next(s for s in db.statements if "UPDATE entries" in s.sql)
+        assert "url = ?" in update_stmt.sql
+        assert "title = ?" in update_stmt.sql
+        # The new URL and title must be bound to the UPDATE.
+        assert "https://example.com/new-permalink/post" in update_stmt.bound_args
+        assert "My Post" in update_stmt.bound_args
+        # A content change is reported, not a brand-new entry.
+        assert result["is_new"] is False
+        assert result["content_changed"] is True
 
     @pytest.mark.asyncio
     async def test_upsert_updates_summary_on_conflict(self):
-        """ON CONFLICT clause includes summary = excluded.summary."""
+        """On a GUID conflict the separate UPDATE refreshes summary/content (H1)."""
         worker = Default()
-        db = TrackingD1([{"id": 1}])
+        db = TrackingD1(
+            results_by_sql=[
+                ("INSERT INTO entries", []),  # conflict
+                ("UPDATE entries", [{"id": 1, "published_at": "2026-01-01T00:00:00Z"}]),
+            ]
+        )
         worker.env = MagicMock()
         worker.env.DB = db
         worker.env.SEARCH_INDEX = None
@@ -305,9 +322,80 @@ class TestUpsertRefreshesPermalink:
         with unittest.mock.patch.object(worker, "_sanitize_html", side_effect=lambda x: x):
             await worker._upsert_entry(feed_id=1, entry=entry)
 
-        upsert_stmt = next(s for s in db.statements if "INSERT INTO entries" in s.sql)
-        assert "summary = excluded.summary" in upsert_stmt.sql
-        assert "A new summary after the author revised it" in upsert_stmt.bound_args
-        # The ON CONFLICT also updates title, content, author, url
-        assert "title = excluded.title" in upsert_stmt.sql
-        assert "content = excluded.content" in upsert_stmt.sql
+        update_stmt = next(s for s in db.statements if "UPDATE entries" in s.sql)
+        assert "summary = ?" in update_stmt.sql
+        assert "A new summary after the author revised it" in update_stmt.bound_args
+        # The UPDATE also refreshes title and content.
+        assert "title = ?" in update_stmt.sql
+        assert "content = ?" in update_stmt.sql
+
+
+class TestUpsertInsertVsUpdateSemantics:
+    """H1: distinguish genuine INSERTs from UPDATEs and from unchanged re-sees."""
+
+    @pytest.mark.asyncio
+    async def test_genuine_insert_is_new(self):
+        """A real INSERT (RETURNING id from DO NOTHING) reports is_new and its date."""
+        worker = Default()
+        db = TrackingD1(
+            results_by_sql=[("INSERT INTO entries", [{"id": 7}])],
+        )
+        worker.env = MagicMock()
+        worker.env.DB = db
+        worker.env.SEARCH_INDEX = None
+        worker.env.AI = None
+
+        entry = {
+            "id": "guid-new",
+            "link": "https://example.com/p",
+            "title": "Fresh",
+            "content": [{"value": "<p>x</p>"}],
+            "published_parsed": (2026, 6, 1, 0, 0, 0),
+        }
+        with unittest.mock.patch.object(worker, "_sanitize_html", side_effect=lambda x: x):
+            result = await worker._upsert_entry(feed_id=1, entry=entry)
+
+        assert result["is_new"] is True
+        assert result["entry_id"] == 7
+        # published_at is canonicalized and surfaced for last_entry_at aggregation.
+        assert result["published_at"] == "2026-06-01T00:00:00Z"
+
+    @pytest.mark.asyncio
+    async def test_unchanged_reseen_entry_is_not_new_and_not_indexed(self):
+        """H1: re-seeing an unchanged entry yields no insert, no change, no entry_id.
+
+        Both the INSERT (conflict → no row) and the change-guarded UPDATE (no row)
+        return nothing, so the entry is neither counted nor re-embedded.
+        """
+        worker = Default()
+        db = TrackingD1(
+            results_by_sql=[
+                ("INSERT INTO entries", []),  # conflict
+                ("UPDATE entries", []),  # content unchanged → WHERE guard yields no row
+            ],
+        )
+        worker.env = MagicMock()
+        worker.env.DB = db
+        # Search bindings present so we can prove indexing is skipped on no change.
+        worker.env.SEARCH_INDEX = MagicMock()
+        worker.env.AI = MagicMock()
+        index_mock = AsyncMock()
+
+        entry = {
+            "id": "guid-existing",
+            "link": "https://example.com/p",
+            "title": "Same",
+            "content": [{"value": "<p>same</p>"}],
+        }
+        with (
+            unittest.mock.patch.object(worker, "_sanitize_html", side_effect=lambda x: x),
+            unittest.mock.patch.object(worker, "_index_entry_for_search", index_mock),
+        ):
+            result = await worker._upsert_entry(feed_id=1, entry=entry)
+
+        assert result["is_new"] is False
+        assert result["content_changed"] is False
+        assert result["entry_id"] is None
+        assert result["published_at"] is None
+        # No re-embedding for an unchanged entry (the hourly-cost bug).
+        index_mock.assert_not_called()

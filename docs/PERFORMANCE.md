@@ -107,9 +107,9 @@ Three favicon formats cover all browsers and platforms:
 
 These are served from Workers Static Assets via each instance's `assets/` directory.
 
-### System font stacks (no web fonts)
+### System font stacks (default themes)
 
-All themes use system font stacks with no web font downloads (see `assets/static/style.css` in each instance):
+The `default` and `planet-python` themes use system font stacks with no web font downloads (see `assets/static/style.css` in each instance):
 
 ```css
 /* Body text */
@@ -122,7 +122,9 @@ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
 ```
 
-Web fonts (Google Fonts, Adobe Fonts, self-hosted WOFF2) typically add 50-200 KiB of downloads plus at least one additional HTTP request, often render-blocking. System fonts are already on the user's device: zero network cost, zero layout shift from font swapping, instant text rendering. The trade-off is less typographic control, but for a feed aggregator the user experience improvement from faster rendering outweighs custom typography.
+Web fonts (Google Fonts, Adobe Fonts, self-hosted WOFF2) typically add 50-200 KiB of downloads plus at least one additional HTTP request, often render-blocking. System fonts are already on the user's device: zero network cost, zero layout shift from font swapping, instant text rendering. The trade-off is less typographic control.
+
+**Exception — planet-mozilla:** to faithfully match planet.mozilla.org's branding, the planet-mozilla theme self-hosts four WOFF2 files (`MozillaText-Regular/Bold`, `MozillaHeadline-Regular/Bold`) under `examples/planet-mozilla/assets/static/fonts/` and declares them via `@font-face`. Because they are served from the same origin by Workers Static Assets (no third-party connection), the cost is modest, but it is a deliberate trade of a few KiB of font payload for brand fidelity — the other themes accept the system-font default instead.
 
 ## Feed Fetching
 

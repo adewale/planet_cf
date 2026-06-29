@@ -1,6 +1,6 @@
-# Converting Planet/Venus Sites to PlanetCF
+# Converting Planet/Venus Sites to Planet CF
 
-This guide documents how to convert existing Planet or Venus websites to PlanetCF instances with 100% visual fidelity.
+This guide documents how to convert existing Planet or Venus websites to Planet CF instances with 100% visual fidelity.
 
 ## The Golden Rule
 

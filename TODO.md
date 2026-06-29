@@ -2,28 +2,38 @@
 
 Deferred issues from the deep-dive audit (2026-03-11).
 
-## P1 — N+1 query pattern in feed processing (High)
+## P1 — N+1 query pattern in feed processing (High) — PARTIALLY MITIGATED
 
-The feed processing pipeline issues one database query per feed instead of
-batching. Under load with many feeds, this creates unnecessary round-trips.
+The feed processing pipeline issues per-entry database queries instead of
+batching.
 
-**Location:** `src/main.py` — feed fetch/update cycle in the queue consumer and
-cron-triggered processing paths.
+**Already addressed (H1, see audit-reports/2026-06-13-re-audit.md):** the worst
+offenders are gone — `feeds.last_entry_at` is now updated **once** per fetch
+(was once per entry), and search re-embedding now fires only on a genuine
+insert or content change (was every entry on every fetch). This removes the
+bulk of the per-cycle query/Workers-AI load.
 
-**Fix:** Batch `SELECT`/`INSERT`/`UPDATE` operations where D1 supports it.
-Profile first — Cloudflare D1 may pipeline small queries efficiently enough that
-the overhead is negligible at current feed counts.
+**Remaining:** the per-entry `INSERT ... ON CONFLICT` upsert still runs one
+statement per entry.
 
-## BP8 — Inactive feeds included in OPML export (Low)
+**Location:** `src/main.py` — `_upsert_entry` in the queue-consumer path.
 
-`GET /opml` exports all feeds including those with `is_active = 0`. Users
-importing the OPML into another reader will subscribe to feeds the admin
-intentionally disabled.
+**Fix:** Batch the entry upserts via D1's `db.batch([...])` where the
+insert/update branching allows. **Profile first** — Cloudflare D1 may pipeline
+small statements efficiently enough that the overhead is negligible at current
+feed/entry counts, and the H1 rewrite depends on per-statement `RETURNING id`
+to distinguish inserts, which a naive batch would lose.
 
-**Location:** `src/main.py` — OPML generation query.
+## BP8 — Inactive feeds included in OPML export (Low) — RESOLVED
 
-**Fix:** Add `WHERE is_active = 1` to the OPML export query, or add an optional
-`?include_inactive=1` query parameter for admins who want the full list.
+The OPML export route is `/feeds.opml` (not `GET /opml`). Its query (`_export_opml`
+in `src/main.py`) historically exported all feeds, including those with
+`is_active = 0`, so importers would re-subscribe to feeds the admin had disabled.
+
+**Resolution:** A `WHERE is_active = 1` filter is being added to the `/feeds.opml`
+export query so it exports only active feeds (matching its docstring). Note the
+sibling `/foafroll.xml` route (`_serve_foaf`) had the same gap and should be
+filtered the same way.
 
 ## Ops — Set up real mailboxes for planetcloudflare.dev (Low)
 

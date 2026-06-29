@@ -22,7 +22,7 @@ Usage:
 
 import hashlib
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from xml_sanitizer import strip_xml_control_chars
@@ -139,15 +139,19 @@ class EntryContentProcessor:
         Returns:
             ISO format date string, or None if not available
         """
-        # Try published_parsed first
-        pub_parsed = self.entry.get("published_parsed")
-        if pub_parsed and isinstance(pub_parsed, (list, tuple)) and len(pub_parsed) >= 6:
-            return datetime(*pub_parsed[:6]).isoformat()
-
-        # Fall back to updated_parsed
-        upd_parsed = self.entry.get("updated_parsed")
-        if upd_parsed and isinstance(upd_parsed, (list, tuple)) and len(upd_parsed) >= 6:
-            return datetime(*upd_parsed[:6]).isoformat()
+        # Try published_parsed first, then fall back to updated_parsed.
+        # feedparser's *_parsed tuples are UTC time.struct_time values; we emit a
+        # single canonical "YYYY-MM-DDTHH:MM:SSZ" so the column has one format.
+        # Guard the datetime() construction: out-of-range tuples (e.g. month 13)
+        # would otherwise raise ValueError and abort the whole feed (BP / Low).
+        for key in ("published_parsed", "updated_parsed"):
+            parsed = self.entry.get(key)
+            if parsed and isinstance(parsed, (list, tuple)) and len(parsed) >= 6:
+                try:
+                    dt = datetime(*parsed[:6], tzinfo=UTC)
+                except (ValueError, TypeError, OverflowError):
+                    continue
+                return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
         return None
 

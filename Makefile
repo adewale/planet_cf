@@ -1,8 +1,12 @@
 # Makefile for Planet CF development tasks
 # Usage: make <target>
 
-.PHONY: test test-cov test-coverage lint vulture check check-all fmt help
+.PHONY: test test-cov test-unit test-integration test-coverage lint vulture check check-all fmt help
 .PHONY: audit-deps audit-secrets audit-duplicates
+# M-D3: these recipe-only targets share a name with a real directory
+# (templates/, etc.), so without .PHONY `make templates` reports "up to date"
+# and silently does nothing. Declare them phony so the recipes always run.
+.PHONY: templates verify validate python-modules pre-deploy
 
 # Default target
 help: ## Show this help message
@@ -12,20 +16,24 @@ help: ## Show this help message
 # Testing
 # ─────────────────────────────────────────────────────────────────────────────
 
+# H14: `uv run pytest` without the test extra falls back to a system pytest on a
+# fresh clone (the test deps live in the `test` optional-dependency group), which
+# fails on PEP 695 syntax. `uv run --extra test` installs them into the run env
+# first, so these targets work on a clean checkout.
 test: ## Run tests normally (unit + integration)
-	uv run pytest tests/unit tests/integration -x -q
+	uv run --extra test pytest tests/unit tests/integration -x -q
 
 test-cov: ## Run tests with coverage report and floor enforcement
-	uv run pytest tests/unit tests/integration -x -q --cov=src --cov-report=term-missing --cov-fail-under=80
+	uv run --extra test pytest tests/unit tests/integration -x -q --cov=src --cov-report=term-missing --cov-fail-under=80
 
 test-unit: ## Run only unit tests
-	uv run pytest tests/unit -x -q
+	uv run --extra test pytest tests/unit -x -q
 
 test-integration: ## Run only integration tests
-	uv run pytest tests/integration -x -q
+	uv run --extra test pytest tests/integration -x -q
 
 test-coverage: ## Run tests with coverage report (no floor)
-	uv run pytest tests/unit tests/integration --cov=src --cov-report=term-missing
+	uv run --extra test pytest tests/unit tests/integration --cov=src --cov-report=term-missing
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Linting & Formatting

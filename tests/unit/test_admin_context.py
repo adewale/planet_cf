@@ -278,11 +278,19 @@ class TestAdminActionContextManager:
 
     @pytest.mark.asyncio
     async def test_log_action_no_callback(self):
-        """log_action handles missing callback gracefully."""
+        """M-T4: with no callback, log_action is a no-op but the context still works.
+
+        The previous test only had a 'should not raise' comment and no assertions.
+        Assert that the action records target_id and a success outcome regardless.
+        """
         admin = {"github_username": "test", "id": 1}
         deployment = {}
 
         async with admin_action_context(admin, "add_feed", "feed", deployment) as ctx:
-            # Should not raise
             await ctx.log_action(1, "add_feed", "feed", 123, {})
+            ctx.set_target_id(123)
             ctx.set_success()
+
+        # The context completed and recorded its outcome even without a callback.
+        assert ctx.event.outcome == "success"
+        assert ctx.event.target_id == 123

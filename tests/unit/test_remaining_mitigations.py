@@ -259,7 +259,7 @@ class TestAdminWarningBanner:
             "display_name": "Test Admin",
             "is_active": 1,
         }
-        response = await worker._serve_admin_dashboard(admin)
+        response = await worker._serve_admin_dashboard(admin, "test-csrf-token")
 
         assert response.status == 200
         assert "failing" in response.body.lower()
@@ -286,7 +286,7 @@ class TestAdminWarningBanner:
             "display_name": "Test Admin",
             "is_active": 1,
         }
-        response = await worker._serve_admin_dashboard(admin)
+        response = await worker._serve_admin_dashboard(admin, "test-csrf-token")
 
         assert response.status == 200
         assert "disabled" in response.body.lower()

@@ -6,6 +6,12 @@
 -- haven't had new content in a while.
 
 -- Add last_entry_at column
+--
+-- M-D1 (re-run safety): D1/SQLite has no `ADD COLUMN IF NOT EXISTS`, so re-running
+-- this file raises "duplicate column name: last_entry_at" once the column exists.
+-- That error is intentionally tolerated by scripts/deploy_instance.sh and
+-- .github/workflows/check.yml (they grep wrangler's output for "duplicate column"
+-- and treat it as already-applied). Kept as a plain ALTER so no data is rebuilt.
 ALTER TABLE feeds ADD COLUMN last_entry_at TEXT;
 
 -- Backfill existing feeds: use the most recent entry's published_at or first_seen

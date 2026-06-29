@@ -570,12 +570,33 @@ class TestSamplingEdgeCases:
         result = should_sample(event, sample_rate=1.0)
         assert result is True
 
-    def test_emit_event_with_malformed_dict(self, capsys):
-        """emit_event handles dict with unusual values."""
-        import contextlib
+    def test_emit_event_with_malformed_dict(self):
+        """M-T4: emit_event tolerates non-finite floats and still emits.
 
-        event = {"event_type": "test", "value": float("inf")}
-        # JSON can't serialize infinity, but emit should handle it
-        with contextlib.suppress(ValueError, OverflowError):
-            # Expected - JSON doesn't support infinity
-            emit_event(event, force=True)
+        Python's json.dumps allows NaN/Infinity by default (allow_nan=True),
+        serializing them to the JS-style tokens, so emit_event must not raise
+        and must report that it emitted. We capture the record at the
+        observability logger directly (it has propagate=False).
+        """
+        import logging
+
+        from src import observability
+
+        records: list[logging.LogRecord] = []
+
+        class _Capture(logging.Handler):
+            def emit(self, record: logging.LogRecord) -> None:
+                records.append(record)
+
+        handler = _Capture()
+        observability.logger.addHandler(handler)
+        try:
+            event = {"event_type": "test", "value": float("inf")}
+            result = emit_event(event, force=True)
+        finally:
+            observability.logger.removeHandler(handler)
+
+        assert result is True
+        assert len(records) == 1
+        # Infinity is rendered as the bare token JSON uses for it (did not raise).
+        assert "Infinity" in records[0].getMessage()

@@ -139,15 +139,20 @@ npx wrangler secret put GITHUB_CLIENT_ID --config examples/planet-python/wrangle
 npx wrangler secret put GITHUB_CLIENT_SECRET --config examples/planet-python/wrangler.jsonc
 npx wrangler secret put SESSION_SECRET --config examples/planet-python/wrangler.jsonc
 
-# Run migrations
-npx wrangler d1 execute planet-python-db \
-  --remote \
-  --file migrations/001_initial.sql \
-  --config examples/planet-python/wrangler.jsonc
+# Run ALL migrations in order (not just 001 — later migrations add columns the
+# code writes on every fetch, so a partial schema can never store an entry)
+for f in migrations/*.sql; do
+  npx wrangler d1 execute planet-python-db \
+    --remote \
+    --file "$f" \
+    --config examples/planet-python/wrangler.jsonc
+done
 
 # Deploy
 npx wrangler deploy --config examples/planet-python/wrangler.jsonc
 ```
+
+> The `planet-python` and `planet-mozilla` examples run in **lite mode** — their configs have no Vectorize/AI bindings, so the Vectorize-index and OAuth-secret steps above do not apply to them. Use them only when adapting this template for a **full-mode** instance (e.g. `planet-cloudflare`).
 
 ## Before vs After Comparison
 
@@ -271,10 +276,9 @@ python scripts/create_instance.py --id my-planet --name "My Planet" ...
 }
 ```
 
-3. For custom HTML templates, add files to `examples/my-planet/templates/` and rebuild:
-```bash
-python scripts/build_templates.py --example my-planet
-```
+3. CSS is the supported per-instance customization point — edit `assets/static/style.css` and redeploy; no rebuild step is needed for CSS.
+
+   > **Note:** Per-instance *HTML template* customization is not currently wired. `scripts/build_templates.py` compiles `src/templates.py` from the canonical `templates/` sources; its `--example`/`--theme` flags are accepted but do not change which templates are compiled. There is no per-example template override at this time.
 
 ## OAuth Provider Configuration
 
@@ -339,7 +343,7 @@ planet_cf/
 ├── scripts/
 │   ├── create_instance.py       # Instance configuration generator
 │   ├── deploy_instance.sh       # One-command deployment script
-│   ├── build_templates.py       # Template compiler (--example flag)
+│   ├── build_templates.py       # Compiles templates/ into src/templates.py
 │   └── seed_admins.py           # Admin seeding
 ├── src/
 │   ├── instance_config.py       # Config loader

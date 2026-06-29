@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
     <title>Feed Health - {{ planet.name }}</title>
     <link rel="icon" href="/static/favicon.ico" sizes="32x32">
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
@@ -112,22 +113,11 @@
                         <td class="actions-cell">
                             {% if feed.health_status == 'failing' %}
                             <form action="/admin/dlq/{{ feed.id }}/retry" method="POST" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                 <button type="submit" class="btn btn-sm">Retry</button>
                             </form>
                             {% endif %}
-                            {% if feed.is_active %}
-                            <form action="/admin/feeds/{{ feed.id }}" method="POST" style="display: inline;">
-                                <input type="hidden" name="_method" value="PUT">
-                                <input type="hidden" name="is_active" value="0">
-                                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Deactivate this feed?')">Deactivate</button>
-                            </form>
-                            {% else %}
-                            <form action="/admin/feeds/{{ feed.id }}" method="POST" style="display: inline;">
-                                <input type="hidden" name="_method" value="PUT">
-                                <input type="hidden" name="is_active" value="1">
-                                <button type="submit" class="btn btn-sm btn-success">Activate</button>
-                            </form>
-                            {% endif %}
+                            <button class="btn btn-sm js-feed-toggle" data-feed-id="{{ feed.id }}" data-active="{{ 1 if feed.is_active else 0 }}"{% if feed.is_active %} data-confirm="Deactivate this feed?"{% endif %}>{{ 'Deactivate' if feed.is_active else 'Activate' }}</button>
                         </td>
                     </tr>
                     {% else %}
@@ -141,5 +131,6 @@
             </table>
         </div>
     </div>
+    <script src="/static/admin.js"></script>
 </body>
 </html>

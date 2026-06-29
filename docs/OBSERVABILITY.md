@@ -128,7 +128,7 @@ Emitted once per HTTP request. Route-specific fields are null for non-applicable
 | `status_code` | int | HTTP response status |
 | `response_size_bytes` | int | Response body size |
 | `wall_time_ms` | float | Total request duration |
-| `cache_status` | string | hit/miss/bypass |
+| `cache_status` | string | `cacheable` (route returns Cache-Control for edge caching) or `bypass` (search/admin/health and other non-cacheable routes) |
 | `content_type` | string | html/atom/rss/search/admin/static |
 | `outcome` | string | success/error |
 | `error_type` | string? | Exception class name |
@@ -432,6 +432,8 @@ The following gaps have been addressed:
 
 3. **Admin Action Events**: All admin actions (add feed, OPML import, remove feed, toggle feed, reindex, DLQ retry) now emit AdminActionEvent. Regeneration defers to the scheduler which already emits SchedulerEvent.
 
+- **Cache Status Populated** (was Known Gap 8): `cache_status` on RequestEvent is now set from the matched route — `cacheable` for routes that return Cache-Control (homepage, titles, feeds) and `bypass` for non-cacheable routes (search, admin, health). It is no longer empty.
+
 ---
 
 ## Known Gaps
@@ -476,14 +478,6 @@ The following gaps have been addressed:
 
 **Fix**: Add a counter to `SafeD1.prepare()` (the boundary layer is the right place since all D1 access goes through it). Add `d1_query_count: int | None` to RequestEvent and FeedFetchEvent. After each request/fetch completes, read `env.DB.query_count` into the event. Query: `WHERE d1_query_count > 10` to find N+1 patterns.
 
-### 8. Cache Status Not Populated
-
-**Problem**: `cache_status` field exists but is empty for most routes.
-
-**Impact**: Can't analyze cache hit rates.
-
-**Fix**: Populate based on route type: `"cdn"` for static assets, `"generated"` for homepage, `"bypass"` for search/admin. If a Cache API layer is added later, update to `"hit"` / `"miss"` based on `caches.default.match()`. The field already exists — just needs populating.
-
 ### 9. Specific Entry Failures Lost
 
 **Problem**: Indexing failures are counted (indexing_failed=2) but we don't know WHICH entries failed.
@@ -505,14 +499,13 @@ The following gaps have been addressed:
 ## Recommended Improvements (Priority Order)
 
 ### P0/P1 (Resolved)
-Items 1-3 (indexing stats, retention in scheduler, admin action events) are complete. See "Resolved Gaps" above.
+Items 1-3 (indexing stats, retention in scheduler, admin action events) and cache-status population are complete. See "Resolved Gaps" above.
 
 4. **Add feed_id correlation**: Allow tracing operations for a specific feed (DEFERRED - feed_id already on FeedFetchEvent)
 
 ### P2 (Medium)
 5. **D1 query counts**: Add counter in `SafeD1.prepare()`, new `d1_query_count` field on events
-6. **Cache status population**: Populate existing `cache_status` field by route type
-7. **Retry correlation**: Add `first_attempt_id` field to FeedFetchEvent, propagate via queue message
+6. **Retry correlation**: Add `first_attempt_id` field to FeedFetchEvent, propagate via queue message
 
 ### P3 (Low)
 8. **Sampling visibility**: Attach `events_dropped_since_last` counter to next emitted event

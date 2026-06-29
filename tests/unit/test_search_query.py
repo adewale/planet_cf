@@ -29,6 +29,16 @@ class TestSearchQueryBuilderEscaping:
         result = SearchQueryBuilder.escape_like_pattern("hello world")
         assert result == "hello world"
 
+    def test_escapes_backslash(self):
+        """Backslash is escaped (it's the LIKE ESCAPE char) and goes first."""
+        result = SearchQueryBuilder.escape_like_pattern("a\\b")
+        assert result == "a\\\\b"
+
+    def test_backslash_before_percent_not_double_escaped(self):
+        r"""A literal backslash followed by % escapes to \\ then \% (not \\%)."""
+        result = SearchQueryBuilder.escape_like_pattern("\\%")
+        assert result == "\\\\\\%"
+
 
 class TestSearchQueryBuilderPhraseSearch:
     """Tests for phrase search query building."""
@@ -212,12 +222,13 @@ class TestSearchQueryBuilderSQLInjection:
         assert "%DROP%" in result.params[0]
 
     def test_escape_characters_in_query(self):
-        """Backslashes in query are handled correctly."""
+        """Backslashes in query are escaped (LIKE ESCAPE char) — Low finding."""
         builder = SearchQueryBuilder(query="test\\path", is_phrase_search=False)
         result = builder.build(limit=50)
 
-        # Backslash is in the parameter
-        assert "%test\\path%" in result.params
+        # The literal backslash is doubled so it is treated as data, not as the
+        # LIKE ESCAPE character.
+        assert "%test\\\\path%" in result.params
 
 
 class TestSearchQueryResult:
@@ -565,11 +576,12 @@ class TestSearchQueryNegativeCases:
         assert "100\\%\\_off!" in result.params[0]
 
     def test_special_chars_backslash(self):
-        """Query with backslashes does not crash."""
+        """Query with backslashes does not crash; backslashes are escaped (Low)."""
         builder = SearchQueryBuilder(query="C:\\Users\\test", is_phrase_search=True)
         result = builder.build(limit=50)
         assert result.sql
-        assert "C:\\Users\\test" in result.params[0]
+        # Each literal backslash is doubled for the LIKE ESCAPE clause.
+        assert "C:\\\\Users\\\\test" in result.params[0]
 
     def test_null_byte_does_not_crash(self):
         """Query containing null bytes does not crash."""

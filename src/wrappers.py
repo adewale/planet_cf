@@ -12,8 +12,9 @@ converted at the boundary layer before reaching business logic.
 import asyncio
 import json
 import logging
+from collections.abc import Callable
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urljoin
 
 import httpx
 
@@ -437,7 +438,11 @@ class SafeVectorize:
 
     async def deleteByIds(self, ids: list[str]) -> Any:
         """Delete vectors by their IDs."""
-        return await self._index.deleteByIds(ids)
+        # M-P3: convert the Python list through _to_js_value before crossing the
+        # FFI, exactly like upsert/query — a raw Python list may be rejected by
+        # the binding as a PyProxy, which would silently orphan vectors.
+        js_ids = _to_js_value(ids)
+        return await self._index.deleteByIds(js_ids)
 
 
 class SafeQueue:
@@ -485,6 +490,8 @@ async def safe_http_fetch(
     headers: dict | None = None,
     data: dict | None = None,
     timeout_seconds: int = _DEFAULT_HTTP_TIMEOUT_SECONDS,
+    validate_redirect: "Callable[[str], bool] | None" = None,
+    max_redirects: int = 5,
 ) -> HttpResponse:
     """Boundary-layer HTTP fetch that works in both Pyodide and test environments.
 
@@ -497,6 +504,14 @@ async def safe_http_fetch(
         headers: Request headers
         data: Form data for POST requests (will be URL-encoded)
         timeout_seconds: Request timeout in seconds
+        validate_redirect: Optional SSRF guard. When provided, the httpx path
+            (self-hosted / tests) follows redirects MANUALLY and validates every
+            hop's target with this callback before following — so an internal
+            redirect target is never requested. The Pyodide/Workers path keeps
+            the native ``redirect: "follow"`` (Cloudflare's runtime already blocks
+            egress to private/loopback/link-local addresses, and callers re-check
+            the final URL); the callback is advisory there.
+        max_redirects: Maximum redirect hops to follow when validating.
 
     """
     headers = headers or {}
@@ -542,15 +557,41 @@ async def safe_http_fetch(
 
         return HttpResponse(status_code, text, response_headers, final_url)
     else:
-        # Test environment: Use httpx
-        async with httpx.AsyncClient(follow_redirects=True, timeout=timeout_seconds) as client:
-            response = await client.request(method, url, headers=headers, data=data)
-            return HttpResponse(
-                status_code=response.status_code,
-                text=response.text,
-                headers=dict(response.headers),
-                final_url=str(response.url),
-            )
+        # Test / self-hosted environment: Use httpx.
+        if validate_redirect is None:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=timeout_seconds) as client:
+                response = await client.request(method, url, headers=headers, data=data)
+                return HttpResponse(
+                    status_code=response.status_code,
+                    text=response.text,
+                    headers=dict(response.headers),
+                    final_url=str(response.url),
+                )
+
+        # M-S2: manual redirect following with per-hop SSRF validation. Each
+        # 3xx Location is validated BEFORE the next request is made, so an
+        # internal redirect target is never fetched (and intermediate hops are
+        # checked, not just the final URL).
+        current_url = url
+        async with httpx.AsyncClient(follow_redirects=False, timeout=timeout_seconds) as client:
+            for _hop in range(max_redirects + 1):
+                response = await client.request(method, current_url, headers=headers, data=data)
+                if response.status_code in (301, 302, 303, 307, 308):
+                    location = response.headers.get("location")
+                    if not location:
+                        break  # malformed redirect — return the 3xx as-is
+                    next_url = urljoin(current_url, location)
+                    if not validate_redirect(next_url):
+                        raise ValueError(f"Redirect target failed SSRF validation: {next_url}")
+                    current_url = next_url
+                    continue
+                return HttpResponse(
+                    status_code=response.status_code,
+                    text=response.text,
+                    headers=dict(response.headers),
+                    final_url=current_url,
+                )
+            raise ValueError(f"Too many redirects (>{max_redirects}) starting from {url}")
 
 
 async def purge_edge_cache(base_url: str, paths: tuple[str, ...]) -> int:
@@ -700,6 +741,12 @@ def feed_row_from_js(row: Any) -> dict[str, Any]:
         "last_fetch_at": _safe_str(py_row.get("last_fetch_at")),
         "fetch_error": _safe_str(py_row.get("fetch_error")),
         "fetch_error_count": py_row.get("fetch_error_count"),
+        # M-P5: SQL-computed/health columns. Without these the /admin/health page
+        # always renders "Last Entry: Never" / "Entries: 0", and the DLQ view loses
+        # its `last_error` alias.
+        "last_entry_at": _safe_str(py_row.get("last_entry_at")),
+        "entry_count": py_row.get("entry_count"),
+        "last_error": _safe_str(py_row.get("last_error")),
     }
 
 
@@ -785,16 +832,23 @@ def audit_row_from_js(row: Any) -> dict[str, Any]:
     py_row = _to_py_safe(row)
     if not py_row:
         return {}
+    # M-P5: admin_id may be SQL NULL for system actions (H3), so default to None
+    # rather than coercing to int(0). The audit SELECT joins admins for
+    # github_username/display_name — the old factory mapped a nonexistent
+    # "admin_username" column and dropped both, so the audit API could never
+    # attribute actions.
+    admin_id_raw = py_row.get("admin_id")
     return {
         "id": int(py_row.get("id", 0)),
-        "admin_id": int(py_row.get("admin_id", 0)),
+        "admin_id": int(admin_id_raw) if admin_id_raw is not None else None,
         "action": _safe_str(py_row.get("action")) or "",
         "target_type": _safe_str(py_row.get("target_type")),
         "target_id": py_row.get("target_id"),
         "details": _safe_str(py_row.get("details")),
         "created_at": _safe_str(py_row.get("created_at")) or "",
-        # Joined fields
-        "admin_username": _safe_str(py_row.get("admin_username")),
+        # Joined fields from the admins table.
+        "github_username": _safe_str(py_row.get("github_username")),
+        "display_name": _safe_str(py_row.get("display_name")),
     }
 
 
@@ -988,22 +1042,22 @@ def feed_bind_values(
     site_url: Any,
     author_name: Any,
     author_email: Any,
-    etag: Any,
-    last_modified: Any,
     feed_id: int,
 ) -> tuple:
     """Create a tuple of D1-safe values for feed metadata UPDATE.
 
     Converts all values through _safe_str to ensure clean Python strings.
     Returns tuple ready for .bind(*feed_bind_values(...)).
+
+    Note: etag/last_modified are intentionally NOT part of this tuple — the
+    feed-metadata UPDATE runs before the entry loop and must not persist HTTP
+    validators (H2); _update_feed_success writes those after entries are stored.
     """
     return (
         _safe_str(title),
         _safe_str(site_url),
         _safe_str(author_name),
         _safe_str(author_email),
-        _safe_str(etag),
-        _safe_str(last_modified),
         feed_id,
     )
 

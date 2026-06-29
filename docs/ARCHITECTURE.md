@@ -48,7 +48,9 @@ A feed aggregator built on Cloudflare Workers (Python) with D1, Queues, and Vect
 
 ## Request Flow
 
-### Public Pages (/, /titles, /feed.atom, /feed.rss, /feed.rss10, /feeds.opml, /foafroll.xml, /search)
+### Public Pages (/, /titles, /feed.atom, /feed.rss, /feed.rss10, /feeds.opml, /foafroll.xml)
+
+(`/search` is also public but is **not** edge-cached — it is served with `max-age=0`.)
 
 ```
 Browser Request
@@ -56,7 +58,7 @@ Browser Request
       ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Edge Cache Check                            │
-│   Cache-Control: public, max-age=3600, s-maxage=3600            │
+│   Cache-Control: public, max-age=3600, stale-while-revalidate=3600 │
 └─────────────────────────────────────────────────────────────────┘
       │
       │ (cache miss)
@@ -339,10 +341,11 @@ Payload contains: `{github_username, github_id, avatar_url, exp}`
 
 ### Edge Caching Strategy
 
-- Homepage: `Cache-Control: public, max-age=3600, s-maxage=3600`
-- Feeds (RSS/Atom): Same as homepage
+- Homepage: `Cache-Control: public, max-age=3600, stale-while-revalidate=3600`
+- Feeds (RSS/Atom/RSS1.0/OPML/FOAF): Same as homepage
+- Search (`/search`): `Cache-Control: public, max-age=0, stale-while-revalidate=3600` — effectively not edge-cached (results are query-specific)
 - Admin pages: `Cache-Control: no-store` (never cached)
-- Static assets: `Cache-Control: public, max-age=86400`
+- Static assets: served by Workers Static Assets at the edge (handled outside the Worker)
 
 ### Content Security Policy (CSP)
 
@@ -488,9 +491,11 @@ Feed URLs are validated against:
 
 ### XXE/Billion Laughs Protection
 
-OPML import uses `ET.XMLParser(forbid_dtd=True)` to prevent:
+`forbid_dtd=True` is not available in the Pyodide (Workers) build of the stdlib XML parser, so OPML import guards against DTD-based attacks by **rejecting any document that contains a `<!DOCTYPE>`/`<!ENTITY>` declaration** before parsing, rather than relying on a parser flag. This blocks:
 - XML External Entity (XXE) attacks
 - Entity expansion attacks (Billion Laughs)
+
+(The stdlib `ElementTree` resolves no external entities regardless, so this is defense-in-depth.)
 
 ### OAuth Security
 
@@ -536,7 +541,7 @@ Feed content is sanitized using Bleach with strict allowlists:
 
 ### Cache Purge
 
-Manual "Regenerate" button re-queues feeds but cannot purge Cloudflare's edge cache. Content updates are visible after the 1-hour TTL expires.
+Edge cache purging **is** implemented. After a content-modifying admin action (add/remove feed, import OPML, regenerate, fetch-now), the Worker purges the cached public paths via a dual-layer strategy: a global purge through the Cloudflare Purge API when `CLOUDFLARE_ZONE_ID` + `CLOUDFLARE_API_TOKEN` are configured, plus a local PoP purge via the Cache API. When those secrets are absent (or on `*.workers.dev`), only the local PoP is purged and other PoPs refresh on the existing TTL. See [docs/CACHING.md](CACHING.md).
 
 ### Search Indexing Transactions
 

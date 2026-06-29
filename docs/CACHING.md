@@ -60,7 +60,7 @@ Visitors in both the fresh and stale windows get edge-cached responses (~20-50ms
 
 ### Cacheable Routes
 
-These routes return `Cache-Control` headers and are cached at the edge (`src/main.py:1541-1552`):
+These routes return `Cache-Control` headers and are cached at the edge (registered as `cacheable=True` routes in `src/main.py`, see the router built in `_create_router`):
 
 | Route | Content Type |
 |-------|-------------|
@@ -80,12 +80,12 @@ These routes return `Cache-Control` headers and are cached at the edge (`src/mai
 |-------|--------------|--------|
 | `/search` | `max-age=0` | User-specific query results |
 | `/admin/*` | `no-store` | Authentication-gated, state-mutating |
-| `/auth/github*` | `no-store` | OAuth flow |
+| `/auth/github*` | (none) | OAuth endpoints return 302 redirects with only a `Location` header — no `Cache-Control` is set. (Redirects to the provider/back are not meaningfully cacheable anyway.) |
 | `/health` | (none) | Must reflect current state |
 
 ## Edge Cache Pre-Warming
 
-After the hourly cron scheduler enqueues feed fetches and runs retention cleanup, it requests the four most important pages on itself (`src/main.py:819-827`):
+After the hourly cron scheduler enqueues feed fetches and runs retention cleanup, it requests the four most important pages on itself (`src/main.py`, the prewarm loop in the scheduler over `CACHEABLE_PATHS`):
 
 ```python
 for path in CACHEABLE_PATHS:
@@ -159,7 +159,7 @@ This design means:
 
 ## Workers Static Assets
 
-CSS, JS, images, and favicons are served by [Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/) (`wrangler.jsonc:111-114`):
+CSS, JS, images, and favicons are served by [Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/) (the `assets` binding in each `wrangler.jsonc`):
 
 ```jsonc
 "assets": {
@@ -178,7 +178,7 @@ Static assets and Worker responses use independent cache paths. Purging Worker-g
 
 ## Conditional GETs (Upstream Feed Fetching)
 
-When fetching upstream feeds, the Worker stores and reuses `ETag` and `Last-Modified` headers from each response (`src/main.py:991-996`):
+When fetching upstream feeds, the Worker stores and reuses `ETag` and `Last-Modified` headers from each response (`src/main.py`, the conditional-request headers in the feed fetch path):
 
 ```python
 if etag:

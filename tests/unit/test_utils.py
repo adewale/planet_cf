@@ -20,6 +20,9 @@ from src.utils import (
     normalize_entry_content,
     parse_iso_datetime,
     redirect_response,
+    safe_display_url,
+    to_rfc822,
+    to_rfc3339,
     truncate_error,
     validate_feed_id,
     xml_escape,
@@ -420,6 +423,11 @@ class TestJsonResponse:
         resp = json_response({"key": "value"})
         assert resp.headers["Content-Type"] == "application/json"
 
+    def test_nosniff_header(self):
+        """M-S4: JSON responses carry X-Content-Type-Options: nosniff."""
+        resp = json_response({"key": "value"})
+        assert resp.headers["X-Content-Type-Options"] == "nosniff"
+
     def test_serializes_data(self):
         """Data is JSON serialized in body."""
         resp = json_response({"key": "value"})
@@ -502,3 +510,109 @@ class TestFeedResponse:
         """Body matches input content."""
         resp = feed_response("<rss/>", "application/rss+xml")
         assert resp.body == "<rss/>"
+
+    def test_nosniff_header(self):
+        """M-S4: feed responses carry X-Content-Type-Options: nosniff."""
+        resp = feed_response("<rss/>", "application/rss+xml")
+        assert resp.headers["X-Content-Type-Options"] == "nosniff"
+
+
+# =============================================================================
+# safe_display_url (M-S1)
+# =============================================================================
+
+
+class TestSafeDisplayUrl:
+    """Tests for safe_display_url() scheme allow-list."""
+
+    def test_allows_https(self):
+        assert safe_display_url("https://example.com/post") == "https://example.com/post"
+
+    def test_allows_http(self):
+        assert safe_display_url("http://example.com/post") == "http://example.com/post"
+
+    def test_allows_mailto(self):
+        assert safe_display_url("mailto:a@example.com") == "mailto:a@example.com"
+
+    def test_allows_site_relative(self):
+        assert safe_display_url("/feed.atom") == "/feed.atom"
+
+    def test_allows_protocol_relative(self):
+        assert safe_display_url("//cdn.example.com/x") == "//cdn.example.com/x"
+
+    def test_blocks_javascript_scheme(self):
+        assert safe_display_url("javascript:alert(1)") == "#"
+
+    def test_blocks_javascript_scheme_case_insensitive(self):
+        assert safe_display_url("JavaScript:alert(1)") == "#"
+
+    def test_blocks_javascript_with_leading_space(self):
+        # Stored value may have leading whitespace; it is stripped before checking.
+        assert safe_display_url("  javascript:alert(1)") == "#"
+
+    def test_blocks_data_uri(self):
+        assert safe_display_url("data:text/html,<script>alert(1)</script>") == "#"
+
+    def test_blocks_vbscript(self):
+        assert safe_display_url("vbscript:msgbox(1)") == "#"
+
+    def test_empty_returns_hash(self):
+        assert safe_display_url("") == "#"
+
+    def test_none_returns_hash(self):
+        assert safe_display_url(None) == "#"
+
+    def test_bare_relative_path_allowed(self):
+        # No scheme present (no colon before a path separator) → treated as relative.
+        assert safe_display_url("relative/path") == "relative/path"
+
+
+# =============================================================================
+# Feed date formatters (M-P4)
+# =============================================================================
+
+
+class TestToRfc822:
+    """Tests for to_rfc822() (RSS <pubDate>)."""
+
+    def test_aware_iso(self):
+        assert to_rfc822("2026-06-15T14:30:00Z") == "Mon, 15 Jun 2026 14:30:00 +0000"
+
+    def test_naive_iso_assumed_utc(self):
+        assert to_rfc822("2026-06-15T14:30:00") == "Mon, 15 Jun 2026 14:30:00 +0000"
+
+    def test_sql_space_separated(self):
+        assert to_rfc822("2026-06-15 14:30:00") == "Mon, 15 Jun 2026 14:30:00 +0000"
+
+    def test_offset_converted_to_utc(self):
+        # +02:00 → 12:30 UTC
+        assert to_rfc822("2026-06-15T14:30:00+02:00") == "Mon, 15 Jun 2026 12:30:00 +0000"
+
+    def test_empty_returns_empty(self):
+        assert to_rfc822("") == ""
+        assert to_rfc822(None) == ""
+
+    def test_unparseable_returns_empty(self):
+        assert to_rfc822("not a date") == ""
+
+
+class TestToRfc3339:
+    """Tests for to_rfc3339() (Atom <published>/<updated>, RSS1.0 dc:date)."""
+
+    def test_aware_iso_no_double_zone(self):
+        # Must not emit offset AND Z.
+        result = to_rfc3339("2026-06-15T14:30:00+00:00")
+        assert result == "2026-06-15T14:30:00Z"
+
+    def test_naive_iso_assumed_utc(self):
+        assert to_rfc3339("2026-06-15T14:30:00") == "2026-06-15T14:30:00Z"
+
+    def test_sql_space_separated(self):
+        assert to_rfc3339("2026-06-15 14:30:00") == "2026-06-15T14:30:00Z"
+
+    def test_strips_microseconds(self):
+        assert to_rfc3339("2026-06-15T14:30:00.123456Z") == "2026-06-15T14:30:00Z"
+
+    def test_empty_returns_empty(self):
+        assert to_rfc3339("") == ""
+        assert to_rfc3339(None) == ""

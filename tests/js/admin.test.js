@@ -52,7 +52,7 @@ describe('enterEditMode', () => {
   });
 
   it('adds editing class to title div', async () => {
-    const { enterEditMode } = await import('../../static/admin.js');
+    const { enterEditMode } = await import('../../assets/static/admin.js');
     const titleDiv = document.querySelector('.feed-title');
 
     expect(titleDiv.classList.contains('editing')).toBe(false);
@@ -61,7 +61,7 @@ describe('enterEditMode', () => {
   });
 
   it('focuses the input field', async () => {
-    const { enterEditMode } = await import('../../static/admin.js');
+    const { enterEditMode } = await import('../../assets/static/admin.js');
     const titleDiv = document.querySelector('.feed-title');
     const input = titleDiv.querySelector('.feed-title-input');
 
@@ -93,7 +93,7 @@ describe('cancelEditTitle', () => {
   });
 
   it('removes editing class from title div', async () => {
-    const { enterEditMode, cancelEditTitle } = await import('../../static/admin.js');
+    const { enterEditMode, cancelEditTitle } = await import('../../assets/static/admin.js');
     const titleDiv = document.querySelector('.feed-title');
 
     enterEditMode(titleDiv);
@@ -104,7 +104,7 @@ describe('cancelEditTitle', () => {
   });
 
   it('resets input value to current text', async () => {
-    const { enterEditMode, cancelEditTitle } = await import('../../static/admin.js');
+    const { enterEditMode, cancelEditTitle } = await import('../../assets/static/admin.js');
     const titleDiv = document.querySelector('.feed-title');
     const input = titleDiv.querySelector('.feed-title-input');
 
@@ -116,7 +116,7 @@ describe('cancelEditTitle', () => {
   });
 
   it('clears input when text is Untitled', async () => {
-    const { cancelEditTitle } = await import('../../static/admin.js');
+    const { cancelEditTitle } = await import('../../assets/static/admin.js');
     const titleDiv = document.querySelector('.feed-title');
     const textSpan = titleDiv.querySelector('.feed-title-text');
     const input = titleDiv.querySelector('.feed-title-input');
@@ -143,6 +143,8 @@ describe('saveFeedTitle', () => {
 
     // Mock fetch
     fetchMock = vi.fn(() => Promise.resolve({
+      ok: true,
+      status: 200,
       json: () => Promise.resolve({ success: true })
     }));
     global.fetch = fetchMock;
@@ -153,18 +155,22 @@ describe('saveFeedTitle', () => {
     vi.restoreAllMocks();
   });
 
-  it('removes editing class immediately', async () => {
-    const { enterEditMode, saveFeedTitle } = await import('../../static/admin.js');
+  it('removes editing class after the request resolves', async () => {
+    const { enterEditMode, saveFeedTitle } = await import('../../assets/static/admin.js');
     const titleDiv = document.querySelector('.feed-title');
 
     enterEditMode(titleDiv);
     saveFeedTitle(titleDiv);
 
+    // The editing class is removed inside the .then/.catch of the fetch chain,
+    // i.e. asynchronously - not synchronously on the saveFeedTitle call.
+    await new Promise(resolve => setTimeout(resolve, 0));
+
     expect(titleDiv.classList.contains('editing')).toBe(false);
   });
 
   it('calls fetch with correct URL and method', async () => {
-    const { saveFeedTitle } = await import('../../static/admin.js');
+    const { saveFeedTitle } = await import('../../assets/static/admin.js');
     const titleDiv = document.querySelector('.feed-title');
 
     saveFeedTitle(titleDiv);
@@ -173,13 +179,16 @@ describe('saveFeedTitle', () => {
       '/admin/feeds/42',
       expect.objectContaining({
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' }
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': expect.anything()  // H15: token attached to every mutating fetch
+        })
       })
     );
   });
 
   it('sends the trimmed title in request body', async () => {
-    const { saveFeedTitle } = await import('../../static/admin.js');
+    const { saveFeedTitle } = await import('../../assets/static/admin.js');
     const titleDiv = document.querySelector('.feed-title');
     const input = titleDiv.querySelector('.feed-title-input');
 
@@ -192,7 +201,7 @@ describe('saveFeedTitle', () => {
   });
 
   it('updates text span on success', async () => {
-    const { saveFeedTitle } = await import('../../static/admin.js');
+    const { saveFeedTitle } = await import('../../assets/static/admin.js');
     const titleDiv = document.querySelector('.feed-title');
     const input = titleDiv.querySelector('.feed-title-input');
     const textSpan = titleDiv.querySelector('.feed-title-text');
@@ -207,7 +216,7 @@ describe('saveFeedTitle', () => {
   });
 
   it('shows Untitled when title is empty', async () => {
-    const { saveFeedTitle } = await import('../../static/admin.js');
+    const { saveFeedTitle } = await import('../../assets/static/admin.js');
     const titleDiv = document.querySelector('.feed-title');
     const input = titleDiv.querySelector('.feed-title-input');
     const textSpan = titleDiv.querySelector('.feed-title-text');
@@ -239,7 +248,7 @@ describe('escapeHtml', () => {
   });
 
   it('escapes HTML special characters', async () => {
-    const { escapeHtml } = await import('../../static/admin.js');
+    const { escapeHtml } = await import('../../assets/static/admin.js');
 
     expect(escapeHtml('<script>alert("xss")</script>')).toBe(
       '&lt;script&gt;alert("xss")&lt;/script&gt;'
@@ -247,19 +256,19 @@ describe('escapeHtml', () => {
   });
 
   it('escapes ampersands', async () => {
-    const { escapeHtml } = await import('../../static/admin.js');
+    const { escapeHtml } = await import('../../assets/static/admin.js');
 
     expect(escapeHtml('foo & bar')).toBe('foo &amp; bar');
   });
 
   it('preserves normal text', async () => {
-    const { escapeHtml } = await import('../../static/admin.js');
+    const { escapeHtml } = await import('../../assets/static/admin.js');
 
     expect(escapeHtml('Hello World')).toBe('Hello World');
   });
 
   it('handles empty string', async () => {
-    const { escapeHtml } = await import('../../static/admin.js');
+    const { escapeHtml } = await import('../../assets/static/admin.js');
 
     expect(escapeHtml('')).toBe('');
   });
@@ -278,7 +287,9 @@ describe('rebuildSearchIndex', () => {
     global.document = dom.window.document;
 
     fetchMock = vi.fn(() => Promise.resolve({
-      json: () => Promise.resolve({ success: true })
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ success: true, indexed: 5, failed: 0, total: 5 })
     }));
     global.fetch = fetchMock;
   });
@@ -289,7 +300,7 @@ describe('rebuildSearchIndex', () => {
   });
 
   it('disables button and updates text', async () => {
-    const { rebuildSearchIndex } = await import('../../static/admin.js');
+    const { rebuildSearchIndex } = await import('../../assets/static/admin.js');
     const btn = document.getElementById('reindex-btn');
 
     rebuildSearchIndex();
@@ -299,30 +310,33 @@ describe('rebuildSearchIndex', () => {
   });
 
   it('calls POST to /admin/reindex', async () => {
-    const { rebuildSearchIndex } = await import('../../static/admin.js');
+    const { rebuildSearchIndex } = await import('../../assets/static/admin.js');
 
     rebuildSearchIndex();
 
     expect(fetchMock).toHaveBeenCalledWith(
       '/admin/reindex',
-      { method: 'POST' }
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'X-CSRF-Token': expect.anything() })
+      })
     );
   });
 
-  it('shows Done! on success', async () => {
-    const { rebuildSearchIndex } = await import('../../static/admin.js');
+  it('shows Done! with the indexed count on success', async () => {
+    const { rebuildSearchIndex } = await import('../../assets/static/admin.js');
     const btn = document.getElementById('reindex-btn');
 
     await rebuildSearchIndex();
     await new Promise(resolve => setTimeout(resolve, 0));
 
-    expect(btn.textContent).toBe('Done!');
+    expect(btn.textContent).toBe('Done! (5 indexed)');
   });
 
-  it('shows Failed on error', async () => {
+  it('shows Failed on network error', async () => {
     fetchMock.mockImplementation(() => Promise.reject(new Error('Network error')));
 
-    const { rebuildSearchIndex } = await import('../../static/admin.js');
+    const { rebuildSearchIndex } = await import('../../assets/static/admin.js');
     const btn = document.getElementById('reindex-btn');
 
     await rebuildSearchIndex();
@@ -352,10 +366,12 @@ describe('loadDLQ', () => {
 
   it('shows empty state when no feeds', async () => {
     global.fetch = vi.fn(() => Promise.resolve({
+      ok: true,
+      status: 200,
       json: () => Promise.resolve({ feeds: [] })
     }));
 
-    const { loadDLQ } = await import('../../static/admin.js');
+    const { loadDLQ } = await import('../../assets/static/admin.js');
     await loadDLQ();
     await new Promise(resolve => setTimeout(resolve, 0));
 
@@ -365,6 +381,8 @@ describe('loadDLQ', () => {
 
   it('renders feed items with escaped content', async () => {
     global.fetch = vi.fn(() => Promise.resolve({
+      ok: true,
+      status: 200,
       json: () => Promise.resolve({
         feeds: [{
           id: 1,
@@ -375,7 +393,7 @@ describe('loadDLQ', () => {
       })
     }));
 
-    const { loadDLQ } = await import('../../static/admin.js');
+    const { loadDLQ } = await import('../../assets/static/admin.js');
     await loadDLQ();
     await new Promise(resolve => setTimeout(resolve, 0));
 
@@ -404,10 +422,12 @@ describe('loadAuditLog', () => {
 
   it('shows empty state when no entries', async () => {
     global.fetch = vi.fn(() => Promise.resolve({
+      ok: true,
+      status: 200,
       json: () => Promise.resolve({ entries: [] })
     }));
 
-    const { loadAuditLog } = await import('../../static/admin.js');
+    const { loadAuditLog } = await import('../../assets/static/admin.js');
     await loadAuditLog();
     await new Promise(resolve => setTimeout(resolve, 0));
 
@@ -417,6 +437,8 @@ describe('loadAuditLog', () => {
 
   it('renders audit entries', async () => {
     global.fetch = vi.fn(() => Promise.resolve({
+      ok: true,
+      status: 200,
       json: () => Promise.resolve({
         entries: [{
           action: 'feed_added',
@@ -426,7 +448,7 @@ describe('loadAuditLog', () => {
       })
     }));
 
-    const { loadAuditLog } = await import('../../static/admin.js');
+    const { loadAuditLog } = await import('../../assets/static/admin.js');
     await loadAuditLog();
     await new Promise(resolve => setTimeout(resolve, 0));
 
@@ -449,6 +471,8 @@ describe('keyboard event handling', () => {
     global.document = dom.window.document;
 
     fetchMock = vi.fn(() => Promise.resolve({
+      ok: true,
+      status: 200,
       json: () => Promise.resolve({ success: true })
     }));
     global.fetch = fetchMock;
@@ -460,7 +484,7 @@ describe('keyboard event handling', () => {
   });
 
   it('Enter key saves the title', async () => {
-    const { initTitleEditing, enterEditMode } = await import('../../static/admin.js');
+    const { initTitleEditing, enterEditMode } = await import('../../assets/static/admin.js');
     initTitleEditing();
 
     const titleDiv = document.querySelector('.feed-title');
@@ -473,11 +497,13 @@ describe('keyboard event handling', () => {
     input.dispatchEvent(event);
 
     expect(fetchMock).toHaveBeenCalled();
+    // The editing class is removed asynchronously inside the fetch .then/.catch.
+    await new Promise(resolve => setTimeout(resolve, 0));
     expect(titleDiv.classList.contains('editing')).toBe(false);
   });
 
   it('Escape key cancels editing', async () => {
-    const { initTitleEditing, enterEditMode } = await import('../../static/admin.js');
+    const { initTitleEditing, enterEditMode } = await import('../../assets/static/admin.js');
     initTitleEditing();
 
     const titleDiv = document.querySelector('.feed-title');
@@ -507,6 +533,8 @@ describe('click event delegation', () => {
     global.document = dom.window.document;
 
     fetchMock = vi.fn(() => Promise.resolve({
+      ok: true,
+      status: 200,
       json: () => Promise.resolve({ success: true })
     }));
     global.fetch = fetchMock;
@@ -518,7 +546,7 @@ describe('click event delegation', () => {
   });
 
   it('clicking title text enters edit mode', async () => {
-    const { initTitleEditing } = await import('../../static/admin.js');
+    const { initTitleEditing } = await import('../../assets/static/admin.js');
     initTitleEditing();
 
     const titleDiv = document.querySelector('.feed-title');
@@ -530,7 +558,7 @@ describe('click event delegation', () => {
   });
 
   it('clicking save button saves and exits edit mode', async () => {
-    const { initTitleEditing, enterEditMode } = await import('../../static/admin.js');
+    const { initTitleEditing, enterEditMode } = await import('../../assets/static/admin.js');
     initTitleEditing();
 
     const titleDiv = document.querySelector('.feed-title');
@@ -540,11 +568,13 @@ describe('click event delegation', () => {
     saveBtn.click();
 
     expect(fetchMock).toHaveBeenCalled();
+    // The editing class is removed asynchronously inside the fetch .then/.catch.
+    await new Promise(resolve => setTimeout(resolve, 0));
     expect(titleDiv.classList.contains('editing')).toBe(false);
   });
 
   it('clicking cancel button exits edit mode without saving', async () => {
-    const { initTitleEditing, enterEditMode } = await import('../../static/admin.js');
+    const { initTitleEditing, enterEditMode } = await import('../../assets/static/admin.js');
     initTitleEditing();
 
     const titleDiv = document.querySelector('.feed-title');

@@ -360,12 +360,12 @@ class TestEntryContentProcessorDate:
     """Tests for date parsing."""
 
     def test_parses_published_parsed(self):
-        """Parses published_parsed time tuple."""
+        """Parses published_parsed time tuple to canonical UTC Z format (M-P4)."""
         entry = {"published_parsed": (2026, 1, 15, 12, 30, 45, 0, 0, 0)}
         processor = EntryContentProcessor(entry, feed_id=1)
 
         result = processor.parse_published_date()
-        assert result == "2026-01-15T12:30:45"
+        assert result == "2026-01-15T12:30:45Z"
 
     def test_parses_updated_parsed_fallback(self):
         """Falls back to updated_parsed when published_parsed missing."""
@@ -373,7 +373,7 @@ class TestEntryContentProcessorDate:
         processor = EntryContentProcessor(entry, feed_id=1)
 
         result = processor.parse_published_date()
-        assert result == "2026-02-20T08:00:00"
+        assert result == "2026-02-20T08:00:00Z"
 
     def test_prefers_published_over_updated(self):
         """Prefers published_parsed over updated_parsed."""
@@ -384,7 +384,14 @@ class TestEntryContentProcessorDate:
         processor = EntryContentProcessor(entry, feed_id=1)
 
         result = processor.parse_published_date()
-        assert result == "2026-01-01T00:00:00"
+        assert result == "2026-01-01T00:00:00Z"
+
+    def test_handles_out_of_range_tuple(self):
+        """Out-of-range tuples (e.g. month 13) return None, not raise (Low)."""
+        entry = {"published_parsed": (2026, 13, 40, 25, 61, 61, 0, 0, 0)}
+        processor = EntryContentProcessor(entry, feed_id=1)
+
+        assert processor.parse_published_date() is None
 
     def test_returns_none_when_no_dates(self):
         """Returns None when no date fields present."""
@@ -406,7 +413,7 @@ class TestEntryContentProcessorDate:
         processor = EntryContentProcessor(entry, feed_id=1)
 
         result = processor.parse_published_date()
-        assert result == "2026-03-10T15:00:00"
+        assert result == "2026-03-10T15:00:00Z"
 
 
 class TestEntryContentProcessorSummary:
@@ -471,7 +478,7 @@ class TestEntryContentProcessorProcess:
         assert result.content == "<p>Content</p>"
         assert result.summary == "Summary text"
         assert result.author == "Author Name"
-        assert result.published_at == "2026-01-15T12:00:00"
+        assert result.published_at == "2026-01-15T12:00:00Z"
 
     def test_process_handles_minimal_entry(self):
         """process() handles entry with minimal fields."""

@@ -1,6 +1,7 @@
 # tests/unit/test_queue_processing.py
 """Unit tests for queue() batch processing in src/main.py."""
 
+import asyncio
 from dataclasses import dataclass
 from unittest.mock import AsyncMock, patch
 
@@ -214,7 +215,13 @@ class TestQueueBatchProcessing:
 
     @pytest.mark.asyncio
     async def test_timeout_retries_message(self):
-        """Feed that times out is retried."""
+        """Feed that exceeds the feed timeout is retried.
+
+        Exercises the real asyncio.wait_for timeout path: _process_single_feed
+        is replaced with a genuinely slow stub and the per-feed timeout is forced
+        to a tiny value, so wait_for actually raises TimeoutError (and cancels
+        the slow coroutine) rather than leaking an unawaited coroutine.
+        """
         env = MockQueueEnv()
         worker = Default()
         worker.env = env
@@ -228,15 +235,26 @@ class TestQueueBatchProcessing:
         )
         batch = MockBatch([msg])
 
+        process_started = False
+
         async def mock_slow_process(job, event=None):
-            raise TimeoutError("Took too long")
+            nonlocal process_started
+            process_started = True
+            # Sleep far longer than the (tiny) feed timeout so the real
+            # asyncio.wait_for raises TimeoutError and cancels this coroutine.
+            await asyncio.sleep(10)
+            return {"entries_added": 1, "entries_found": 1}
 
         with (
             patch.object(worker, "_process_single_feed", side_effect=mock_slow_process),
             patch.object(worker, "_record_feed_error", new_callable=AsyncMock, return_value=False),
-            patch("asyncio.wait_for", side_effect=TimeoutError("Timeout")),
+            # Force the per-feed timeout tiny so the slow stub trips it quickly.
+            patch.object(worker, "_get_feed_timeout", return_value=0.01),
         ):
             await worker.queue(batch)
 
+        # The slow coroutine was actually entered before being timed out.
+        assert process_started is True
+        # Timeout -> message retried, not acked.
         assert msg.retried is True
         assert msg.acked is False

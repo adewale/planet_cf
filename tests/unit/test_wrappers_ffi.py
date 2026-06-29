@@ -511,6 +511,12 @@ class TestSafeVectorizeFFI:
 
     @pytest.mark.asyncio
     async def test_upsert_converts_vectors(self, pyodide_fakes):
+        """upsert must convert its Python list through _to_js_value (lesson 29).
+
+        M-T3: assert the value actually crossed the boundary (a FakeJsProxy that
+        round-trips), not merely that it is not None — and that the recursion into
+        the list/dict is preserved.
+        """
         captured = {}
 
         class FakeIndex:
@@ -526,11 +532,17 @@ class TestSafeVectorizeFFI:
 
         idx = W.SafeVectorize(FakeIndex())
         await idx.upsert([{"id": "1", "values": [0.1]}])
-        assert captured["vectors"] is not None
+        # Not a raw Python list — converted at the boundary, round-trips to the input.
+        assert not isinstance(captured["vectors"], list)
+        assert captured["vectors"].to_py() == [{"id": "1", "values": [0.1]}]
 
     @pytest.mark.asyncio
-    async def test_deleteByIds_passes_through(self, pyodide_fakes):
-        deleted = []
+    async def test_deleteByIds_converts_ids_through_to_js_value(self, pyodide_fakes):
+        """M-P3: deleteByIds must convert the Python list via _to_js_value before
+        crossing the FFI (like upsert/query), not pass a raw Python list/PyProxy.
+        Under the Pyodide fakes _to_js_value yields a FakeJsProxy, so the binding
+        receives a JS-converted value whose .to_py() round-trips to the list."""
+        captured = {}
 
         class FakeIndex:
             async def query(self, vector, options):
@@ -540,11 +552,13 @@ class TestSafeVectorizeFFI:
                 pass
 
             async def deleteByIds(self, ids):
-                deleted.extend(ids)
+                captured["ids"] = ids
 
         idx = W.SafeVectorize(FakeIndex())
         await idx.deleteByIds(["id1", "id2"])
-        assert deleted == ["id1", "id2"]
+        # Not a raw Python list — it was converted at the boundary.
+        assert not isinstance(captured["ids"], list)
+        assert captured["ids"].to_py() == ["id1", "id2"]
 
 
 # =============================================================================
@@ -829,8 +843,6 @@ class TestBindHelpersFFI:
             site_url="https://x.com",
             author_name=_Undefined(),
             author_email=JsNull(),
-            etag='"abc"',
-            last_modified=None,
             feed_id=42,
         )
         assert result[0] is None  # title
@@ -838,6 +850,8 @@ class TestBindHelpersFFI:
         assert result[2] is None  # author_name
         assert result[3] is None  # author_email
         assert result[-1] == 42
+        # etag/last_modified are no longer part of the tuple (H2).
+        assert len(result) == 5
 
 
 # =============================================================================

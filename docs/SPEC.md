@@ -2130,7 +2130,7 @@ VALUES ('adewale', 0, 'Adewale Oshineye', 1)
 ON CONFLICT(github_username) DO NOTHING;
 ```
 
-**Note:** The `github_id` is populated on first login via OAuth. Additional admins can be added through the admin interface by existing admins.
+**Note:** The `github_id` is populated on first login via OAuth. There is no admin-management UI: additional admins are added with `scripts/seed_admins.py` (which reads `config/admins.json`) or by INSERTing directly into the D1 `admins` table.
 
 ### 7.3 Admin API Endpoints
 

@@ -401,28 +401,22 @@ async def test_full_flow(self):
 
 **Symptom:** Searching for a title doesn't return that article first, or at all.
 
-**Solution:** Three-tier ranking in hybrid search:
+**Solution:** Keyword matches rank in tiers, and **all** keyword tiers rank above semantic matches. Semantic results come last, used only to surface conceptually-related entries that no keyword tier already captured. This matches the code in `_search_entries` (`src/main.py`) and SPEC §13.4.
+
 ```python
-# Priority 1: Exact title matches (score 1.0)
-# Priority 2: Semantic matches (by similarity score)
-# Priority 3: Keyword-only matches (by date)
-
-for entry in keyword_entries:
-    title_lower = (entry.get("title") or "").lower().strip()
-    query_lower = query.lower().strip()
-
-    if query_lower == title_lower:
-        # Exact title match - highest priority
-        results.append({**entry, "score": 1.0, "match_type": "exact_title"})
-    elif query_lower in title_lower:
-        # Partial title match - still high priority
-        results.append({**entry, "score": 0.95, "match_type": "title_match"})
-
-# Then add semantic matches (by score, excluding already-added)
-# Then add remaining keyword matches (by date)
+# FIRST TIER  — keyword matches with title relevance:
+#   exact title match        -> score 1.0   match_type="exact_title"
+#   title contained in query -> score 0.98  match_type="title_in_query"
+#   query contained in title -> score 0.95  match_type="query_in_title"
+# SECOND TIER — remaining keyword matches (content/partial):
+#   keyword content match    -> score 0.80  match_type="keyword_content"
+# THIRD TIER  — semantic matches not already added, by similarity score:
+#   semantic match           -> score = vectorize similarity, match_type="semantic"
 ```
 
-**Why this matters:** Users searching for specific content expect literal matches to rank first. Semantic similarity is useful for discovery but shouldn't override explicit matches.
+Order of assembly (highest first): exact_title → title_in_query → query_in_title → keyword_content → semantic. The code comment states the rule directly: *"Keyword matches always rank above semantic matches."*
+
+**Why this matters:** Users searching for specific content expect literal matches to rank first. Semantic similarity is useful for discovery but never outranks an explicit keyword/title match.
 
 ---
 
@@ -549,7 +543,7 @@ await safe_db.prepare("INSERT INTO t (a) VALUES (?)").bind(None).run()
 
 ## 18. Visual Fidelity: Converting Planet/Venus Sites
 
-When converting an existing Planet or Venus website to PlanetCF, achieving 100% visual fidelity requires systematic attention to detail.
+When converting an existing Planet or Venus website to Planet CF, achieving 100% visual fidelity requires systematic attention to detail.
 
 ### The Problem
 
@@ -593,7 +587,7 @@ python scripts/convert_planet.py https://planetpython.org/ --name planet-python
 
 | Tool | Purpose |
 |------|---------|
-| `scripts/convert_planet.py` | Converts Planet/Venus sites to PlanetCF |
+| `scripts/convert_planet.py` | Converts Planet/Venus sites to Planet CF |
 | `scripts/visual_compare.py` | Screenshot-based visual comparison |
 
 ### Quick Reference: Visual Fidelity Gotchas
@@ -747,14 +741,15 @@ if value is None or _is_js_undefined(value):
 
 **Why unit tests can't catch this:** Unit tests run on the system CPython (3.13+) where `forbid_dtd` exists. The bug only manifests in the Pyodide runtime used by Cloudflare Workers.
 
-**Solution:** Use portable XXE mitigation — strip DOCTYPE declarations with regex before parsing:
+**Solution:** Use a portable XXE mitigation that does not depend on the parser flag. The robust form is to **reject** any document containing a DTD/entity declaration before parsing, rather than relying on `forbid_dtd` or trying to surgically strip the declaration (a `<!DOCTYPE[^>]*>` regex breaks on internal subsets that contain `>`):
+
 ```python
-import re
 import xml.etree.ElementTree as ET
 
-# ✅ Works in both CPython and Pyodide
-opml_content = re.sub(r"<!DOCTYPE[^>]*>", "", opml_content, count=1)
-root = ET.fromstring(opml_content)
+# ✅ Works in both CPython and Pyodide: refuse DTDs outright
+if "<!DOCTYPE" in opml_content or "<!ENTITY" in opml_content:
+    raise ValueError("DTD/entity declarations are not allowed in OPML")
+root = ET.fromstring(opml_content)  # stdlib ET resolves no external entities anyway
 
 # ❌ Fails in Pyodide
 parser = ET.XMLParser(forbid_dtd=True)  # CPython 3.13.3+ only

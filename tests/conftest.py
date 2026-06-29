@@ -13,12 +13,53 @@ from types import ModuleType
 from typing import Any
 
 import pytest
+from hypothesis import HealthCheck, settings
+
+# =============================================================================
+# Hypothesis Profile (M-T1)
+# =============================================================================
+# Under coverage/tracing instrumentation, individual examples can exceed
+# Hypothesis's default per-example deadline and trip the `too_slow` health
+# check (e.g. regex-strategy draws), making CI flaky. Register and load a
+# profile that disables the deadline and suppresses the timing health checks so
+# property tests don't flake when run with --cov.
+
+settings.register_profile(
+    "ci",
+    deadline=None,
+    suppress_health_check=[
+        HealthCheck.too_slow,
+        HealthCheck.function_scoped_fixture,
+    ],
+)
+settings.load_profile("ci")
 
 # =============================================================================
 # Shared Test Constants
 # =============================================================================
 
 TEST_SESSION_SECRET = "test-secret-key-for-testing-only-32chars"  # pragma: allowlist secret
+
+
+def _csrf_token_from_cookie(cookies: str, secret: str = TEST_SESSION_SECRET) -> str:
+    """Compute the CSRF token matching a session cookie (mirrors the server).
+
+    Used by MockRequest to auto-supply a valid token for authenticated
+    state-changing requests — modelling a real admin browser, which receives
+    the token embedded in the rendered admin page. Returns "" if no session.
+    """
+    from src.auth import generate_csrf_token
+
+    if not cookies:
+        return ""
+    try:
+        val = cookies.split("session=", 1)[1].split(";", 1)[0] if "session=" in cookies else cookies
+        payload_b64 = val.rsplit(".", 1)[0]
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+        return generate_csrf_token(payload, secret)
+    except Exception:
+        return ""
+
 
 # Add src directory to path so imports work like in Workers environment
 _src_path = str(Path(__file__).parent.parent / "src")
@@ -77,6 +118,8 @@ class MockRequest:
         cookies: str = "",
         form_data: dict | None = None,
         json_data: dict | None = None,
+        csrf: bool = True,
+        secret: str = TEST_SESSION_SECRET,
     ):
         from unittest.mock import MagicMock
 
@@ -87,6 +130,19 @@ class MockRequest:
         self._form_data = form_data or {}
         self._json_data = json_data or {}
 
+        # H15: model a correct admin browser. When the request carries a session
+        # cookie, supply the matching CSRF token (via the X-CSRF-Token header and
+        # a csrf_token form field) unless the test opts out with csrf=False or
+        # provides its own. This lets the ~20 existing admin-mutation tests keep
+        # passing; test_csrf.py covers the missing/invalid/cross-session cases.
+        self._csrf_token = _csrf_token_from_cookie(cookies, secret) if csrf else ""
+        if (
+            self._csrf_token
+            and "csrf_token" not in self._form_data
+            and not self._has_explicit_header(headers, "x-csrf-token")
+        ):
+            self._form_data = {**self._form_data, "csrf_token": self._csrf_token}
+
         # Use MagicMock headers with side_effect for cookie/header lookups
         # (compatible with SafeHeaders which calls headers.get())
         self.headers = MagicMock()
@@ -94,11 +150,18 @@ class MockRequest:
         self._raw_headers = headers or {}
         self.headers.get = MagicMock(side_effect=self._get_header)
 
+    @staticmethod
+    def _has_explicit_header(headers: dict | None, name: str) -> bool:
+        return bool(headers) and any(k.lower() == name.lower() for k in headers)
+
     def _get_header(self, name, default=None):
         # Check explicit headers first (case-insensitive)
         for key, val in self._raw_headers.items():
             if key.lower() == name.lower():
                 return val
+        # Auto-supply the session-matched CSRF token (explicit header wins above).
+        if name.lower() == "x-csrf-token" and self._csrf_token:
+            return self._csrf_token
         # Then check cookie
         if name.lower() == "cookie":
             return self._cookies
@@ -150,6 +213,27 @@ class MockD1Result:
     success: bool = True
 
 
+def _count_sql_placeholders(sql: str) -> int:
+    """Count `?` bind placeholders in SQL, ignoring those inside string literals.
+
+    Mirrors real D1, which raises when the number of bound values doesn't match
+    the number of placeholders. Single- and double-quoted string contents are
+    skipped so a literal "?" in text isn't miscounted.
+    """
+    count = 0
+    quote: str | None = None
+    for ch in sql:
+        if quote is not None:
+            if ch == quote:
+                quote = None
+            continue
+        if ch in ("'", '"'):
+            quote = ch
+        elif ch == "?":
+            count += 1
+    return count
+
+
 class MockD1Statement:
     """Mock D1 prepared statement."""
 
@@ -159,6 +243,17 @@ class MockD1Statement:
         self._bound_args = []
 
     def bind(self, *args) -> "MockD1Statement":
+        # M-T3: validate bind arity against the number of `?` placeholders, like
+        # real D1. A mismatch is a real bug (this is how H3 slipped through — the
+        # old mock never checked). Statements with no placeholders that are
+        # nonetheless bound (e.g. defensive .bind() calls) are allowed when no
+        # args are passed.
+        expected = _count_sql_placeholders(self._sql)
+        if expected and len(args) != expected:
+            raise ValueError(
+                f"MockD1: bind() got {len(args)} argument(s) but SQL has "
+                f"{expected} placeholder(s). SQL: {self._sql.strip()[:200]}"
+            )
         self._bound_args = args
         return self
 
@@ -313,6 +408,13 @@ class TrackingD1Statement(MockD1Statement):
         self.bound_args: list = []
 
     def bind(self, *args) -> "TrackingD1Statement":
+        # M-T3: enforce bind-arity (see MockD1Statement.bind).
+        expected = _count_sql_placeholders(self._sql)
+        if expected and len(args) != expected:
+            raise ValueError(
+                f"MockD1: bind() got {len(args)} argument(s) but SQL has "
+                f"{expected} placeholder(s). SQL: {self._sql.strip()[:200]}"
+            )
         self.bound_args = list(args)
         self._bound_args = args
         return self
@@ -322,15 +424,33 @@ class TrackingD1:
     """Mock D1 database that tracks all prepared statements.
 
     Uses TrackingD1Statement so tests can assert on SQL and bound parameters.
+
+    Args:
+        statement_results: default result rows returned for every statement.
+        results_by_sql: optional list of (sql_substring, result_rows) pairs.
+            The first substring found in a statement's SQL wins, letting a test
+            simulate, e.g., an INSERT ... DO NOTHING that returns no row (a
+            conflict) while a following UPDATE returns a row. Falls back to
+            statement_results when nothing matches.
     """
 
-    def __init__(self, statement_results: list[dict] | None = None):
+    def __init__(
+        self,
+        statement_results: list[dict] | None = None,
+        results_by_sql: list[tuple[str, list[dict]]] | None = None,
+    ):
         self._statement_results = statement_results or []
+        self._results_by_sql = results_by_sql or []
         self.last_statement: TrackingD1Statement | None = None
         self.statements: list[TrackingD1Statement] = []
 
     def prepare(self, sql: str) -> TrackingD1Statement:
-        stmt = TrackingD1Statement(self._statement_results, sql)
+        results = self._statement_results
+        for needle, rows in self._results_by_sql:
+            if needle in sql:
+                results = rows
+                break
+        stmt = TrackingD1Statement(results, sql)
         stmt.sql = sql
         self.last_statement = stmt
         self.statements.append(stmt)
@@ -465,6 +585,11 @@ def create_signed_session(
     payload_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
     signature = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).hexdigest()
     return f"session={payload_b64}.{signature}"
+
+
+def csrf_token_for(session_cookie: str, secret: str = TEST_SESSION_SECRET) -> str:
+    """Return the CSRF token that matches a test session cookie."""
+    return _csrf_token_from_cookie(session_cookie, secret)
 
 
 def admin_row() -> dict:
@@ -643,3 +768,21 @@ def reset_factories():
     EntryFactory.reset()
     FeedJobFactory.reset()
     yield
+
+
+@pytest.fixture(autouse=True)
+def reset_auth_rate_limits():
+    """Clear the module-level auth rate-limit dict before each test (M-T5).
+
+    src.main._auth_rate_limits is keyed by IP ("unknown" for every MockRequest),
+    uses real time.time(), and is never otherwise reset. Without this, once the
+    suite accumulates enough /auth/* fetches the next auth test to run starts
+    getting 429s — an ordering-dependent time bomb.
+    """
+    import src.main as _main
+
+    if hasattr(_main, "_auth_rate_limits"):
+        _main._auth_rate_limits.clear()
+    yield
+    if hasattr(_main, "_auth_rate_limits"):
+        _main._auth_rate_limits.clear()

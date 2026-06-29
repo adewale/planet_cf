@@ -24,6 +24,7 @@ USER_AGENT = "PlanetCF/1.0 (+https://www.planetcloudflare.dev; contact@planetclo
 MAX_SEARCH_QUERY_LENGTH = 1000  # Max search query length
 MAX_SEARCH_WORDS = 10  # Max words in multi-word search
 MAX_OPML_FEEDS = 100  # Max feeds per OPML import
+MAX_OPML_UPLOAD_BYTES = 1_048_576  # 1 MiB cap on OPML uploads (M-S4) before parse
 REINDEX_COOLDOWN_SECONDS = 300  # 5 minute cooldown between reindex
 
 # Content display defaults
@@ -43,6 +44,11 @@ DEFAULT_SEARCH_TOP_K = 50
 DEFAULT_FEED_AUTO_DEACTIVATE_THRESHOLD = 10
 DEFAULT_FEED_FAILURE_THRESHOLD = 3
 FAILURE_THRESHOLD = DEFAULT_FEED_FAILURE_THRESHOLD  # Alias for use in SQL/health checks
+
+# Queue retry budget. Mirrors the consumer's `max_retries` in wrangler*.jsonc.
+# Used to record a feed failure only on the FINAL queue attempt (M-P2) so that
+# consecutive_failures counts cron CYCLES, not per-attempt retries within a cycle.
+DEFAULT_QUEUE_MAX_RETRIES = 3
 
 # Auth rate limiting (best-effort per-isolate)
 AUTH_RATE_LIMIT_MAX_REQUESTS = 10  # Max requests per window per IP
@@ -130,6 +136,7 @@ _INT_CONFIG_REGISTRY: dict[str, tuple[str, int]] = {
     "feed_timeout": ("FEED_TIMEOUT_SECONDS", FEED_TIMEOUT_SECONDS),
     "http_timeout": ("HTTP_TIMEOUT_SECONDS", HTTP_TIMEOUT_SECONDS),
     "feed_recovery_limit": ("FEED_RECOVERY_LIMIT", DEFAULT_FEED_RECOVERY_LIMIT),
+    "queue_max_retries": ("QUEUE_MAX_RETRIES", DEFAULT_QUEUE_MAX_RETRIES),
 }
 
 
@@ -180,6 +187,11 @@ def get_feed_failure_threshold(env: Any) -> int:
 def get_feed_timeout(env: Any) -> int:
     """Get per-feed processing timeout in seconds."""
     return _get_int_config(env, "feed_timeout")
+
+
+def get_queue_max_retries(env: Any) -> int:
+    """Get the queue consumer's max_retries (mirrors wrangler config)."""
+    return _get_int_config(env, "queue_max_retries")
 
 
 def get_http_timeout(env: Any) -> int:

@@ -92,6 +92,9 @@
             return;
         }
 
+        // Don't hijack browser/OS shortcuts (e.g. Cmd+K, Ctrl+J, Alt+?).
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+
         if (e.key === 'j') {
             e.preventDefault();
             select(current + 1);

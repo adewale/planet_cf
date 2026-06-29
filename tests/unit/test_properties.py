@@ -1,7 +1,6 @@
 # tests/unit/test_properties.py
 """Property-based tests using Hypothesis."""
 
-import contextlib
 import time
 from datetime import UTC
 from unittest.mock import patch
@@ -953,7 +952,9 @@ class TestSearchQueryProperties2:
     @settings(max_examples=50)
     @given(
         text=st.text(
-            alphabet=st.characters(blacklist_characters="%_"),
+            # Backslash is also a LIKE special char (it's the ESCAPE char), so a
+            # string with no %, _ or \ must pass through unchanged.
+            alphabet=st.characters(blacklist_characters="%_\\"),
             min_size=1,
             max_size=100,
         ),
@@ -1349,13 +1350,12 @@ class TestOpmlParserProperties:
         url=st.from_regex(r"https://[a-z]{1,10}\.com/feed", fullmatch=True),
     )
     @settings(max_examples=50)
-    def test_doctype_stripped_preserves_valid_content(self, doctype, url):
-        """DOCTYPE declarations are stripped without corrupting valid OPML content."""
+    def test_doctype_always_rejected(self, doctype, url):
+        """M-S3: any DOCTYPE causes a hard rejection (no feeds extracted)."""
         opml = f'<?xml version="1.0"?>{doctype}<opml version="2.0"><body><outline xmlUrl="{url}" text="T"/></body></opml>'
         feeds, errors = parse_opml(opml)
-        # After DOCTYPE stripping, the feed should still parse correctly
-        if feeds:
-            assert feeds[0]["url"] == url
+        assert feeds == []
+        assert errors
 
     @given(
         entity_name=st.from_regex(r"[a-z]{1,10}", fullmatch=True),
@@ -2646,7 +2646,14 @@ class TestEmbeddedLoaderProperties:
         assume("health" not in template_name.lower())
         assume(".html" not in template_name.lower())
         assume(".xml" not in template_name.lower())
+        # Jinja treats "/" and "." specially in template names; restrict to names
+        # that are valid-but-absent so we test the not-found path deterministically.
+        assume("/" not in template_name)
+        assume(template_name.strip() == template_name)
+        assume(template_name.strip() != "")
 
         env = get_jinja_env("default")
-        with contextlib.suppress(TemplateNotFound):
+        # M-T4: assert the exception is actually raised (the old test suppressed
+        # it, so it passed whether or not the lookup failed — vacuous).
+        with pytest.raises(TemplateNotFound):
             env.get_template(template_name)

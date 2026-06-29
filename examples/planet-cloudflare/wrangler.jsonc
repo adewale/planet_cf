@@ -16,9 +16,16 @@
 //   - Semantic search functionality
 //   - Admin interface and OAuth login
 //   - Embedding generation
+// NOTE (re-audit H12/M8): this "full-featured" example previously shared the
+// worker name `test-planet`, the `test-planet-*` resource names, AND the test
+// instance's database_id with the root config and examples/test-planet. Deploying
+// it therefore overwrote the live E2E test worker (and inherited its secret).
+// It now uses its own clearly-placeholder names/ids. Replace these placeholders
+// with your real resources before deploying (or use create_instance.py). Do NOT
+// point this at production (planetcf / www.planetcloudflare.dev).
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "test-planet",
+  "name": "planet-cloudflare-example",
   "main": "../../src/main.py",
   "compatibility_date": "2026-01-01",
   "compatibility_flags": ["python_workers", "python_dedicated_snapshot"],
@@ -32,7 +39,7 @@
   "vars": {
     "PLANET_NAME": "Planet Cloudflare",
     "PLANET_DESCRIPTION": "Aggregated posts from the Cloudflare-adjacent community",
-    "PLANET_URL": "https://www.planetcloudflare.dev",
+    "PLANET_URL": "https://planet-cloudflare-example.example.workers.dev",
     "PLANET_OWNER_NAME": "Cloudflare",
     "RETENTION_DAYS": "90",
     "RETENTION_MAX_ENTRIES_PER_FEED": "100",
@@ -70,8 +77,10 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "test-planet-db",
-      "database_id": "c0c494c0-6f97-4f55-8af3-9bc8f75cdff1",
+      "database_name": "planet-cloudflare-example-db",
+      // PLACEHOLDER — replace with the id printed by `wrangler d1 create`.
+      // (Never reuse the production or test-planet database_id here.)
+      "database_id": "YOUR_DATABASE_ID",
       "remote": true
     }
   ],
@@ -84,7 +93,7 @@
   "vectorize": [
     {
       "binding": "SEARCH_INDEX",
-      "index_name": "test-planet-entries",
+      "index_name": "planet-cloudflare-example-entries",
       "remote": true
     }
   ],
@@ -103,17 +112,25 @@
   // Queues: Scheduler -> Fetcher
   "queues": {
     "producers": [
-      { "binding": "FEED_QUEUE", "queue": "test-planet-feed-queue" },
-      { "binding": "DEAD_LETTER_QUEUE", "queue": "test-planet-feed-dlq" }
+      { "binding": "FEED_QUEUE", "queue": "planet-cloudflare-example-feed-queue" },
+      { "binding": "DEAD_LETTER_QUEUE", "queue": "planet-cloudflare-example-feed-dlq" }
     ],
     "consumers": [
       {
-        "queue": "test-planet-feed-queue",
+        "queue": "planet-cloudflare-example-feed-queue",
         "max_batch_size": 5,
         "max_batch_timeout": 30,
         "max_retries": 3,
-        "dead_letter_queue": "test-planet-feed-dlq",
+        "dead_letter_queue": "planet-cloudflare-example-feed-dlq",
         "retry_delay": 300
+      },
+      // M-D5: consume the DLQ too. Without a consumer, dead-lettered messages
+      // accumulate for ~4 days and silently vanish. The src queue handler treats
+      // any queue whose name contains "dlq" as the dead-letter handler.
+      {
+        "queue": "planet-cloudflare-example-feed-dlq",
+        "max_batch_size": 10,
+        "max_batch_timeout": 60
       }
     ]
   },

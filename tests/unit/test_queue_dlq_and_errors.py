@@ -251,6 +251,78 @@ class TestQueueRateLimitErrorHandling:
 
 
 # =============================================================================
+# Tests: Per-cycle failure counting (M-P2)
+# =============================================================================
+
+
+class TestQueueFailureCountingPerCycle:
+    """M-P2: a feed failure must be recorded only on the FINAL queue attempt.
+
+    Recording on every attempt inflates consecutive_failures ~(max_retries+1)x
+    per cron cycle, tripping auto-deactivation far too fast. With the default
+    max_retries=3, the terminal attempt is attempt number 4.
+    """
+
+    @pytest.mark.asyncio
+    async def test_non_final_attempt_does_not_record_failure(self):
+        """A non-final attempt retries but does NOT record a feed error."""
+        worker, _env = _make_worker()
+        msg = MockMessage(
+            body={"feed_id": 1, "url": "https://example.com/feed"},
+            attempts=1,  # first delivery, not the last
+        )
+        batch = MockBatch(messages=[msg], queue="feed-queue")
+
+        with (
+            patch.object(worker, "_process_single_feed", side_effect=ValueError("boom")),
+            patch.object(worker, "_record_feed_error", new_callable=AsyncMock) as mock_record,
+        ):
+            await worker.queue(batch)
+
+        assert msg._retried is True
+        mock_record.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_final_attempt_records_failure(self):
+        """The final attempt (attempts == max_retries + 1) records the feed error."""
+        worker, _env = _make_worker()
+        msg = MockMessage(
+            body={"feed_id": 1, "url": "https://example.com/feed"},
+            attempts=4,  # default max_retries=3 → terminal attempt is 4
+        )
+        batch = MockBatch(messages=[msg], queue="feed-queue")
+
+        with (
+            patch.object(worker, "_process_single_feed", side_effect=ValueError("boom")),
+            patch.object(
+                worker, "_record_feed_error", new_callable=AsyncMock, return_value=False
+            ) as mock_record,
+        ):
+            await worker.queue(batch)
+
+        mock_record.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_timeout_non_final_attempt_does_not_record(self):
+        """A TimeoutError on a non-final attempt also defers recording."""
+        worker, _env = _make_worker()
+        msg = MockMessage(
+            body={"feed_id": 1, "url": "https://example.com/feed"},
+            attempts=2,
+        )
+        batch = MockBatch(messages=[msg], queue="feed-queue")
+
+        with (
+            patch.object(worker, "_process_single_feed", side_effect=TimeoutError()),
+            patch.object(worker, "_record_feed_error", new_callable=AsyncMock) as mock_record,
+        ):
+            await worker.queue(batch)
+
+        assert msg._retried is True
+        mock_record.assert_not_called()
+
+
+# =============================================================================
 # Tests: HTTP Response Handling in _process_single_feed (Lines 917-937)
 # =============================================================================
 

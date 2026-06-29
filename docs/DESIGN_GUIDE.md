@@ -63,7 +63,7 @@ A reference for maintaining visual consistency across Planet CF.
 | Element | Size | Notes |
 |---------|------|-------|
 | Body | 18px | Base size, comfortable reading |
-| Header h1 | 1.75rem | Site title |
+| Header h1 | 1.35rem | Site title |
 | Article h3 | 1.25rem | Entry titles |
 | Content | 1.0625rem | Article body text |
 | Meta/timestamps | 0.875rem | Secondary info |
@@ -109,26 +109,27 @@ A reference for maintaining visual consistency across Planet CF.
 
 ```css
 /* Default Button (outlined) */
-button {
+button, .btn {
     padding: 0.625rem 1.25rem;
     background: var(--bg-primary);
     color: var(--accent);
-    border: 2px solid var(--accent);
-    border-radius: 6px;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-md); /* 8px */
     font-weight: 600;
 }
-button:hover {
+button:hover, .btn:hover {
     background: var(--accent);
     color: white;
 }
 ```
 
-**Admin Button Variants** (dashboard only):
-- `.btn-primary` - Blue (#007bff) for main actions
-- `.btn-success` - Green (#28a745) for add/create
-- `.btn-danger` - Red (#dc3545) for delete/logout
-- `.btn-warning` - Yellow (#ffc107) for retry/rebuild
+**Admin Button Variants** (dashboard only) — colors come from the semantic tokens, not a Bootstrap palette:
+- `.btn-success` - Green `var(--success)` = `#059669` for add/create
+- `.btn-danger` - Red `var(--error)` = `#dc2626` for delete/logout
+- `.btn-warning` - Amber `#f59e0b` for retry/rebuild
 - `.btn-sm` - Smaller padding for inline actions
+
+(There is no `.btn-primary` in the stylesheet.)
 
 ### Cards (Articles)
 
@@ -152,7 +153,7 @@ article:hover {
 input {
     padding: 0.75rem 1rem;
     border: 1px solid var(--border-light);
-    border-radius: 6px;
+    border-radius: var(--radius-md); /* 8px */
     background: var(--bg-secondary);
 }
 input:focus {
@@ -169,10 +170,12 @@ input:focus {
 .sidebar {
     background: var(--bg-primary);
     border: 1px solid var(--border-light);
-    border-radius: 10px;
+    border-radius: var(--radius-md); /* 8px */
     padding: 1.5rem;
-    position: sticky;
-    top: 1rem;
+    height: fit-content;
+    box-shadow: var(--shadow-sm);
+    /* Top-aligned with the first article card; not sticky. */
+    margin-top: 3.25rem;
 }
 ```
 
@@ -215,7 +218,7 @@ input:focus {
 | Content typography | Serif for elegance and readability |
 | UI typography | System sans-serif for clarity |
 | Card style | White, 1px border, subtle shadow |
-| Border radius | 6px (inputs, buttons) to 10px (cards, sidebar) |
+| Border radius | `--radius-sm` (4px) for small elements, `--radius-md` (8px) for inputs, buttons, cards, and the sidebar |
 | Responsive | Single column below 768px (see CSS source for breakpoint) |
 
 ### Accessibility Notes
@@ -238,5 +241,5 @@ Error:      #dc2626
 
 Body font:  Georgia, serif @ 18px
 UI font:    system-ui, sans-serif
-Radius:     6px (small) / 8-10px (large)
+Radius:     --radius-sm 4px / --radius-md 8px
 ```

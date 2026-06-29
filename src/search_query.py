@@ -74,7 +74,10 @@ class SearchQueryBuilder:
         Returns:
             Escaped value safe for use in LIKE clause
         """
-        return value.replace("%", "\\%").replace("_", "\\_")
+        # Escape the backslash FIRST so the escapes we add for % and _ are not
+        # themselves double-escaped, and so a literal backslash in the input
+        # can't act as a LIKE escape character.
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
     @property
     def words_truncated(self) -> bool:

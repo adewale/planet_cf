@@ -19,13 +19,16 @@ mode: full
 # Core Identity
 # =============================================================================
 planet:
-  id: planetcf
-  name: Planet CF
+  # This is an EXAMPLE full-mode config, not the production deployment.
+  # (re-audit H12/M8: de-collided from the production `planetcf` / test-planet
+  # resource names so deploying it can't overwrite the live worker.)
+  id: planet-cloudflare-example
+  name: Planet Cloudflare
   description: Aggregated posts from Cloudflare employees and community
-  url: https://www.planetcloudflare.dev
+  url: https://planet-cloudflare-example.example.workers.dev
   owner:
     name: Cloudflare
-    email: planet@www.planetcloudflare.dev
+    email: planet@example.com
 
 # =============================================================================
 # Branding & Theme
@@ -112,10 +115,10 @@ auth:
 # Cloudflare Resources
 # =============================================================================
 cloudflare:
-  database_name: planetcf
-  vectorize_index: planetcf-entries
-  feed_queue: planetcf-feed-queue
-  dead_letter_queue: planetcf-feed-dlq
+  database_name: planet-cloudflare-example-db
+  vectorize_index: planet-cloudflare-example-entries
+  feed_queue: planet-cloudflare-example-feed-queue
+  dead_letter_queue: planet-cloudflare-example-feed-dlq
 
 # =============================================================================
 # Admin Users

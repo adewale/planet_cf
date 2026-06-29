@@ -145,6 +145,42 @@ def xml_escape(text: str) -> str:
     return text
 
 
+# URL schemes considered safe to render into an href/link attribute.
+# Anything else (e.g. javascript:, data:, vbscript:) is feed-controlled and
+# could become a clickable stored XSS payload, so it is replaced with "#".
+_SAFE_URL_SCHEMES = ("http://", "https://", "mailto:")
+
+
+def safe_display_url(url: str | None) -> str:
+    """Return a URL safe to render into an anchor href, or "#" if not.
+
+    Feed-controlled URLs (entry links, feed site_url) are otherwise stored and
+    rendered verbatim; a ``javascript:`` or ``data:`` URL would only be stopped
+    by the page CSP. This enforces a scheme allow-list (http/https/mailto) as
+    defense-in-depth. Protocol-relative ("//host/...") and site-relative
+    ("/path") URLs are allowed; anything with an unknown/unsafe scheme returns "#".
+    """
+    if not url:
+        return "#"
+    stripped = url.strip()
+    if not stripped:
+        return "#"
+    # Allow site-relative and protocol-relative URLs (no scheme to abuse).
+    if stripped.startswith("/"):
+        return stripped
+    lowered = stripped.lower()
+    if lowered.startswith(_SAFE_URL_SCHEMES):
+        return stripped
+    # If a scheme is present (a ":" appears before any "/", "?" or "#") it is not
+    # allow-listed, so reject it. Otherwise it is a bare relative reference (safe).
+    for ch in stripped:
+        if ch in "/?#":
+            break
+        if ch == ":":
+            return "#"
+    return stripped
+
+
 # =============================================================================
 # Content Processing
 # =============================================================================
@@ -234,7 +270,12 @@ def json_response(data: dict, status: int = 200) -> Response:
     return Response(
         json.dumps(data),
         status=status,
-        headers={"Content-Type": "application/json"},
+        # M-S4: nosniff so a browser can't be tricked into MIME-sniffing JSON
+        # API output as HTML/script.
+        headers={
+            "Content-Type": "application/json",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
@@ -255,6 +296,8 @@ def feed_response(content: str, content_type: str, cache_max_age: int = 3600) ->
         headers={
             "Content-Type": f"{content_type}; charset=utf-8",
             "Cache-Control": _build_cache_control(cache_max_age),
+            # M-S4: nosniff so feed XML isn't MIME-sniffed into something active.
+            "X-Content-Type-Options": "nosniff",
         },
     )
 
@@ -341,3 +384,57 @@ def format_date_label(date_str: str) -> str:
         return entry_date.strftime("%B %d, %Y")
     except (ValueError, AttributeError):
         return date_str
+
+
+# =============================================================================
+# Feed Date Formatting (per-spec canonical formats)
+# =============================================================================
+#
+# Stored ``published_at`` values are historically mixed (naive ISO, aware ISO,
+# and SQL "YYYY-MM-DD HH:MM:SS"). parse_iso_datetime() parses all of these
+# flexibly; the formatters below emit the exact format each feed spec requires.
+
+_RFC822_MONTHS = (
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+)
+_RFC822_DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+
+def to_rfc822(iso_string: str | None) -> str:
+    """Format a stored datetime as an RFC-822 date for RSS 2.0 ``<pubDate>``.
+
+    Example: "Mon, 15 Jun 2026 14:30:00 +0000". Returns "" for unparseable/empty
+    input so the template can omit the element. Uses locale-independent month/day
+    names (strftime's %a/%b are locale-dependent).
+    """
+    dt = parse_iso_datetime(iso_string)
+    if dt is None:
+        return ""
+    dt = dt.astimezone(timezone.utc)
+    day_name = _RFC822_DAYS[dt.weekday()]
+    month_name = _RFC822_MONTHS[dt.month - 1]
+    return f"{day_name}, {dt.day:02d} {month_name} {dt.year:04d} {dt:%H:%M:%S} +0000"
+
+
+def to_rfc3339(iso_string: str | None) -> str:
+    """Format a stored datetime as RFC-3339 (Atom ``<published>``/``<updated>``).
+
+    Example: "2026-06-15T14:30:00Z". Also valid W3CDTF, so usable for RSS 1.0
+    ``dc:date``. Returns "" for unparseable/empty input.
+    """
+    dt = parse_iso_datetime(iso_string)
+    if dt is None:
+        return ""
+    dt = dt.astimezone(timezone.utc)
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
