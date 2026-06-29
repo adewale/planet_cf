@@ -558,7 +558,7 @@ class TestViewFeedHealth:
         worker = Default()
         worker.env = env
 
-        response = await worker._view_feed_health()
+        response = await worker._view_feed_health("test-csrf-token")
 
         assert response.status == 200
         assert "text/html" in response.headers.get("Content-Type", "")
@@ -575,7 +575,7 @@ class TestViewFeedHealth:
         worker = Default()
         worker.env = env
 
-        response = await worker._view_feed_health()
+        response = await worker._view_feed_health("test-csrf-token")
 
         assert response.status == 200
         assert "text/html" in response.headers.get("Content-Type", "")
@@ -587,7 +587,7 @@ class TestViewFeedHealth:
         worker = Default()
         worker.env = env
 
-        response = await worker._view_feed_health()
+        response = await worker._view_feed_health("test-csrf-token")
 
         assert response.status == 200
         assert "text/html" in response.headers.get("Content-Type", "")

@@ -13,7 +13,7 @@ function saveFeedTitle(titleDiv) {
 
     fetch('/admin/feeds/' + feedId, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
         body: JSON.stringify({ title: newTitle })
     })
     .then(function(r) {
@@ -92,6 +92,7 @@ function loadDLQ() {
                     '<small>' + escapeHtml(f.url) + '</small><br>' +
                     '<small>Failures: ' + f.consecutive_failures + '</small>' +
                     '<form action="/admin/dlq/' + f.id + '/retry" method="POST" class="dlq-retry-form">' +
+                    '<input type="hidden" name="csrf_token" value="' + escapeHtml(csrfToken()) + '">' +
                     '<button type="submit" class="btn btn-sm btn-warning">Retry</button></form>' +
                     '</div>';
             }).join('');
@@ -132,6 +133,14 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// H15: CSRF token, rendered into a <meta name="csrf-token"> tag on admin pages.
+// Sent as the X-CSRF-Token header on every state-changing fetch, and injected
+// into dynamically-built form posts (the DLQ retry form).
+function csrfToken() {
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute('content') : '';
+}
+
 // =============================================================================
 // Search Index Rebuild
 // =============================================================================
@@ -144,7 +153,8 @@ function rebuildSearchIndex() {
     btn.style.opacity = '0.7';
 
     return fetch('/admin/reindex', {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'X-CSRF-Token': csrfToken() }
     })
     .then(function(r) {
         // Surface the server's message (e.g. the 429 cooldown text) instead of
@@ -204,7 +214,7 @@ function initAdminDashboard() {
             var isActive = checkbox.checked;
             fetch('/admin/feeds/' + feedId + '/toggle', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
                 body: JSON.stringify({ is_active: isActive })
             })
             .then(function(r) {
@@ -275,7 +285,7 @@ function initFeedToggleButtons() {
             el.disabled = true;
             fetch('/admin/feeds/' + feedId + '/toggle', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
                 body: JSON.stringify({ is_active: nextActive })
             })
             .then(function(r) {

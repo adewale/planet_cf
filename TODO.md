@@ -2,17 +2,27 @@
 
 Deferred issues from the deep-dive audit (2026-03-11).
 
-## P1 — N+1 query pattern in feed processing (High)
+## P1 — N+1 query pattern in feed processing (High) — PARTIALLY MITIGATED
 
-The feed processing pipeline issues one database query per feed instead of
-batching. Under load with many feeds, this creates unnecessary round-trips.
+The feed processing pipeline issues per-entry database queries instead of
+batching.
 
-**Location:** `src/main.py` — feed fetch/update cycle in the queue consumer and
-cron-triggered processing paths.
+**Already addressed (H1, see audit-reports/2026-06-13-re-audit.md):** the worst
+offenders are gone — `feeds.last_entry_at` is now updated **once** per fetch
+(was once per entry), and search re-embedding now fires only on a genuine
+insert or content change (was every entry on every fetch). This removes the
+bulk of the per-cycle query/Workers-AI load.
 
-**Fix:** Batch `SELECT`/`INSERT`/`UPDATE` operations where D1 supports it.
-Profile first — Cloudflare D1 may pipeline small queries efficiently enough that
-the overhead is negligible at current feed counts.
+**Remaining:** the per-entry `INSERT ... ON CONFLICT` upsert still runs one
+statement per entry.
+
+**Location:** `src/main.py` — `_upsert_entry` in the queue-consumer path.
+
+**Fix:** Batch the entry upserts via D1's `db.batch([...])` where the
+insert/update branching allows. **Profile first** — Cloudflare D1 may pipeline
+small statements efficiently enough that the overhead is negligible at current
+feed/entry counts, and the H1 rewrite depends on per-statement `RETURNING id`
+to distinguish inserts, which a naive batch would lose.
 
 ## BP8 — Inactive feeds included in OPML export (Low) — RESOLVED
 

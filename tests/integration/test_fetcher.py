@@ -454,3 +454,67 @@ class _ErrorCapture(logging.Handler):
 
     def emit(self, record):
         self.errors.append(record.getMessage())
+
+
+# =============================================================================
+# M-S2: per-hop redirect SSRF validation in safe_http_fetch (httpx path)
+# =============================================================================
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_safe_http_fetch_blocks_redirect_to_internal():
+    """A redirect whose target fails SSRF validation is never followed."""
+    from src.main import is_safe_url
+    from src.wrappers import safe_http_fetch
+
+    respx.get("https://feed.example.com/rss").mock(
+        return_value=Response(302, headers={"location": "http://169.254.169.254/latest/meta-data/"})
+    )
+    internal = respx.get("http://169.254.169.254/latest/meta-data/").mock(
+        return_value=Response(200, content=b"SECRET")
+    )
+
+    with pytest.raises(ValueError, match="SSRF"):
+        await safe_http_fetch("https://feed.example.com/rss", validate_redirect=is_safe_url)
+    # The internal target must NOT have been requested.
+    assert not internal.called
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_safe_http_fetch_follows_safe_redirect():
+    """A redirect to another public URL is followed and its body returned."""
+    from src.main import is_safe_url
+    from src.wrappers import safe_http_fetch
+
+    respx.get("https://feed.example.com/rss").mock(
+        return_value=Response(301, headers={"location": "https://cdn.example.com/rss.xml"})
+    )
+    respx.get("https://cdn.example.com/rss.xml").mock(
+        return_value=Response(200, content=b"<rss></rss>")
+    )
+
+    resp = await safe_http_fetch("https://feed.example.com/rss", validate_redirect=is_safe_url)
+    assert resp.status_code == 200
+    assert resp.final_url == "https://cdn.example.com/rss.xml"
+    assert "<rss>" in resp.text
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_safe_http_fetch_caps_redirect_chains():
+    """An over-long redirect chain raises rather than looping forever."""
+    from src.main import is_safe_url
+    from src.wrappers import safe_http_fetch
+
+    # Each hop points to the next public URL, exceeding max_redirects.
+    for i in range(10):
+        respx.get(f"https://example.com/r{i}").mock(
+            return_value=Response(302, headers={"location": f"https://example.com/r{i + 1}"})
+        )
+
+    with pytest.raises(ValueError, match="Too many redirects"):
+        await safe_http_fetch(
+            "https://example.com/r0", validate_redirect=is_safe_url, max_redirects=3
+        )

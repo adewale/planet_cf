@@ -338,6 +338,23 @@ class TestUrlValidation:
     @pytest.mark.parametrize(
         "url",
         [
+            "http://2130706433/",  # decimal 127.0.0.1
+            "http://0x7f000001/",  # hex 127.0.0.1
+            "http://0x7F000001/feed",  # hex, uppercase
+            "http://3232235521/",  # decimal 192.168.0.1
+            "http://2852039166/",  # decimal 169.254.169.254 (metadata)
+            "http://0/",  # decimal 0.0.0.0
+        ],
+    )
+    def test_blocks_integer_encoded_private_ips(self, url):
+        """M-S2: integer/hex-encoded IPs that resolve to private/loopback are blocked."""
+        assert is_safe_url(url) is False
+        # A public address in integer form is still allowed (93.184.216.34).
+        assert is_safe_url("http://1572395042/") is True
+
+    @pytest.mark.parametrize(
+        "url",
+        [
             "ftp://example.com/feed",
             "file:///etc/passwd",
             "javascript:alert(1)",

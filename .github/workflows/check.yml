@@ -103,23 +103,48 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: |
           if [ -n "$CLOUDFLARE_API_TOKEN" ]; then
-            # H8c: deploy_instance.sh and the README treat the vendored
-            # `python_modules/` bundle as REQUIRED for Python Workers, but this
-            # job never builds it. Building it needs the pyodide venv
-            # (.venv-workers/pyodide-venv) from the `workers` dependency group,
-            # which isn't provisioned here and can't be vendored without extra
-            # tooling — so a full build step isn't feasible in this CI job today.
+            # H8c: Cloudflare Python Workers need their pip dependencies vendored
+            # into `python_modules/` (feedparser/jinja2/bleach/markupsafe).
+            # `scripts/deploy_instance.sh` and README step 2 both treat this bundle
+            # as REQUIRED, but this job never builds it.
             #
-            # We surface the gap loudly instead of silently shipping a worker that
-            # may be missing its dependencies. This is a WARNING (not a hard fail)
-            # because production is currently deployed and we must not break a
-            # deploy path that works; if/when CI gains the pyodide build (or a
-            # pre-built bundle is cached/committed), promote this to a hard guard
-            # and run the build before `wrangler deploy`.
+            # We can't reliably BUILD it here. `make python-modules` only copies
+            # packages out of a pre-built Pyodide virtualenv at
+            # `.venv-workers/pyodide-venv/`; that venv is produced by the
+            # Cloudflare Workers tooling (the `workers` dependency group in
+            # pyproject.toml), NOT by `uv sync` (README "Note on wrangler" / re-audit
+            # H9.2 — the "run uv sync to create it" hint is circular). No script,
+            # Makefile target, or documented command in this repo provisions that
+            # venv from a clean checkout, so there is no trustworthy build sequence
+            # to run here.
+            #
+            # The previous fix only emitted a `::warning::`, which still let a
+            # worker missing its dependencies ship to production (ImportError on
+            # every request). Instead we FAIL HARD when the bundle is absent or
+            # incomplete, so a broken deploy is impossible. We mirror the exact
+            # REQUIRED_PACKAGES guard from deploy_instance.sh:339-357.
+            #
+            # TO ENABLE A REAL BUILD STEP (and replace this guard): provision the
+            # pyodide venv before deploying — either commit/cache a pre-built
+            # `python_modules/` (or `.venv-workers/pyodide-venv/`) and restore it
+            # here, or add a documented command that builds the venv via the
+            # `workers` group, then run `make python-modules` ahead of this step.
+            MISSING=""
             if [ ! -d "python_modules" ]; then
-              echo "::warning::python_modules/ not present in CI — deploying without"
-              echo "::warning::a freshly-built vendored dependency bundle. See H8c:"
-              echo "::warning::build with 'make python-modules' (needs the pyodide venv)."
+              MISSING="python_modules/ directory is absent"
+            else
+              for pkg in feedparser jinja2 bleach markupsafe; do
+                if [ ! -d "python_modules/$pkg" ]; then
+                  MISSING="${MISSING}${MISSING:+, }missing package: $pkg"
+                fi
+              done
+            fi
+            if [ -n "$MISSING" ]; then
+              echo "::error::Refusing to deploy: vendored Python dependency bundle is not ready ($MISSING)."
+              echo "::error::Cloudflare Python Workers require python_modules/ with feedparser, jinja2, bleach, markupsafe."
+              echo "::error::Build it with 'make python-modules' (needs the pre-built .venv-workers/pyodide-venv from the"
+              echo "::error::'workers' dependency group), or restore a cached/committed bundle before this step. See H8c."
+              exit 1
             fi
             npx wrangler deploy -c wrangler.production.jsonc
           else

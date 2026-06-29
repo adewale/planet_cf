@@ -30,7 +30,9 @@ from auth import (
     build_oauth_state_cookie_header,
     build_session_cookie_header,
     create_signed_cookie,
+    generate_csrf_token,
     get_session_from_cookies,
+    verify_csrf_token,
 )
 from config import (
     AUDIT_RETENTION_DAYS,
@@ -241,6 +243,27 @@ def _check_auth_rate_limit(client_ip: str) -> bool:
     return False
 
 
+def _decode_int_ipv4(host: str) -> ipaddress.IPv4Address | None:
+    """Decode a bare integer/hex IPv4 host into an address, else None.
+
+    Catches SSRF bypasses where a host like "2130706433" or "0x7f000001" is not
+    a dotted quad (so ``ipaddress.ip_address`` rejects it) yet HTTP clients still
+    resolve it to an IPv4 address (here, 127.0.0.1).
+    """
+    try:
+        if host.startswith(("0x", "0X")):
+            val = int(host, 16)
+        elif host.isdigit():
+            val = int(host)
+        else:
+            return None
+    except ValueError:
+        return None
+    if 0 <= val <= 0xFFFFFFFF:
+        return ipaddress.IPv4Address(val)
+    return None
+
+
 def is_safe_url(url: str) -> bool:
     """SSRF protection - reject internal/private URLs.
 
@@ -279,7 +302,21 @@ def is_safe_url(url: str) -> bool:
         if ip.version == 6 and (ip.packed[0] & 0xFE) == 0xFC:
             return False
     except ValueError:
-        pass  # Not an IP address
+        pass  # Not a dotted-quad / standard IP literal — see integer check below
+
+    # M-S2: block non-dotted integer/hex IPv4 encodings that bypass the dotted
+    # check above but are still resolved to the same address by HTTP clients —
+    # e.g. http://2130706433/ and http://0x7f000001/ both reach 127.0.0.1.
+    int_ip = _decode_int_ipv4(hostname)
+    if int_ip is not None and (
+        int_ip.is_private
+        or int_ip.is_loopback
+        or int_ip.is_link_local
+        or int_ip.is_reserved
+        or int_ip.is_unspecified
+        or str(int_ip) in BLOCKED_METADATA_IPS
+    ):
+        return False
 
     # Block internal domain patterns
     if hostname.endswith(".internal") or hostname.endswith(".local"):
@@ -1091,10 +1128,14 @@ class Default(WorkerEntrypoint):
         if last_modified:
             headers["If-Modified-Since"] = str(last_modified)
 
-        # Fetch using boundary-layer safe_http_fetch
+        # Fetch using boundary-layer safe_http_fetch. Pass the SSRF guard so the
+        # httpx path validates every redirect hop before following (M-S2).
         with Timer() as http_timer:
             http_response = await safe_http_fetch(
-                url, headers=headers, timeout_seconds=self._get_http_timeout()
+                url,
+                headers=headers,
+                timeout_seconds=self._get_http_timeout(),
+                validate_redirect=self._is_safe_url,
             )
 
         # Extract normalized response data (all values are Python)
@@ -3082,17 +3123,35 @@ class Default(WorkerEntrypoint):
                 status=403,
             )
 
+        # CSRF token bound to this session: embedded into rendered admin pages
+        # (a <meta> tag for admin.js and hidden fields in each form) and required
+        # on every state-changing request below.
+        csrf_token = generate_csrf_token(session, self.env.SESSION_SECRET)
+
         # Route admin requests
         method = request.method
 
+        # H15: CSRF protection on every state-changing admin request. SameSite=Lax
+        # alone is insufficient (the Chrome Lax+POST fresh-cookie window, and
+        # non-Lax-enforcing clients). The token arrives via the X-CSRF-Token
+        # header (admin.js fetches) or a csrf_token form field (HTML form posts).
+        # On the form path _verify_csrf returns the parsed body so the downstream
+        # handler can reuse it without re-reading the (single-use) request body.
+        csrf_form: SafeFormData | None = None
+        if method in ("POST", "PUT", "DELETE"):
+            csrf_result = await self._verify_csrf(request, session)
+            if isinstance(csrf_result, Response):
+                return csrf_result
+            csrf_form = csrf_result
+
         if path == "/admin" or path == "/admin/":
-            return await self._serve_admin_dashboard(admin)
+            return await self._serve_admin_dashboard(admin, csrf_token)
 
         if path == "/admin/feeds" and method == "GET":
             return await self._list_feeds()
 
         if path == "/admin/feeds" and method == "POST":
-            return await self._add_feed(request, admin)
+            return await self._add_feed(request, admin, csrf_form)
 
         if path.startswith("/admin/feeds/") and method == "DELETE":
             feed_id = validate_feed_id(path.split("/")[-1])
@@ -3127,8 +3186,10 @@ class Default(WorkerEntrypoint):
             return json_error("Invalid path", status=400)
 
         if path.startswith("/admin/feeds/") and method == "POST":
-            # Handle form override for DELETE
-            form = SafeFormData(await request.form_data())
+            # Handle form override for DELETE. _verify_csrf already parsed the
+            # form body (the token rides in the same form), so reuse it rather
+            # than re-reading the single-use request body.
+            form = csrf_form or SafeFormData(await request.form_data())
             if form.get("_method") == "DELETE":
                 feed_id = validate_feed_id(path.split("/")[-1])
                 if feed_id is None:
@@ -3137,7 +3198,7 @@ class Default(WorkerEntrypoint):
             return json_error("Method not allowed", status=405)
 
         if path == "/admin/import-opml" and method == "POST":
-            return await self._import_opml(request, admin)
+            return await self._import_opml(request, admin, csrf_form)
 
         if path == "/admin/regenerate" and method == "POST":
             return await self._trigger_regenerate(admin)
@@ -3162,7 +3223,7 @@ class Default(WorkerEntrypoint):
             return await self._view_audit_log(offset=offset, limit=limit)
 
         if path == "/admin/health" and method == "GET":
-            return await self._view_feed_health()
+            return await self._view_feed_health(csrf_token)
 
         if path == "/admin/reindex" and method == "POST":
             return await self._reindex_all_entries(admin)
@@ -3172,13 +3233,55 @@ class Default(WorkerEntrypoint):
 
         return self._admin_error(request, "Not Found", title="Not Found", status=404)
 
+    async def _verify_csrf(
+        self, request: WorkerRequest, session: dict[str, Any]
+    ) -> "SafeFormData | None | Response":
+        """Validate the CSRF token for a state-changing admin request.
+
+        Returns a 403 Response on failure. On success returns either ``None``
+        (the token came from the X-CSRF-Token header) or the parsed
+        ``SafeFormData`` (the token came from a form body) so the caller can
+        reuse the already-consumed request body.
+        """
+        secret = self.env.SESSION_SECRET
+        headers = SafeHeaders(request)
+
+        # Header path: admin.js fetches send X-CSRF-Token. Never touches the body.
+        header_token = headers.get("X-CSRF-Token")
+        if header_token:
+            if verify_csrf_token(header_token, session, secret):
+                return None
+            return self._csrf_error(request)
+
+        # Form path: HTML form posts carry the token in a hidden csrf_token field.
+        content_type = headers.content_type
+        if "form" in content_type or "multipart" in content_type:
+            try:
+                form = SafeFormData(await request.form_data())
+            except Exception:
+                return self._csrf_error(request)
+            if verify_csrf_token(form.get("csrf_token"), session, secret):
+                return form
+
+        return self._csrf_error(request)
+
+    def _csrf_error(self, request: WorkerRequest) -> Response:
+        """Return a 403 for a missing/invalid CSRF token."""
+        log_op("csrf_validation_failed", method=request.method)
+        return self._admin_error(
+            request,
+            "Invalid or missing CSRF token. Reload the page and try again.",
+            title="Forbidden",
+            status=403,
+        )
+
     def _serve_admin_login(self) -> Response:
         """Serve the admin login page."""
         planet = self._get_planet_config()
         html = render_template(TEMPLATE_ADMIN_LOGIN, theme=self._get_theme(), planet=planet)
         return html_response(html, cache_max_age=0)
 
-    async def _serve_admin_dashboard(self, admin: dict[str, Any]) -> Response:
+    async def _serve_admin_dashboard(self, admin: dict[str, Any], csrf_token: str) -> Response:
         """Serve the admin dashboard with feed health warnings."""
         # P2: This query runs sequentially, which is correct — D1 does not support
         # concurrent queries from a single Worker invocation. The single query here
@@ -3213,6 +3316,7 @@ class Default(WorkerEntrypoint):
             admin=admin,
             feeds=feeds,
             health_warnings=health_warnings,
+            csrf_token=csrf_token,
         )
         return html_response(html, cache_max_age=0)
 
@@ -3236,8 +3340,11 @@ class Default(WorkerEntrypoint):
         try:
             headers = {"User-Agent": self._get_user_agent()}
 
-            # Use centralized safe_http_fetch for boundary-safe HTTP
-            http_response = await safe_http_fetch(url, headers=headers, timeout_seconds=10)
+            # Use centralized safe_http_fetch for boundary-safe HTTP. Validate
+            # redirect hops for SSRF (M-S2).
+            http_response = await safe_http_fetch(
+                url, headers=headers, timeout_seconds=10, validate_redirect=self._is_safe_url
+            )
             status_code = http_response.status_code
             final_url = http_response.final_url
             response_text = http_response.text
@@ -3307,7 +3414,12 @@ class Default(WorkerEntrypoint):
             )
             return {"valid": False, "error": "Failed to fetch or parse the feed"}
 
-    async def _add_feed(self, request: WorkerRequest, admin: dict[str, Any]) -> Response:
+    async def _add_feed(
+        self,
+        request: WorkerRequest,
+        admin: dict[str, Any],
+        form: "SafeFormData | None" = None,
+    ) -> Response:
         """Add a new feed with validation.
 
         Flow:
@@ -3316,13 +3428,17 @@ class Default(WorkerEntrypoint):
         3. Extract title if not provided
         4. Insert into database
         5. Queue for immediate full processing
+
+        ``form`` may be supplied by the CSRF middleware, which already consumed
+        the (single-use) request body; fall back to reading it if not.
         """
         deployment = self._get_deployment_context()
         async with admin_action_context(
             admin, "add_feed", "feed", deployment, self._log_admin_action
         ) as ctx:
             try:
-                form = SafeFormData(await request.form_data())
+                if form is None:
+                    form = SafeFormData(await request.form_data())
                 url = form.get("url")
                 title = form.get("title")
 
@@ -3525,14 +3641,24 @@ class Default(WorkerEntrypoint):
                     "An unexpected error occurred while updating the feed.", status=500
                 )
 
-    async def _import_opml(self, request: WorkerRequest, admin: dict[str, Any]) -> Response:
-        """Import feeds from uploaded OPML file. Admin only."""
+    async def _import_opml(
+        self,
+        request: WorkerRequest,
+        admin: dict[str, Any],
+        form: "SafeFormData | None" = None,
+    ) -> Response:
+        """Import feeds from uploaded OPML file. Admin only.
+
+        ``form`` may be supplied by the CSRF middleware, which already consumed
+        the (single-use) request body; fall back to reading it if not.
+        """
         deployment = self._get_deployment_context()
         async with admin_action_context(
             admin, "import_opml", "feeds", deployment, self._log_admin_action
         ) as ctx:
             try:
-                form = SafeFormData(await request.form_data())
+                if form is None:
+                    form = SafeFormData(await request.form_data())
                 content = await form.get_file_text("opml")
 
                 if not content:
@@ -3850,7 +3976,7 @@ class Default(WorkerEntrypoint):
             }
         )
 
-    async def _view_feed_health(self) -> Response:
+    async def _view_feed_health(self, csrf_token: str) -> Response:
         """View feed health dashboard with statistics.
 
         Shows all feeds with their health information including:
@@ -3914,6 +4040,7 @@ class Default(WorkerEntrypoint):
             warning_count=sum(1 for f in feeds if f.get("health_status") == "warning"),
             failing_count=sum(1 for f in feeds if f.get("health_status") == "failing"),
             inactive_count=sum(1 for f in feeds if f.get("health_status") == "inactive"),
+            csrf_token=csrf_token,
         )
         return html_response(html, cache_max_age=0)
 

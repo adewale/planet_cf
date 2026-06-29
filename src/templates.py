@@ -303,6 +303,7 @@ _EMBEDDED_TEMPLATES = {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
     <title>Admin - {{ planet.name }}</title>
     <link rel="icon" href="/static/favicon.ico" sizes="32x32">
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
@@ -373,6 +374,7 @@ _EMBEDDED_TEMPLATES = {
         <h1><a href="/">{{ planet.name }}</a> <span style="color: var(--text-muted); font-weight: normal; font-size: 0.875rem;">Admin</span></h1>
         <div class="header-actions">
             <form action="/admin/regenerate" method="POST" style="margin: 0;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit" class="btn" title="Re-fetch all feeds now">Refresh Feeds</button>
             </form>
             <button id="reindex-btn" class="btn" title="Rebuild search index">Reindex</button>
@@ -380,6 +382,7 @@ _EMBEDDED_TEMPLATES = {
             <div class="user-info">
                 <span>{{ admin.display_name or admin.github_username }}</span>
                 <form action="/admin/logout" method="POST" style="margin: 0;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button type="submit" class="btn btn-danger btn-sm">Logout</button>
                 </form>
             </div>
@@ -407,6 +410,7 @@ _EMBEDDED_TEMPLATES = {
         <div class="section">
             <h2>Add Feed</h2>
             <form action="/admin/feeds" method="POST" class="add-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="url" name="url" placeholder="https://example.com/feed.xml" required>
                 <input type="text" name="title" placeholder="Feed title (optional)">
                 <button type="submit" class="btn btn-success">Add Feed</button>
@@ -445,6 +449,7 @@ _EMBEDDED_TEMPLATES = {
                             <span class="toggle-slider"></span>
                         </label>
                         <form action="/admin/feeds/{{ feed.id }}" method="POST" style="margin: 0;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <input type="hidden" name="_method" value="DELETE">
                             <button type="submit" class="btn btn-danger btn-sm js-confirm" data-confirm="Delete this feed?">Delete</button>
                         </form>
@@ -463,6 +468,7 @@ _EMBEDDED_TEMPLATES = {
             <h2>Import OPML</h2>
             <p style="margin-bottom: 1rem; color: #666;">Upload an OPML file to import multiple feeds at once.</p>
             <form action="/admin/import-opml" method="POST" enctype="multipart/form-data" class="add-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="file" name="opml" accept=".opml,.xml" required>
                 <button type="submit" class="btn btn-success">Import Feeds</button>
             </form>
@@ -587,6 +593,7 @@ _EMBEDDED_TEMPLATES = {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
     <title>Feed Health - {{ planet.name }}</title>
     <link rel="icon" href="/static/favicon.ico" sizes="32x32">
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
@@ -696,6 +703,7 @@ _EMBEDDED_TEMPLATES = {
                         <td class="actions-cell">
                             {% if feed.health_status == 'failing' %}
                             <form action="/admin/dlq/{{ feed.id }}/retry" method="POST" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                 <button type="submit" class="btn btn-sm">Retry</button>
                             </form>
                             {% endif %}

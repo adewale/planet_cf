@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
     <title>Feed Health - {{ planet.name }}</title>
     <link rel="icon" href="/static/favicon.ico" sizes="32x32">
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
@@ -112,6 +113,7 @@
                         <td class="actions-cell">
                             {% if feed.health_status == 'failing' %}
                             <form action="/admin/dlq/{{ feed.id }}/retry" method="POST" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                 <button type="submit" class="btn btn-sm">Retry</button>
                             </form>
                             {% endif %}

@@ -113,6 +113,48 @@ def verify_signed_cookie(
 
 
 # =============================================================================
+# CSRF Tokens
+# =============================================================================
+
+
+def generate_csrf_token(session: dict[str, Any], secret: str) -> str:
+    """Derive a CSRF token bound to a session (stateless — no server storage).
+
+    The token is an HMAC over stable session identity (the user's GitHub id and
+    this session's expiry). That makes it unique per login, stable for the
+    session's lifetime, and unforgeable without the signing secret. An attacker
+    cannot read the HttpOnly session cookie nor compute this HMAC, so they cannot
+    mint a matching token to ride a cross-site request.
+
+    Args:
+        session: The verified session payload (must contain github_id and exp).
+        secret: The HMAC signing secret.
+
+    Returns:
+        A hex-encoded CSRF token.
+    """
+    material = f"csrf:{session.get('github_id')}:{session.get('exp')}"
+    return hmac.new(secret.encode(), material.encode(), hashlib.sha256).hexdigest()
+
+
+def verify_csrf_token(token: str | None, session: dict[str, Any], secret: str) -> bool:
+    """Constant-time check of a submitted CSRF token against the session.
+
+    Args:
+        token: The token submitted via the X-CSRF-Token header or csrf_token field.
+        session: The verified session payload the request was authenticated with.
+        secret: The HMAC signing secret.
+
+    Returns:
+        True if the token is present and matches the session-derived token.
+    """
+    if not token:
+        return False
+    expected = generate_csrf_token(session, secret)
+    return hmac.compare_digest(token, expected)
+
+
+# =============================================================================
 # Session Cookie Helpers
 # =============================================================================
 

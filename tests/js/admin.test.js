@@ -179,7 +179,10 @@ describe('saveFeedTitle', () => {
       '/admin/feeds/42',
       expect.objectContaining({
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' }
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': expect.anything()  // H15: token attached to every mutating fetch
+        })
       })
     );
   });
@@ -313,7 +316,10 @@ describe('rebuildSearchIndex', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       '/admin/reindex',
-      { method: 'POST' }
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'X-CSRF-Token': expect.anything() })
+      })
     );
   });
 
