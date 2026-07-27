@@ -2757,8 +2757,11 @@ class Default(WorkerEntrypoint):
 
         # Add display_author to each result (filters email addresses in Python)
         for result in sorted_results:
+            author = result.get("author")
+            feed_title = result.get("feed_title")
             result["display_author"] = get_display_author(
-                result.get("author"), result.get("feed_title")
+                author if isinstance(author, str) else None,
+                feed_title if isinstance(feed_title, str) else None,
             )
 
         # Return HTML search results page
