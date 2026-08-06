@@ -16,11 +16,11 @@ from src.auth import (
     parse_cookie_value,
     verify_signed_cookie,
 )
+from src.boundary import _to_py_safe, feed_row_from_js
 from src.main import is_safe_url
 from src.models import BleachSanitizer, FeedId, FeedJob, Session
 from src.route_dispatcher import Route, RouteDispatcher
 from src.search_query import SearchQueryBuilder
-from src.wrappers import _to_py_safe, feed_row_from_js
 from tests.conftest import (
     MockAI,
     MockD1,
@@ -1674,7 +1674,7 @@ class TestToJsValueProperties:
     @settings(max_examples=100)
     def test_passthrough_in_test_mode(self, value):
         """In CPython (non-Pyodide), _to_js_value returns the value unchanged."""
-        from src.wrappers import _to_js_value
+        from src.boundary import _to_js_value
 
         result = _to_js_value(value)
         assert result is value
@@ -1691,7 +1691,7 @@ class TestToJsValueProperties:
     @settings(max_examples=50)
     def test_vectorize_upsert_payload_passthrough(self, vector, entry_id, title):
         """Vectorize upsert payload (list of dicts) passes through in test mode."""
-        from src.wrappers import _to_js_value
+        from src.boundary import _to_js_value
 
         payload = [
             {
@@ -1772,7 +1772,7 @@ class TestToJsValueProperties:
         a passthrough — but this test documents and verifies the invariant
         that we only send convertible types.
         """
-        from src.wrappers import _to_js_value
+        from src.boundary import _to_js_value
 
         # Should not raise — all these types are natively convertible
         result = _to_js_value(value)

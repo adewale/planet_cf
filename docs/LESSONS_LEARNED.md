@@ -657,8 +657,8 @@ assert result["entries_added"] > 0
 
 **Solution:** Adopt a two-tier test structure (pattern from [tasche](https://github.com/adewale/tasche)):
 
-1. **`test_safe_wrappers.py`** — CPython tests with Python mocks. Fast, test logic.
-2. **`test_wrappers_ffi.py`** — Pyodide fake tests. Monkeypatch `HAS_PYODIDE=True` and inject fake JS types.
+1. **`test_safe_boundary`** — CPython tests with Python mocks. Fast, test logic.
+2. **`test_boundary_ffi.py`** — Pyodide fake tests. Install a fake CFBoundary Pyodide runtime and inject fake JS types.
 
 **The fake JS types:**
 ```python
@@ -685,7 +685,7 @@ _Undefined.__name__ = "JsUndefined"
 ```python
 @pytest.fixture
 def pyodide_fakes(monkeypatch):
-    monkeypatch.setattr(W, "HAS_PYODIDE", True)
+    with patch_pyodide_runtime(...):
     monkeypatch.setattr(W, "js", FakeJsModule())
     monkeypatch.setattr(W, "to_js", fake_to_js)
     monkeypatch.setattr(W, "JS_NULL", JsNull())
@@ -735,7 +735,7 @@ if value is None or _is_js_undefined(value):
     return default_value
 ```
 
-**Rule of thumb:** Any function in `wrappers.py` that has `if x is None` should also check `_is_js_undefined(x)`. When writing new boundary code, always ask: "What happens when this receives JsNull instead of None?"
+**Rule of thumb:** Any function in `boundary` that has `if x is None` should also check `_is_js_undefined(x)`. When writing new boundary code, always ask: "What happens when this receives JsNull instead of None?"
 
 ---
 
@@ -1041,9 +1041,7 @@ js_vectors = to_js(vectors, dict_converter=js.Object.fromEntries)
 
 ```python
 def _to_js_value(value):
-    if not HAS_PYODIDE or to_js is None:
-        return value
-    return to_js(value, dict_converter=js.Object.fromEntries)
+    return cf_boundary.to_js(value)
 ```
 
 No `isinstance` check. `dict_converter` applies recursively to all nested dicts regardless of the top-level type. This eliminates the entire class of bugs — any future caller of `_to_js_value()` gets correct Object conversion automatically. And there should be no direct calls to `to_js()` outside of `_to_js_value()`.

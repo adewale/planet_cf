@@ -239,8 +239,8 @@ async def test_admin_add_feed_via_post(mock_env_with_admins):
     """Admin should be able to add a feed via POST."""
     from unittest.mock import AsyncMock, patch
 
+    from src.boundary import HttpResponse
     from src.main import PlanetCF
-    from src.wrappers import HttpResponse
 
     worker = PlanetCF()
     worker.env = mock_env_with_admins

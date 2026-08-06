@@ -26,6 +26,7 @@ dependencies = [
     "jinja2>=3.1.0",
     "bleach>=6.0.0",
     "markupsafe>=2.0.0",
+    "cfboundary @ git+https://github.com/adewale/cfboundary@v0.1.10",
 ]
 
 [project.optional-dependencies]
@@ -59,6 +60,9 @@ workers = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
@@ -153,7 +157,7 @@ ignore = [
     "S608",  # SQL uses bind() parameters, not string formatting
     "UP017",  # Keep timezone.utc for consistency across the codebase
 ]
-"src/wrappers.py" = [
+"src/boundary/__init__.py" = [
     "ANN401",  # JS/Python boundary layer - Any is intentional for JsProxy types
 ]
 "vulture_whitelist.py" = [

@@ -103,9 +103,9 @@ xml_escape  # unused function (used in tests)
 format_datetime  # unused function (referenced in docs/spec)
 
 # =============================================================================
-# wrappers.py - underscore functions imported by main.py
+# boundary - underscore functions imported by main.py
 # =============================================================================
-from wrappers import (
+from src.boundary import (
     SafeFormData,
     SafeHeaders,
     _extract_form_value,
@@ -121,7 +121,7 @@ _to_js_value  # unused function (imported by main.py)
 _is_js_undefined  # unused function (imported by main.py)
 _safe_str  # unused function (imported by main.py)
 _to_py_safe  # unused function (imported by main.py)
-_extract_form_value  # unused function (imported by wrappers.py SafeFormData)
+_extract_form_value  # unused function (imported by boundary SafeFormData)
 _to_py_list  # unused function (imported by main.py)
 _to_d1_value  # unused function (used by SafeD1Statement.bind)
 

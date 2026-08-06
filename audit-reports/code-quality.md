@@ -184,7 +184,7 @@ The `_EXPECTED_COLUMNS` dict duplicates the schema definition from the `CREATE T
 
 ### 3i. `D1Result` class recreated on every `.all()` call
 
-**File:** `src/wrappers.py` lines 289-297
+**File:** `src/boundary/__init__.py` lines 289-297
 
 `SafeD1Statement.all()` defines a `D1Result` class inside the method body, meaning a new class object is created on every query. This is a minor inefficiency but also an odd pattern.
 

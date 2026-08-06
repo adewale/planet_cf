@@ -2,7 +2,7 @@
 # Usage: make <target>
 
 .PHONY: test test-cov test-coverage lint vulture check check-all fmt help
-.PHONY: audit-deps audit-secrets audit-duplicates
+.PHONY: audit-deps audit-secrets audit-duplicates bundle-size
 
 # Default target
 help: ## Show this help message
@@ -88,6 +88,9 @@ validate: ## Validate codebase is ready for deployment
 
 templates: ## Rebuild templates.py from template files
 	uv run python scripts/build_templates.py
+
+bundle-size: ## Report approximate Worker bundle input sizes
+	uv run python scripts/bundle_size.py
 
 verify: ## Verify deployed sites are working (pass URLs as SITES="url1 url2")
 	@if [ -z "$(SITES)" ]; then \

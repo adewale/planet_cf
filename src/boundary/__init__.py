@@ -1,4 +1,4 @@
-# src/wrappers.py
+# src/boundary/__init__.py
 """JavaScript/Python Boundary Layer for Cloudflare Workers.
 
 This module provides a clean boundary between JavaScript (Pyodide/JsProxy)
@@ -15,7 +15,18 @@ import logging
 from typing import Any
 from urllib.parse import urlencode
 
-import httpx
+import cfboundary.ffi as cf_boundary
+
+httpx: Any
+try:
+    import httpx as _httpx  # type: ignore[import-not-found]
+except ModuleNotFoundError as exc:
+    # Keep importable in minimal tool environments; real projects depend on httpx.
+    if exc.name != "httpx":
+        raise
+    httpx = None
+else:
+    httpx = _httpx
 
 logger = logging.getLogger("src.main")
 
@@ -34,23 +45,23 @@ _DEFAULT_HTTP_TIMEOUT_SECONDS = 30
 # Pyodide-specific imports (only available in Cloudflare Workers environment)
 # =============================================================================
 
+# App-local JS runtime flag used only for Planet CF-specific JS APIs such as
+# fetch/Response/cache helpers. Generic FFI conversion runtime state lives in
+# CFBoundary.
 try:
     import js
     from js import fetch as js_fetch
-    from pyodide.ffi import to_js
 
     HAS_PYODIDE = True
-    # Create a proper JavaScript null value for D1 bindings
-    # Python None -> JS undefined, but D1 needs JS null for SQL NULL
-    # Note: js.eval() is disallowed in Workers, so use JSON.parse instead
-    JS_NULL = js.JSON.parse("null")
-except ImportError:
+except ModuleNotFoundError as exc:
+    if exc.name != "js":
+        raise
     # Test environment - these will not be used
     js = None
     js_fetch = None
-    to_js = None
-    JS_NULL = None
     HAS_PYODIDE = False
+
+JS_NULL = cf_boundary.js_null()
 
 
 # =============================================================================
@@ -74,13 +85,7 @@ def _to_js_value(value: Any) -> Any:
 
     Returns value unchanged in test environment (not Pyodide).
     """
-    if not HAS_PYODIDE or to_js is None:
-        return value
-    return to_js(
-        value,
-        dict_converter=js.Object.fromEntries,
-        create_pyproxies=False,
-    )
+    return cf_boundary.to_js(value)
 
 
 # =============================================================================
@@ -92,20 +97,12 @@ def _is_js_undefined(value: Any) -> bool:
     """Check if a value is JavaScript undefined (wrapped as JsProxy in Pyodide)."""
     if value is None:
         return False
-    if not HAS_PYODIDE:
-        return False
-    # In Pyodide, JavaScript undefined has typeof == "undefined"
+    if cf_boundary.is_js_missing(value):
+        return True
     try:
-        if hasattr(value, "typeof") and value.typeof == "undefined":
-            return True
-        # Also check for JsUndefined type from pyodide.ffi
-        type_name = type(value).__name__
-        if type_name in ("JsUndefined", "JsNull"):
-            return True
-    except (AttributeError, TypeError):
-        # Ignore type check errors
-        pass
-    return False
+        return type(value).__name__ in ("JsUndefined", "JsNull")
+    except TypeError:
+        return False
 
 
 def _to_py_safe(value: Any, *, _depth: int = 0) -> Any:
@@ -138,7 +135,7 @@ def _to_py_safe(value: Any, *, _depth: int = 0) -> Any:
         return value
 
     # Handle JsProxy with to_py() - try multiple approaches
-    if HAS_PYODIDE and hasattr(value, "to_py"):
+    if hasattr(value, "to_py"):
         try:
             converted = value.to_py()
             # to_py() might return a dict with JsProxy values, recurse
@@ -244,8 +241,8 @@ def _to_py_list(js_array: Any) -> list[dict[str, Any]]:
     if isinstance(js_array, list):
         return js_array
 
-    # In Pyodide, convert JsProxy array to Python list
-    if HAS_PYODIDE and hasattr(js_array, "to_py"):
+    # Convert JsProxy-like arrays to Python lists.
+    if hasattr(js_array, "to_py"):
         return js_array.to_py()
 
     # Try iteration as fallback
@@ -274,10 +271,9 @@ def _to_d1_value(value: Any) -> Any:
     # Force convert to Python (catches all JsProxy/undefined)
     py_value = _to_py_safe(value)
 
-    # Convert None to JS null (required by D1 in Pyodide)
-    # Python None -> JS undefined (wrong), JS_NULL -> JS null (correct)
-    if py_value is None and HAS_PYODIDE:
-        return JS_NULL
+    # Convert None to JS null (required by D1 in Pyodide).
+    if py_value is None:
+        return cf_boundary.d1_null(py_value)
 
     return py_value
 
@@ -543,6 +539,8 @@ async def safe_http_fetch(
         return HttpResponse(status_code, text, response_headers, final_url)
     else:
         # Test environment: Use httpx
+        if httpx is None:
+            raise RuntimeError("httpx is required for safe_http_fetch outside Pyodide")
         async with httpx.AsyncClient(follow_redirects=True, timeout=timeout_seconds) as client:
             response = await client.request(method, url, headers=headers, data=data)
             return HttpResponse(
@@ -625,6 +623,8 @@ async def purge_edge_cache_global(zone_id: str, api_token: str, urls: list[str])
         response = await js_fetch(api_url, fetch_options)
         return int(response.status) < 300
     else:
+        if httpx is None:
+            raise RuntimeError("httpx is required for purge_edge_cache_global outside Pyodide")
         async with httpx.AsyncClient(timeout=10) as client:
             response = await client.post(api_url, headers=headers, json=body)
             return response.status_code < 300

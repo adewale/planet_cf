@@ -25,7 +25,7 @@ return value_type(value) if value else default
 
 ### 1.2 `_safe_str` treats empty string `""` as falsy, returns `None`
 
-**File:** `src/wrappers.py:174`
+**File:** `src/boundary/__init__.py:174`
 ```python
 return str(py_val) if py_val else None
 ```
@@ -40,7 +40,7 @@ return str(py_val) if py_val else None
 
 ### 1.3 `_to_py_safe` converts digit-only strings to integers
 
-**File:** `src/wrappers.py:152-155`
+**File:** `src/boundary/__init__.py:152-155`
 ```python
 str_val = str(value)
 if str_val.isdigit():
@@ -56,7 +56,7 @@ return str_val
 
 ### 1.4 `feed_row_from_js` returns empty dict `{}` on falsy row
 
-**File:** `src/wrappers.py:517-518`
+**File:** `src/boundary/__init__.py:517-518`
 ```python
 if not py_row:
     return {}
@@ -347,7 +347,7 @@ elif delta.seconds > 3600:
 | 4.1 | Non-deterministic GUID from `hash()` | Medium* | models.py:103 | Use SHA256 (check if code path is used) |
 | 4.2 | Queue schema not validated | Medium | main.py:796 | Use `FeedJob.from_dict()` |
 | 7.1 | OPML exports inactive feeds | Medium | main.py:2155 | Add `WHERE is_active = 1` |
-| 1.2 | Empty string becomes None | Low | wrappers.py:174 | `if py_val is not None` |
+| 1.2 | Empty string becomes None | Low | boundary:174 | `if py_val is not None` |
 | 3.2 | Pagination `has_more` off-by-one | Low | main.py:3308 | Query `limit + 1` |
 | 7.2 | Future dates display incorrectly | Low | utils.py:300 | Guard for negative deltas |
 

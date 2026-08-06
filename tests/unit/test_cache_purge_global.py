@@ -29,9 +29,9 @@ class TestPurgeEdgeCacheGlobal:
     @pytest.mark.asyncio
     async def test_returns_true_on_success(self):
         """Returns True when the API returns 200."""
-        from wrappers import purge_edge_cache_global
+        from src.boundary import purge_edge_cache_global
 
-        with patch("wrappers.httpx.AsyncClient") as mock_client_cls:
+        with patch("src.boundary.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -50,9 +50,9 @@ class TestPurgeEdgeCacheGlobal:
     @pytest.mark.asyncio
     async def test_returns_false_on_403(self):
         """Returns False when the API returns 403 (forbidden)."""
-        from wrappers import purge_edge_cache_global
+        from src.boundary import purge_edge_cache_global
 
-        with patch("wrappers.httpx.AsyncClient") as mock_client_cls:
+        with patch("src.boundary.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -68,9 +68,9 @@ class TestPurgeEdgeCacheGlobal:
     @pytest.mark.asyncio
     async def test_returns_false_on_500(self):
         """Returns False when the API returns 500 (server error)."""
-        from wrappers import purge_edge_cache_global
+        from src.boundary import purge_edge_cache_global
 
-        with patch("wrappers.httpx.AsyncClient") as mock_client_cls:
+        with patch("src.boundary.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -85,9 +85,9 @@ class TestPurgeEdgeCacheGlobal:
     @pytest.mark.asyncio
     async def test_sends_correct_api_url(self):
         """Calls the correct Cloudflare API endpoint."""
-        from wrappers import purge_edge_cache_global
+        from src.boundary import purge_edge_cache_global
 
-        with patch("wrappers.httpx.AsyncClient") as mock_client_cls:
+        with patch("src.boundary.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -108,9 +108,9 @@ class TestPurgeEdgeCacheGlobal:
     @pytest.mark.asyncio
     async def test_sends_bearer_auth(self):
         """Sends Authorization: Bearer header."""
-        from wrappers import purge_edge_cache_global
+        from src.boundary import purge_edge_cache_global
 
-        with patch("wrappers.httpx.AsyncClient") as mock_client_cls:
+        with patch("src.boundary.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -131,9 +131,9 @@ class TestPurgeEdgeCacheGlobal:
     @pytest.mark.asyncio
     async def test_sends_files_in_json_body(self):
         """Sends {"files": [...]} in the request body."""
-        from wrappers import purge_edge_cache_global
+        from src.boundary import purge_edge_cache_global
 
-        with patch("wrappers.httpx.AsyncClient") as mock_client_cls:
+        with patch("src.boundary.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -157,9 +157,9 @@ class TestPurgeEdgeCacheGlobal:
     @pytest.mark.asyncio
     async def test_raises_on_network_error(self):
         """Does not catch network errors — caller is responsible."""
-        from wrappers import purge_edge_cache_global
+        from src.boundary import purge_edge_cache_global
 
-        with patch("wrappers.httpx.AsyncClient") as mock_client_cls:
+        with patch("src.boundary.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)

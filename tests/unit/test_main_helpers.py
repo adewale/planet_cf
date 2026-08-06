@@ -1,15 +1,14 @@
 # tests/unit/test_main_helpers.py
-"""Unit tests for helper functions unique to main.py and wrappers.py.
+"""Unit tests for helper functions unique to main.py and boundary.
 
 Functions that live in src/utils.py are tested in test_utils.py.
 This file covers:
-- JS/Python boundary wrappers (src/wrappers.py)
+- JS/Python boundary wrappers (src/boundary/__init__.py)
 - RateLimitError exception (src/main.py)
 - Theme-aware feed link constants (src/main.py)
 """
 
-from src.main import RateLimitError
-from src.wrappers import (
+from src.boundary import (
     _extract_form_value,
     _is_js_undefined,
     _safe_str,
@@ -17,9 +16,10 @@ from src.wrappers import (
     _to_py_list,
     _to_py_safe,
 )
+from src.main import RateLimitError
 
 # =============================================================================
-# Type Conversion Tests (src/wrappers.py)
+# Type Conversion Tests (src/boundary/__init__.py)
 # =============================================================================
 
 
@@ -46,22 +46,18 @@ class TestIsJsUndefined:
         """Empty string is not undefined."""
         assert _is_js_undefined("") is False
 
-    def test_detects_jsnull_mock_in_pyodide_mode(self, monkeypatch):
-        """JsNull objects are detected as undefined/null when HAS_PYODIDE is True."""
-        import src.wrappers as wrappers_mod
+    def test_detects_jsnull_mock(self):
+        """JsNull objects are detected as undefined/null."""
         from tests.mocks.jsproxy import JsNullMock
 
-        monkeypatch.setattr(wrappers_mod, "HAS_PYODIDE", True)
         js_null = JsNullMock()
         assert type(js_null).__name__ == "JsNull"
         assert _is_js_undefined(js_null) is True
 
-    def test_to_py_safe_converts_jsnull_to_none(self, monkeypatch):
+    def test_to_py_safe_converts_jsnull_to_none(self):
         """_to_py_safe should convert JsNull to Python None."""
-        import src.wrappers as wrappers_mod
         from tests.mocks.jsproxy import JsNullMock
 
-        monkeypatch.setattr(wrappers_mod, "HAS_PYODIDE", True)
         assert _to_py_safe(JsNullMock()) is None
 
 
@@ -108,7 +104,7 @@ class TestToPySafe:
 
     def test_depth_guard_prevents_unbounded_recursion(self):
         """Deeply nested structures are handled without stack overflow."""
-        from src.wrappers import _MAX_CONVERSION_DEPTH
+        from src.boundary import _MAX_CONVERSION_DEPTH
 
         deep: dict | str = "leaf"
         for _i in range(100):
@@ -126,7 +122,7 @@ class TestToPySafe:
 
     def test_depth_guard_returns_value_at_limit(self):
         """At exactly the depth limit, _to_py_safe returns value as-is."""
-        from src.wrappers import _MAX_CONVERSION_DEPTH
+        from src.boundary import _MAX_CONVERSION_DEPTH
 
         sentinel = {"key": "should_not_be_recursed"}
         result = _to_py_safe(sentinel, _depth=_MAX_CONVERSION_DEPTH)
@@ -161,7 +157,7 @@ class TestToD1Value:
 
 
 # =============================================================================
-# Form Extraction Tests (src/wrappers.py)
+# Form Extraction Tests (src/boundary/__init__.py)
 # =============================================================================
 
 

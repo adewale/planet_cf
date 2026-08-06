@@ -66,7 +66,7 @@ No gaps in admin module exports.
 
 | Spec Claim | Actual Status | Severity |
 |---|---|---|
-| Spec uses `httpx` for HTTP requests (Section 6.2) | Implementation uses `safe_http_fetch` from `wrappers.py` (fetch API via Pyodide) | INFO -- Implementation adapted for Workers runtime. Spec is aspirational/pseudocode, not prescriptive here. |
+| Spec uses `httpx` for HTTP requests (Section 6.2) | Implementation uses `safe_http_fetch` from `boundary` (fetch API via Pyodide) | INFO -- Implementation adapted for Workers runtime. Spec is aspirational/pseudocode, not prescriptive here. |
 | Spec class named `PlanetCF` | Implementation class named `Default` | INFO -- Class name changed for Workers convention |
 | Spec shows `_apply_retention_policy()` called during HTML generation (Section 6.3) | Implementation runs retention in scheduler only, NOT during page generation | GOOD -- Improvement over spec (retention once/hour vs once/page-load) |
 | Spec describes `exponential_backoff` function with jitter (Section 8.3.3) | Not implemented in code | LOW -- Queue retry mechanism with `retry_delay` config handles this. No `calculate_backoff()` function exists. |

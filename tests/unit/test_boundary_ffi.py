@@ -1,16 +1,17 @@
-# tests/unit/test_wrappers_ffi.py
-"""FFI boundary tests for wrappers.py — exercises Pyodide code paths.
+# tests/unit/test_boundary_ffi.py
+"""FFI boundary tests for boundary — exercises Pyodide code paths.
 
-These tests monkeypatch HAS_PYODIDE=True and inject JavaScript-type fakes
-(JsNull, JsUndefined, FakeJsProxy, FakeObject, FakeJSON) to verify the
+These tests install a fake CFBoundary Pyodide runtime and inject JavaScript-type
+fakes (JsNull, JsUndefined, FakeJsProxy, FakeObject, FakeJSON) to verify the
 actual conversion logic that runs in production Workers.
 
-Pattern borrowed from https://github.com/adewale/tasche/blob/main/tests/unit/test_wrappers_ffi.py
+Pattern borrowed from https://github.com/adewale/tasche/blob/main/tests/unit/test_boundary_ffi.py
 """
 
 import pytest
+from cfboundary.testing import patch_pyodide_runtime
 
-import src.wrappers as W
+import src.boundary as W
 
 # =============================================================================
 # Fake JS types — simulate Pyodide's FFI objects in CPython
@@ -117,13 +118,16 @@ def fake_to_js(value, *, dict_converter=None, create_pyproxies=True):
 
 
 @pytest.fixture
-def pyodide_fakes(monkeypatch):
-    """Patch wrappers module to simulate Pyodide runtime."""
-    monkeypatch.setattr(W, "HAS_PYODIDE", True)
-    monkeypatch.setattr(W, "js", FakeJsModule())
-    monkeypatch.setattr(W, "to_js", fake_to_js)
-    monkeypatch.setattr(W, "JS_NULL", JsNull())
-    yield
+def pyodide_fakes():
+    """Configure CFBoundary to simulate Pyodide runtime."""
+    fake_js = FakeJsModule()
+    with patch_pyodide_runtime(
+        js_module=fake_js,
+        js_proxy_type=FakeJsProxy,
+        js_null_value=JsNull(),
+        to_js_func=fake_to_js,
+    ):
+        yield fake_js
 
 
 # =============================================================================
