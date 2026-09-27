@@ -2,6 +2,7 @@
 """Property-based tests using Hypothesis."""
 
 import contextlib
+import string
 import time
 from datetime import UTC
 from unittest.mock import patch
@@ -2288,11 +2289,18 @@ class TestContentProcessorTruncateSummaryProperties:
 
     @given(
         feed_id=st.integers(min_value=1, max_value=10000),
-        summary=st.from_regex(r"[a-zA-Z0-9 ]{501,800}", fullmatch=True),
+        # st.text with an explicit alphabet generates long strings cheaply;
+        # the equivalent st.from_regex(r"[a-zA-Z0-9 ]{501,800}") tripped
+        # Hypothesis' too_slow health check under coverage and CI load.
+        summary=st.text(
+            alphabet=string.ascii_letters + string.digits + " ",
+            min_size=501,
+            max_size=800,
+        ),
     )
     @settings(max_examples=50)
     def test_long_summaries_end_with_ellipsis(self, summary, feed_id):
-        """Summaries exceeding default max length end with '...'."""
+        """Summaries exceeding default max length are cut to max length with '...'."""
         from src.content_processor import SUMMARY_MAX_LENGTH, EntryContentProcessor
 
         # Use only safe chars so sanitization doesn't shrink below max
@@ -2300,7 +2308,8 @@ class TestContentProcessorTruncateSummaryProperties:
         entry = {"summary": summary}
         proc = EntryContentProcessor(entry, feed_id)
         result = proc.truncate_summary()
-        assert result.endswith("...")
+        assert result == summary[: SUMMARY_MAX_LENGTH - 3] + "..."
+        assert len(result) == SUMMARY_MAX_LENGTH
 
 
 class TestContentProcessorParseDateProperties:
