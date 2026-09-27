@@ -1,7 +1,7 @@
 # Makefile for Planet CF development tasks
 # Usage: make <target>
 
-.PHONY: test test-cov test-coverage lint vulture check check-all fmt help
+.PHONY: test test-cov test-coverage test-js lint vulture check check-all fmt help
 .PHONY: audit-deps audit-secrets audit-duplicates
 
 # Default target
@@ -27,6 +27,9 @@ test-integration: ## Run only integration tests
 test-coverage: ## Run tests with coverage report (no floor)
 	uv run pytest tests/unit tests/integration --cov=src --cov-report=term-missing
 
+test-js: ## Run frontend tests for static/admin.js (vitest; run `npm ci` first)
+	npm test
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Linting & Formatting
 # ─────────────────────────────────────────────────────────────────────────────
@@ -34,7 +37,7 @@ test-coverage: ## Run tests with coverage report (no floor)
 lint: ## Run all linters (ruff check + ruff format --check + ty check)
 	uvx ruff check .
 	uvx ruff format --check .
-	uvx ty check src/
+	uvx ty@0.0.84 check src/
 
 fmt: ## Auto-format code with ruff
 	uvx ruff check --fix .
@@ -50,8 +53,8 @@ vulture: ## Run dead code detection with vulture
 audit-deps: ## Audit dependencies for known vulnerabilities (pip-audit)
 	uvx pip-audit --strict --desc
 
-audit-secrets: ## Scan for secrets (detect-secrets)
-	uvx detect-secrets scan --baseline .secrets.baseline
+audit-secrets: ## Fail on secrets not in .secrets.baseline (detect-secrets-hook over tracked files)
+	git ls-files -z | xargs -0 uvx --from detect-secrets==1.5.0 detect-secrets-hook --baseline .secrets.baseline
 
 audit-duplicates: ## Detect duplicate code blocks (jscpd)
 	npx jscpd src/ --min-lines 10 --min-tokens 50 --threshold 5
@@ -99,12 +102,12 @@ verify: ## Verify deployed sites are working (pass URLs as SITES="url1 url2")
 # ─────────────────────────────────────────────────────────────────────────────
 # Combined Targets (Guardrails)
 # ─────────────────────────────────────────────────────────────────────────────
-# check:     Fast check — runs in seconds. Lint, format, types, dead code, unit tests.
+# check:     Fast check — runs in seconds. Lint, format, types, dead code, Python + JS tests.
 # check-all: Full suite — runs before commit. Everything in check + coverage floor +
 #            secrets scan + dependency audit + duplicate detection.
 
-check: lint vulture test ## Fast check (lint + types + dead code + tests)
+check: lint vulture test test-js ## Fast check (lint + types + dead code + tests)
 
-check-all: lint vulture test-cov audit-secrets audit-deps audit-duplicates ## Full suite (fast check + coverage + secrets + deps + duplicates)
+check-all: lint vulture test-cov test-js audit-secrets audit-deps audit-duplicates ## Full suite (fast check + coverage + secrets + deps + duplicates)
 
 pre-deploy: check-all validate ## Full pre-deployment check (full suite + validate)

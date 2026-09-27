@@ -617,10 +617,9 @@ async def test_unauthenticated_post_admin_feeds_rejected(mock_env_with_admins):
     )
     response = await worker.fetch(request)
 
-    # Should show login page or reject — NOT perform the mutation
-    assert response.status in (200, 401, 403)
-    if response.status == 200:
-        assert "Sign in" in response.body or "login" in response.body.lower()
+    # Unauthenticated admin requests get the login page (200), not the mutation
+    assert response.status == 200
+    assert "Sign in" in response.body or "login" in response.body.lower()
 
 
 @pytest.mark.asyncio
@@ -637,10 +636,9 @@ async def test_unauthenticated_delete_admin_feed_rejected(mock_env_with_admins):
     )
     response = await worker.fetch(request)
 
-    # Should show login page or reject — NOT delete the feed
-    assert response.status in (200, 401, 403)
-    if response.status == 200:
-        assert "Sign in" in response.body or "login" in response.body.lower()
+    # Unauthenticated admin requests get the login page (200), not the deletion
+    assert response.status == 200
+    assert "Sign in" in response.body or "login" in response.body.lower()
 
 
 @pytest.mark.asyncio

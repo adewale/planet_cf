@@ -1,12 +1,16 @@
 # .github/workflows/e2e.yml
 # End-to-end tests against real Cloudflare infrastructure.
 #
-# This workflow runs E2E tests against a deployed test-planet instance.
-# It requires:
+# Every run deploys THIS commit to the dedicated test-planet instance
+# (examples/test-planet/wrangler.jsonc: its own worker, D1, Vectorize and
+# queues, never production) and then runs the E2E suites against it.
+#
+# It requires two repository secrets, and in adewale/planet_cf it fails
+# (rather than skipping) when either is missing:
 #   - CLOUDFLARE_API_TOKEN: API token with Workers, D1, Vectorize, Queues access
 #   - TEST_PLANET_URL: The deployed test-planet URL (e.g., https://test-planet.account.workers.dev)
 #
-# The test-planet instance must be set up first:
+# The test-planet resources and worker secrets must exist first (one-off):
 #   ./scripts/setup_test_planet.sh
 name: E2E Tests
 
@@ -24,46 +28,102 @@ on:
       - 'tests/e2e/**'
       - 'migrations/**'
 
+# One run at a time owns the shared test-planet instance: a later push waits
+# instead of redeploying it while an earlier run is still testing. This group
+# is separate from check.yml's production deploy group on purpose: sharing one
+# would let a queued E2E run cancel a pending production deploy.
+concurrency:
+  group: e2e-test-planet
+  cancel-in-progress: false
+
 jobs:
-  e2e:
+  deploy:
+    name: Deploy this commit to test-planet
     runs-on: ubuntu-latest
-    # Only run if Cloudflare credentials are available
+    # Forks don't have the owner's Cloudflare account, so pushes to a fork's
+    # main skip this workflow explicitly (the jobs show as "skipped"). A manual
+    # dispatch on a fork runs, and then it must have the secrets too.
     if: github.repository == 'adewale/planet_cf' || github.event_name == 'workflow_dispatch'
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      TEST_PLANET_URL: ${{ secrets.TEST_PLANET_URL }}
 
     steps:
-      - name: Check credentials
-        if: env.CLOUDFLARE_API_TOKEN == ''
+      - name: Require E2E secrets
         run: |
-          echo "::notice::CLOUDFLARE_API_TOKEN not set — skipping E2E tests. Add it as a repository secret to enable."
+          missing=0
+          for name in CLOUDFLARE_API_TOKEN TEST_PLANET_URL; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Repository secret $name is not set. E2E must deploy and test this commit, so it fails instead of skipping."
+              missing=1
+            fi
+          done
+          exit "$missing"
 
       - uses: actions/checkout@v4
-        if: env.CLOUDFLARE_API_TOKEN != ''
 
       - uses: astral-sh/setup-uv@v5
-        if: env.CLOUDFLARE_API_TOKEN != ''
 
       - uses: actions/setup-node@v4
-        if: env.CLOUDFLARE_API_TOKEN != ''
         with:
           node-version: '20'
 
       - name: Install dependencies
-        if: env.CLOUDFLARE_API_TOKEN != ''
+        run: uv sync --extra test --group workers
+
+      # Same bundling as check.yml's production deploy: vendor the pyproject
+      # dependencies into python_modules/ and link it next to the test-planet
+      # config, where wrangler looks for it (as scripts/deploy_instance.sh does).
+      - name: Bundle Python dependencies
         run: |
-          uv sync --extra test
-          npm install wrangler
+          uv run --group workers pywrangler sync
+          ln -sfn ../../python_modules examples/test-planet/python_modules
+
+      - name: Apply migrations to test-planet-db
+        run: scripts/run_migrations.sh test-planet-db examples/test-planet/wrangler.jsonc --remote
+
+      - name: Deploy test-planet from this commit
+        run: npx wrangler deploy -c examples/test-planet/wrangler.jsonc
 
       - name: Seed test data
-        if: env.CLOUDFLARE_API_TOKEN != '' && github.event.inputs.seed_data != 'false'
+        if: github.event.inputs.seed_data != 'false'
         run: |
           uv run python scripts/seed_test_data.py \
             --db-name test-planet-db \
             --config examples/test-planet/wrangler.jsonc
 
+      # The E2E suites skip (not fail) when /health doesn't answer, so check
+      # the new deployment is serving before the test jobs start. This is a
+      # bounded readiness wait (about a minute), not a test retry: if the
+      # worker never reports service=planetcf, the run fails here.
+      - name: Check test-planet is serving
+        env:
+          E2E_BASE_URL: ${{ secrets.TEST_PLANET_URL }}
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            echo "Checking test-planet /health (attempt $attempt of 6)"
+            if uv run python -c 'import sys; from tests.e2e.conftest import is_planetcf_running; sys.exit(0 if is_planetcf_running() else 1)'; then
+              echo "test-planet is serving /health"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::test-planet did not report service=planetcf at /health after deploying this commit."
+          exit 1
+
+  e2e:
+    needs: deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --extra test
+
       - name: Run E2E tests
-        if: env.CLOUDFLARE_API_TOKEN != ''
         env:
           E2E_BASE_URL: ${{ secrets.TEST_PLANET_URL }}
           E2E_SESSION_SECRET: "test-session-secret-for-e2e-testing-only"
@@ -73,44 +133,32 @@ jobs:
           uv run pytest tests/e2e/ -v --tb=short -x --ignore=tests/e2e/test_browser.py
 
   browser-e2e:
+    needs: deploy
     runs-on: ubuntu-latest
-    if: github.repository == 'adewale/planet_cf' || github.event_name == 'workflow_dispatch'
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
     steps:
-      - name: Check credentials
-        if: env.CLOUDFLARE_API_TOKEN == ''
-        run: |
-          echo "::notice::CLOUDFLARE_API_TOKEN not set — skipping browser E2E tests."
-
       - uses: actions/checkout@v4
-        if: env.CLOUDFLARE_API_TOKEN != ''
 
       - uses: astral-sh/setup-uv@v5
-        if: env.CLOUDFLARE_API_TOKEN != ''
 
       - uses: actions/setup-node@v4
-        if: env.CLOUDFLARE_API_TOKEN != ''
         with:
           node-version: '20'
 
       - name: Install dependencies
-        if: env.CLOUDFLARE_API_TOKEN != ''
         run: |
           uv sync --extra test
           npm install -g agent-browser
           agent-browser install
 
       - name: Run browser E2E tests
-        if: env.CLOUDFLARE_API_TOKEN != ''
         env:
           E2E_BASE_URL: ${{ secrets.TEST_PLANET_URL }}
         run: |
           uv run pytest tests/e2e/test_browser.py -v --tb=short -x
 
       - name: Upload screenshots
-        if: always() && env.CLOUDFLARE_API_TOKEN != ''
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: browser-screenshots
