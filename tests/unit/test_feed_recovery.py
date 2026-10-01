@@ -5,11 +5,10 @@ If the underlying issue is fixed, the feed stays active. If not,
 normal error handling will re-disable it.
 """
 
-import re
-from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
-PROJECT_ROOT = Path(__file__).parent.parent.parent
+from tests.conftest import MockEnv, MockQueue
+from tests.mocks.sqlite_d1 import SQLiteD1
 
 
 class TestFeedRecoveryConfig:
@@ -61,46 +60,69 @@ class TestFeedRecoveryConfig:
         assert get_feed_recovery_limit(env) == 2
 
 
-class TestSchedulerRecoveryCode:
-    """Verify the recovery section exists in _run_scheduler."""
+class TestSchedulerRecovery:
+    """_run_scheduler re-enables and re-enqueues disabled feeds, on a real SQLite schema."""
 
-    def test_recovery_section_in_scheduler(self):
-        """_run_scheduler should contain feed recovery logic."""
-        source = (PROJECT_ROOT / "src" / "main.py").read_text()
-        assert "feed_recovery_attempt" in source, (
-            "Scheduler should log feed_recovery_attempt events"
-        )
-        assert "is_recovery_attempt" in source, (
-            "Recovery messages should have is_recovery_attempt flag"
-        )
+    async def test_recovery_reenables_and_enqueues_up_to_the_limit(self):
+        """At most FEED_RECOVERY_LIMIT disabled feeds are reset and re-enqueued per run.
 
-    def test_recovery_queries_inactive_feeds(self):
-        """Recovery section should query WHERE is_active = 0."""
-        source = (PROJECT_ROOT / "src" / "main.py").read_text()
-        # Find the recovery section
-        match = re.search(
-            r"Auto-recovery.*?feeds_recovery_attempted",
-            source,
-            re.DOTALL,
-        )
-        assert match, "Could not find recovery section in scheduler"
-        recovery_code = match.group()
-        assert "is_active = 0" in recovery_code, (
-            "Recovery should query disabled feeds (is_active = 0)"
-        )
+        The rest stay disabled with their failure state intact, active feeds are
+        enqueued as normal fetches, and the run reports and logs the attempts.
+        Which disabled feeds go first (ORDER BY updated_at DESC) is not asserted.
+        """
+        from src.main import PlanetCF
 
-    def test_recovery_resets_failures_before_enqueue(self):
-        """Recovery should reset consecutive_failures before re-enqueuing."""
-        source = (PROJECT_ROOT / "src" / "main.py").read_text()
-        match = re.search(
-            r"Auto-recovery.*?feeds_recovery_attempted",
-            source,
-            re.DOTALL,
+        db = SQLiteD1.from_migrations()
+        active_id = db.insert("feeds", url="https://active.example/feed", is_active=1)
+        seeded_failures = {
+            db.insert(
+                "feeds",
+                url=f"https://disabled{n}.example/feed",
+                is_active=0,
+                consecutive_failures=10 + n,
+                fetch_error=f"HTTP 50{n}",
+            ): 10 + n
+            for n in (1, 2, 3)
+        }
+        disabled_ids = set(seeded_failures)
+        queue = MockQueue()
+        env = MockEnv(
+            DB=db,
+            FEED_QUEUE=queue,
+            DEAD_LETTER_QUEUE=MockQueue(),
+            SEARCH_INDEX=None,
+            AI=None,
+            PLANET_URL="",  # no cache pre-warm requests
         )
-        assert match, "Could not find recovery section"
-        recovery_code = match.group()
-        assert "consecutive_failures = 0" in recovery_code
-        assert "is_active = 1" in recovery_code
+        env.FEED_RECOVERY_LIMIT = "1"  # not the default (2)
+        worker = PlanetCF()
+        worker.env = env
+
+        with patch("src.main.emit_event") as emit, patch("src.main.log_op") as log:
+            result = await worker._run_scheduler()
+
+        normal = [m for m in queue.messages if not m.get("is_recovery_attempt")]
+        recovery = [m for m in queue.messages if m.get("is_recovery_attempt") is True]
+        assert [m["feed_id"] for m in normal] == [active_id]
+        (recovered_id,) = [m["feed_id"] for m in recovery]
+        assert recovered_id in disabled_ids
+        assert result["enqueued"] == 2
+
+        rows = {r["id"]: r for r in db.rows("SELECT * FROM feeds")}
+        assert rows[recovered_id]["is_active"] == 1
+        assert rows[recovered_id]["consecutive_failures"] == 0
+        assert rows[recovered_id]["fetch_error"] is None
+        for feed_id in disabled_ids - {recovered_id}:
+            assert rows[feed_id]["is_active"] == 0
+            assert rows[feed_id]["consecutive_failures"] == seeded_failures[feed_id]
+            assert rows[feed_id]["fetch_error"] is not None
+
+        (event,) = [c.args[0] for c in emit.call_args_list]
+        assert event.feeds_recovery_attempted == 1
+        recovery_logs = [
+            c.kwargs for c in log.call_args_list if c.args[0] == "feed_recovery_attempt"
+        ]
+        assert [entry["feed_id"] for entry in recovery_logs] == [recovered_id]
 
 
 class TestSchedulerEventRecoveryField:
