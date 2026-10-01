@@ -4,8 +4,10 @@ Ensures migration files are properly numbered, the tracking table exists,
 and the deployment script will catch migration failures.
 """
 
-import re
 from pathlib import Path
+
+from tests.conftest import MockEnv, MockQueue
+from tests.mocks.sqlite_d1 import SQLiteD1
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
@@ -30,49 +32,49 @@ class TestMigrationFiles:
             )
             expected_num = num + 1
 
-    def test_migration_005_creates_tracking_table(self):
-        """Migration 005 should create the applied_migrations table."""
-        migration = PROJECT_ROOT / "migrations" / "005_create_applied_migrations.sql"
-        assert migration.exists(), "migrations/005_create_applied_migrations.sql not found"
+    def test_every_migration_is_recorded_in_applied_migrations(self):
+        """After all migrations run, applied_migrations lists every migration file.
 
-        content = migration.read_text()
-        assert "CREATE TABLE" in content
-        assert "applied_migrations" in content
-        assert "migration_name" in content
+        Runs the SQL on SQLite, so a seed row that is commented out or fails to
+        insert is caught, which a text search of 005 would miss.
+        """
+        db = SQLiteD1.from_migrations()
 
-    def test_migration_005_seeds_all_migrations(self):
-        """Migration 005 should seed entries for all existing migrations."""
-        migration = PROJECT_ROOT / "migrations" / "005_create_applied_migrations.sql"
-        content = migration.read_text()
+        recorded = {r["migration_name"] for r in db.rows("SELECT * FROM applied_migrations")}
 
-        # Check each migration file is seeded
-        migrations_dir = PROJECT_ROOT / "migrations"
-        for sql_file in sorted(migrations_dir.glob("*.sql")):
-            assert sql_file.name in content, (
-                f"Migration 005 should seed '{sql_file.name}' into applied_migrations"
-            )
+        assert recorded == {f.name for f in (PROJECT_ROOT / "migrations").glob("*.sql")}
+
+
+def _table_columns(db: SQLiteD1) -> dict[str, set[str]]:
+    tables = [r["name"] for r in db.rows("SELECT name FROM sqlite_master WHERE type = 'table'")]
+    return {
+        t: {c["name"] for c in db.rows(f"PRAGMA table_info({t})")}  # noqa: S608
+        for t in tables
+        if t != "sqlite_sequence"
+    }
 
 
 class TestEnsureDbInitIncludesTracking:
-    """Verify _ensure_database_initialized creates the tracking table."""
+    """_ensure_database_initialized builds a fresh database equivalent to the migrations."""
 
-    def test_applied_migrations_in_schema(self):
-        """The inline schema in _ensure_database_initialized must include applied_migrations."""
-        source = (PROJECT_ROOT / "src" / "main.py").read_text()
+    async def test_fresh_database_gets_the_migrated_schema(self):
+        """On an empty database, auto-init creates the same tables and columns as
+        running every migration, including applied_migrations."""
+        from src.main import PlanetCF
 
-        # Find the _ensure_database_initialized method
-        match = re.search(
-            r"async def _ensure_database_initialized.*?self\._db_initialized = True",
-            source,
-            re.DOTALL,
+        empty = SQLiteD1()
+        worker = PlanetCF()
+        worker.env = MockEnv(
+            DB=empty,
+            FEED_QUEUE=MockQueue(),
+            DEAD_LETTER_QUEUE=MockQueue(),
+            SEARCH_INDEX=None,
+            AI=None,
         )
-        assert match, "Could not find _ensure_database_initialized"
-        method_source = match.group()
 
-        assert "applied_migrations" in method_source, (
-            "_ensure_database_initialized must CREATE TABLE applied_migrations "
-            "so fresh databases also have migration tracking"
-        )
+        await worker._ensure_database_initialized()
+
+        assert _table_columns(empty) == _table_columns(SQLiteD1.from_migrations())
 
 
 class TestDeployScriptBlocksOnFailure:

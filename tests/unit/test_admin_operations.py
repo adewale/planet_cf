@@ -6,7 +6,8 @@ import json
 import pytest
 
 from src.main import Default
-from tests.conftest import MockEnv, MockQueue, TrackingD1
+from tests.conftest import MockEnv, MockQueue
+from tests.mocks.sqlite_d1 import SQLiteD1
 
 # =============================================================================
 # Mock Classes for Testing (MockRequest/MockFormData are specialized for this
@@ -48,10 +49,10 @@ class MockFormData:
         return self._data.get(key)
 
 
-def _make_env(db=None):
+def _make_env(db):
     """Create a MockEnv for admin operations tests."""
     return MockEnv(
-        DB=db or TrackingD1(),
+        DB=db,
         FEED_QUEUE=MockQueue(),
         DEAD_LETTER_QUEUE=MockQueue(),
         SEARCH_INDEX=None,
@@ -65,10 +66,19 @@ def _make_env(db=None):
 
 
 @pytest.fixture
-def mock_admin():
-    """Return a mock admin user dict."""
+def db():
+    """SQLite with the migrated schema; UPDATEs and audit rows really persist."""
+    return SQLiteD1.from_migrations()
+
+
+@pytest.fixture
+def mock_admin(db):
+    """An admin row that exists, so the audit_log foreign key is satisfied (as in D1)."""
+    admin_id = db.insert(
+        "admins", github_username="testadmin", display_name="Test Admin", is_active=1
+    )
     return {
-        "id": 1,
+        "id": admin_id,
         "github_username": "testadmin",
         "display_name": "Test Admin",
         "is_active": 1,
@@ -76,16 +86,20 @@ def mock_admin():
 
 
 @pytest.fixture
-def mock_feed():
-    """Return a mock feed dict."""
-    return {
-        "id": 42,
-        "url": "https://example.com/feed.xml",
-        "title": "Original Title",
-        "site_url": "https://example.com",
-        "is_active": 1,
-        "consecutive_failures": 0,
-    }
+def worker(db):
+    """Worker with feed 42 (the target) and feed 43 (a bystander that must not change)."""
+    db.insert("feeds", id=42, url="https://example.com/feed.xml", title="Original Title")
+    db.insert("feeds", id=43, url="https://other.example/feed.xml", title="Bystander")
+    w = Default()
+    w.env = _make_env(db)
+    return w
+
+
+def _feeds(db) -> dict[int, dict]:
+    return {r["id"]: r for r in db.rows("SELECT id, title, is_active FROM feeds")}
+
+
+BYSTANDER = {"id": 43, "title": "Bystander", "is_active": 1}
 
 
 # =============================================================================
@@ -97,14 +111,8 @@ class TestUpdateFeed:
     """Tests for _update_feed method."""
 
     @pytest.mark.asyncio
-    async def test_update_feed_title(self, mock_admin, mock_feed):
-        """Updates feed title when title is provided."""
-        db = TrackingD1([mock_feed])
-        env = _make_env(db=db)
-
-        worker = Default()
-        worker.env = env
-
+    async def test_update_feed_title(self, db, worker, mock_admin):
+        """Updates the title of the target feed only."""
         request = MockRequest(
             method="PUT",
             url="https://example.com/admin/feeds/42",
@@ -115,163 +123,80 @@ class TestUpdateFeed:
         response = await worker._update_feed(request, "42", mock_admin)
 
         assert response.status == 200
-        body = json.loads(response.body)
-        assert body["success"] is True
-
-        # Verify the SQL was correct
-        update_stmt = db.statements[-2]  # -1 is audit log
-        assert "title = ?" in update_stmt.sql
-        assert "New Title" in update_stmt.bound_args
+        assert json.loads(response.body)["success"] is True
+        feeds = _feeds(db)
+        assert feeds[42] == {"id": 42, "title": "New Title", "is_active": 1}
+        assert feeds[43] == BYSTANDER
 
     @pytest.mark.asyncio
-    async def test_update_feed_is_active(self, mock_admin, mock_feed):
-        """Updates feed is_active when is_active is provided."""
-        db = TrackingD1([mock_feed])
-        env = _make_env(db=db)
-
-        worker = Default()
-        worker.env = env
-
-        request = MockRequest(
-            method="PUT",
-            json_body={"is_active": False},
-        )
+    async def test_update_feed_is_active(self, db, worker, mock_admin):
+        """Disables the target feed without touching its title."""
+        request = MockRequest(method="PUT", json_body={"is_active": False})
 
         response = await worker._update_feed(request, "42", mock_admin)
 
         assert response.status == 200
-
-        # Verify the SQL was correct
-        update_stmt = db.statements[-2]
-        assert "is_active = ?" in update_stmt.sql
-        assert 0 in update_stmt.bound_args
+        feeds = _feeds(db)
+        assert feeds[42] == {"id": 42, "title": "Original Title", "is_active": 0}
+        assert feeds[43] == BYSTANDER
 
     @pytest.mark.asyncio
-    async def test_update_feed_both_fields(self, mock_admin, mock_feed):
-        """Updates both title and is_active when both provided."""
-        db = TrackingD1([mock_feed])
-        env = _make_env(db=db)
-
-        worker = Default()
-        worker.env = env
-
-        request = MockRequest(
-            method="PUT",
-            json_body={"title": "New Title", "is_active": True},
-        )
+    async def test_update_feed_both_fields(self, db, worker, mock_admin):
+        """Re-enables a disabled feed and renames it in one request."""
+        db.conn.execute("UPDATE feeds SET is_active = 0 WHERE id = 42")
+        request = MockRequest(method="PUT", json_body={"title": "New Title", "is_active": True})
 
         response = await worker._update_feed(request, "42", mock_admin)
 
         assert response.status == 200
-
-        # Verify SQL includes both fields
-        update_stmt = db.statements[-2]
-        assert "is_active = ?" in update_stmt.sql
-        assert "title = ?" in update_stmt.sql
+        assert _feeds(db)[42] == {"id": 42, "title": "New Title", "is_active": 1}
 
     @pytest.mark.asyncio
-    async def test_update_feed_no_fields_returns_error(self, mock_admin, mock_feed):
+    async def test_update_feed_no_fields_returns_error(self, db, worker, mock_admin):
         """Returns 400 error when no valid fields provided."""
-        db = TrackingD1([mock_feed])
-        env = _make_env(db=db)
-
-        worker = Default()
-        worker.env = env
-
-        request = MockRequest(
-            method="PUT",
-            json_body={},
-        )
+        request = MockRequest(method="PUT", json_body={})
 
         response = await worker._update_feed(request, "42", mock_admin)
 
         assert response.status == 400
         body = json.loads(response.body)
-        assert "error" in body
         assert "No valid fields" in body["error"]
+        assert _feeds(db)[42]["title"] == "Original Title"
 
     @pytest.mark.asyncio
-    async def test_update_feed_empty_title(self, mock_admin, mock_feed):
-        """Handles empty string title (converts to None via _safe_str)."""
-        db = TrackingD1([mock_feed])
-        env = _make_env(db=db)
-
-        worker = Default()
-        worker.env = env
-
-        request = MockRequest(
-            method="PUT",
-            json_body={"title": ""},
-        )
+    async def test_update_feed_empty_title_is_stored_as_empty_string(self, db, worker, mock_admin):
+        """An empty title is stored as "" (``_safe_str`` maps only None/undefined to None)."""
+        request = MockRequest(method="PUT", json_body={"title": ""})
 
         response = await worker._update_feed(request, "42", mock_admin)
 
         assert response.status == 200
-
-        # Empty string should be converted to None by _safe_str
-        update_stmt = db.statements[-2]
-        assert None in update_stmt.bound_args or "" in update_stmt.bound_args
+        assert _feeds(db)[42]["title"] == ""
 
     @pytest.mark.asyncio
-    async def test_update_feed_invalid_id_returns_error(self, mock_admin):
-        """Returns 500 error for invalid feed ID."""
-        db = TrackingD1([])
-        env = _make_env(db=db)
-
-        worker = Default()
-        worker.env = env
-
-        request = MockRequest(
-            method="PUT",
-            json_body={"title": "New Title"},
-        )
+    async def test_update_feed_invalid_id_returns_error(self, db, worker, mock_admin):
+        """Returns 500 for a non-numeric feed ID, and no feed changes."""
+        request = MockRequest(method="PUT", json_body={"title": "New Title"})
 
         response = await worker._update_feed(request, "not-a-number", mock_admin)
 
         assert response.status == 500
+        assert {f["title"] for f in _feeds(db).values()} == {"Original Title", "Bystander"}
 
     @pytest.mark.asyncio
-    async def test_update_feed_logs_audit(self, mock_admin, mock_feed):
-        """Creates audit log entry when feed is updated."""
-        db = TrackingD1([mock_feed])
-        env = _make_env(db=db)
-
-        worker = Default()
-        worker.env = env
-
-        request = MockRequest(
-            method="PUT",
-            json_body={"title": "New Title"},
-        )
+    async def test_update_feed_logs_audit(self, db, worker, mock_admin):
+        """Writes an audit_log row naming the admin, the feed and the new values."""
+        request = MockRequest(method="PUT", json_body={"title": "New Title"})
 
         await worker._update_feed(request, "42", mock_admin)
 
-        # Find the audit log INSERT statement
-        audit_stmt = db.statements[-1]
-        assert "INSERT INTO audit_log" in audit_stmt.sql
-
-
-class TestUpdateFeedTitleSanitization:
-    """Tests for feed title sanitization in updates."""
-
-    @pytest.mark.asyncio
-    async def test_title_is_sanitized(self, mock_admin, mock_feed):
-        """Title is passed through _safe_str for sanitization."""
-        db = TrackingD1([mock_feed])
-        env = _make_env(db=db)
-
-        worker = Default()
-        worker.env = env
-
-        # Test with a title containing leading/trailing whitespace
-        request = MockRequest(
-            method="PUT",
-            json_body={"title": "  Trimmed Title  "},
+        (audit,) = db.rows(
+            "SELECT admin_id, action, target_type, target_id, details FROM audit_log"
         )
-
-        response = await worker._update_feed(request, "42", mock_admin)
-        assert response.status == 200
-
-        # The title should be in the bound args (may or may not be trimmed depending on _safe_str behavior)
-        update_stmt = db.statements[-2]
-        assert any("Trimmed Title" in str(arg) for arg in update_stmt.bound_args if arg)
+        assert audit["admin_id"] == mock_admin["id"]
+        assert (audit["action"], audit["target_type"], audit["target_id"]) == (
+            "update_feed",
+            "feed",
+            42,
+        )
+        assert json.loads(audit["details"]) == {"title": "New Title"}
