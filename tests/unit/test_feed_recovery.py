@@ -5,7 +5,7 @@ If the underlying issue is fixed, the feed stays active. If not,
 normal error handling will re-disable it.
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from tests.conftest import MockEnv, MockQueue
 from tests.mocks.sqlite_d1 import SQLiteD1
@@ -64,10 +64,11 @@ class TestSchedulerRecovery:
     """_run_scheduler re-enables and re-enqueues disabled feeds, on a real SQLite schema."""
 
     async def test_recovery_reenables_and_enqueues_up_to_the_limit(self):
-        """Up to FEED_RECOVERY_LIMIT (default 2) disabled feeds are reset and re-enqueued.
+        """At most FEED_RECOVERY_LIMIT disabled feeds are reset and re-enqueued per run.
 
-        The rest stay disabled with their failure state intact, and active feeds
-        are enqueued as normal fetches.
+        The rest stay disabled with their failure state intact, active feeds are
+        enqueued as normal fetches, and the run reports and logs the attempts.
+        Which disabled feeds go first (ORDER BY updated_at DESC) is not asserted.
         """
         from src.main import PlanetCF
 
@@ -80,14 +81,12 @@ class TestSchedulerRecovery:
                 is_active=0,
                 consecutive_failures=10 + n,
                 fetch_error=f"HTTP 50{n}",
-                updated_at=f"2026-01-0{n} 00:00:00",
             ): 10 + n
             for n in (1, 2, 3)
         }
         disabled_ids = set(seeded_failures)
         queue = MockQueue()
-        worker = PlanetCF()
-        worker.env = MockEnv(
+        env = MockEnv(
             DB=db,
             FEED_QUEUE=queue,
             DEAD_LETTER_QUEUE=MockQueue(),
@@ -95,26 +94,35 @@ class TestSchedulerRecovery:
             AI=None,
             PLANET_URL="",  # no cache pre-warm requests
         )
+        env.FEED_RECOVERY_LIMIT = "1"  # not the default (2)
+        worker = PlanetCF()
+        worker.env = env
 
-        result = await worker._run_scheduler()
+        with patch("src.main.emit_event") as emit, patch("src.main.log_op") as log:
+            result = await worker._run_scheduler()
 
         normal = [m for m in queue.messages if not m.get("is_recovery_attempt")]
         recovery = [m for m in queue.messages if m.get("is_recovery_attempt") is True]
         assert [m["feed_id"] for m in normal] == [active_id]
-        recovered_ids = {m["feed_id"] for m in recovery}
-        assert len(recovered_ids) == 2
-        assert recovered_ids < disabled_ids
-        assert result["enqueued"] == 3
+        (recovered_id,) = [m["feed_id"] for m in recovery]
+        assert recovered_id in disabled_ids
+        assert result["enqueued"] == 2
 
         rows = {r["id"]: r for r in db.rows("SELECT * FROM feeds")}
-        for feed_id in recovered_ids:
-            assert rows[feed_id]["is_active"] == 1
-            assert rows[feed_id]["consecutive_failures"] == 0
-            assert rows[feed_id]["fetch_error"] is None
-        (still_disabled,) = disabled_ids - recovered_ids
-        assert rows[still_disabled]["is_active"] == 0
-        assert rows[still_disabled]["consecutive_failures"] == seeded_failures[still_disabled]
-        assert rows[still_disabled]["fetch_error"] is not None
+        assert rows[recovered_id]["is_active"] == 1
+        assert rows[recovered_id]["consecutive_failures"] == 0
+        assert rows[recovered_id]["fetch_error"] is None
+        for feed_id in disabled_ids - {recovered_id}:
+            assert rows[feed_id]["is_active"] == 0
+            assert rows[feed_id]["consecutive_failures"] == seeded_failures[feed_id]
+            assert rows[feed_id]["fetch_error"] is not None
+
+        (event,) = [c.args[0] for c in emit.call_args_list]
+        assert event.feeds_recovery_attempted == 1
+        recovery_logs = [
+            c.kwargs for c in log.call_args_list if c.args[0] == "feed_recovery_attempt"
+        ]
+        assert [entry["feed_id"] for entry in recovery_logs] == [recovered_id]
 
 
 class TestSchedulerEventRecoveryField:

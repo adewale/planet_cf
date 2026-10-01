@@ -164,14 +164,14 @@ class TestUpdateFeed:
         assert _feeds(db)[42]["title"] == "Original Title"
 
     @pytest.mark.asyncio
-    async def test_update_feed_empty_title_is_stored_as_empty_string(self, db, worker, mock_admin):
-        """An empty title is stored as "" (``_safe_str`` maps only None/undefined to None)."""
+    async def test_update_feed_empty_title_clears_title(self, db, worker, mock_admin):
+        """An empty title clears the stored title; readers fall back on "" and NULL alike."""
         request = MockRequest(method="PUT", json_body={"title": ""})
 
         response = await worker._update_feed(request, "42", mock_admin)
 
         assert response.status == 200
-        assert _feeds(db)[42]["title"] == ""
+        assert not _feeds(db)[42]["title"]
 
     @pytest.mark.asyncio
     async def test_update_feed_invalid_id_returns_error(self, db, worker, mock_admin):

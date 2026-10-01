@@ -45,21 +45,39 @@ class TestMigrationFiles:
         assert recorded == {f.name for f in (PROJECT_ROOT / "migrations").glob("*.sql")}
 
 
-def _table_columns(db: SQLiteD1) -> dict[str, set[str]]:
-    tables = [r["name"] for r in db.rows("SELECT name FROM sqlite_master WHERE type = 'table'")]
-    return {
-        t: {c["name"] for c in db.rows(f"PRAGMA table_info({t})")}  # noqa: S608
-        for t in tables
-        if t != "sqlite_sequence"
-    }
+def _schema(db: SQLiteD1) -> dict[str, dict[str, set]]:
+    """Per table: column definitions, unique column sets and foreign keys."""
+    names = [
+        r["name"]
+        for r in db.rows("SELECT name FROM sqlite_master WHERE type = 'table'")
+        if r["name"] != "sqlite_sequence"
+    ]
+    schema = {}
+    for t in names:
+        columns = {
+            (c["name"], c["type"], c["notnull"], c["dflt_value"], c["pk"])
+            for c in db.rows(f"PRAGMA table_info({t})")
+        }
+        unique = {
+            tuple(c["name"] for c in db.rows(f"PRAGMA index_info('{i['name']}')"))
+            for i in db.rows(f"PRAGMA index_list({t})")
+            if i["unique"]
+        }
+        foreign_keys = {
+            (f["table"], f["from"], f["to"], f["on_delete"])
+            for f in db.rows(f"PRAGMA foreign_key_list({t})")
+        }
+        schema[t] = {"columns": columns, "unique": unique, "foreign_keys": foreign_keys}
+    return schema
 
 
 class TestEnsureDbInitIncludesTracking:
     """_ensure_database_initialized builds a fresh database equivalent to the migrations."""
 
     async def test_fresh_database_gets_the_migrated_schema(self):
-        """On an empty database, auto-init creates the same tables and columns as
-        running every migration, including applied_migrations."""
+        """On an empty database, auto-init creates the same tables, columns,
+        defaults, unique constraints and foreign keys as running every migration,
+        including applied_migrations."""
         from src.main import PlanetCF
 
         empty = SQLiteD1()
@@ -74,7 +92,11 @@ class TestEnsureDbInitIncludesTracking:
 
         await worker._ensure_database_initialized()
 
-        assert _table_columns(empty) == _table_columns(SQLiteD1.from_migrations())
+        auto_init, migrated = _schema(empty), _schema(SQLiteD1.from_migrations())
+        # Known difference: ALTER TABLE in 003 cannot add a non-constant default.
+        auto_init["entries"]["columns"].remove(("first_seen", "TEXT", 0, "CURRENT_TIMESTAMP", 0))
+        migrated["entries"]["columns"].remove(("first_seen", "TEXT", 0, None, 0))
+        assert auto_init == migrated
 
 
 class TestDeployScriptBlocksOnFailure:

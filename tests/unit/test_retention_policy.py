@@ -111,8 +111,9 @@ class TestApplyRetentionPolicy:
         """Runs the retention query on SQLite with the migrated schema.
 
         Policy (docs/SPEC.md 4.2): delete entries older than RETENTION_DAYS or
-        beyond RETENTION_MAX_ENTRIES_PER_FEED newest per feed. An entry with no
-        published_at is aged by first_seen.
+        beyond RETENTION_MAX_ENTRIES_PER_FEED newest per feed. The spec ages by
+        published_at only; aging an undated entry by first_seen characterizes the
+        code's COALESCE(published_at, first_seen) (added in c710f80).
         """
         from datetime import UTC, datetime, timedelta
 
@@ -158,6 +159,7 @@ class TestApplyRetentionPolicy:
         remaining = {r["id"] for r in db.rows("SELECT id FROM entries")}
         assert remaining == {newest, second, no_date_recent}
         assert {int(i) for batch in vectorize.deleted_ids for i in batch} == expected_deleted
+        assert stats["entries_scanned"] == 3
         assert stats["entries_deleted"] == 3
         assert stats["vectors_deleted"] == 3
 

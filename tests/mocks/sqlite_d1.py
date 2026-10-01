@@ -7,7 +7,8 @@ updates or deletes) should run it here instead of against ``MockD1`` in
 ``is_active = N``, ignores ``LIMIT``/``ORDER BY`` and discards every UPDATE/DELETE.
 
 Fidelity to D1 (https://developers.cloudflare.com/d1/sql-api/foreign-keys/):
-foreign keys are enforced, as D1 does by default. ``first()`` returns a row dict
+foreign keys are enforced, as D1 does by default; at most 100 bound parameters;
+``exec()`` runs one query per line. ``first()`` returns a row dict
 or None, ``all()`` returns ``.results``/``.success``/``.meta``, ``run()`` reports
 ``meta["changes"]``. Results are plain dicts; JsProxy behaviour is covered by
 ``tests/unit/test_wrappers_ffi.py``, not here.
@@ -65,6 +66,9 @@ class SQLiteD1:
         self.conn = sqlite3.connect(":memory:")
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
+        # D1 rejects a query with more than 100 bound parameters (observed on
+        # miniflare 4.20260730.0: "too many SQL variables").
+        self.conn.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 100)
 
     @classmethod
     def from_migrations(cls) -> "SQLiteD1":
