@@ -78,8 +78,30 @@ class SQLiteD1:
         return SQLiteD1Statement(self.conn, sql)
 
     async def exec(self, sql: str) -> SQLiteD1Result:
-        self.conn.executescript(sql)
-        return SQLiteD1Result(results=[])
+        """Run ``sql`` the way D1's ``exec()`` does: one query per line.
+
+        workerd's d1-api.ts sends ``query.trim().split('\\n')`` as separate
+        queries, so a statement spread over several lines, or a comment-only
+        line, fails the whole call and nothing is applied. Blank lines are
+        skipped. Observed on miniflare 4.20260730.0. (Migrations go through
+        ``wrangler d1 execute --file``, which parses whole statements, hence
+        ``executescript`` in ``from_migrations``.)
+        """
+        lines = [line for line in sql.strip().split("\n") if line.strip()]
+        self.conn.execute("SAVEPOINT d1_exec")
+        for number, line in enumerate(lines, start=1):
+            try:
+                if line.strip().startswith("--"):
+                    raise sqlite3.OperationalError("SQL code did not contain a statement.")
+                self.conn.execute(line)
+            except sqlite3.Error as e:
+                self.conn.execute("ROLLBACK TO d1_exec")
+                self.conn.execute("RELEASE d1_exec")
+                raise sqlite3.OperationalError(
+                    f"D1_EXEC_ERROR: Error in line {number}: {line.strip()}: {e}"
+                ) from e
+        self.conn.execute("RELEASE d1_exec")
+        return SQLiteD1Result(results=[], meta={"count": len(lines)})
 
     # Test helpers: read and seed state directly, bypassing the code under test.
 
