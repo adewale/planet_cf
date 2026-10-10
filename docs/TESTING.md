@@ -122,8 +122,9 @@ This script creates infrastructure, sets secrets, seeds data, and deploys the wo
 
 Runs on every push and PR via `.github/workflows/check.yml`:
 - Type checking, linting, formatting
-- Unit tests + integration tests
+- Unit tests + integration tests, in one pytest run with coverage
 - 80% minimum coverage
+- Frontend tests for `static/admin.js` (`npm ci && npm test`, vitest)
 
 ### E2E (manual + main branch)
 
@@ -131,6 +132,29 @@ Runs via `.github/workflows/e2e.yml`:
 - Triggered manually via `workflow_dispatch` or on push to `main`
 - Requires `CLOUDFLARE_API_TOKEN` and `TEST_PLANET_URL` secrets
 - Seeds test data then runs E2E suite
+
+The workflow does not deploy: it tests whatever is currently deployed at
+`TEST_PLANET_URL`. To run E2E against a specific commit, deploy that checkout to
+test-planet by hand first (needs `CLOUDFLARE_API_TOKEN` for the test-planet
+account; never point these at `wrangler.production.jsonc`):
+
+```bash
+uv sync --extra test --group workers
+uv run --group workers pywrangler sync              # vendor deps into python_modules/
+ln -sfn ../../python_modules examples/test-planet/python_modules
+scripts/run_migrations.sh test-planet-db examples/test-planet/wrangler.jsonc --remote
+npx wrangler deploy -c examples/test-planet/wrangler.jsonc
+uv run python scripts/seed_test_data.py \
+  --db-name test-planet-db --config examples/test-planet/wrangler.jsonc
+
+# Confirm the new deployment is serving (the E2E suites skip, not fail, if it isn't)
+E2E_BASE_URL=https://test-planet.<account>.workers.dev uv run python -c \
+  'import sys; from tests.e2e.conftest import is_planetcf_running; sys.exit(0 if is_planetcf_running() else 1)'
+
+# E2E_SESSION_SECRET and E2E_ADMIN_USERNAME default to the values e2e.yml uses
+E2E_BASE_URL=https://test-planet.<account>.workers.dev RUN_E2E_TESTS=1 \
+uv run pytest tests/e2e/ -v --tb=short -x --ignore=tests/e2e/test_browser.py
+```
 
 ## Test Data
 

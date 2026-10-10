@@ -1109,17 +1109,19 @@ Planet CF uses compatibility date `2026-01-01` → runs **Pyodide 0.28.2**.
 | Hypothesis `@given` tests | 117 | 159 |
 | Security test density | 1.0–1.34 | 3.0–4.4 |
 
-**Three rules that emerged:**
+**Rules that emerged:**
 
 1. **Bidirectional security checks.** Every security test must verify what's *allowed* AND what's *blocked*. A test that only checks one direction can pass even if the function is a no-op or strips everything.
 
-2. **Assertion density ≥3.0 for all files, ≥4.0 for security.** A test function with 1 assertion is testing one property. A function with 3+ assertions tests behavior: the return value, its type, its side effects, and the absence of unwanted side effects. The density target is per-file average, not per-test minimum.
+2. **Assert the behaviour, not a count.** Each test needs at least one oracle strong enough to fail when the behaviour is wrong: the exact output, the state change, the side effect and its absence. A test with one exact-equality assertion can be stronger than one with five `isinstance`/`len(...) > 0` checks. Assertion density is a triage signal for finding tests worth reading; it is not a target (see the amendment below).
 
-3. **Count mock assertions too.** `mock.assert_called_once()`, `mock.assert_awaited_once()`, and `mock.assert_not_called()` are real assertions — they raise `AssertionError` on failure. Automated audits that only count `assert` keyword statements will undercount mock-heavy test files. Our cache purge tests were flagged at 0.44 density but were actually 4.44 once mock assertions were included.
+3. **Mock assertions are real assertions.** `mock.assert_called_once()`, `mock.assert_awaited_once()`, and `mock.assert_not_called()` raise `AssertionError` on failure. An audit that only counts `assert` statements will misjudge mock-heavy test files (our cache purge tests looked like 0.44 assertions per test but checked the right calls).
+
+**Amendment (2026-09): no assertion-density quota.** This lesson originally set a floor of "≥3.0 assertions per test for all files, ≥4.0 for security". A later verification audit found the quota was met partly with shape and type assertions (`isinstance(result, str)`, `len(result) > 0`) that do not constrain behaviour, and that the same push added a property test whose generator (`st.from_regex(r"[a-zA-Z0-9 ]{501,800}")`) failed Hypothesis' `too_slow` health check under coverage. A number that is easy to raise without testing more is a Goodhart target. Keep rule 1 (both directions) and rule 2 (oracle strength); do not reinstate a per-file or per-test assertion count.
 
 **PBT gaps follow module boundaries.** The existing `test_properties.py` had excellent coverage for core modules (auth, models, search) but missed utility modules (`utils.py`, `xml_sanitizer.py`, `instance_config.py`, `content_processor.py`, `templates.py`). These are exactly the kind of pure functions where "never crashes on arbitrary input", "idempotent", and "conservation" properties catch real bugs. PBT coverage should be audited per-module, not per-file.
 
 **How to prevent this:**
-- Track assertion density as a periodic audit metric, not just coverage percentage
+- Use assertion density only to find tests worth reading in an audit; never set it as a target
 - When adding a new test, check both directions: "does it work?" and "does it fail correctly?"
 - When adding PBT for a new module, add at minimum: never-crashes, idempotent (if normalization), conservation (if filtering), roundtrip (if serialization)

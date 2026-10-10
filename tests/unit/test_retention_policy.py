@@ -107,27 +107,61 @@ class TestApplyRetentionPolicy:
     """Tests for Default._apply_retention_policy."""
 
     @pytest.mark.asyncio
-    async def test_entries_older_than_retention_targeted(self):
-        """Entries older than retention days are identified for deletion."""
-        old_entries = [
-            {"id": 1},
-            {"id": 2},
-            {"id": 3},
-        ]
-        vectorize = MockVectorize()
-        env = MockRetentionEnv(entries_to_delete=old_entries, search_index=vectorize)
+    async def test_deletes_entries_past_age_or_per_feed_cap_on_real_sqlite(self):
+        """Runs the retention query on SQLite with the migrated schema.
 
+        Policy (docs/SPEC.md 4.2): delete entries older than RETENTION_DAYS or
+        beyond RETENTION_MAX_ENTRIES_PER_FEED newest per feed. The spec ages by
+        published_at only; aging an undated entry by first_seen characterizes the
+        code's COALESCE(published_at, first_seen) (added in c710f80).
+        """
+        from datetime import UTC, datetime, timedelta
+
+        from tests.mocks.sqlite_d1 import SQLiteD1
+
+        now = datetime.now(UTC).replace(tzinfo=None, microsecond=0)
+
+        def days_ago(n: int) -> str:
+            return (now - timedelta(days=n)).isoformat()
+
+        db = SQLiteD1.from_migrations()
+        capped = db.insert("feeds", url="https://capped.example/feed")
+        aged = db.insert("feeds", url="https://aged.example/feed")
+        undated = db.insert("feeds", url="https://undated.example/feed")
+
+        def entry(feed_id: int, guid: str, published_at: str | None, first_seen: str) -> int:
+            return db.insert(
+                "entries",
+                feed_id=feed_id,
+                guid=guid,
+                published_at=published_at,
+                first_seen=first_seen,
+            )
+
+        newest = entry(capped, "newest", days_ago(1), days_ago(1))
+        second = entry(capped, "second", days_ago(2), days_ago(2))
+        third = entry(capped, "third", days_ago(3), days_ago(3))  # beyond cap of 2
+        too_old = entry(aged, "old", days_ago(60), days_ago(1))  # older than 30 days
+        no_date_recent = entry(aged, "no-date-recent", None, days_ago(1))
+        no_date_old = entry(undated, "no-date-old", None, days_ago(60))
+
+        vectorize = MockVectorize()
+        env = MockRetentionEnv(
+            search_index=vectorize, retention_days="30", max_entries_per_feed="2"
+        )
+        env.DB = db
         worker = Default()
         worker.env = env
 
         stats = await worker._apply_retention_policy()
 
+        expected_deleted = {third, too_old, no_date_old}
+        remaining = {r["id"] for r in db.rows("SELECT id FROM entries")}
+        assert remaining == {newest, second, no_date_recent}
+        assert {int(i) for batch in vectorize.deleted_ids for i in batch} == expected_deleted
         assert stats["entries_scanned"] == 3
         assert stats["entries_deleted"] == 3
         assert stats["vectors_deleted"] == 3
-        # Verify the cutoff date was passed via bind params
-        select_stmt = env.DB.statements[0]
-        assert len(select_stmt.bound_args) == 2  # max_per_feed, cutoff_date
 
     @pytest.mark.asyncio
     async def test_empty_database_no_deletions(self):
