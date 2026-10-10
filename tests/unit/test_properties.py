@@ -2298,7 +2298,8 @@ class TestContentProcessorTruncateSummaryProperties:
             max_size=800,
         ),
     )
-    @settings(max_examples=50)
+    # Fixed budget, derandomized: CI runs the same 50 examples every time.
+    @settings(max_examples=50, derandomize=True)
     def test_long_summaries_end_with_ellipsis(self, summary, feed_id):
         """Summaries exceeding default max length are cut to max length with '...'."""
         from src.content_processor import SUMMARY_MAX_LENGTH, EntryContentProcessor
