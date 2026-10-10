@@ -9,7 +9,7 @@ on:
 # Runs for the same ref queue instead of overlapping, so two pushes to main
 # can never run production migrations/deploys at the same time and an older
 # commit can't finish deploying after a newer one. In-progress runs are never
-# cancelled (that could stop a deploy half-way). e2e.yml uses its own group.
+# cancelled (that could stop a deploy half-way).
 concurrency:
   group: check-${{ github.ref }}
   cancel-in-progress: false
