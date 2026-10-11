@@ -238,13 +238,16 @@ npx wrangler dev
 # Apply local migrations (in another terminal)
 npx wrangler d1 execute planetcf --local --file=migrations/001_initial.sql
 
-# Run tests (~1200 tests, ~1.4s)
+# Run Python tests (~1,400 unit + integration tests)
 uv run pytest tests/unit tests/integration -x -q
+
+# Run frontend tests for static/admin.js (after npm install)
+npm test
 
 # Lint and type check
 uvx ruff check .
 uvx ruff format --check .
-uvx ty check src/
+uvx ty@0.0.84 check src/
 uvx --python 3.12 vulture src/ vulture_whitelist.py
 ```
 

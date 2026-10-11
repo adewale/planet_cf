@@ -27,8 +27,12 @@ async def test_scheduler_enqueues_active_feeds(mock_env_with_feeds):
 
 
 @pytest.mark.asyncio
-async def test_scheduler_skips_inactive_feeds(mock_env):
-    """Scheduler should not enqueue inactive feeds."""
+async def test_scheduler_enqueues_inactive_feeds_only_as_recovery_attempts(mock_env):
+    """Inactive feeds are not fetched normally; they are enqueued as recovery attempts.
+
+    MockD1 discards the re-enable UPDATE and ignores LIMIT; the database side of
+    recovery is covered on SQLite in tests/unit/test_feed_recovery.py.
+    """
     mock_env.DB = MockD1(
         {
             "feeds": [

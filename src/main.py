@@ -436,7 +436,7 @@ class Default(WorkerEntrypoint):
             if result is None:
                 log_op("database_auto_init", status="initializing")
                 # Create core tables (minimal schema for basic operation)
-                await self.env.DB.exec("""
+                schema_sql = """
                     -- Feeds table
                     CREATE TABLE IF NOT EXISTS feeds (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -513,7 +513,12 @@ class Default(WorkerEntrypoint):
                         migration_name TEXT UNIQUE NOT NULL,
                         applied_at TEXT DEFAULT CURRENT_TIMESTAMP
                     );
-                """)
+                """
+                # One prepared statement per CREATE: D1's exec() runs each *line*
+                # as a separate query, so these multi-line statements fail there.
+                for statement in schema_sql.split(";"):
+                    if statement.strip():
+                        await self.env.DB.prepare(statement).run()
                 log_op("database_auto_init", status="completed")
                 # Validate schema after fresh initialization
                 await self._check_schema_drift()

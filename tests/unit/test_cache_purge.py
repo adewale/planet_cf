@@ -143,8 +143,9 @@ class TestAdminActionsPurgeCache:
         )
         response = await worker.fetch(request)
 
-        assert response.status in (200, 302)
-        assert response is not None
+        # Successful admin mutations redirect back to the dashboard.
+        assert response.status == 302
+        assert response.headers.get("Location") == "/admin"
         worker._purge_edge_cache.assert_awaited_once()
         # Purge called exactly once, not multiple times per action
         assert worker._purge_edge_cache.await_count == 1
@@ -175,8 +176,9 @@ class TestAdminActionsPurgeCache:
         )
         response = await worker.fetch(request)
 
-        assert response.status in (200, 302)
-        assert response is not None
+        # Successful admin mutations redirect back to the dashboard.
+        assert response.status == 302
+        assert response.headers.get("Location") == "/admin"
         worker._purge_edge_cache.assert_awaited_once()
         assert worker._purge_edge_cache.await_count == 1
 
@@ -196,8 +198,9 @@ class TestAdminActionsPurgeCache:
         )
         response = await worker.fetch(request)
 
-        assert response.status in (200, 302)
-        assert response is not None
+        # Successful admin mutations redirect back to the dashboard.
+        assert response.status == 302
+        assert response.headers.get("Location") == "/admin"
         worker._purge_edge_cache.assert_awaited_once()
         assert worker._purge_edge_cache.await_count == 1
         # Verify scheduler was also invoked (regenerate triggers both)
@@ -235,8 +238,9 @@ class TestAdminActionsPurgeCache:
         )
         response = await worker.fetch(request)
 
-        assert response.status in (200, 302)
-        assert response is not None
+        # Successful admin mutations redirect back to the dashboard.
+        assert response.status == 302
+        assert response.headers.get("Location") == "/admin"
         worker._purge_edge_cache.assert_awaited_once()
         assert worker._purge_edge_cache.await_count == 1
 

@@ -35,6 +35,18 @@ function createTestEnv() {
   return dom;
 }
 
+// Resolved fetch() Response stub. admin.js checks r.ok before r.json(), so
+// every success-path mock must say ok: true (the pre-March mocks did not).
+function jsonResponse(body, { ok = true, status = 200 } = {}) {
+  return Promise.resolve({ ok, status, json: () => Promise.resolve(body) });
+}
+
+// saveFeedTitle() does not return its promise chain, so tests wait for the
+// already-resolved fetch mock's .then/.catch callbacks to run.
+function flushPromises() {
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
+
 // =============================================================================
 // enterEditMode tests
 // =============================================================================
@@ -136,31 +148,37 @@ describe('cancelEditTitle', () => {
 describe('saveFeedTitle', () => {
   let dom;
   let fetchMock;
+  let alertMock;
 
   beforeEach(() => {
     dom = createTestEnv();
     global.document = dom.window.document;
 
     // Mock fetch
-    fetchMock = vi.fn(() => Promise.resolve({
-      json: () => Promise.resolve({ success: true })
-    }));
+    fetchMock = vi.fn(() => jsonResponse({ success: true }));
     global.fetch = fetchMock;
+    alertMock = vi.fn();
+    vi.stubGlobal('alert', alertMock);
   });
 
   afterEach(() => {
     dom.window.close();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
-  it('removes editing class immediately', async () => {
+  it('stays in edit mode until the server responds, then exits', async () => {
     const { enterEditMode, saveFeedTitle } = await import('../../static/admin.js');
     const titleDiv = document.querySelector('.feed-title');
 
     enterEditMode(titleDiv);
     saveFeedTitle(titleDiv);
 
+    // Exiting before the PUT completes was the race fixed in 1397f45.
+    expect(titleDiv.classList.contains('editing')).toBe(true);
+    await flushPromises();
     expect(titleDiv.classList.contains('editing')).toBe(false);
+    expect(alertMock).not.toHaveBeenCalled();
   });
 
   it('calls fetch with correct URL and method', async () => {
@@ -220,6 +238,23 @@ describe('saveFeedTitle', () => {
 
     expect(textSpan.textContent).toBe('Untitled');
   });
+
+  it('keeps the old title, exits edit mode and alerts when the server rejects the save', async () => {
+    fetchMock.mockImplementation(() => jsonResponse({ error: 'boom' }, { ok: false, status: 500 }));
+    const { enterEditMode, saveFeedTitle } = await import('../../static/admin.js');
+    const titleDiv = document.querySelector('.feed-title');
+    const input = titleDiv.querySelector('.feed-title-input');
+    const textSpan = titleDiv.querySelector('.feed-title-text');
+
+    enterEditMode(titleDiv);
+    input.value = 'Rejected Title';
+    saveFeedTitle(titleDiv);
+    await flushPromises();
+
+    expect(textSpan.textContent).toBe('Test Feed');
+    expect(titleDiv.classList.contains('editing')).toBe(false);
+    expect(alertMock).toHaveBeenCalledWith('Failed to save feed title: Server error: 500');
+  });
 });
 
 // =============================================================================
@@ -277,9 +312,7 @@ describe('rebuildSearchIndex', () => {
     dom = createTestEnv();
     global.document = dom.window.document;
 
-    fetchMock = vi.fn(() => Promise.resolve({
-      json: () => Promise.resolve({ success: true })
-    }));
+    fetchMock = vi.fn(() => jsonResponse({ success: true, indexed: 7 }));
     global.fetch = fetchMock;
   });
 
@@ -309,14 +342,14 @@ describe('rebuildSearchIndex', () => {
     );
   });
 
-  it('shows Done! on success', async () => {
+  it('shows Done! with the indexed count on success and re-enables the button', async () => {
     const { rebuildSearchIndex } = await import('../../static/admin.js');
     const btn = document.getElementById('reindex-btn');
 
     await rebuildSearchIndex();
-    await new Promise(resolve => setTimeout(resolve, 0));
 
-    expect(btn.textContent).toBe('Done!');
+    expect(btn.textContent).toBe('Done! (7 indexed)');
+    expect(btn.disabled).toBe(false);
   });
 
   it('shows Failed on error', async () => {
@@ -351,9 +384,7 @@ describe('loadDLQ', () => {
   });
 
   it('shows empty state when no feeds', async () => {
-    global.fetch = vi.fn(() => Promise.resolve({
-      json: () => Promise.resolve({ feeds: [] })
-    }));
+    global.fetch = vi.fn(() => jsonResponse({ feeds: [] }));
 
     const { loadDLQ } = await import('../../static/admin.js');
     await loadDLQ();
@@ -364,15 +395,13 @@ describe('loadDLQ', () => {
   });
 
   it('renders feed items with escaped content', async () => {
-    global.fetch = vi.fn(() => Promise.resolve({
-      json: () => Promise.resolve({
-        feeds: [{
-          id: 1,
-          title: '<script>xss</script>',
-          url: 'https://example.com',
-          consecutive_failures: 5
-        }]
-      })
+    global.fetch = vi.fn(() => jsonResponse({
+      feeds: [{
+        id: 1,
+        title: '<script>xss</script>',
+        url: 'https://example.com',
+        consecutive_failures: 5
+      }]
     }));
 
     const { loadDLQ } = await import('../../static/admin.js');
@@ -382,6 +411,21 @@ describe('loadDLQ', () => {
     const list = document.getElementById('dlq-list');
     expect(list.innerHTML).toContain('&lt;script&gt;xss&lt;/script&gt;');
     expect(list.innerHTML).not.toContain('<script>xss</script>');
+    expect(list.innerHTML).toContain('Failures: 5');
+    expect(list.innerHTML).toContain('action="/admin/feeds/1/retry"');
+  });
+
+  it('shows an error state instead of parsing a non-OK response', async () => {
+    const json = vi.fn(() => Promise.resolve({ feeds: [] }));
+    global.fetch = vi.fn(() => Promise.resolve({ ok: false, status: 503, json }));
+
+    const { loadDLQ } = await import('../../static/admin.js');
+    await loadDLQ();
+
+    const list = document.getElementById('dlq-list');
+    expect(list.innerHTML).toContain('Failed to load: Server error: 503');
+    expect(list.innerHTML).not.toContain('No failed feeds');
+    expect(json).not.toHaveBeenCalled();
   });
 });
 
@@ -403,9 +447,7 @@ describe('loadAuditLog', () => {
   });
 
   it('shows empty state when no entries', async () => {
-    global.fetch = vi.fn(() => Promise.resolve({
-      json: () => Promise.resolve({ entries: [] })
-    }));
+    global.fetch = vi.fn(() => jsonResponse({ entries: [] }));
 
     const { loadAuditLog } = await import('../../static/admin.js');
     await loadAuditLog();
@@ -416,14 +458,12 @@ describe('loadAuditLog', () => {
   });
 
   it('renders audit entries', async () => {
-    global.fetch = vi.fn(() => Promise.resolve({
-      json: () => Promise.resolve({
-        entries: [{
-          action: 'feed_added',
-          created_at: '2024-01-15T10:00:00Z',
-          details: 'Added feed xyz'
-        }]
-      })
+    global.fetch = vi.fn(() => jsonResponse({
+      entries: [{
+        action: 'feed_added',
+        created_at: '2024-01-15T10:00:00Z',
+        details: 'Added feed xyz'
+      }]
     }));
 
     const { loadAuditLog } = await import('../../static/admin.js');
@@ -448,9 +488,7 @@ describe('keyboard event handling', () => {
     dom = createTestEnv();
     global.document = dom.window.document;
 
-    fetchMock = vi.fn(() => Promise.resolve({
-      json: () => Promise.resolve({ success: true })
-    }));
+    fetchMock = vi.fn(() => jsonResponse({ success: true }));
     global.fetch = fetchMock;
   });
 
@@ -471,8 +509,10 @@ describe('keyboard event handling', () => {
 
     const event = new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
     input.dispatchEvent(event);
+    await flushPromises();
 
-    expect(fetchMock).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledWith('/admin/feeds/42', expect.objectContaining({ method: 'PUT' }));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).title).toBe('New Title');
     expect(titleDiv.classList.contains('editing')).toBe(false);
   });
 
@@ -506,9 +546,7 @@ describe('click event delegation', () => {
     dom = createTestEnv();
     global.document = dom.window.document;
 
-    fetchMock = vi.fn(() => Promise.resolve({
-      json: () => Promise.resolve({ success: true })
-    }));
+    fetchMock = vi.fn(() => jsonResponse({ success: true }));
     global.fetch = fetchMock;
   });
 
@@ -538,8 +576,9 @@ describe('click event delegation', () => {
 
     enterEditMode(titleDiv);
     saveBtn.click();
+    await flushPromises();
 
-    expect(fetchMock).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledWith('/admin/feeds/42', expect.objectContaining({ method: 'PUT' }));
     expect(titleDiv.classList.contains('editing')).toBe(false);
   });
 
