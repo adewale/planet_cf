@@ -6,90 +6,133 @@ and their cached entries should still appear in the main content area.
 """
 
 import re
+import sqlite3
+import xml.etree.ElementTree as ET
+from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from src.main import Default
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 
+class SqliteStatement:
+    """Execute the production SQL using SQLite, not SQL-substring matching."""
+
+    def __init__(self, connection, sql):
+        self.connection = connection
+        self.sql = sql
+        self.values = ()
+
+    def bind(self, *values):
+        self.values = values
+        return self
+
+    async def all(self):
+        rows = self.connection.execute(self.sql, self.values).fetchall()
+        return SimpleNamespace(results=[dict(row) for row in rows], success=True)
+
+    async def run(self):
+        cursor = self.connection.execute(self.sql, self.values)
+        return SimpleNamespace(results=[], success=True, meta={"changes": cursor.rowcount})
+
+    async def first(self):
+        row = self.connection.execute(self.sql, self.values).fetchone()
+        return dict(row) if row is not None else None
+
+
+class SqliteD1:
+    def __init__(self, connection):
+        self.connection = connection
+
+    def prepare(self, sql):
+        return SqliteStatement(self.connection, sql)
+
+
+@pytest.fixture
+def feed_worker(mock_env):
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    for migration in sorted((PROJECT_ROOT / "migrations").glob("*.sql")):
+        connection.executescript(migration.read_text())
+    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+    for feed_id, active, name in [(1, 1, "Active"), (2, 0, "Inactive")]:
+        connection.execute(
+            "INSERT INTO feeds (id,url,title,site_url,is_active) VALUES (?,?,?,?,?)",
+            (
+                feed_id,
+                f"https://{name.lower()}.example/feed",
+                f"{name} fixture feed",
+                f"https://{name.lower()}.example",
+                active,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO entries (feed_id,guid,url,title,content,published_at,first_seen) VALUES (?,?,?,?,?,?,?)",
+            (
+                feed_id,
+                str(feed_id),
+                f"https://{name.lower()}.example/entry",
+                f"{name} fixture entry",
+                "<p>Cached content</p>",
+                now,
+                now,
+            ),
+        )
+    mock_env.DB = SqliteD1(connection)
+    # Recovery is a separate opt-in scheduling behavior, covered by its own suite.
+    mock_env.FEED_RECOVERY_ENABLED = "false"
+    worker = Default()
+    worker.env = mock_env
+    try:
+        yield worker, mock_env
+    finally:
+        connection.close()
+
+
+@pytest.mark.asyncio
 class TestInactiveFeedDisplayQueries:
-    """Verify that display queries do NOT filter by is_active."""
+    @pytest.mark.parametrize("theme", ["default", "planet-python", "planet-mozilla"])
+    async def test_html_displays_both_active_and_inactive_cached_feeds(self, feed_worker, theme):
+        worker, env = feed_worker
+        env.THEME = theme
+        # Rebind to invalidate the runtime wrapper's environment cache.
+        worker.env = env
+        page = await worker._generate_html()
+        for name in ("Active", "Inactive"):
+            assert f"{name} fixture feed" in page
+            assert f"{name} fixture entry" in page
 
-    def _get_main_source(self):
-        return (PROJECT_ROOT / "src" / "main.py").read_text()
+    async def test_feed_endpoints_include_cached_entries_from_inactive_feeds(self, feed_worker):
+        worker, _ = feed_worker
+        atom = ET.fromstring((await worker._serve_atom()).body)  # noqa: S314 - local generated fixture XML
+        titles = {
+            node.text
+            for node in atom.findall(
+                "{http://www.w3.org/2005/Atom}entry/{http://www.w3.org/2005/Atom}title"
+            )
+        }
+        assert titles == {"Active fixture entry", "Inactive fixture entry"}
+        rss = ET.fromstring((await worker._serve_rss()).body)  # noqa: S314 - local generated fixture XML
+        assert {node.text for node in rss.findall("./channel/item/title")} == titles
 
-    def test_sidebar_query_includes_inactive_feeds(self):
-        """Sidebar feeds query must NOT filter by is_active."""
-        source = self._get_main_source()
-        # Find the sidebar feeds query (SELECT ... FROM feeds ... ORDER BY title)
-        # It should include is_active in SELECT but NOT in WHERE
-        sidebar_match = re.search(
-            r"# Get feeds for sidebar.*?ORDER BY title",
-            source,
-            re.DOTALL,
-        )
-        assert sidebar_match, "Could not find sidebar feeds query"
-        query = sidebar_match.group()
-        assert "is_active" in query, "Sidebar query should SELECT is_active"
-        assert "WHERE is_active = 1" not in query, (
-            "Sidebar query must NOT filter by is_active = 1. "
-            "Inactive feeds should be visible with a CSS indicator."
-        )
+    async def test_opml_exports_both_active_and_inactive_feeds(self, feed_worker):
+        worker, _ = feed_worker
+        opml = ET.fromstring((await worker._export_opml()).body)  # noqa: S314 - local generated fixture XML
+        assert {node.attrib["xmlUrl"] for node in opml.findall(".//outline[@xmlUrl]")} == {
+            "https://active.example/feed",
+            "https://inactive.example/feed",
+        }
 
-    def test_entries_query_includes_inactive_feeds(self):
-        """Main entries query must NOT filter by f.is_active."""
-        source = self._get_main_source()
-        # Find the main entries CTE query
-        entries_match = re.search(
-            r"WITH ranked AS.*?LIMIT \?",
-            source,
-            re.DOTALL,
-        )
-        assert entries_match, "Could not find main entries query"
-        # Get just the first CTE (not the fallback)
-        query = entries_match.group()
-        assert "f.is_active = 1" not in query, (
-            "Entries query must NOT filter by f.is_active = 1. "
-            "Cached entries from inactive feeds should still be displayed."
-        )
-
-    def test_recent_entries_query_no_is_active_filter(self):
-        """_get_recent_entries() (Atom/RSS) must NOT filter by is_active."""
-        source = self._get_main_source()
-        match = re.search(
-            r"async def _get_recent_entries.*?\.all\(\)",
-            source,
-            re.DOTALL,
-        )
-        assert match, "Could not find _get_recent_entries method"
-        query = match.group()
-        assert "is_active" not in query, "_get_recent_entries must NOT filter by is_active."
-
-    def test_opml_export_includes_all_feeds(self):
-        """OPML export must include inactive feeds."""
-        source = self._get_main_source()
-        match = re.search(
-            r"async def _export_opml.*?\.all\(\)",
-            source,
-            re.DOTALL,
-        )
-        assert match, "Could not find _export_opml method"
-        query = match.group()
-        assert "is_active" not in query, "OPML export must NOT filter by is_active."
-
-    def test_scheduler_still_filters_by_is_active(self):
-        """Regression: scheduler enqueue query MUST keep WHERE is_active = 1."""
-        source = self._get_main_source()
-        match = re.search(
-            r"# Get all active feeds from D1.*?\.all\(\)",
-            source,
-            re.DOTALL,
-        )
-        assert match, "Could not find scheduler feeds query"
-        query = match.group()
-        assert "WHERE is_active = 1" in query, (
-            "Scheduler query MUST filter by is_active = 1. "
-            "Only active feeds should be enqueued for fetching."
-        )
+    async def test_scheduler_only_enqueues_active_feeds_when_recovery_is_disabled(
+        self, feed_worker
+    ):
+        worker, env = feed_worker
+        await worker._run_scheduler()
+        assert [message["feed_id"] for message in env.FEED_QUEUE.messages] == [1]
 
 
 class TestInactiveFeedTemplates:
